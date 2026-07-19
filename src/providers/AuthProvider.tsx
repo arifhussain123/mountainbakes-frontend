@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
+import { isValidRole } from '@/utils/roleHome';
 import type { UserRole } from '@mb/shared';
 
 export interface AuthUser {
@@ -24,19 +25,28 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-/** Map a Supabase auth user → the app's AuthUser, reading claims from app_metadata. */
-function toAuthUser(u: SupabaseUser): AuthUser {
+/**
+ * Map a Supabase auth user → the app's AuthUser, reading claims from app_metadata.
+ *
+ * Returns null when the account carries no recognised `role` claim. This is
+ * deliberately fail-closed — it previously defaulted to 'branch_manager', which
+ * would hand branch-level UI to any account whose claim was missing (e.g. a
+ * self-signup, if email sign-ups are ever enabled).
+ */
+function toAuthUser(u: SupabaseUser): AuthUser | null {
   const claims = (u.app_metadata ?? {}) as {
     role?: UserRole;
     branchId?: string | null;
     branchName?: string | null;
   };
+  if (!isValidRole(claims.role)) return null;
+
   const displayName = (u.user_metadata as { displayName?: string } | null)?.displayName;
   return {
     uid: u.id,
     email: u.email ?? '',
     displayName: displayName || u.email || '',
-    role: claims.role ?? 'branch_manager',
+    role: claims.role,
     branchId: claims.branchId ?? null,
     branchName: claims.branchName ?? null,
   };
@@ -59,10 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true;
 
     const applySession = (session: Session | null) => {
-      if (session?.user) {
-        setUser(toAuthUser(session.user));
+      const authUser = session?.user ? toAuthUser(session.user) : null;
+      if (session?.user && authUser) {
+        setUser(authUser);
         setToken(session.access_token);
       } else {
+        // No session, or a session whose account has no valid role — clear the token
+        // too, so no API call goes out on behalf of an identity we won't honour.
         setUser(null);
         setToken('');
       }

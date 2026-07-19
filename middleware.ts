@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Role home pages
-function getRoleHome(role: string): string {
-  switch (role) {
-    case 'super_admin': return '/dashboard';
-    case 'branch_manager': return '/branch-dashboard';
-    case 'production_user': return '/production-queue';
-    default: return '/login';
-  }
-}
+import { getRoleHome, isValidRole } from '@/utils/roleHome';
 
 // Public paths that don't need auth (includes PWA assets: manifest, service
 // workers, offline page, icons & splash screens must be reachable when logged out)
@@ -64,8 +55,11 @@ export function middleware(req: NextRequest) {
     return res;
   }
 
-  if (!session) {
-    return NextResponse.redirect(new URL('/login', req.url));
+  // Fail closed: a cookie with no recognised role is treated as no session at all.
+  if (!session || !isValidRole(session.role)) {
+    const res = NextResponse.redirect(new URL('/login', req.url));
+    res.cookies.delete('mb_session');
+    return res;
   }
 
   // Forced password change gate — blocks all app routes until a new password is
