@@ -1,8 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '@/utils/firebase';
+import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,26 +25,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ProductionQueuePage() {
-  const { user, token } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const { token } = useAuth();
+  // The live order feed's backing stream has been removed, so the queue renders
+  // empty until it is reimplemented on Supabase Realtime.
+  const [orders] = useState<Order[]>([]);
   const [updating, setUpdating] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const q = query(
-      collection(db, 'orders'),
-      where('status', 'in', ['pending', 'preparing', 'ready']),
-      orderBy('createdAt', 'asc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Order));
-      setOrders(items);
-    });
-
-    return unsubscribe;
-  }, [user]);
 
   async function advanceStatus(order: Order) {
     const next = STATUS_NEXT[order.status];
@@ -85,8 +68,8 @@ export function ProductionQueuePage() {
 
       {/* Live indicator */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-        Live queue â€” updates in real-time
+        <span className="w-2 h-2 rounded-full bg-gray-400" />
+        Live updates are unavailable
       </div>
 
       {/* Branch columns */}

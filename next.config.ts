@@ -14,10 +14,7 @@ loadEnvConfig(process.cwd());
 
 const nextConfig: NextConfig = {
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 'firebasestorage.googleapis.com' },
-      { protocol: 'https', hostname: '*.firebasestorage.app' },
-    ],
+    remotePatterns: [],
   },
   async headers() {
     const swHeaders = [
@@ -37,7 +34,6 @@ const nextConfig: NextConfig = {
         ],
       },
       { source: '/sw.js', headers: swHeaders },
-      { source: '/firebase-messaging-sw.js', headers: swHeaders },
     ];
   },
 };

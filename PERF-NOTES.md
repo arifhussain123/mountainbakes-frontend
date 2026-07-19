@@ -58,7 +58,7 @@ Express API + the `node-cron` business-day closer**, and every browser API call 
 proxied:
 
 ```
-Browser → Next.js server (next start) → 127.0.0.1:API_PORT (Express) → Firebase
+Browser → Next.js server (next start) → 127.0.0.1:API_PORT (Express) → database
 ```
 
 `next.config.ts` rewrites `/api/:path*` to the loopback Express. So each API request

@@ -7,9 +7,6 @@
  *      network-first for navigations & other GETs (offline.html fallback).
  *   3. Background Sync: queue opt-in mutations made while offline and replay
  *      them automatically when connectivity returns.
- *
- * Firebase Cloud Messaging is handled in a SEPARATE worker
- * (firebase-messaging-sw.js) so push logic and cache logic stay decoupled.
  */
 
 const VERSION = 'v1';
@@ -77,7 +74,7 @@ self.addEventListener('fetch', (event) => {
     return; // otherwise let the browser handle it normally
   }
 
-  // Only manage same-origin GETs; let cross-origin (API, gstatic, FCM) pass.
+  // Only manage same-origin GETs; let cross-origin (API, gstatic) pass.
   if (url.origin !== self.location.origin) return;
 
   // Navigations → network-first, fall back to cache then the offline page.

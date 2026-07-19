@@ -12,14 +12,12 @@ import { Search, X, Loader2, Users } from '@/utils/icons';
 import { cn } from '@/lib/utils';
 import { initials } from '@/utils/helpers';
 import { formatRole } from '@/utils/format';
-import { db } from '@/utils/firebase';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { useAuth } from '@/hooks/useAuth';
 import { useChats } from '@/hooks/useChats';
 import type { ChatMember, GroupChatType } from '@mb/shared';
 import { toast } from 'sonner';
 
-interface FirestoreUser {
+interface DirectoryUser {
   uid: string;
   displayName: string;
   role: string;
@@ -46,18 +44,18 @@ export function NewChatDialog({ open, onClose, currentUid, onChatCreated }: Prop
 
   const [tab, setTab] = useState<'dm' | 'group'>('dm');
   const [search, setSearch] = useState('');
-  const [allUsers, setAllUsers] = useState<FirestoreUser[]>([]);
+  const [allUsers, setAllUsers] = useState<DirectoryUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // DM state
-  const [selectedDMUser, setSelectedDMUser] = useState<FirestoreUser | null>(null);
+  const [selectedDMUser, setSelectedDMUser] = useState<DirectoryUser | null>(null);
 
   // Group state
   const [groupName, setGroupName] = useState('');
   const [groupDesc, setGroupDesc] = useState('');
   const [groupType, setGroupType] = useState<GroupChatType>('custom');
-  const [selectedMembers, setSelectedMembers] = useState<FirestoreUser[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<DirectoryUser[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -69,33 +67,12 @@ export function NewChatDialog({ open, onClose, currentUid, onChatCreated }: Prop
     setSelectedMembers([]);
   }, [open]);
 
+  // The member directory's backing store has been removed. Until it is
+  // reimplemented on Supabase there is nobody to start a chat with.
   const fetchUsers = useCallback(async () => {
-    if (!user) return;
-    setLoadingUsers(true);
-    try {
-      const snap = await getDocs(query(collection(db, 'users'), orderBy('displayName')));
-      const users: FirestoreUser[] = [];
-      snap.forEach((doc) => {
-        const d = doc.data();
-        const uid = d.uid ?? doc.id;
-        if (uid !== currentUid) {
-          users.push({ uid, displayName: d.displayName ?? doc.id, role: d.role, branchName: d.branchName ?? null });
-        }
-      });
-      // Role-based DM filter
-      const myRole = user.role;
-      const filtered = myRole === 'super_admin'
-        ? users
-        : myRole === 'branch_manager'
-          ? users.filter((u) => ['super_admin', 'branch_manager', 'production_user'].includes(u.role))
-          : users.filter((u) => ['super_admin', 'branch_manager'].includes(u.role));
-      setAllUsers(filtered);
-    } catch {
-      toast.error('Failed to load users');
-    } finally {
-      setLoadingUsers(false);
-    }
-  }, [user, currentUid]);
+    setAllUsers([]);
+    setLoadingUsers(false);
+  }, []);
 
   useEffect(() => {
     if (open) fetchUsers();
@@ -106,7 +83,7 @@ export function NewChatDialog({ open, onClose, currentUid, onChatCreated }: Prop
     u.role.toLowerCase().includes(search.toLowerCase())
   );
 
-  function toggleMember(u: FirestoreUser) {
+  function toggleMember(u: DirectoryUser) {
     setSelectedMembers((prev) =>
       prev.some((m) => m.uid === u.uid)
         ? prev.filter((m) => m.uid !== u.uid)

@@ -78,7 +78,7 @@ export function ChatList({ chats, loading, error, currentUid, activeChatId, pres
           <div className="flex flex-col items-center justify-center h-32 text-center gap-1.5 px-4">
             <p className="text-xs font-medium text-destructive">{error}</p>
             <p className="text-[10px] text-muted-foreground">
-              Firestore indexes/rules may not be deployed. Check the browser console for details.
+              Chat will return once the realtime backend is reconnected.
             </p>
           </div>
         ) : loading ? (

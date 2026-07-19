@@ -22,7 +22,6 @@ const PUBLIC_PATHS = [
   '/public',
   '/manifest.webmanifest',
   '/sw.js',
-  '/firebase-messaging-sw.js',
   '/offline.html',
   '/icons',
   '/splash',

@@ -17,7 +17,7 @@
  *    formatCurrency/formatDate, which would collide with utils/currency and
  *    utils/date in that barrel's `export *` and break every existing
  *    `import { formatDate } from '@/utils'`. Import it by path, the same way
- *    firebase and api already are.
+ *    api already is.
  *
  * Swapping the data source (Firestore → MongoDB → anything) means changing the
  * fetch calls inside this folder only; no consumer needs to change.

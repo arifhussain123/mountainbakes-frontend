@@ -35,11 +35,6 @@ Heroku's Node buildpack runs the `build` script (`next build`) automatically; th
 | `NEXT_PUBLIC_API_URL` | **Required** | The API's origin — scheme + host, **no trailing slash**. Baked in at build time |
 | `NEXT_PUBLIC_WEB_URL` | Recommended | This app's own URL (absolute metadata links) |
 | `NODE_ENV` | Recommended | `production` |
-| `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | If using push | Web-push VAPID key |
-
-> The six `NEXT_PUBLIC_FIREBASE_*` values are **hardcoded** in
-> `src/lib/firebase/client.ts` and `public/firebase-messaging-sw.js`. Setting them
-> as config vars does nothing.
 
 ## The one mistake everyone makes
 
@@ -78,9 +73,7 @@ In the browser:
   This exercises `/api/login`, which is this app's own route handler, not the API.
 - A data page (e.g. `/products`) loads rows. In the Network tab the request goes to
   `https://<api-host>/api/products` with an `Authorization: Bearer` header.
-- `/manifest.webmanifest`, `/sw.js`, `/firebase-messaging-sw.js` → 200 with the
-  correct `Content-Type`.
-- A page with a `firebasestorage.googleapis.com` image renders.
+- `/manifest.webmanifest`, `/sw.js` → 200 with the correct `Content-Type`.
 
 Failure modes:
 - `API is misconfigured for production…` → `NEXT_PUBLIC_API_URL` points at

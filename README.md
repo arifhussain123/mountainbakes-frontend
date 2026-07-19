@@ -12,7 +12,7 @@ frontend/
 │   ├── app/              # App Router pages — (auth), (dashboard), api/
 │   ├── components/       # feature components + ui/
 │   ├── hooks/  stores/  utils/
-│   ├── lib/              # api client, firebase (web), react-query
+│   ├── lib/              # api client, supabase, react-query
 │   ├── providers/        # Auth, Query, Realtime, Theme
 │   └── shared/           # schemas/types (mirrored in server/src/shared)
 ├── public/               # PWA icons, splash screens, service workers
@@ -58,14 +58,6 @@ exact origin.
 Express API. They set and clear the first-party `mb_session` cookie that
 `middleware.ts` reads to guard routes. That cookie never leaves this origin, which
 is why the API can live on a different host.
-
-## Firebase config gotcha
-
-The six `NEXT_PUBLIC_FIREBASE_*` values are **hardcoded** in
-`src/lib/firebase/client.ts` and again in `public/firebase-messaging-sw.js`. Setting
-them as env vars currently does nothing — if you change Firebase projects, edit both
-files. `NEXT_PUBLIC_FIREBASE_VAPID_KEY` is the one Firebase value genuinely read
-from the environment.
 
 ## PWA assets
 
