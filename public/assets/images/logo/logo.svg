@@ -1,0 +1,13 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mountain Bakes logo">
+  <defs>
+    <linearGradient id="mb-bg" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8853A"/>
+      <stop offset="1" stop-color="#B85C1E"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#mb-bg)"/>
+  <circle cx="180" cy="80" r="20" fill="#FFF3E4" opacity="0.9"/>
+  <path d="M40 190 L96 104 L138 168 L168 128 L216 190 Z" fill="#FFF8F0"/>
+  <path d="M96 104 L138 168 L118 168 L96 138 Z" fill="#F4D9BC"/>
+  <rect x="40" y="188" width="176" height="18" rx="9" fill="#FFF8F0"/>
+</svg>
