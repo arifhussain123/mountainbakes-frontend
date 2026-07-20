@@ -21,8 +21,8 @@ frontend/
 └── Procfile              # web: pnpm start
 ```
 
-The client never reads privileged Firestore collections directly — every dashboard
-page calls the `server/` API, which holds the Admin SDK credentials.
+The client never reads privileged database tables directly — every dashboard
+page calls the `server/` API, which holds the Supabase service-role credentials.
 
 ## Local development
 

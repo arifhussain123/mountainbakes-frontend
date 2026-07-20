@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 import { useNotifications } from './useNotifications';
 
 /**
- * Real-time bridge for the Production module. Rather than opening new Firestore
- * listeners on business collections (blocked by rules, and against the
+ * Real-time bridge for the Production module. Rather than opening new realtime
+ * subscriptions on business tables (blocked by RLS, and against the
  * API-data-layer convention), we piggyback on the existing `notifications`
  * stream: when a production-related notification arrives, invalidate the right
  * React Query caches so the open page refetches instantly. New demands also

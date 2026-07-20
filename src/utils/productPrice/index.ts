@@ -19,8 +19,8 @@
  *    `import { formatDate } from '@/utils'`. Import it by path, the same way
  *    api already is.
  *
- * Swapping the data source (Firestore → MongoDB → anything) means changing the
- * fetch calls inside this folder only; no consumer needs to change.
+ * Swapping the data source means changing the fetch calls inside this folder
+ * only; no consumer needs to change.
  */
 
 export * from './helpers';
