@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { apiCall } from '@/utils/api';
+import { resetErrorMessage } from '@/utils/authErrors';
 import type { User } from '@mb/shared';
 import {
   Dialog,
@@ -78,16 +79,30 @@ export function ResetPasswordDialog({
         token
       );
       // Admin is authenticated → trigger Supabase's reset email for the target.
+      //
+      // resetPasswordForEmail RETURNS { error }, it does not throw — the old
+      // try/catch here only ever caught a network failure, so a rejected send
+      // (unreachable domain, rate limit) was swallowed and the admin still saw
+      // "Password reset". Check the returned error and say so instead.
+      let emailError: string | null = null;
       if (res.email) {
-        try {
-          await supabase.auth.resetPasswordForEmail(res.email, {
-            redirectTo: `${window.location.origin}/reset-password`,
-          });
-        } catch (e) {
-          console.error('Reset email failed', e);
+        const { error: sendError } = await supabase.auth.resetPasswordForEmail(res.email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (sendError) {
+          console.error('Reset email failed', sendError);
+          emailError = resetErrorMessage(sendError, 'The reset email could not be sent.');
         }
       }
-      toast.success('Password reset');
+
+      // The password change itself already succeeded server-side, so this is a
+      // warning rather than an error — and it matters most when no temporary
+      // password was generated, since then the email was the only way in.
+      if (emailError) {
+        toast.warning(`Password reset, but no email was sent. ${emailError}`, { duration: 10000 });
+      } else {
+        toast.success('Password reset');
+      }
       onDone();
       if (res.tempPassword) {
         setTempPassword(res.tempPassword); // keep dialog open to reveal it once
@@ -95,7 +110,7 @@ export function ResetPasswordDialog({
         onOpenChange(false);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Reset failed');
+      toast.error(resetErrorMessage(err, 'Reset failed'));
     } finally {
       setSubmitting(false);
     }
