@@ -10,12 +10,12 @@ const PUBLIC_PATHS = [
   // no session cookie — guarding it here would bounce them to /login before the
   // client can establish the recovery session.
   '/reset-password',
-  // All of /api is exempt, not just login/logout. Requests under /api are either
-  // Next's own session routes or are proxied to the Express API (see the rewrite
-  // in next.config.ts), which does its own `Authorization: Bearer` check. Letting
-  // this middleware guard them would redirect an unauthenticated API call to
-  // /login, so `fetch` would resolve with an HTML page instead of the JSON error
-  // the client parses.
+  // All of /api is exempt, not just login/logout. What lives under /api here is
+  // only this app's own route handlers (src/app/api/login, /logout) — the Express
+  // API is a separate host called directly at NEXT_PUBLIC_API_URL, and does its
+  // own `Authorization: Bearer` check. Guarding /api here would redirect an
+  // unauthenticated call to /login, so `fetch` would resolve with an HTML page
+  // instead of the JSON error the client parses.
   '/api',
   '/_next',
   '/favicon.ico',
@@ -27,7 +27,7 @@ const PUBLIC_PATHS = [
   '/splash',
 ];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public paths

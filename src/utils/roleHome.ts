@@ -11,8 +11,8 @@ export function isValidRole(role: unknown): role is UserRole {
 /**
  * Landing page for each role — the SINGLE source of truth.
  *
- * Imported by both `middleware.ts` (for `/` and `/login` redirects) and the login
- * page. These previously disagreed for `production_user`: middleware sent them to
+ * Imported by both `src/proxy.ts` (for `/` and `/login` redirects) and the login
+ * page. These previously disagreed for `production_user`: the proxy sent them to
  * /production-queue while the login page sent them to /production-dashboard, so
  * where a production user landed depended on how they arrived. Unified on the
  * dashboard, consistent with the other two roles.

@@ -3,14 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import { isValidRole } from '@/utils/roleHome';
 
 /**
- * Establish the first-party `mb_session` cookie that `middleware.ts` uses for route
+ * Establish the first-party `mb_session` cookie that `src/proxy.ts` uses for route
  * guarding.
  *
  * SECURITY: the identity written into this cookie is derived from a Supabase access
  * token that this route verifies server-side — never from the request body. An
  * earlier version accepted `{ uid, role, branchId, ... }` straight from the client
  * and base64-encoded it, so anyone could POST `role: "super_admin"` and receive a
- * cookie the middleware fully trusted. The cookie is still unsigned base64, which is
+ * cookie the proxy fully trusted. The cookie is still unsigned base64, which is
  * fine now that only this route can mint one: it is httpOnly, so page JS cannot
  * forge it, and every actual data read is separately authorised by the Express API
  * against the real JWT.

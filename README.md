@@ -16,7 +16,7 @@ frontend/
 │   ├── providers/        # Auth, Query, Realtime, Theme
 │   └── shared/           # schemas/types (mirrored in server/src/shared)
 ├── public/               # PWA icons, splash screens, service workers
-├── middleware.ts         # role-based route guard
+├── src/proxy.ts          # role-based route guard (Next 16 proxy convention)
 ├── next.config.ts
 └── Procfile              # web: pnpm start
 ```
@@ -56,7 +56,7 @@ exact origin.
 
 `/api/login` and `/api/logout` are this app's **own** Next route handlers, not the
 Express API. They set and clear the first-party `mb_session` cookie that
-`middleware.ts` reads to guard routes. That cookie never leaves this origin, which
+`src/proxy.ts` reads to guard routes. That cookie never leaves this origin, which
 is why the API can live on a different host.
 
 ## PWA assets
