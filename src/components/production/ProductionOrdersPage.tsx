@@ -58,6 +58,7 @@ export function ProductionOrdersPage() {
   }
 
   const columns = [
+    col.accessor('demandNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.display({ id: 'ref', header: 'Order #', cell: ({ row }) => <span className="font-mono text-xs">{slipReference(row.original)}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),

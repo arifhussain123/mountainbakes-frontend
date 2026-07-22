@@ -49,6 +49,7 @@ export function PriceHistoryPage() {
   }
 
   const columns = [
+    col.accessor('priceNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', {
       header: 'Product',
       cell: (i) => (

@@ -151,6 +151,7 @@ export function SalesPage() {
   }, [sales]);
 
   const columns = [
+    col.accessor('orderNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('createdAt', { header: 'Time', cell: (i) => <span className="text-sm">{i.getValue() ? karachiTimeStr(new Date(i.getValue())) : ''}</span> }),
     col.accessor('customerName', {
       header: 'Customer',

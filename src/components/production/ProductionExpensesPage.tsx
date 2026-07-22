@@ -34,6 +34,7 @@ export function ProductionExpensesPage() {
   const money = (n: number) => `${cur}${n.toLocaleString()}`;
 
   const columns = [
+    col.accessor('expenseNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('category', { header: 'Category', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('description', { header: 'Description', cell: (i) => <span>{i.getValue()}</span> }),
