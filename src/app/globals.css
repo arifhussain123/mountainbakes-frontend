@@ -135,6 +135,42 @@
   --sidebar-ring: oklch(0.702 0.187 41.5);
 }
 
+/* Accent color themes.
+   Each block overrides only the brand-accent tokens (primary + everything derived
+   from it), so the color a user picks recolors buttons, active nav, focus rings,
+   badges and chart-1 in BOTH light and dark mode while the cream/brown chrome stays
+   put. The base :root above IS the default "orange" accent, so data-accent="orange"
+   needs no block — it simply falls through to :root. Keep each --primary in sync with
+   the matching `swatch` in ThemeProvider's ACCENTS list. */
+[data-accent='blue'] {
+  --primary: oklch(0.62 0.16 250);
+  --ring: oklch(0.62 0.16 250);
+  --chart-1: oklch(0.62 0.16 250);
+  --sidebar-primary: oklch(0.62 0.16 250);
+  --sidebar-ring: oklch(0.62 0.16 250);
+}
+[data-accent='green'] {
+  --primary: oklch(0.66 0.16 150);
+  --ring: oklch(0.66 0.16 150);
+  --chart-1: oklch(0.66 0.16 150);
+  --sidebar-primary: oklch(0.66 0.16 150);
+  --sidebar-ring: oklch(0.66 0.16 150);
+}
+[data-accent='purple'] {
+  --primary: oklch(0.58 0.19 300);
+  --ring: oklch(0.58 0.19 300);
+  --chart-1: oklch(0.58 0.19 300);
+  --sidebar-primary: oklch(0.58 0.19 300);
+  --sidebar-ring: oklch(0.58 0.19 300);
+}
+[data-accent='rose'] {
+  --primary: oklch(0.64 0.21 15);
+  --ring: oklch(0.64 0.21 15);
+  --chart-1: oklch(0.64 0.21 15);
+  --sidebar-primary: oklch(0.64 0.21 15);
+  --sidebar-ring: oklch(0.64 0.21 15);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -151,9 +187,13 @@
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: oklch(0.85 0.02 88); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: oklch(0.702 0.187 41.5); }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
 /* Print styles for receipts / invoices */
+@page {
+  size: A4;
+  margin: 12mm;
+}
 @media print {
   body { background: white; }
   /* Hide everything, then reveal only the print target */
@@ -170,4 +210,26 @@
      regardless of the on-screen viewport width. */
   .print-doc-table { display: table !important; }
   .print-doc-cards { display: none !important; }
+  /* Content that exists only on paper (e.g. the Customer/Company print copies). */
+  .print-only { display: block !important; }
+
+  /* Each printed copy (Customer / Company) starts on its own page. The last one
+     carries no trailing break so it doesn't emit a blank page. */
+  .print-page { page-break-after: always; break-after: page; }
+  .print-page:last-child { page-break-after: auto; break-after: auto; }
+
+  /* Repeat the product-table header on every page a long table spills onto. */
+  .print-area table { page-break-inside: auto; }
+  .print-area thead { display: table-header-group; }
+  .print-area tfoot { display: table-footer-group; }
+  .print-area tr { page-break-inside: avoid; break-inside: avoid; }
+
+  /* Keep signature / payment / summary blocks from splitting across a page break. */
+  .print-area .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+
+  /* Copy watermark must actually ink on paper (browsers drop backgrounds/greys otherwise). */
+  .copy-watermark { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Hidden on screen; revealed inside the @media print block above. */
+.print-only { display: none; }

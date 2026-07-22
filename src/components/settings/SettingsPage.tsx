@@ -10,14 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
-import { useTheme } from '@/providers/ThemeProvider';
+import { useTheme, ACCENTS } from '@/providers/ThemeProvider';
 import type { AppSettings } from '@mb/shared';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
   const { token } = useAuth();
   const { settings: globalSettings, refreshSettings } = useSettings();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [settings, setSettings] = useState<Partial<AppSettings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -218,7 +218,7 @@ export function SettingsPage() {
       {/* Appearance */}
       <Card>
         <CardHeader><CardTitle className="text-base">Appearance</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-sm">Dark Mode</p>
@@ -228,6 +228,29 @@ export function SettingsPage() {
               checked={theme === 'dark'}
               onCheckedChange={(v) => setTheme(v ? 'dark' : 'light')}
             />
+          </div>
+
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <p className="font-medium text-sm">Accent Color</p>
+              <p className="text-xs text-muted-foreground">Recolor buttons, highlights and charts</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.value}
+                  type="button"
+                  title={a.label}
+                  aria-label={a.label}
+                  aria-pressed={accent === a.value}
+                  onClick={() => setAccent(a.value)}
+                  className={`h-6 w-6 rounded-full border-2 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    accent === a.value ? 'border-foreground' : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: a.swatch }}
+                />
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

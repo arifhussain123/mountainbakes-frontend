@@ -27,4 +27,9 @@ export const qk = {
   productionReturns: () => ['productionReturns'] as const,
   productionExpenses: () => ['productionExpenses'] as const,
   productionExpenseSummary: () => ['productionExpenseSummary'] as const,
+  // Support / Query tickets
+  tickets: () => ['tickets'] as const,
+  ticket: (id: string) => ['ticket', id] as const,
+  ticketCategories: () => ['ticketCategories'] as const,
+  ticketStats: () => ['ticketStats'] as const,
 };

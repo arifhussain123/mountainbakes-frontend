@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PresenceWatcher } from '@/components/layout/PresenceWatcher';
+import { RealtimeBridge } from '@/components/layout/RealtimeBridge';
 import { PushNotifications } from '@/components/pwa/PushNotifications';
 import { RealtimeProvider } from '@/providers/RealtimeProvider';
 
@@ -10,6 +11,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <RealtimeProvider>
       <div className="flex h-screen overflow-hidden bg-background">
         <PresenceWatcher />
+        <RealtimeBridge />
         <PushNotifications />
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">

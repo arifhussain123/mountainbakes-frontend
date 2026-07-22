@@ -5,9 +5,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { useProducts } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import { CreateOrderSchema, type CreateOrderInput, type Customer, type PaymentMethod } from '@mb/shared';
+import { useProducts } from '@/lib/queries';import { CreateOrderSchema, type CreateOrderInput, type Customer, type PaymentMethod } from '@mb/shared';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,8 +19,6 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
   const { token, user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [submitting, setSubmitting] = useState(false);
-
-  usePriceRealtime();
 
   // isActive:true — must stay qk.products(true); the unfiltered key would admit
   // inactive products into the picker.

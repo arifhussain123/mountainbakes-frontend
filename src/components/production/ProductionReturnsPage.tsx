@@ -6,9 +6,7 @@ import type { ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useProductionReturns, useCreateReturn, useReviewReturn, useBranches, useProducts,
-} from '@/lib/queries';
-import { useProductionRealtime } from '@/hooks/useProductionRealtime';
-import { Button } from '@/components/ui/button';
+} from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,8 +25,6 @@ const short = (name: string) => name.replace('Mountain Bakes ', '');
 
 export function ProductionReturnsPage() {
   const { token } = useAuth();
-  useProductionRealtime();
-
   const returnsQ = useProductionReturns(token);
   const branchesQ = useBranches(token);
   const productsQ = useProducts(token, { isActive: true });

@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { usePriceHistory } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import { exportPriceHistory, formatBusinessDate } from '@/utils/productPrice';
+import { usePriceHistory } from '@/lib/queries';import { exportPriceHistory, formatBusinessDate } from '@/utils/productPrice';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import type { PriceHistoryDoc } from '@mb/shared';
@@ -26,8 +24,6 @@ const STATUS_PILL: Record<string, string> = {
 export function PriceHistoryPage() {
   const { user, token } = useAuth();
   const [exporting, setExporting] = useState(false);
-
-  usePriceRealtime();
 
   const historyQ = usePriceHistory(token);
   const rows = historyQ.data ?? [];

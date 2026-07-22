@@ -60,7 +60,14 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/*
+         * The cmdk primitives (CommandInput/List/Item) read their store from the
+         * Command (CommandPrimitive.Root) context; without this wrapper CommandInput
+         * dereferences an undefined store (`.subscribe`) and throws on open.
+         * shouldFilter is off because our only consumer (GlobalSearch) filters
+         * server-side — letting cmdk also client-filter would hide valid results.
+         */}
+        <Command shouldFilter={false}>{children}</Command>
       </DialogContent>
     </Dialog>
   )

@@ -14,6 +14,7 @@ export const ROUTES = {
   BRANCHES: '/branches',
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
+  TICKETS: '/tickets',
 
   // Production module
   PRODUCTION_DASHBOARD: '/production-dashboard',
@@ -35,6 +36,10 @@ export const ROUTES = {
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
   BRANCH_REPORTS: '/branch-reports',
+  BRANCH_TICKETS: '/branch-tickets',
+
+  // Production support
+  PRODUCTION_TICKETS: '/production-tickets',
 
   // Chat (future deep-link support)
   CHAT: '/chat',

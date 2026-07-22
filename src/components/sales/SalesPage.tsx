@@ -4,9 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { apiCall } from '@/utils/api';
-import { useProducts } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import {
+import { useProducts } from '@/lib/queries';import {
   type Order,
   type Branch,
   type StockRow,
@@ -70,8 +68,6 @@ export function SalesPage() {
 
   // A price change — from this browser or another device — refreshes the product
   // list backing the New Sale form, so the cashier never quotes a stale rate.
-  usePriceRealtime();
-
   // isActive:true → qk.products(true). Must NOT be the unfiltered key, or inactive
   // products would appear in the POS picker. `?? []` preserves the previous
   // behaviour of rendering an empty combobox rather than crashing on a load failure.

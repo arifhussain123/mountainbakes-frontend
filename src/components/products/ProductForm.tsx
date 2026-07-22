@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -40,6 +41,7 @@ export function ProductForm({ product, onSuccess }: { product?: Product | null; 
       price: product.price,
       costPrice: product.costPrice,
       description: product.description,
+      isActive: product.isActive,
     } : { name: '', categoryId: '', sku: '', price: 0, costPrice: 0, description: '' },
   });
 
@@ -116,6 +118,19 @@ export function ProductForm({ product, onSuccess }: { product?: Product | null; 
           <Label>Description</Label>
           <Input {...form.register('description')} placeholder="Optional descriptionâ€¦" />
         </div>
+
+        {product && (
+          <div className="col-span-2 flex items-center justify-between rounded-md border p-3">
+            <div className="space-y-0.5">
+              <Label>Active</Label>
+              <p className="text-xs text-muted-foreground">Inactive products stay in the catalog but are hidden from ordering.</p>
+            </div>
+            <Switch
+              checked={form.watch('isActive') ?? false}
+              onCheckedChange={(v) => form.setValue('isActive', v, { shouldValidate: true })}
+            />
+          </div>
+        )}
       </div>
 
       <Button type="submit" className="w-full" disabled={submitting}>

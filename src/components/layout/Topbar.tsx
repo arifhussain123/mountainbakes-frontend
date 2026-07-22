@@ -1,11 +1,11 @@
 'use client';
 
-import { Menu, Bell, Moon, Sun, Search, MessageSquare } from '@/utils/icons';
+import { Menu, Bell, Moon, Sun, Search, MessageSquare, Palette, Check } from '@/utils/icons';
 import { useAppStore } from '@/stores/useAppStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useChats } from '@/hooks/useChats';
-import { useTheme } from '@/providers/ThemeProvider';
+import { useTheme, ACCENTS } from '@/providers/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,7 +28,7 @@ export function Topbar({ title }: { title?: string }) {
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const { unreadTotal: chatUnread } = useChats();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
 
@@ -67,6 +67,26 @@ export function Topbar({ title }: { title?: string }) {
         <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setSearchOpen(true)}>
           <Search className="h-4 w-4" />
         </Button>
+
+        {/* Accent color picker */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Accent color"
+          >
+            <Palette className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Accent color</div>
+            {ACCENTS.map((a) => (
+              <DropdownMenuItem key={a.value} onClick={() => setAccent(a.value)} className="gap-2">
+                <span className="h-4 w-4 rounded-full border" style={{ backgroundColor: a.swatch }} />
+                <span className="flex-1">{a.label}</span>
+                {accent === a.value && <Check className="h-3.5 w-3.5 text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Theme toggle */}
         <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>

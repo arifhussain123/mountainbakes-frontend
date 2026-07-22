@@ -3,9 +3,7 @@
 import { useMemo } from 'react';
 import { parseISO, startOfWeek, format } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
-import { useProductionOverview } from '@/lib/queries';
-import { useProductionRealtime } from '@/hooks/useProductionRealtime';
-import { StatCard } from '@/components/shared/StatCard';
+import { useProductionOverview } from '@/lib/queries';import { StatCard } from '@/components/shared/StatCard';
 import dynamic from 'next/dynamic';
 import {
   Clock, CheckCircle2, Truck, Undo2, RefreshCw, CalendarDays,
@@ -26,9 +24,7 @@ const BranchDemandChart = dynamic(() => import('./ProductionCharts').then((m) =>
 const TopRequestedChart = dynamic(() => import('./ProductionCharts').then((m) => m.TopRequestedChart), { ssr: false });
 
 export function ProductionDashboard() {
-  const { token } = useAuth();
-  useProductionRealtime();
-  const { data, isLoading } = useProductionOverview(token);
+  const { token } = useAuth();  const { data, isLoading } = useProductionOverview(token);
 
   const c = data?.cards;
 

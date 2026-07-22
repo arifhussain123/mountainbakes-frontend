@@ -47,7 +47,16 @@ export function useProductionRealtime() {
         } catch {
           /* not supported */
         }
-      } else if (n.type === 'production_reviewed' || n.type === 'production_return') {
+      } else if (n.type === 'production_reviewed') {
+        // Received by the branch manager when Production approves/rejects their
+        // demand. Refresh their order list so the status flips live, and toast.
+        refreshOrders = true;
+        refreshStock = true;
+        const approved = n.title.includes('Approved');
+        toast(approved ? '✅ Production Order Approved' : '❌ Production Order Rejected', {
+          description: n.message,
+        });
+      } else if (n.type === 'production_return') {
         refreshStock = true;
       }
     }

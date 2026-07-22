@@ -72,6 +72,16 @@ interface PosSaleResponse {
 // A "%" entry is resolved against the line's gross (rate × qty); the result is clamped
 // to [0, gross] so a line can never go negative. This resolved rupee number is what we
 // store — the shared schema and the server keep treating `discount` as a plain number.
+// Product search matches on the product code (SKU) or the name, case-insensitively,
+// so a cashier can type either. This is passed to the Combobox's `filter` so search
+// stays correct independent of how each row's display label is formatted.
+function productMatchesQuery(p: Product | null, query: string): boolean {
+  if (p == null) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+}
+
 function resolveDiscount(raw: string, lineGross: number): number {
   const t = (raw || '').trim();
   if (!t) return 0;
@@ -148,6 +158,22 @@ export function SaleForm({
 
   // Client-side gate. Falls back to server enforcement when stock couldn't be loaded.
   const stockReady = stockLoaded && !stockError;
+
+  // Product search ordering: in-stock items on top, out-of-stock sink to the bottom.
+  // Within the in-stock group we sort ascending by available balance so the
+  // nearly-sold-out items surface first. Only reorder once stock has loaded —
+  // before then every balance reads as 0 and the sort would be meaningless.
+  const sortedProducts = useMemo(() => {
+    if (!stockReady) return products;
+    return [...products].sort((a, b) => {
+      const sa = stockById[a.id] ?? 0;
+      const sb = stockById[b.id] ?? 0;
+      const aOut = sa <= 0;
+      const bOut = sb <= 0;
+      if (aOut !== bOut) return aOut ? 1 : -1; // available first, out-of-stock last
+      return sa - sb; // ascending available balance
+    });
+  }, [products, stockById, stockReady]);
   const stockBlocked = stockReady && Object.entries(requestedByProduct).some(([pid, req]) => {
     const available = stockById[pid] ?? 0;
     return available <= 0 || req > available;
@@ -350,7 +376,8 @@ export function SaleForm({
                     <div className="col-span-2 space-y-1 sm:col-span-1 sm:space-y-0">
                       <Label className="text-xs sm:hidden">Product</Label>
                       <Combobox
-                        items={products}
+                        items={sortedProducts}
+                        filter={productMatchesQuery}
                         value={selected ?? null}
                         onValueChange={(p: Product | null) => form.setValue(`items.${i}.productId`, p?.id ?? '', { shouldValidate: true })}
                         itemToStringLabel={(p: Product) => `${p.sku} — ${p.name}`}

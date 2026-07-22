@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { useProducts } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import { DataTable } from '@/components/shared/DataTable';
+import { useProducts } from '@/lib/queries';import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,7 +13,7 @@ import { ChangePriceDialog } from './ChangePriceDialog';
 import type { Product } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Coins } from 'lucide-react';
+import { Pencil, Trash2, Coins, Power } from 'lucide-react';
 
 const col = createColumnHelper<Product>();
 
@@ -28,8 +26,6 @@ export function ProductsPage() {
   const [showPricing, setShowPricing] = useState(false);
 
   // A price change on another device reaches this table without a reload.
-  usePriceRealtime();
-
   const productsQ = useProducts(token);
   const products = productsQ.data ?? [];
   const loading = productsQ.isLoading;
@@ -49,6 +45,16 @@ export function ProductsPage() {
       toast.success(`${name} removed`);
     } catch {
       toast.error('Delete failed');
+    }
+  }
+
+  async function handleActivate(id: string, name: string) {
+    try {
+      await apiCall(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify({ isActive: true }) }, token);
+      loadProducts();
+      toast.success(`${name} activated`);
+    } catch {
+      toast.error('Activate failed');
     }
   }
 
@@ -102,14 +108,27 @@ export function ProductsPage() {
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            onClick={() => handleDelete(row.original.id, row.original.name)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {row.original.isActive ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              title="Deactivate product"
+              onClick={() => handleDelete(row.original.id, row.original.name)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-emerald-600 hover:text-emerald-600"
+              title="Activate product"
+              onClick={() => handleActivate(row.original.id, row.original.name)}
+            >
+              <Power className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     }),

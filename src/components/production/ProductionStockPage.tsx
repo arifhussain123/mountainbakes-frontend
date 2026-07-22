@@ -4,9 +4,7 @@ import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { ProductionStockRow } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProducts, useProductionStock, usePrepareProducts } from '@/lib/queries';
-import { useProductionRealtime } from '@/hooks/useProductionRealtime';
-import { Button } from '@/components/ui/button';
+import { useProducts, useProductionStock, usePrepareProducts } from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/shared/DataTable';
 import { Plus } from 'lucide-react';
 import { PrepareProductsModal } from './PrepareProductsModal';
@@ -15,8 +13,6 @@ const col = createColumnHelper<ProductionStockRow>();
 
 export function ProductionStockPage() {
   const { token } = useAuth();
-  useProductionRealtime();
-
   const stockQ = useProductionStock(token);
   const productsQ = useProducts(token, { isActive: true });
   const prepareMut = usePrepareProducts(token);

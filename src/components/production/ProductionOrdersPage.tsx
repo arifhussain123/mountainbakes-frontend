@@ -5,9 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
-import { useProductionOrders, useReviewProductionOrder, useMarkPrinted } from '@/lib/queries';
-import { useProductionRealtime } from '@/hooks/useProductionRealtime';
-import { Button } from '@/components/ui/button';
+import { useProductionOrders, useReviewProductionOrder, useMarkPrinted } from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { Eye } from 'lucide-react';
@@ -25,8 +23,6 @@ const col = createColumnHelper<BranchProductionOrder>();
 export function ProductionOrdersPage() {
   const { token } = useAuth();
   const { settings } = useSettings();
-  useProductionRealtime();
-
   const ordersQ = useProductionOrders(token);
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);

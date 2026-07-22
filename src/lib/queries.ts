@@ -33,6 +33,10 @@ import type {
   PriceHistoryDoc,
   ReportSummary,
   StockRow,
+  SupportTicket,
+  SupportTicketCategory,
+  TicketStats,
+  CreateTicketInput,
 } from '@mb/shared';
 
 // Query keys live in ./queryKeys so non-React code (@/utils/productPrice) can reuse
@@ -415,6 +419,73 @@ export function useCreateProductionExpense(token: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['productionExpenses'] });
       qc.invalidateQueries({ queryKey: ['productionExpenseSummary'] });
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Support / Query tickets
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function useTickets(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.tickets(),
+    queryFn: () => apiCall<{ tickets: SupportTicket[] }>('/api/support-tickets', {}, token),
+    select: (r) => r.tickets ?? [],
+    staleTime: LIVE_STALE_TIME,
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+export function useTicket(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.ticket(id ?? 'none'),
+    queryFn: () => apiCall<{ ticket: SupportTicket }>(`/api/support-tickets/${id}`, {}, token),
+    select: (r) => r.ticket,
+    staleTime: LIVE_STALE_TIME,
+    enabled: !!token && !!id,
+  });
+}
+
+export function useTicketStats(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.ticketStats(),
+    queryFn: () => apiCall<{ stats: TicketStats }>('/api/support-tickets/stats', {}, token),
+    select: (r) => r.stats,
+    staleTime: LIVE_STALE_TIME,
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+export function useTicketCategories(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.ticketCategories(),
+    queryFn: () => apiCall<{ categories: SupportTicketCategory[] }>('/api/support-tickets/categories', {}, token),
+    select: (r) => r.categories ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+export function useCreateTicket(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTicketInput) =>
+      apiCall<{ id: string; ticketNo: string }>('/api/support-tickets', { method: 'POST', body: JSON.stringify(input) }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.tickets() });
+      qc.invalidateQueries({ queryKey: qk.ticketStats() });
+    },
+  });
+}
+
+export function useAddTicketMessage(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { ticketId: string; message: string }) =>
+      apiCall(`/api/support-tickets/${v.ticketId}/messages`, { method: 'POST', body: JSON.stringify({ message: v.message }) }, token),
+    onSuccess: (_data, v) => {
+      qc.invalidateQueries({ queryKey: qk.ticket(v.ticketId) });
+      qc.invalidateQueries({ queryKey: qk.tickets() });
     },
   });
 }

@@ -51,25 +51,25 @@ export function Sidebar() {
         )}
       >
         {/* Brand */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-sidebar-border">
+        <div className="flex items-center justify-between px-6 py-7 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
             {settings?.logoUrl ? (
               <Image
                 src={settings.logoUrl}
                 alt={settings.companyName || 'Logo'}
-                width={36}
-                height={36}
-                className="rounded-lg object-contain flex-shrink-0"
+                width={64}
+                height={64}
+                className="h-16 w-16 rounded-full object-cover flex-shrink-0"
                 unoptimized
               />
             ) : (
-              <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
                 <Image
                   src={IMAGES.logo}
                   alt={settings?.companyName || COMPANY_NAME}
-                  width={36}
-                  height={36}
-                  className="w-full h-full object-contain"
+                  width={64}
+                  height={64}
+                  className="w-full h-full object-cover"
                   unoptimized
                 />
               </div>
