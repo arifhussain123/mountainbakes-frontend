@@ -60,6 +60,7 @@ export function Sidebar() {
                 width={64}
                 height={64}
                 className="h-16 w-16 rounded-full object-cover flex-shrink-0"
+                priority
                 unoptimized
               />
             ) : (
@@ -70,6 +71,7 @@ export function Sidebar() {
                   width={64}
                   height={64}
                   className="w-full h-full object-cover"
+                  priority
                   unoptimized
                 />
               </div>
