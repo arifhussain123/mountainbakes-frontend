@@ -1,12 +1,12 @@
 import { Topbar } from '@/components/layout/Topbar';
-import { SupportCenterPage } from '@/components/tickets/SupportCenterPage';
+import { HelpDeskPage } from '@/components/support/HelpDeskPage';
 
 export default function Page() {
   return (
     <>
-      <Topbar title="Support Center" />
+      <Topbar title="Help Desk" />
       <div className="p-6">
-        <SupportCenterPage />
+        <HelpDeskPage />
       </div>
     </>
   );

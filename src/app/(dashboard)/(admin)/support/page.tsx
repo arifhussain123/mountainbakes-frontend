@@ -1,12 +1,12 @@
 import { Topbar } from '@/components/layout/Topbar';
-import { MyTicketsPage } from '@/components/tickets/MyTicketsPage';
+import { SupportCenterPage } from '@/components/support/SupportCenterPage';
 
 export default function Page() {
   return (
     <>
-      <Topbar title="Help Desk" />
+      <Topbar title="Support Center" />
       <div className="p-6">
-        <MyTicketsPage />
+        <SupportCenterPage />
       </div>
     </>
   );

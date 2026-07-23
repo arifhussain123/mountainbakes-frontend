@@ -14,7 +14,7 @@ export const ROUTES = {
   BRANCHES: '/branches',
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
-  TICKETS: '/tickets',
+  SUPPORT_CENTER: '/support',
 
   // Production module
   PRODUCTION_DASHBOARD: '/production-dashboard',
@@ -24,6 +24,7 @@ export const ROUTES = {
   PRODUCTION_RETURNS: '/production-returns',
   PRODUCTION_EXPENSES: '/production-expenses',
   PRODUCTION_REPORTS: '/production-reports',
+  PRODUCTION_HELP_DESK: '/production-help-desk',
   USERS: '/users',
   SETTINGS: '/settings',
 
@@ -36,10 +37,7 @@ export const ROUTES = {
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
   BRANCH_REPORTS: '/branch-reports',
-  BRANCH_TICKETS: '/branch-tickets',
-
-  // Production support
-  PRODUCTION_TICKETS: '/production-tickets',
+  BRANCH_HELP_DESK: '/branch-help-desk',
 
   // Chat (future deep-link support)
   CHAT: '/chat',

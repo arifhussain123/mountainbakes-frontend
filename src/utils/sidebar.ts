@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   History,
   LifeBuoy,
+  Headset,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES } from './routes';
@@ -36,7 +37,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Branches',        href: ROUTES.BRANCHES,         icon: Store },
   { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },
-  { label: 'Support Center',  href: ROUTES.TICKETS,          icon: LifeBuoy },
+  { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
 ];
@@ -48,7 +49,7 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Stock',         href: ROUTES.BRANCH_STOCK,       icon: Boxes },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Reports',       href: ROUTES.BRANCH_REPORTS,     icon: BarChart3 },
-  { label: 'Help Desk',     href: ROUTES.BRANCH_TICKETS,     icon: LifeBuoy },
+  { label: 'Help Desk',     href: ROUTES.BRANCH_HELP_DESK,   icon: Headset },
 ];
 
 export const PRODUCTION_NAV: NavItem[] = [
@@ -59,7 +60,7 @@ export const PRODUCTION_NAV: NavItem[] = [
   { label: 'Returns',           href: ROUTES.PRODUCTION_RETURNS,       icon: Undo2 },
   { label: 'Expenses',          href: ROUTES.PRODUCTION_EXPENSES,      icon: Receipt },
   { label: 'Reports',           href: ROUTES.PRODUCTION_REPORTS,       icon: BarChart3 },
-  { label: 'Help Desk',         href: ROUTES.PRODUCTION_TICKETS,       icon: LifeBuoy },
+  { label: 'Help Desk',         href: ROUTES.PRODUCTION_HELP_DESK,     icon: Headset },
 ];
 
 export const NAV_MAP: Record<UserRole, NavItem[]> = {

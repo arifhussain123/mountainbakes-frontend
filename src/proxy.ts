@@ -91,8 +91,8 @@ export function proxy(req: NextRequest) {
       pathname.startsWith('/customers') ||
       pathname.startsWith('/orders') ||
       pathname.startsWith('/reports') ||
-      pathname.startsWith('/settings') ||
-      pathname.startsWith('/tickets')) &&
+      pathname.startsWith('/support') ||
+      pathname.startsWith('/settings')) &&
     role !== 'super_admin'
   ) {
     return NextResponse.redirect(new URL(home, req.url));
