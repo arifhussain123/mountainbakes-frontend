@@ -24,7 +24,14 @@ const STATUS_VARIANT: Record<SupportTicket['status'], 'default' | 'secondary' | 
   rejected: 'destructive',
 };
 
-const TYPE_LABEL: Record<SupportReference['type'], string> = { sale: 'Sale', expense: 'Expense', stock: 'Stock' };
+// 'System' tickets are opened automatically when an unattended job fails (e.g. the
+// 2 AM closing summary) — they carry no editable reference, only the failure detail.
+const TYPE_LABEL: Record<SupportReference['type'], string> = {
+  sale: 'Sale',
+  expense: 'Expense',
+  stock: 'Stock',
+  system: 'System',
+};
 
 /** Read-only, type-aware detail table (auto-adjusts to whatever the reference is). */
 function ReferenceDetail({ reference }: { reference: SupportReference }) {
