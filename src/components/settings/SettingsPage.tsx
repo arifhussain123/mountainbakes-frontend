@@ -108,14 +108,14 @@ export function SettingsPage() {
             <div className="space-y-1">
               <Label>Currency</Label>
               <Input
-                value={settings.currency || 'PKR'}
+                value={settings.currency ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, currency: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
               <Label>Symbol</Label>
               <Input
-                value={settings.currencySymbol || 'Rs.'}
+                value={settings.currencySymbol ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, currencySymbol: e.target.value }))}
               />
             </div>
@@ -139,8 +139,14 @@ export function SettingsPage() {
                 type="number"
                 min={0}
                 max={100}
-                value={settings.gstRate || 0}
-                onChange={(e) => setSettings((p) => ({ ...p, gstRate: parseFloat(e.target.value) }))}
+                value={settings.gstRate ?? 0}
+                // parseFloat('') is NaN, and JSON.stringify turns NaN into null —
+                // which the server's z.number() rejects with a 400. Clearing the
+                // field must fall back to 0, not poison the payload.
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  setSettings((p) => ({ ...p, gstRate: Number.isFinite(n) ? n : 0 }));
+                }}
               />
             </div>
           )}
@@ -161,7 +167,7 @@ export function SettingsPage() {
               <Label>Business Start Time</Label>
               <Input
                 type="time"
-                value={settings.businessStartTime || '08:00'}
+                value={settings.businessStartTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, businessStartTime: e.target.value }))}
               />
             </div>
@@ -169,7 +175,7 @@ export function SettingsPage() {
               <Label>Business Closing Time</Label>
               <Input
                 type="time"
-                value={settings.businessClosingTime || '02:00'}
+                value={settings.businessClosingTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, businessClosingTime: e.target.value }))}
               />
             </div>
@@ -177,7 +183,7 @@ export function SettingsPage() {
               <Label>Order Start Time</Label>
               <Input
                 type="time"
-                value={settings.orderStartTime || '08:00'}
+                value={settings.orderStartTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, orderStartTime: e.target.value }))}
               />
             </div>
@@ -185,7 +191,7 @@ export function SettingsPage() {
               <Label>Order End Time</Label>
               <Input
                 type="time"
-                value={settings.orderEndTime || '02:00'}
+                value={settings.orderEndTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, orderEndTime: e.target.value }))}
               />
             </div>

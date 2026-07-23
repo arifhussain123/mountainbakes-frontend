@@ -96,7 +96,17 @@ export async function apiCall<T = unknown>(
         body = { error: raw.slice(0, 300) };
       }
     }
-    const message = body.error || `Request failed (HTTP ${response.status})`;
+    let message = body.error || `Request failed (HTTP ${response.status})`;
+    // A validation failure (middleware/validate.ts) carries per-field detail.
+    // Fold it into the message: on its own, "Validation error" tells the user
+    // nothing about WHICH field the server rejected, and callers only surface
+    // `message` in their toast.
+    if (Array.isArray(body.details) && body.details.length > 0) {
+      const fields = (body.details as { field?: string; message?: string }[])
+        .map((d) => (d.field ? `${d.field} — ${d.message ?? 'invalid'}` : d.message))
+        .filter(Boolean);
+      if (fields.length > 0) message = `${message}: ${fields.join('; ')}`;
+    }
     console.error(`[api] ${options.method || 'GET'} ${endpoint} → ${response.status}`, body);
     throw new ApiError(message, response.status, body.details);
   }
