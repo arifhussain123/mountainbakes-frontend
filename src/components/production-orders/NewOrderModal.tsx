@@ -51,7 +51,7 @@ export interface NewOrderModalProps {
   branchCode: string;
   userName: string;
   /** Submits the order (a TanStack Query mutation); resolves on success, throws on failure. */
-  submit: (items: { productId: string; qty: number; remarks: string }[]) => Promise<unknown>;
+  submit: (items: { productId: string; qty: number }[]) => Promise<unknown>;
   submitting: boolean;
 }
 
@@ -98,7 +98,6 @@ export function NewOrderModal({
   submitting,
 }: NewOrderModalProps) {
   const [qtyById, setQtyById] = useState<Record<string, string>>({});
-  const [remarksById, setRemarksById] = useState<Record<string, string>>({});
   const [now, setNow] = useState<Date | null>(null);
   const [orderNumber, setOrderNumber] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -120,11 +119,10 @@ export function NewOrderModal({
     try {
       const raw = localStorage.getItem(draftKey);
       if (raw) {
-        const d = JSON.parse(raw) as { qtyById?: Record<string, string>; remarksById?: Record<string, string> };
-        if (d && typeof d === 'object') {
-          setQtyById(d.qtyById ?? {});
-          setRemarksById(d.remarksById ?? {});
-        }
+        // Older drafts may still carry a `remarksById` key — ignored now that
+        // Remarks has been removed from the form.
+        const d = JSON.parse(raw) as { qtyById?: Record<string, string> };
+        if (d && typeof d === 'object') setQtyById(d.qtyById ?? {});
       }
     } catch {
       /* ignore malformed draft */
@@ -157,7 +155,6 @@ export function NewOrderModal({
   const canSubmit = totalProducts > 0 && withinWindow && !submitting;
 
   const setQty = useCallback((id: string, raw: string) => setQtyById((p) => ({ ...p, [id]: sanitizeQty(raw) })), []);
-  const setRemarks = useCallback((id: string, value: string) => setRemarksById((p) => ({ ...p, [id]: value })), []);
 
   const handleQtyKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>, flatIndex: number) => {
     if (BLOCKED_QTY_KEYS.includes(e.key)) {
@@ -174,7 +171,6 @@ export function NewOrderModal({
 
   function clearAll() {
     setQtyById({});
-    setRemarksById({});
     try {
       localStorage.removeItem(draftKey);
     } catch {
@@ -185,7 +181,7 @@ export function NewOrderModal({
 
   function saveDraft() {
     try {
-      localStorage.setItem(draftKey, JSON.stringify({ qtyById, remarksById }));
+      localStorage.setItem(draftKey, JSON.stringify({ qtyById }));
       toast.success('Draft saved');
     } catch {
       toast.error('Could not save draft');
@@ -203,15 +199,10 @@ export function NewOrderModal({
 
   async function confirmSubmit() {
     try {
-      const items = selectedItems.map(({ product, qty }) => ({
-        productId: product.id,
-        qty,
-        remarks: (remarksById[product.id] ?? '').trim(),
-      }));
+      const items = selectedItems.map(({ product, qty }) => ({ productId: product.id, qty }));
       await submit(items);
       toast.success('Production Order Submitted Successfully');
       setQtyById({});
-      setRemarksById({});
       try {
         localStorage.removeItem(draftKey);
       } catch {
@@ -262,7 +253,6 @@ export function NewOrderModal({
                     <Skeleton className="h-10 flex-1" />
                     <Skeleton className="hidden h-10 w-24 sm:block" />
                     <Skeleton className="h-10 w-20" />
-                    <Skeleton className="hidden h-10 w-40 sm:block" />
                   </div>
                 ))}
               </div>
@@ -280,7 +270,6 @@ export function NewOrderModal({
                         <TableHead className="text-xs uppercase tracking-wide text-muted-foreground">Product</TableHead>
                         <TableHead className="text-xs uppercase tracking-wide text-muted-foreground">Current Stock</TableHead>
                         <TableHead className="w-28 text-xs uppercase tracking-wide text-muted-foreground">Qty</TableHead>
-                        <TableHead className="text-xs uppercase tracking-wide text-muted-foreground">Remarks</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -308,15 +297,6 @@ export function NewOrderModal({
                                 className="h-9 w-20 text-center tabular-nums"
                               />
                             </TableCell>
-                            <TableCell>
-                              <Input
-                                placeholder="Optional"
-                                aria-label={`Remarks for ${p.name}`}
-                                value={remarksById[p.id] ?? ''}
-                                onChange={(e) => setRemarks(p.id, e.target.value)}
-                                className="h-9"
-                              />
-                            </TableCell>
                           </TableRow>
                         );
                       })}
@@ -340,31 +320,23 @@ export function NewOrderModal({
                             <p className="font-semibold tabular-nums">{stockText(p.id)}</p>
                           </div>
                         </div>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="mb-1 block text-xs text-muted-foreground">Qty</label>
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              placeholder="0"
-                              aria-label={`Quantity for ${p.name}`}
-                              value={qtyById[p.id] ?? ''}
-                              onChange={(e) => setQty(p.id, e.target.value)}
-                              onFocus={(e) => e.currentTarget.select()}
-                              className="h-10 text-center tabular-nums"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="mb-1 block text-xs text-muted-foreground">Remarks</label>
-                            <Input
-                              placeholder="Optional"
-                              aria-label={`Remarks for ${p.name}`}
-                              value={remarksById[p.id] ?? ''}
-                              onChange={(e) => setRemarks(p.id, e.target.value)}
-                              className="h-10"
-                            />
-                          </div>
+                        <div className="mt-3">
+                          <label className="mb-1 block text-xs text-muted-foreground">Qty</label>
+                          {/* inputMode="numeric" + pattern="[0-9]*" makes phones open the
+                              digits-only keypad (no letters). text-base (16px) stops iOS
+                              from zooming the page in on focus. */}
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            autoComplete="off"
+                            placeholder="0"
+                            aria-label={`Quantity for ${p.name}`}
+                            value={qtyById[p.id] ?? ''}
+                            onChange={(e) => setQty(p.id, e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            className="h-11 w-28 text-center text-base tabular-nums"
+                          />
                         </div>
                       </div>
                     );

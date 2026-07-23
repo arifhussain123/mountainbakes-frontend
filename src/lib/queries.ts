@@ -39,7 +39,9 @@ import type {
 // them without importing these hooks. Re-exported here for existing call sites.
 export { qk };
 
-type ProductionOrderItem = { productId: string; qty: number; remarks: string };
+// `remarks` was removed from the New Production Order form; the API's Zod schema
+// defaults it to '' server-side, so it is simply not sent.
+type ProductionOrderItem = { productId: string; qty: number };
 
 // Live/intraday queries: kept fresh by notification-driven invalidation
 // (useProductionRealtime / usePriceRealtime) rather than by constant refetching.
