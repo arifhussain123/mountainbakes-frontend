@@ -212,6 +212,20 @@ export function SettingsPage() {
               onCheckedChange={(v) => setSettings((p) => ({ ...p, autoStockClosing: v }))}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Closing Summary Notifications</p>
+              <p className="text-xs text-muted-foreground">
+                WhatsApp/SMS each branch, Production &amp; Admin their summary after the 2:00 AM close.
+                Manage numbers under Recipients.
+              </p>
+            </div>
+            <Switch
+              checked={settings.closingNotificationsEnabled ?? false}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, closingNotificationsEnabled: v }))}
+            />
+          </div>
         </CardContent>
       </Card>
 

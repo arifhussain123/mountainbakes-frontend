@@ -15,6 +15,7 @@ export const ROUTES = {
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',
+  NOTIFICATION_RECIPIENTS: '/notification-recipients',
 
   // Production module
   PRODUCTION_DASHBOARD: '/production-dashboard',
@@ -38,9 +39,6 @@ export const ROUTES = {
   BRANCH_CUSTOMERS: '/branch-customers',
   BRANCH_REPORTS: '/branch-reports',
   BRANCH_HELP_DESK: '/branch-help-desk',
-
-  // Chat (future deep-link support)
-  CHAT: '/chat',
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];

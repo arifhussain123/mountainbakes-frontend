@@ -16,6 +16,7 @@ import {
   History,
   LifeBuoy,
   Headset,
+  Send,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES } from './routes';
@@ -38,6 +39,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
+  { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
 ];

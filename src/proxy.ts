@@ -92,6 +92,7 @@ export function proxy(req: NextRequest) {
       pathname.startsWith('/orders') ||
       pathname.startsWith('/reports') ||
       pathname.startsWith('/support') ||
+      pathname.startsWith('/notification-recipients') ||
       pathname.startsWith('/settings')) &&
     role !== 'super_admin'
   ) {
