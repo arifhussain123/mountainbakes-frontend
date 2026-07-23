@@ -40,7 +40,8 @@ export function ExpensesPage() {
   const columns = [
     col.accessor('expenseNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    col.accessor('description', { header: 'Description', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('category', { header: 'Category', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('description', { header: 'Description', cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
     col.accessor('amount', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> }),
     col.accessor('remarks', { header: 'Remarks', cell: (i) => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),

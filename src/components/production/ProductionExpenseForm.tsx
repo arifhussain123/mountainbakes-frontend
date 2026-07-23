@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/useAuth';
 import { useCreateProductionExpense } from '@/lib/queries';
-import { CreateProductionExpenseSchema, type CreateProductionExpenseInput, businessDateStr } from '@mb/shared';
+import { CreateProductionExpenseSchema, EXPENSE_CATEGORIES, type CreateProductionExpenseInput, businessDateStr } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const CATEGORIES = ['Ingredients', 'Packaging', 'Utilities', 'Rent', 'Salaries', 'Maintenance', 'Transport', 'Equipment', 'Other'];
 const METHODS: { value: 'cash' | 'easypaisa' | 'bank_account'; label: string }[] = [
   { value: 'cash', label: 'Cash' },
   { value: 'easypaisa', label: 'Easypaisa' },
@@ -64,7 +63,7 @@ export function ProductionExpenseForm({ onSuccess }: { onSuccess?: () => void })
         <Select value={category} onValueChange={(v) => form.setValue('category', (v as string) ?? '', { shouldValidate: true })}>
           <SelectTrigger className="w-full"><SelectValue placeholder="Select category" /></SelectTrigger>
           <SelectContent>
-            {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {EXPENSE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
         {form.formState.errors.category && <p className="text-xs text-destructive">{form.formState.errors.category.message}</p>}
