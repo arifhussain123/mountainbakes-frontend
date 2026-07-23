@@ -1,10 +1,9 @@
 'use client';
 
-import { Menu, Bell, Moon, Sun, Search, MessageSquare, Palette, Check } from '@/utils/icons';
+import { Menu, Bell, Moon, Sun, Search, Palette, Check } from '@/utils/icons';
 import { useAppStore } from '@/stores/useAppStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useChats } from '@/hooks/useChats';
 import { useTheme, ACCENTS } from '@/providers/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,17 +16,15 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
-import { ChatPanel } from '@/components/chat';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 export function Topbar({ title }: { title?: string }) {
-  const { toggleSidebar, openChat } = useAppStore();
+  const { toggleSidebar } = useAppStore();
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const { unreadTotal: chatUnread } = useChats();
   const { theme, setTheme, accent, setAccent } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
@@ -91,22 +88,6 @@ export function Topbar({ title }: { title?: string }) {
         {/* Theme toggle */}
         <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
-
-        {/* Chat */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          onClick={() => openChat()}
-          title="Messages"
-        >
-          <MessageSquare className="h-4 w-4" />
-          {chatUnread > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-primary">
-              {chatUnread > 9 ? '9+' : chatUnread}
-            </Badge>
-          )}
         </Button>
 
         {/* Notifications */}
@@ -174,7 +155,6 @@ export function Topbar({ title }: { title?: string }) {
       </header>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
-      <ChatPanel />
     </>
   );
 }

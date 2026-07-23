@@ -29,16 +29,16 @@ weight and fixes the client-side over-fetching that made the app feel slow. It d
   page opened several `onAuthStateChanged` listeners + token fetches. It's now backed
   by one `AuthProvider` (`src/providers/AuthProvider.tsx`) mounted at the root layout.
   The `@/hooks/useAuth` import path and return shape are unchanged.
-- **Persistent notifications/chats streams.** `useNotifications`/`useChats` lived in the
-  per-page `<Topbar>`, so their 3 Supabase Realtime subscription streams tore down and
+- **Persistent notifications stream.** `useNotifications` lived in the
+  per-page `<Topbar>`, so its Supabase Realtime subscription stream tore down and
   re-subscribed on every navigation — and the realtime bridges opened notifications a
-  second time. They now live in one `RealtimeProvider` (`src/providers/RealtimeProvider.tsx`)
+  second time. It now lives in one `RealtimeProvider` (`src/providers/RealtimeProvider.tsx`)
   mounted in the dashboard layout: one set of listeners, shared and persistent across
   navigation. Bridges (`useProductionRealtime`/`usePriceRealtime`) consume the shared
   stream instead of opening their own.
-- **Presence only while chat is open.** `ChatPanel` no longer holds a realtime subscription on
-  `userPresence` on every page — it subscribes only when the chat sheet is open
-  (`usePresence` guard adjusted so reopening re-subscribes).
+
+  (The in-app chat/messaging feature this originally also covered has since been
+  removed entirely — the Help Desk / Support Center reference-lookup flow replaces it.)
 - **No refetch on window focus.** `QueryProvider` sets `refetchOnWindowFocus: false`.
   Live data is already refreshed by notification-driven invalidation, so focus-refetch
   was pure duplicate traffic.

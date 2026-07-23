@@ -25,11 +25,3 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   card: 'Card',
   online: 'Online',
 };
-
-// Chat
-export const CHAT_MESSAGE_LIMIT = 40;
-export const CHAT_TYPING_TIMEOUT_MS = 3000;
-export const CHAT_ATTACHMENT_MAX_MB = 10;
-export const CHAT_ATTACHMENT_MAX_BYTES = CHAT_ATTACHMENT_MAX_MB * 1024 * 1024;
-export const STORAGE_CHAT_PATH = 'chat-attachments';
-export const CHAT_ACCEPTED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] as const;
