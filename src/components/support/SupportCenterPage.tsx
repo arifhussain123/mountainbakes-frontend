@@ -10,10 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import type { SupportTicket, SupportReference } from '@mb/shared';
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
+import type { SupportTicket, SupportReference, SupportSaleItem, Product } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2 } from 'lucide-react';
+import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X } from 'lucide-react';
 
 const col = createColumnHelper<SupportTicket>();
 
@@ -262,10 +263,194 @@ function EditDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
   );
 }
 
-// --- Change figures (live for expenses; recorded for sale/stock) -----------
+// --- Sale line-items editor ------------------------------------------------
+type EditRow = SupportSaleItem & { key: string };
+
+const money = (n: number) => `Rs.${(Number.isFinite(n) ? n : 0).toLocaleString('en-PK')}`;
+const lineTotal = (r: EditRow) => Math.max(0, r.unitPrice * r.qty - r.discount);
+
+/** Search a product by SKU or name, case-insensitively (mirrors the POS form). */
+function productMatchesQuery(p: Product | null, query: string): boolean {
+  if (!p) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return `${p.sku} ${p.name}`.toLowerCase().includes(q);
+}
+
+function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
+  ticket: SupportTicket;
+  reference: SupportReference;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { token } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [rows, setRows] = useState<EditRow[]>(
+    () => (reference.saleItems ?? []).map((it, i) => ({ ...it, key: `orig-${i}` })),
+  );
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  // A monotonic id so newly-added rows get stable React keys without Math.random.
+  const [seq, setSeq] = useState(0);
+
+  useEffect(() => {
+    if (!token) return;
+    apiCall<{ products: Product[] }>('/api/products?isActive=true', {}, token)
+      .then((r) => setProducts(r.products ?? []))
+      .catch(() => toast.error('Could not load products'));
+  }, [token]);
+
+  const subtotal = useMemo(() => rows.reduce((s, r) => s + lineTotal(r), 0), [rows]);
+
+  function patchRow(key: string, patch: Partial<EditRow>) {
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+  function pickProduct(key: string, p: Product | null) {
+    if (!p) return;
+    // Swapping the product resets the unit price to that product's current price;
+    // the admin can still override the amount afterward.
+    patchRow(key, {
+      productId: p.id,
+      productName: p.name,
+      categoryId: p.categoryId || null,
+      categoryName: p.categoryName || null,
+      unitPrice: Number(p.price ?? 0),
+    });
+  }
+  function addRow() {
+    const key = `new-${seq}`;
+    setSeq((n) => n + 1);
+    setRows((rs) => [...rs, { key, productId: null, productName: '', categoryId: null, categoryName: null, unitPrice: 0, qty: 1, discount: 0 }]);
+  }
+  function removeRow(key: string) {
+    setRows((rs) => rs.filter((r) => r.key !== key));
+  }
+
+  const valid = rows.length > 0 && rows.every((r) => r.productId && r.qty > 0 && r.unitPrice >= 0);
+
+  async function submit() {
+    if (!valid) { toast.error('Every line needs a product, a quantity above 0, and an amount'); return; }
+    setBusy(true);
+    try {
+      const items = rows.map((r) => ({
+        productId: r.productId,
+        productName: r.productName,
+        categoryId: r.categoryId,
+        categoryName: r.categoryName,
+        unitPrice: r.unitPrice,
+        qty: r.qty,
+        discount: r.discount,
+      }));
+      await apiCall(`/api/support/${ticket.id}/sale-items`, { method: 'PATCH', body: JSON.stringify({ items, note }) }, token);
+      toast.success('Sale updated, stock adjusted & query resolved');
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update the sale');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit sale — {ticket.referenceId}</DialogTitle>
+          <DialogDescription>
+            Change a line’s product, quantity, or amount (unit price). Edits apply to the
+            order and stock is reconciled automatically. The query is then resolved.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+          <div className="hidden sm:grid grid-cols-[1fr_5rem_7rem_6rem_2rem] gap-2 px-1 text-xs text-muted-foreground">
+            <span>Product</span><span className="text-right">Qty</span>
+            <span className="text-right">Amount (each)</span><span className="text-right">Line total</span><span />
+          </div>
+
+          {rows.map((r) => {
+            const selected = products.find((p) => p.id === r.productId) ?? null;
+            return (
+              <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_5rem_7rem_6rem_2rem] gap-2 items-center">
+                <Combobox
+                  items={products}
+                  filter={productMatchesQuery}
+                  value={selected}
+                  onValueChange={(p: Product | null) => pickProduct(r.key, p)}
+                  itemToStringLabel={(p: Product) => `${p.sku} — ${p.name}`}
+                  itemToStringValue={(p: Product) => p.id}
+                  isItemEqualToValue={(a: Product, b: Product) => a?.id === b?.id}
+                >
+                  <ComboboxInput placeholder={r.productName || 'Search product…'} />
+                  <ComboboxContent>
+                    <ComboboxEmpty>No products found.</ComboboxEmpty>
+                    <ComboboxList>
+                      {(p: Product) => (
+                        <ComboboxItem key={p.id} value={p}>
+                          <div className="flex flex-1 flex-col">
+                            <span className="font-medium">{p.sku} · {p.name}</span>
+                            <span className="text-xs text-muted-foreground">{p.categoryName} · {money(p.price)}</span>
+                          </div>
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+
+                <Input
+                  type="number" min="0" step="0.001" inputMode="decimal"
+                  className="text-right"
+                  value={r.qty}
+                  onChange={(e) => patchRow(r.key, { qty: Number(e.target.value) })}
+                />
+                <Input
+                  type="number" min="0" step="0.01" inputMode="decimal"
+                  className="text-right"
+                  value={r.unitPrice}
+                  onChange={(e) => patchRow(r.key, { unitPrice: Number(e.target.value) })}
+                />
+                <span className="text-right text-sm tabular-nums">{money(lineTotal(r))}</span>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                  title="Remove line" onClick={() => removeRow(r.key)} disabled={rows.length <= 1}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          })}
+
+          <Button variant="outline" size="sm" onClick={addRow}>
+            <Plus className="h-4 w-4 mr-1" /> Add item
+          </Button>
+
+          <div className="flex justify-end pt-1 text-sm font-medium">
+            <span className="text-muted-foreground mr-2">New subtotal:</span>
+            <span className="tabular-nums">{money(subtotal)}</span>
+          </div>
+
+          <div className="space-y-1 pt-1">
+            <Label>Note (optional)</Label>
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Reason for the change" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || !valid}>{busy ? 'Applying…' : 'Apply & Resolve'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Change figures (sale line-items live-edit; expenses live; stock recorded) ---
 function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const { token } = useAuth();
   const ref = ticket.referenceSnapshot;
+
+  // Sales get a dedicated line-item editor (change product / qty / amount, add /
+  // remove lines) applied live to the order with stock reconciled server-side.
+  if (ref?.type === 'sale' && ref.saleItems) {
+    return <SaleItemsDialog ticket={ticket} reference={ref} onClose={onClose} onDone={onDone} />;
+  }
+
   const isLiveEdit = (ref?.editableFields.length ?? 0) > 0;
 
   // Editable rows: expense's editableFields, or (for sale/stock) the display
