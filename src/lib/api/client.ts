@@ -55,13 +55,97 @@ function assertApiReachable(): void {
   }
 }
 
+/**
+ * Exchange a rejected access token for a current one, or null if there isn't one.
+ *
+ * A Supabase access token lives an hour. supabase-js refreshes it on a ticker, but
+ * the ticker is paused while the tab is hidden — so a tab left in the background
+ * (or a sleeping laptop) wakes up holding an expired token, and whatever fires
+ * first on focus sends it before the refresh lands. Callers hold the token in
+ * React state, which makes that window wider still.
+ *
+ * getSession() returns the cached session and refreshes it only when expired, so
+ * the common case costs no network call. An unchanged token means the server
+ * rejected it for some reason other than expiry as supabase-js sees it — clock
+ * skew being the plausible one — so force one refresh before giving up. Returning
+ * null (no session at all, or the token came back identical twice) tells the
+ * caller not to retry: the 401 is real.
+ */
+type RefreshResult = { token: string } | { token: null; sessionGone: boolean };
+
+async function refreshedAccessToken(staleToken: string): Promise<RefreshResult> {
+  if (typeof window === 'undefined') return { token: null, sessionGone: false };
+  // Imported lazily so this module stays usable on the server, where the browser
+  // Supabase client has no business being constructed.
+  const { supabase } = await import('@/lib/supabase/client');
+
+  const { data } = await supabase.auth.getSession();
+  const current = data.session?.access_token ?? null;
+  if (current && current !== staleToken) return { token: current };
+  if (!current) return { token: null, sessionGone: true };
+
+  const { data: refreshed, error } = await supabase.auth.refreshSession();
+  const next = refreshed.session?.access_token ?? null;
+  if (next && next !== staleToken) return { token: next };
+
+  // `sessionGone` drives endDeadSession(), so only report it when the refresh
+  // genuinely failed — no session at all, or the refresh token was rejected. A
+  // refresh that succeeded but handed back the SAME token is ambiguous (clock
+  // skew is the plausible cause) and must not cost the user their session.
+  return { token: null, sessionGone: Boolean(error) || !next };
+}
+
+/** Set once, so concurrent 401s tear the session down a single time. */
+let sessionTeardown: Promise<void> | null = null;
+
+/**
+ * End a session the server will no longer honour.
+ *
+ * A 401 that survives the refresh above means the Supabase session is gone for
+ * good — but nothing bounces the user out, because route guarding runs off the
+ * separate first-party `mb_session` cookie (src/proxy.ts), which lives up to
+ * seven days of its own. The two expire independently, so the user keeps sitting
+ * on a fully rendered page where every single request 401s and no screen ever
+ * loads its data. Clear both and send them to the login screen.
+ *
+ * A hard navigation rather than router.replace(): it re-runs proxy.ts with the
+ * cookie gone and drops all the React state built on the dead identity.
+ */
+function endDeadSession(): void {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname.startsWith('/login')) return;
+
+  sessionTeardown ??= (async () => {
+    try {
+      const { supabase } = await import('@/lib/supabase/client');
+      await supabase.auth.signOut();
+    } catch {
+      // The session is already unusable; clearing the cookie is what matters.
+    }
+    await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+    window.location.replace('/login');
+  })();
+}
+
 export async function apiCall<T = unknown>(
   endpoint: string,
   options: RequestInit = {},
   token?: string
 ): Promise<T> {
   assertApiReachable();
+  return request<T>(endpoint, options, token, true);
+}
 
+/**
+ * `mayRetry` is spent by the one 401 refresh-and-replay below, so a token that is
+ * still rejected after a genuine refresh surfaces as an error instead of looping.
+ */
+async function request<T>(
+  endpoint: string,
+  options: RequestInit,
+  token: string | undefined,
+  mayRetry: boolean
+): Promise<T> {
   const headers: Record<string, string> = {
     ...(!(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -87,6 +171,13 @@ export async function apiCall<T = unknown>(
     // Read the body once as text, then try to parse it as JSON. This surfaces the
     // real message whether the server sent {error}, an empty body, or non-JSON
     // (e.g. an HTML 404 from an unmounted route) — instead of a generic failure.
+    //
+    // Drained BEFORE the 401 refresh below, not after. Refreshing is a network
+    // round-trip (two, when the first token comes back unchanged), and a response
+    // whose body is still unread across it can have its stream torn down by the
+    // time we finally ask — .text() rejects, the catch swallows it, and the API's
+    // perfectly clear "Unauthorized: Invalid or expired token" gets logged and
+    // thrown as an empty `{}`, which is exactly the wrong moment to lose detail.
     const raw = await response.text().catch(() => '');
     let body: { error?: string; details?: unknown } = {};
     if (raw) {
@@ -107,7 +198,25 @@ export async function apiCall<T = unknown>(
         .filter(Boolean);
       if (fields.length > 0) message = `${message}: ${fields.join('; ')}`;
     }
-    console.error(`[api] ${options.method || 'GET'} ${endpoint} → ${response.status}`, body);
+
+    // An expired access token is a recoverable condition, not a failure to report:
+    // refresh it and replay the request once. Without this the user sees a raw
+    // "Unauthorized: Invalid or expired token" from whatever happened to fire first
+    // after the tab regained focus. AuthProvider picks the new token up on its own —
+    // supabase-js emits TOKEN_REFRESHED, which its onAuthStateChange listener maps
+    // into context — so subsequent calls carry it without going through here.
+    if (response.status === 401 && token) {
+      if (mayRetry) {
+        const fresh = await refreshedAccessToken(token);
+        if (fresh.token !== null) return request<T>(endpoint, options, fresh.token, false);
+        if (fresh.sessionGone) endDeadSession();
+      } else {
+        // Already replayed with a genuinely fresh token and still rejected.
+        endDeadSession();
+      }
+    }
+
+    console.error(`[api] ${options.method || 'GET'} ${endpoint} → ${response.status}`, message);
     throw new ApiError(message, response.status, body.details);
   }
 

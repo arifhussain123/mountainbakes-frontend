@@ -12,6 +12,7 @@
  * call sites keep working.
  */
 export const qk = {
+  settings: () => ['settings'] as const,
   products: (isActive?: boolean) => ['products', { isActive: isActive ?? null }] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
