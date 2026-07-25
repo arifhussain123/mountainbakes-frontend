@@ -11,10 +11,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, Product } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, Product, PaymentMethod } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X } from 'lucide-react';
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
 
@@ -295,6 +297,10 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
   const [rows, setRows] = useState<EditRow[]>(
     () => (reference.saleItems ?? []).map((it, i) => ({ ...it, key: `orig-${i}` })),
   );
+  // Undefined when the snapshot predates payment editing, or when the sale carries
+  // a legacy tender ('card' / 'online') that is no longer on offer — either way no
+  // button is preselected and picking one is what sends the change.
+  const [payment, setPayment] = useState<PaymentMethod | undefined>(reference.paymentMethod);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   // A monotonic id so newly-added rows get stable React keys without Math.random.
@@ -348,7 +354,7 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
         qty: r.qty,
         discount: r.discount,
       }));
-      await apiCall(`/api/support/${ticket.id}/sale-items`, { method: 'PATCH', body: JSON.stringify({ items, note }) }, token);
+      await apiCall(`/api/support/${ticket.id}/sale-items`, { method: 'PATCH', body: JSON.stringify({ items, paymentMethod: payment, note }) }, token);
       toast.success('Sale updated, stock adjusted & query resolved');
       onDone();
     } catch (err) {
@@ -362,8 +368,9 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
         <DialogHeader>
           <DialogTitle>Edit sale — {ticket.referenceId}</DialogTitle>
           <DialogDescription>
-            Change a line’s product, quantity, or amount (unit price). Edits apply to the
-            order and stock is reconciled automatically. The query is then resolved.
+            Change a line’s product, quantity, or amount (unit price), and the payment
+            method. Edits apply to the order and stock is reconciled automatically. The
+            query is then resolved.
           </DialogDescription>
         </DialogHeader>
 
@@ -430,6 +437,31 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
           <div className="flex justify-end pt-1 text-sm font-medium">
             <span className="text-muted-foreground mr-2">New subtotal:</span>
             <span className="tabular-nums">{money(subtotal)}</span>
+          </div>
+
+          {/* Payment method — same radio-button group as the POS sale form. */}
+          <div className="space-y-2 pt-1">
+            <Label>Payment Method</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPayment(m)}
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                    payment === m ? 'border-primary bg-primary/10 text-primary' : 'border-input hover:bg-accent',
+                  )}
+                >
+                  {PAYMENT_METHOD_LABELS[m]}
+                </button>
+              ))}
+            </div>
+            {reference.paymentMethod && payment !== reference.paymentMethod && (
+              <p className="text-xs text-muted-foreground">
+                Was {PAYMENT_METHOD_LABELS[reference.paymentMethod] ?? reference.paymentMethod}.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1 pt-1">
