@@ -8,12 +8,14 @@ import { useProducts } from '@/lib/queries';import {
   type Order,
   type Branch,
   type StockRow,
+  businessDateStr,
   businessDayBounds,
   karachiDateStr,
   karachiTimeStr,
 } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
@@ -63,6 +65,13 @@ export function SalesPage() {
   const [stockById, setStockById] = useState<Record<string, number>>({});
   const [stockLoaded, setStockLoaded] = useState(false);
   const [stockError, setStockError] = useState(false);
+  // Which business day the records below show. Defaults to the one in progress;
+  // this is a *business* date, so a sale rung at 00:30 stays on the previous day
+  // rather than jumping to the calendar date the clock says.
+  const [date, setDate] = useState(businessDateStr());
+
+  const today = businessDateStr();
+  const isToday = date === today;
 
   const cur = settings?.currencySymbol || 'Rs.';
 
@@ -106,13 +115,17 @@ export function SalesPage() {
   function loadSales() {
     if (!token) return;
     setLoading(true);
-    const from = businessDayBounds().fromISO;
-    apiCall<{ orders: Order[] }>(`/api/orders?status=delivered&from=${encodeURIComponent(from)}`, {}, token)
+    // Both ends of the window, not just `from` — a past date must not drag in
+    // every sale since. The bounds run 02:00 → next-day 01:59:59.999 Karachi,
+    // which is what makes a late-night sale count against the right day.
+    const { fromISO, toISO } = businessDayBounds(date);
+    const qs = `status=delivered&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
+    apiCall<{ orders: Order[] }>(`/api/orders?${qs}`, {}, token)
       .then((r) => setSales(r.orders ?? []))
       .catch(() => setSales([]))
       .finally(() => setLoading(false));
   }
-  useEffect(loadSales, [token]);
+  useEffect(loadSales, [token, date]);
 
   // Auto-open the browser print dialog when a sale is saved with "Save & Print"
   useEffect(() => {
@@ -124,7 +137,15 @@ export function SalesPage() {
 
   function handleSaved(inv: InvoiceData, shouldPrint: boolean) {
     setShowForm(false);
-    loadSales();
+    // A new sale always books against the business day in progress, so snap the
+    // filter back to it — otherwise the cashier rings up a sale while browsing an
+    // older date and the table appears not to have recorded it. Re-read the date
+    // rather than using the render-time value: a page left open across 02:00 has
+    // a stale one. Changing it reloads via the effect; only reload directly when
+    // the view is already on today, or the fetch would fire twice.
+    const current = businessDateStr();
+    if (date === current) loadSales();
+    else setDate(current);
     loadStock(); // reflect the just-deducted balances
     if (shouldPrint) {
       setInvoice(inv);
@@ -185,14 +206,34 @@ export function SalesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Sales</h2>
-          <p className="text-sm text-muted-foreground">Today&rsquo;s sales · {sales.length} recorded</p>
+          <p className="text-sm text-muted-foreground">
+            {isToday ? 'Today’s sales' : `Sales on ${date}`} · {sales.length} recorded
+          </p>
         </div>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="h-4 w-4 mr-1" /> New Sale
-        </Button>
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <label htmlFor="sales-date" className="text-xs font-medium text-muted-foreground">Date</label>
+            {/* Capped at the current business day — there are no sales in the future,
+                and an accidental typo there would silently show an empty table. */}
+            <Input
+              id="sales-date"
+              type="date"
+              value={date}
+              max={today}
+              onChange={(e) => setDate(e.target.value || today)}
+              className="h-9 w-40"
+            />
+          </div>
+          {!isToday && (
+            <Button variant="outline" className="h-9" onClick={() => setDate(today)}>Today</Button>
+          )}
+          <Button className="h-9" onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-1" /> New Sale
+          </Button>
+        </div>
       </div>
 
       <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
@@ -200,7 +241,9 @@ export function SalesPage() {
       {/* Daily summary */}
       <Card>
         <CardContent className="p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Daily Summary</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Daily Summary · {date}
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {PAYMENT_METHODS.map((m) => (
               <div key={m} className="rounded-lg border bg-muted/30 p-3">
