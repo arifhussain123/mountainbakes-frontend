@@ -232,6 +232,20 @@ export function SettingsPage() {
               onCheckedChange={(v) => setSettings((p) => ({ ...p, closingNotificationsEnabled: v }))}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Order Confirmation SMS</p>
+              <p className="text-xs text-muted-foreground">
+                Text the customer their order number and total when an order is placed.
+                Sends only when a phone number is on the order.
+              </p>
+            </div>
+            <Switch
+              checked={settings.orderConfirmationsEnabled ?? false}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, orderConfirmationsEnabled: v }))}
+            />
+          </div>
         </CardContent>
       </Card>
 
