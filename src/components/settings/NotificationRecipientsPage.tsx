@@ -204,6 +204,27 @@ export function NotificationRecipientsPage() {
 // --- Add / edit -------------------------------------------------------------
 type ScopeKind = 'branch' | 'production' | 'admin';
 
+const E164 = /^\+[1-9]\d{7,14}$/;
+
+/**
+ * Normalize common Pakistani mobile formats to E.164 (+92…). This is a
+ * Pakistan-only business, so a bare 03xx / 3xx number is assumed +92 — but the
+ * dialog always SHOWS the resulting international number before saving, so it is
+ * never the silent country-guess that closing-notifications.schemas.ts warns
+ * against. Anything already starting with '+' is left untouched, so other-country
+ * numbers still work when entered in full international form.
+ */
+function normalizeMobile(raw: string): string {
+  const s = raw.replace(/[\s()\-.]/g, '');
+  if (!s) return '';
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('0092')) return '+92' + s.slice(4);
+  if (s.startsWith('92') && s.length === 12) return '+' + s;
+  if (s.startsWith('0') && s.length === 11) return '+92' + s.slice(1); // 0300xxxxxxx
+  if (s.startsWith('3') && s.length === 10) return '+92' + s; // 300xxxxxxx
+  return s; // unrecognized — leave as-is so validation prompts for + format
+}
+
 function RecipientDialog({ recipient, branches, onClose, onSaved }: {
   recipient: NotificationRecipient | null;
   branches: Branch[];
@@ -222,8 +243,11 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
   const [active, setActive] = useState(recipient?.active ?? true);
   const [busy, setBusy] = useState(false);
 
-  // Server requires E.164; catch it here so the user isn't round-tripped for it.
-  const mobileValid = /^\+[1-9]\d{7,14}$/.test(mobile.trim());
+  // Server requires E.164; normalize local PK numbers here so the user isn't
+  // round-tripped for it, and validate/save the normalized value.
+  const normalizedMobile = normalizeMobile(mobile);
+  const mobileValid = E164.test(normalizedMobile);
+  const willReformat = mobileValid && normalizedMobile !== mobile.trim();
   const valid = name.trim().length >= 2 && mobileValid && (scope !== 'branch' || !!branchId);
 
   async function save() {
@@ -232,7 +256,7 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
       if (isEdit) {
         await apiCall(`/api/closing-notifications/recipients/${recipient!.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ recipientName: name.trim(), mobileNumber: mobile.trim(), channel, active }),
+          body: JSON.stringify({ recipientName: name.trim(), mobileNumber: normalizedMobile, channel, active }),
         }, token);
         toast.success('Recipient updated');
       } else {
@@ -242,7 +266,7 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
             branchId: scope === 'branch' ? branchId : null,
             department: scope === 'branch' ? null : scope,
             recipientName: name.trim(),
-            mobileNumber: mobile.trim(),
+            mobileNumber: normalizedMobile,
             channel,
             active,
           }),
@@ -302,10 +326,12 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
 
           <div className="space-y-1">
             <Label>Mobile number</Label>
-            <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="+923001234567" />
-            {mobile.trim() && !mobileValid && (
-              <p className="text-xs text-destructive">Use international format, e.g. +923001234567</p>
-            )}
+            <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="03001234567 or +923001234567" />
+            {willReformat ? (
+              <p className="text-xs text-muted-foreground">Will be saved as <span className="font-mono">{normalizedMobile}</span></p>
+            ) : mobile.trim() && !mobileValid ? (
+              <p className="text-xs text-destructive">Enter a valid mobile number, e.g. 03001234567 or +923001234567</p>
+            ) : null}
           </div>
 
           <div className="space-y-1">
