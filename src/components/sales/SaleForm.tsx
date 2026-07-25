@@ -218,6 +218,25 @@ export function SaleForm({
   const receivedNum = typeof receivedCashRaw === 'number' && Number.isFinite(receivedCashRaw) ? receivedCashRaw : null;
   const cashShort = isCash && (receivedNum == null || receivedNum < grandTotal);
 
+  // Surface client-side (Zod) validation failures instead of letting the Save
+  // button silently do nothing. Walk into the (possibly nested) error tree and
+  // show the first message we find.
+  function onInvalid(errors: typeof form.formState.errors) {
+    function firstMessage(node: unknown): string | undefined {
+      if (!node || typeof node !== 'object') return undefined;
+      if ('message' in node && typeof (node as { message?: unknown }).message === 'string') {
+        return (node as { message: string }).message;
+      }
+      for (const value of Object.values(node as Record<string, unknown>)) {
+        const found = firstMessage(value);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    printRef.current = false;
+    toast.error(firstMessage(errors) || 'Please review the form and try again.');
+  }
+
   async function onSubmit(data: CreatePosSaleInput) {
     const shouldPrint = printRef.current;
     printRef.current = false;
@@ -309,7 +328,7 @@ export function SaleForm({
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+    <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex min-h-0 flex-1 flex-col">
       {/* Scrollable body — only this region scrolls; header and footer stay put */}
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5">
         {/* Customer */}
@@ -535,7 +554,17 @@ export function SaleForm({
               inputMode="decimal"
               placeholder="0"
               className="h-11 text-base"
-              {...form.register('receivedCash', { valueAsNumber: true })}
+              {...form.register('receivedCash', {
+                // NOT valueAsNumber: an empty/cleared number input yields NaN, and
+                // z.number().optional() rejects NaN (it's a number, so .optional()
+                // doesn't skip it) — which would silently block the submit. Coerce
+                // empty → undefined so the field is truly optional.
+                setValueAs: (v) => {
+                  if (v === '' || v == null) return undefined;
+                  const n = typeof v === 'number' ? v : parseFloat(v);
+                  return Number.isFinite(n) ? n : undefined;
+                },
+              })}
             />
           </div>
         ) : (
