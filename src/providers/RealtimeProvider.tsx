@@ -66,6 +66,23 @@ function mapRow(r: NotificationRow): Notification {
 /** A `notification_reads` row — one per (notification, recipient) that has been read. */
 interface NotificationReadRow { notification_id: string; user_id: string }
 
+/**
+ * Flatten a PostgREST error into one readable line.
+ *
+ * Logging the error object directly renders as `{}` in the Next dev overlay —
+ * it serialises with JSON.stringify, and the interesting fields (message, and
+ * often details/hint) are either non-enumerable or undefined. That hides the
+ * SQLSTATE, which is the only part that says what actually went wrong.
+ */
+function describeError(e: unknown): string {
+  if (!e || typeof e !== 'object') return String(e);
+  const { message, code, details, hint } = e as {
+    message?: string; code?: string; details?: string; hint?: string;
+  };
+  const parts = [message, code && `code=${code}`, details && `details=${details}`, hint && `hint=${hint}`];
+  return parts.filter(Boolean).join(' | ') || JSON.stringify(e);
+}
+
 function useNotificationsState(): NotificationsValue {
   const { user } = useAuth();
   const uid = user?.uid;
@@ -112,12 +129,12 @@ function useNotificationsState(): NotificationsValue {
       ]);
       if (cancelled) return;
       if (readsRes.error) {
-        console.error('[notifications] read-set load failed', readsRes.error);
+        console.error('[notifications] read-set load failed:', describeError(readsRes.error));
       } else {
         setReadIds(new Set((readsRes.data ?? []).map((r) => (r as NotificationReadRow).notification_id)));
       }
       if (feedRes.error) {
-        console.error('[notifications] initial load failed', feedRes.error);
+        console.error('[notifications] initial load failed:', describeError(feedRes.error));
         return;
       }
       setRawNotifications((feedRes.data ?? []).map((r) => mapRow(r as NotificationRow)));
@@ -180,7 +197,7 @@ function useNotificationsState(): NotificationsValue {
     const { error } = await supabase
       .from('notification_reads')
       .upsert({ notification_id: id, user_id: uid }, { onConflict: 'notification_id,user_id', ignoreDuplicates: true });
-    if (error) console.error('[notifications] markAsRead failed', error);
+    if (error) console.error('[notifications] markAsRead failed:', describeError(error));
   }, [uid, addReadId]);
 
   const markAllAsRead = useCallback(async () => {
@@ -196,7 +213,7 @@ function useNotificationsState(): NotificationsValue {
     const { error } = await supabase
       .from('notification_reads')
       .upsert(rows, { onConflict: 'notification_id,user_id', ignoreDuplicates: true });
-    if (error) console.error('[notifications] markAllAsRead failed', error);
+    if (error) console.error('[notifications] markAllAsRead failed:', describeError(error));
   }, [uid, notifications]);
 
   const unreadCount = useMemo(
