@@ -26,7 +26,13 @@ export const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
 const ACCENT_VALUES = ACCENTS.map((a) => a.value);
 
 const ThemeContext = createContext<
-  { theme: Theme; setTheme: (theme: Theme) => void; accent: Accent; setAccent: (accent: Accent) => void } | undefined
+  {
+    theme: Theme;
+    setTheme: (theme: Theme) => void;
+    accent: Accent;
+    setAccent: (accent: Accent) => void;
+    mounted: boolean;
+  } | undefined
 >(undefined);
 
 export function useTheme() {
@@ -35,34 +41,38 @@ export function useTheme() {
   return context;
 }
 
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light';
-  return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
-}
-
-function getInitialAccent(): Accent {
-  if (typeof window === 'undefined') return 'orange';
-  const saved = localStorage.getItem(ACCENT_KEY) as Accent | null;
-  return saved && ACCENT_VALUES.includes(saved) ? saved : 'orange';
-}
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [accent, setAccent] = useState<Accent>(getInitialAccent);
+  // Initialize with SSR-safe defaults so the server HTML and the first client
+  // render agree (avoids hydration mismatch). The real persisted values are read
+  // from localStorage after mount; the inline script below applies them to <html>
+  // before paint, so there is no visual flash of the wrong theme.
+  const [theme, setTheme] = useState<Theme>('light');
+  const [accent, setAccent] = useState<Accent>('orange');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    const storedTheme: Theme = localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    const savedAccent = localStorage.getItem(ACCENT_KEY) as Accent | null;
+    setTheme(storedTheme);
+    setAccent(savedAccent && ACCENT_VALUES.includes(savedAccent) ? savedAccent : 'orange');
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
     localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
+  }, [theme, mounted]);
 
   useEffect(() => {
+    if (!mounted) return;
     document.documentElement.setAttribute('data-accent', accent);
     localStorage.setItem(ACCENT_KEY, accent);
-  }, [accent]);
+  }, [accent, mounted]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, accent, setAccent }}>
+    <ThemeContext.Provider value={{ theme, setTheme, accent, setAccent, mounted }}>
       <script
         type={typeof window === 'undefined' ? 'text/javascript' : 'text/plain'}
         suppressHydrationWarning

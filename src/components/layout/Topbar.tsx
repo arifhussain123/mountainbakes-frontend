@@ -25,7 +25,7 @@ export function Topbar({ title }: { title?: string }) {
   const { toggleSidebar } = useAppStore();
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const { theme, setTheme, accent, setAccent } = useTheme();
+  const { theme, setTheme, accent, setAccent, mounted } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
 
@@ -87,7 +87,13 @@ export function Topbar({ title }: { title?: string }) {
 
         {/* Theme toggle */}
         <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {/* Render the icon only after mount so the resolved theme is known —
+              avoids both a hydration mismatch and a wrong-icon flash. */}
+          {mounted ? (
+            theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
+          ) : (
+            <span className="h-4 w-4" />
+          )}
         </Button>
 
         {/* Notifications */}
