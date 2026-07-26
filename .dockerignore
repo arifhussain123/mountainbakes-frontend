@@ -1,0 +1,31 @@
+# Build context excludes. The .env* entry is load-bearing, not hygiene:
+# next.config.ts calls loadEnvConfig(), and .env.local outranks any ENV set in the
+# Dockerfile (process.env is only consulted first for vars already exported at that
+# point — a copied .env.local wins over ENV during `next build`). Copying it in would
+# silently bake NEXT_PUBLIC_API_URL=http://127.0.0.1:3001 into the browser bundle and
+# produce an image that cannot reach the API from anywhere but a developer's laptop.
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+out
+build
+
+.git
+.gitignore
+.claude
+.agents
+
+Dockerfile
+.dockerignore
+firebase.json
+.firebaserc
+.firebase
+
+README.md
+DEPLOY.md
+*.md
+npm-debug.log*
+.DS_Store

@@ -1,0 +1,11 @@
+Intentionally empty: firebase.json points `hosting.public` here.
+
+Firebase Hosting requires a public directory, but this app must not have one with
+files in it. Anything Hosting serves directly bypasses Next, and next.config.ts
+defines headers that matter — /sw.js needs Content-Type, Cache-Control: no-store and
+Service-Worker-Allowed: / or the service worker cannot claim root scope. Serving
+public/ from the CDN would silently drop those.
+
+So every request falls through to the Cloud Run rewrite and Next answers it, headers
+included. This file is a dotfile, which Hosting's default `ignore` skips, so the
+deploy uploads nothing at all.

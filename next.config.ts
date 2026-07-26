@@ -13,6 +13,10 @@ loadEnvConfig(process.cwd());
 // (src/app/api/*) and are unaffected — they set the first-party mb_session cookie.
 
 const nextConfig: NextConfig = {
+  // Emits .next/standalone with a traced, minimal node_modules and its own
+  // server.js — the container copies that instead of the whole dependency tree.
+  // Required by the Cloud Run image (see Dockerfile); harmless for `next dev`.
+  output: 'standalone',
   images: {
     remotePatterns: [],
   },
