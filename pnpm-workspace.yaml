@@ -5,3 +5,9 @@ allowBuilds:
   unrs-resolver: true
   esbuild: true
   protobufjs: true
+  # No native code: its postinstall only materialises a config file from
+  # FIREBASE_WEBAPP_CONFIG, which is how App Hosting injects Firebase config at build
+  # time. This app deploys to Cloud Run behind Hosting (see firebase.json), so that
+  # variable is never set and the script has nothing to do. Left unset it is not
+  # merely skipped — pnpm's deps-status check then fails every `pnpm <script>`.
+  '@firebase/util': false
