@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { apiCall } from '@/utils/api';
+import { useStockRows } from '@/lib/queries';
+import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { type StockRow, businessDateStr } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
@@ -15,22 +16,15 @@ const col = createColumnHelper<StockRow>();
 
 export function StockPage() {
   const { token, user } = useAuth();
-  const [rows, setRows] = useState<StockRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [returnOpen, setReturnOpen] = useState(false);
 
-  const loadStock = useCallback(() => {
-    if (!token) return;
-    setLoading(true);
-    apiCall<{ date: string; rows: StockRow[] }>('/api/stock', {}, token)
-      .then((r) => setRows(r.rows ?? []))
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    loadStock();
-  }, [loadStock]);
+  // On TanStack Query (per the project convention) rather than a one-shot fetch,
+  // so an invalidation can reach it — that is what makes the page pick up stock
+  // moved elsewhere: a Production approval, or an admin correcting a Help Desk
+  // query. `useStockRealtime` fires those invalidations off the notifications
+  // stream; the ReturnItemsModal reuses the same refetch after saving.
+  const { data: rows = [], isPending, refetch } = useStockRows(token ?? '');
+  useStockRealtime();
 
   const columns = [
     col.accessor('stockCode', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
@@ -67,14 +61,14 @@ export function StockPage() {
         </div>
       </div>
 
-      <DataTable columns={columns} data={rows} loading={loading} searchPlaceholder="Search products…" pageSize={50} />
+      <DataTable columns={columns} data={rows} loading={isPending} searchPlaceholder="Search products…" pageSize={50} />
 
       <ReturnItemsModal
         open={returnOpen}
         onOpenChange={setReturnOpen}
         rows={rows}
         branchName={user?.branchName ?? ''}
-        onSaved={loadStock}
+        onSaved={refetch}
       />
     </div>
   );

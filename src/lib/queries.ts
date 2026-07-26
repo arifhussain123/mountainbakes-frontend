@@ -166,6 +166,27 @@ export function useReportSummary(token: string, period: string, branchId?: strin
   });
 }
 
+/**
+ * The full derived stock rows (Opening / New / Sold / Returned / Adjustment /
+ * Balance) for the Stock page.
+ *
+ * Deliberately shares `qk.stock(branchId)` with `useStock` below: `select` runs per
+ * observer, not per cache entry, so both hooks read one cached response and ONE
+ * invalidation refreshes the table and every balance map at once. Do not give this
+ * its own key — that would let the two drift apart.
+ */
+export function useStockRows(token: string, opts?: { branchId?: string | null; enabled?: boolean }) {
+  const branchId = opts?.branchId;
+  return useQuery({
+    queryKey: qk.stock(branchId),
+    queryFn: () =>
+      apiCall<{ rows: StockRow[] }>(`/api/stock${branchId ? `?branchId=${branchId}` : ''}`, {}, token),
+    select: (r) => r.rows ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
 /** Current-stock balances keyed by productId. Always revalidates (intraday changes). */
 export function useStock(token: string, opts?: { branchId?: string | null; enabled?: boolean }) {
   const branchId = opts?.branchId;
