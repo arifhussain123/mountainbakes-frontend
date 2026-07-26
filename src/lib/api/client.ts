@@ -1,14 +1,21 @@
 /**
  * Base URL for the Express API.
  *
- * Default (single-app deploy): the API shares this dyno behind the `/api/*` rewrite
- * in next.config.ts, so we use a **relative** base in the browser — requests are
- * same-origin, which means no CORS and nothing host-specific baked in at build time.
- * On the server there is no origin to be relative to, so we call the API's loopback
- * port directly instead of hair-pinning back through Next.
+ * The API is a separate host. next.config.ts proxies nothing, so the browser calls
+ * it cross-origin at NEXT_PUBLIC_API_URL and the API's own CORS_ORIGINS allowlist
+ * (server/src/app.ts) is what permits those requests. DEPLOY.md marks the variable
+ * REQUIRED, and NEXT_PUBLIC_* is inlined at BUILD time — so it has to be set as a
+ * config var *before* the web app is built, not merely before it boots.
  *
- * Setting NEXT_PUBLIC_API_URL overrides both and points at an external API host —
- * the older two-app topology. See DEPLOY.md.
+ * Give it scheme + host with NO trailing slash: it is concatenated straight onto
+ * `/api/...` in request() below.
+ *
+ * Leaving it unset is a misconfiguration, not a default. The browser then falls back
+ * to a relative base and calls this app's own origin, where the only handlers are
+ * src/app/api/login and /logout — so every other route 404s, which DEPLOY.md lists
+ * as a failure mode. The server-side loopback fallback below is a leftover from the
+ * retired single-dyno deploy, where the API shared this host behind an /api/* rewrite;
+ * on a separate web dyno nothing is listening on that port.
  */
 const EXPLICIT_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
 
@@ -37,8 +44,11 @@ function isLocalHost(url: string): boolean {
  * deployed to a real domain — so every request fails with ERR_CONNECTION_REFUSED or
  * a mixed-content block. Surface a clear error instead of an empty page.
  *
- * This cannot trigger on the default path: with the variable unset the browser uses
- * a relative base and talks to its own origin.
+ * Only fires when the variable is set explicitly — the early return below skips an
+ * unset one, which is now a gap rather than a deliberate exemption: since nothing
+ * proxies /api/* any more, unset on a non-localhost origin is equally broken. It is
+ * left uncaught because it fails visibly on its own (404s on every route, which
+ * DEPLOY.md names), not because it is valid.
  */
 function assertApiReachable(): void {
   if (typeof window === 'undefined') return;
@@ -47,9 +57,9 @@ function assertApiReachable(): void {
   if (!onLocalHost && isLocalHost(EXPLICIT_API_URL)) {
     throw new ApiError(
       `API is misconfigured for production: NEXT_PUBLIC_API_URL is "${EXPLICIT_API_URL}", ` +
-        `which only exists on a developer's machine. Either unset it — the API is served ` +
-        `from this same origin by default — or set it to the deployed API's URL, then ` +
-        `rebuild (NEXT_PUBLIC_* values are baked in at build time).`,
+        `which only exists on a developer's machine. Set it to the deployed API's origin ` +
+        `(scheme + host, no trailing slash) and REBUILD — NEXT_PUBLIC_* values are baked ` +
+        `in at build time, so changing the config var alone will not take effect.`,
       0
     );
   }
