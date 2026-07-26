@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, Product, PaymentMethod } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, Product, PaymentMethod, StockFigures } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X } from 'lucide-react';
@@ -53,6 +53,15 @@ function ReferenceDetail({ reference }: { reference: SupportReference }) {
 }
 
 type DialogMode = 'view' | 'edit' | 'change' | 'reject' | null;
+
+/** What /figures reports back when it applied a stock correction. */
+interface StockCorrectionResult {
+  applied: boolean;
+  productName: string;
+  before: StockFigures;
+  after: StockFigures;
+  movements: { type: string; delta: number }[];
+}
 
 export function SupportCenterPage() {
   const { token } = useAuth();
@@ -479,9 +488,10 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
   );
 }
 
-// --- Change figures (sale line-items live-edit; expenses live; stock recorded) ---
+// --- Change figures — dispatches to the editor the reference deserves. ----------
+// Pure dispatcher, deliberately hook-free: each branch is a component with its own
+// state, so no hook is ever called conditionally.
 function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
-  const { token } = useAuth();
   const ref = ticket.referenceSnapshot;
 
   // Sales get a dedicated line-item editor (change product / qty / amount, add /
@@ -489,11 +499,269 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
   if (ref?.type === 'sale' && ref.saleItems) {
     return <SaleItemsDialog ticket={ticket} reference={ref} onClose={onClose} onDone={onDone} />;
   }
+  // Stock gets the whole derived row — Opening / New / Sold / Returned / Balance —
+  // with every correctable figure editable and applied to the branch's ledger.
+  if (ref?.type === 'stock') {
+    return <StockFiguresDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
+  }
+  return <FieldEditDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
+}
+
+/** Read-only figure row inside the stock editor. */
+function FigureRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right tabular-nums font-medium">
+        {value}
+        {hint && <span className="ml-2 text-xs font-normal text-muted-foreground">{hint}</span>}
+      </span>
+    </div>
+  );
+}
+
+const STOCK_FIELDS = [
+  { key: 'newQty', label: 'New Stock', hint: 'units received from Production' },
+  { key: 'sold', label: 'Sold', hint: 'units sold today' },
+  { key: 'returned', label: 'Returned', hint: 'units sent back to Production' },
+] as const;
+
+/**
+ * Stock correction. Shows the branch's LIVE derived row (the ticket's snapshot is
+ * from when the query was raised) and lets the admin set each correctable figure to
+ * what it should read. The server sizes a compensating movement per figure, so the
+ * branch's Stock page reflects the correction immediately.
+ *
+ * Opening is read-only: it is the previous day's closing, and correcting it would
+ * mean rewriting a day that has already been closed.
+ *
+ * Balance follows the other three automatically, so the row always adds up. Typing
+ * a Balance overrides that, and the leftover difference is booked as an adjustment
+ * — which is the plain "my shelf count disagrees with the system" case.
+ */
+function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
+  const { token } = useAuth();
+  const [figures, setFigures] = useState<StockFigures | null>(null);
+  // Starts false when there is nothing to fetch, so the effect never has to
+  // synchronously flip it back and trigger a cascading render.
+  const [loading, setLoading] = useState(Boolean(ticket.branchId));
+  const [targets, setTargets] = useState<Record<string, string>>({});
+  // Until the admin edits Balance themselves, it tracks the other three figures.
+  const [balanceTouched, setBalanceTouched] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const productName = ticket.referenceSnapshot?.fields.find((f) => f.label === 'Product')?.value ?? ticket.referenceId;
+
+  useEffect(() => {
+    if (!token || !ticket.branchId) return;
+    // Scoped to the ticket's branch: an admin's unscoped stock lookup is an
+    // all-branches total, which is not a ledger anything can be applied to.
+    apiCall<{ reference: SupportReference }>(
+      `/api/support/lookup?ref=${encodeURIComponent(ticket.referenceId)}&branchId=${ticket.branchId}`,
+      {},
+      token,
+    )
+      .then((r) => {
+        const f = r.reference.stockFigures;
+        if (!f) { toast.error('Could not read this branch’s stock figures'); return; }
+        setFigures(f);
+        setTargets({
+          newQty: String(f.newQty),
+          sold: String(f.sold),
+          returned: String(f.returned),
+          balance: String(f.balance),
+        });
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Could not load current stock'))
+      .finally(() => setLoading(false));
+  }, [token, ticket.branchId, ticket.referenceId]);
+
+  const num = (v: string | undefined) => Number(v ?? 0);
+
+  /**
+   * Balance implied by the figures as typed. Mirrors the server's definition
+   * (opening + new − sold − returned + adjustment), carrying over any adjustment
+   * already recorded today so an earlier correction is not silently undone.
+   */
+  const implied = useMemo(() => {
+    if (!figures) return 0;
+    return figures.opening + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']) + figures.adjustment;
+  }, [figures, targets]);
+
+  // The extra adjustment the typed Balance would book on top of the other edits.
+  const extraAdjustment = balanceTouched ? num(targets['balance']) - implied : 0;
+  const finalBalance = balanceTouched ? num(targets['balance']) : implied;
+
+  function setFigure(key: string, value: string) {
+    setTargets((t) => ({ ...t, [key]: value }));
+    if (key === 'balance') setBalanceTouched(true);
+  }
+
+  // Keep Balance showing the implied result while the admin has not overridden it.
+  const shownBalance = balanceTouched ? (targets['balance'] ?? '') : String(implied);
+
+  const invalid =
+    ['newQty', 'sold', 'returned'].some((k) => {
+      const v = num(targets[k]);
+      return targets[k] === '' || !Number.isFinite(v) || v < 0;
+    }) ||
+    // A cleared Balance is not "zero" — it is no figure at all, and would otherwise
+    // submit as a count of 0.
+    (balanceTouched && targets['balance'] === '') ||
+    finalBalance < 0;
+
+  /**
+   * Only the figures the admin actually moved. Sending an untouched figure would
+   * be a lost update: it is an absolute target, so a sale rung up between opening
+   * this dialog and applying it would be silently reverted. An omitted figure is
+   * left alone by the server, so concurrent movements survive.
+   *
+   * Balance is sent only when the admin typed one that differs from what the other
+   * edits already imply — that is the "my shelf count disagrees" case, where
+   * overriding whatever else moved is exactly the intent.
+   */
+  const edits = useMemo(() => {
+    if (!figures) return {} as Record<string, number>;
+    const out: Record<string, number> = {};
+    for (const k of ['newQty', 'sold', 'returned'] as const) {
+      if (num(targets[k]) !== figures[k]) out[k] = num(targets[k]);
+    }
+    if (balanceTouched && num(targets['balance']) !== implied) out['balance'] = num(targets['balance']);
+    return out;
+  }, [figures, targets, balanceTouched, implied]);
+
+  const changed = Object.keys(edits).length > 0;
+
+  async function submit() {
+    if (invalid) { toast.error('Every figure must be 0 or more'); return; }
+    if (!changed) { toast.error('Change at least one figure'); return; }
+    setBusy(true);
+    try {
+      const res = await apiCall<{ applied: boolean; stock: StockCorrectionResult | null }>(
+        `/api/support/${ticket.id}/figures`,
+        { method: 'PATCH', body: JSON.stringify({ edits, note }) },
+        token,
+      );
+      toast.success(
+        res.stock?.applied
+          ? `Branch stock corrected — balance ${res.stock.before.balance} → ${res.stock.after.balance}`
+          : 'Branch stock already matched — query resolved',
+      );
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to correct the stock');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Correct stock — {ticket.referenceId}</DialogTitle>
+          <DialogDescription>
+            {productName}{ticket.branchName ? ` · ${ticket.branchName}` : ''} — set each figure to
+            what it should read. The branch’s stock is adjusted to match and the query
+            is resolved.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!ticket.branchId ? (
+          <p className="text-sm text-muted-foreground">
+            This query was not raised from a branch, so there is no branch stock to
+            correct. Resolve or reject it instead.
+          </p>
+        ) : loading ? (
+          <p className="text-sm text-muted-foreground">Loading current stock…</p>
+        ) : !figures ? (
+          <p className="text-sm text-muted-foreground">Current stock is unavailable.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+              <FigureRow label="Opening Stock" value={String(figures.opening)} hint="carried from yesterday" />
+              {figures.adjustment !== 0 && (
+                <FigureRow
+                  label="Adjustment so far"
+                  value={figures.adjustment > 0 ? `+${figures.adjustment}` : String(figures.adjustment)}
+                  hint="earlier corrections today"
+                />
+              )}
+            </div>
+
+            {STOCK_FIELDS.map((f) => (
+              <div key={f.key} className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>{f.label}</Label>
+                  <span className="text-xs text-muted-foreground">
+                    now {figures[f.key]} · {f.hint}
+                  </span>
+                </div>
+                <Input
+                  type="number" min="0" step="0.001" inputMode="decimal"
+                  className="text-right"
+                  value={targets[f.key] ?? ''}
+                  onChange={(e) => setFigure(f.key, e.target.value)}
+                />
+              </div>
+            ))}
+
+            <div className="space-y-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label>Balance</Label>
+                <span className="text-xs text-muted-foreground">
+                  now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
+                </span>
+              </div>
+              <Input
+                type="number" min="0" step="0.001" inputMode="decimal"
+                className={cn('text-right', finalBalance < 0 && 'border-destructive')}
+                value={shownBalance}
+                onChange={(e) => setFigure('balance', e.target.value)}
+              />
+              {extraAdjustment !== 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Booked as an adjustment of {extraAdjustment > 0 ? `+${extraAdjustment}` : extraAdjustment}.
+                </p>
+              )}
+              {finalBalance < 0 && (
+                <p className="text-xs text-destructive">A branch balance cannot go below zero.</p>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Correcting <strong>Sold</strong> moves stock only — it does not change the
+              day’s takings or payment method. For a sale recorded wrongly, raise the
+              query against its sale ID (MB-…) instead, which corrects the order, its
+              total and its tender along with the stock.
+            </p>
+
+            <div className="space-y-1">
+              <Label>Note (optional)</Label>
+              <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Reason for the correction" />
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || loading || !figures || invalid || !changed}>
+            {busy ? 'Applying…' : 'Apply & Resolve'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Flat field edit — expenses (live) and anything with no correctable figure ---
+function FieldEditDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
+  const { token } = useAuth();
+  const ref = ticket.referenceSnapshot;
 
   const isLiveEdit = (ref?.editableFields.length ?? 0) > 0;
 
-  // Editable rows: expense's editableFields, or (for sale/stock) the display
-  // fields as recorded corrections.
+  // Editable rows: the expense's editableFields, or — when nothing here can be
+  // written directly — the display fields, captured as a recorded correction.
   const rows = useMemo(() => {
     if (!ref) return [] as { key: string; label: string; value: string }[];
     return isLiveEdit
@@ -513,7 +781,11 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
     if (Object.keys(edits).length === 0) { toast.error('Change at least one value'); return; }
     setBusy(true);
     try {
-      const res = await apiCall<{ applied: boolean }>(`/api/support/${ticket.id}/figures`, { method: 'PATCH', body: JSON.stringify({ edits, note }) }, token);
+      const res = await apiCall<{ applied: boolean }>(
+        `/api/support/${ticket.id}/figures`,
+        { method: 'PATCH', body: JSON.stringify({ edits, note }) },
+        token,
+      );
       toast.success(res.applied ? 'Figures updated & query resolved' : 'Correction recorded & query resolved');
       onDone();
     } catch (err) {
@@ -529,7 +801,7 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
           <DialogDescription>
             {isLiveEdit
               ? 'Edits are written directly to the record and the query is resolved.'
-              : 'Sales & stock figures are derived, so corrections here are recorded on the ticket for manual follow-up.'}
+              : 'This reference has no directly correctable figure, so the change is recorded on the ticket for manual follow-up.'}
           </DialogDescription>
         </DialogHeader>
 

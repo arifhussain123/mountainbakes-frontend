@@ -39,6 +39,16 @@ export function StockPage() {
     col.accessor('newQty', { header: 'New Stock', cell: (i) => <span className="text-emerald-600 dark:text-emerald-400">{i.getValue() ? `+${i.getValue()}` : 0}</span> }),
     col.accessor('sold', { header: 'Sold', cell: (i) => <span className="text-red-600 dark:text-red-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),
     col.accessor('returned', { header: 'Returned', cell: (i) => <span className="text-amber-600 dark:text-amber-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),
+    // Signed, unlike Sold/Returned: an admin correction can go either way, and
+    // without it the row does not add up to Balance.
+    col.accessor('adjustment', {
+      header: 'Adjustment',
+      cell: (i) => {
+        const v = i.getValue();
+        if (!v) return <span>0</span>;
+        return <span className="text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
+      },
+    }),
     col.accessor('balance', {
       header: 'Balance',
       cell: (i) => <span className={cn('font-semibold', i.getValue() < 0 && 'text-destructive')}>{i.getValue()}</span>,
@@ -53,7 +63,7 @@ export function StockPage() {
         </Button>
         <div className="order-1 sm:order-2 sm:text-right">
           <h2 className="text-lg font-semibold">Stock</h2>
-          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval</p>
+          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections</p>
         </div>
       </div>
 
