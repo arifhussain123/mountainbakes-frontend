@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import type { NotificationType } from '@mb/shared';
 import { useNotifications } from './useNotifications';
 
 /**
@@ -33,7 +34,13 @@ import { useNotifications } from './useNotifications';
  * Call once from any page that displays stock. Notifications already present on
  * mount are marked seen, so arriving on the page never triggers a redundant refetch.
  */
-const STOCK_MOVING_TYPES = new Set(['production_reviewed', 'production_return', 'support_resolved']);
+// Typed against NotificationType so a renamed or dropped notification breaks the
+// build here rather than silently never refreshing the page.
+const STOCK_MOVING_TYPES: readonly NotificationType[] = [
+  'production_reviewed',
+  'production_return',
+  'support_resolved',
+];
 
 export function useStockRealtime() {
   const qc = useQueryClient();
@@ -56,7 +63,7 @@ export function useStockRealtime() {
 
     // No toast here — the notification itself already reached the user, and the
     // resolution note spells out the before → after. This only refreshes data.
-    if (fresh.some((n) => STOCK_MOVING_TYPES.has(n.type))) {
+    if (fresh.some((n) => STOCK_MOVING_TYPES.includes(n.type))) {
       qc.invalidateQueries({ queryKey: ['stock'] });
     }
   }, [notifications, qc]);
