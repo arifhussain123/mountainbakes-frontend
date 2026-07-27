@@ -1,4 +1,4 @@
-# Next.js web app for Cloud Run, fronted by Firebase Hosting (see firebase.json).
+# Next.js web app for Cloud Run.
 #
 # Debian slim rather than Alpine: glibc matches the prebuilt native binaries npm
 # serves (unrs-resolver, esbuild), so nothing rebuilds from source at install time.

@@ -20,9 +20,6 @@ build
 
 Dockerfile
 .dockerignore
-firebase.json
-.firebaserc
-.firebase
 
 README.md
 DEPLOY.md
