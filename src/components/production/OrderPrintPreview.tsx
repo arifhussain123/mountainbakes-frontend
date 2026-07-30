@@ -88,6 +88,7 @@ function PreviewBody({
   const frozen = order.status === 'approved';
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState(order.changeReason ?? '');
 
   const balancesQ = useProductionBalances(token, { branchId: order.branchId, enabled: order.status === 'pending' });
@@ -113,9 +114,30 @@ function PreviewBody({
 
   const rows = order.items.map((it) => ({ it, ...rowFor(it) }));
   const approvedItems = rows.map(({ it, approved }) => ({ productId: it.productId, approvedQty: approved }));
-  const changed = rows.some(({ approved, totalDemand }) => approved !== totalDemand);
+
+  // Packing materials. Much simpler than products: no previous balance and no
+  // carry-forward, so requested is the only baseline and approved defaults to it.
+  const packingItems = order.packingItems ?? [];
+  const packingRows = packingItems.map((it) => {
+    const approved = frozen
+      ? (it.approvedQty ?? it.qty)
+      : (packingEdits[it.packingMaterialId] !== undefined
+          ? (parseInt(packingEdits[it.packingMaterialId]!, 10) || 0)
+          : it.qty);
+    return { it, requested: it.qty, approved };
+  });
+  const approvedPackingItems = packingRows.map(({ it, approved }) => ({
+    packingMaterialId: it.packingMaterialId,
+    approvedQty: approved,
+  }));
+
+  const changed =
+    rows.some(({ approved, totalDemand }) => approved !== totalDemand) ||
+    packingRows.some(({ approved, requested }) => approved !== requested);
 
   const printRows: PrintRow[] = rows.map(({ it, ...r }) => ({ productName: it.productName, ...r }));
+  // The slip prints the APPROVED quantity, which is what actually ships.
+  const packingPrintRows = packingRows.map(({ it, approved }) => ({ materialName: it.materialName, qty: approved }));
   const totals = printRows.reduce(
     (a, r) => ({ demand: a.demand + r.totalDemand, approved: a.approved + r.approved, amount: a.amount + r.amount }),
     { demand: 0, approved: 0, amount: 0 },
@@ -132,7 +154,7 @@ function PreviewBody({
 
   async function approve() {
     try {
-      await review({ id: order.id, status: 'approved', approvedItems, reason: changed ? reason : undefined });
+      await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
       toast.success('Order approved — stock transferred to branch');
       onClose();
     } catch (err) {
@@ -153,7 +175,7 @@ function PreviewBody({
   async function print() {
     try {
       if (order.status === 'pending') {
-        await review({ id: order.id, status: 'approved', approvedItems, reason: changed ? reason : undefined });
+        await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
         toast.success('Order approved');
       }
       setEditing(false);
@@ -267,6 +289,82 @@ function PreviewBody({
             </div>
           </div>
 
+          {/* ── Packing Material Demand ──────────────────────────────────────
+              A separate section, not extra rows in the product table: these have
+              no previous balance, no unit price and no amount, so they would leave
+              four columns empty. Rendered only when the demand has packing lines,
+              so an ordinary order looks exactly as it did. */}
+          {packingRows.length > 0 && (
+            <div className="mt-6">
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                Packing Material Demand
+              </h3>
+
+              <div className="overflow-x-auto">
+                <table className="hidden w-full border-collapse text-xs md:table">
+                  <thead>
+                    <tr className="border-y border-neutral-400 text-left">
+                      <th className="py-1.5 pr-2 font-semibold">Packing Material</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Requested Qty</th>
+                      <th className="py-1.5 pl-2 text-right font-semibold">Approved Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {packingRows.map(({ it, requested, approved }) => (
+                      <tr key={it.packingMaterialId} className="border-b border-neutral-200 align-top">
+                        <td className="py-1.5 pr-2 font-medium">{it.materialName}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{fmt(requested)}</td>
+                        <td className="py-1.5 pl-2 text-right tabular-nums">
+                          {editing && !readOnly ? (
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={packingEdits[it.packingMaterialId] ?? String(requested)}
+                              onChange={(e) =>
+                                setPackingEdits((p) => ({ ...p, [it.packingMaterialId]: digits(e.target.value) }))
+                              }
+                              className="ml-auto h-8 w-20 text-right tabular-nums"
+                            />
+                          ) : (
+                            <span className="font-semibold">{fmt(approved)}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="space-y-3 md:hidden">
+                {packingRows.map(({ it, requested, approved }) => (
+                  <div key={it.packingMaterialId} className="rounded-lg border border-neutral-200 p-3">
+                    <p className="font-semibold">{it.materialName}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <Field label="Requested Qty" value={fmt(requested)} />
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Approved Qty</p>
+                        {editing && !readOnly ? (
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={packingEdits[it.packingMaterialId] ?? String(requested)}
+                            onChange={(e) =>
+                              setPackingEdits((p) => ({ ...p, [it.packingMaterialId]: digits(e.target.value) }))
+                            }
+                            className="mt-0.5 h-8 w-24 text-right tabular-nums"
+                          />
+                        ) : (
+                          <p className="font-semibold tabular-nums">{fmt(approved)}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {editing && !readOnly && changed && (
             <div className="mt-4 space-y-1">
               <label className="text-sm font-medium">Reason for change</label>
@@ -284,14 +382,14 @@ function PreviewBody({
           <PrintCopy
             copyLabel="Customer Copy"
             logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
-            printRows={printRows} printDate={printDate} printTime={printTime}
+            printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
             prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
             receiptFooter={settings?.receiptFooter ?? null}
           />
           <PrintCopy
             copyLabel="Company Copy"
             logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
-            printRows={printRows} printDate={printDate} printTime={printTime}
+            printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
             prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
             receiptFooter={settings?.receiptFooter ?? null}
           />
@@ -384,7 +482,7 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
  * product table lists approved products only, with derived amounts and grand total.
  */
 function PrintCopy({
-  copyLabel, logo, companyName, sym, order, branch, printRows, printDate, printTime, prevBalanceQty, prevBalanceAmount, receiptFooter,
+  copyLabel, logo, companyName, sym, order, branch, printRows, packingPrintRows, printDate, printTime, prevBalanceQty, prevBalanceAmount, receiptFooter,
 }: {
   copyLabel: string;
   logo?: string;
@@ -393,6 +491,8 @@ function PrintCopy({
   order: BranchProductionOrder;
   branch: Branch | null;
   printRows: PrintRow[];
+  /** Approved packing lines. Empty on a products-only demand. */
+  packingPrintRows: { materialName: string; qty: number }[];
   printDate: string;
   printTime: string;
   prevBalanceQty: number;
@@ -400,6 +500,9 @@ function PrintCopy({
   receiptFooter: string | null;
 }) {
   const items = printRows.filter((r) => r.approved > 0);
+  // Same rule as products: the slip is a delivery document, so it lists what is
+  // actually going out — a line approved down to zero is not delivered.
+  const packingItems = packingPrintRows.filter((p) => p.qty > 0);
   const totalQty = items.reduce((a, r) => a + r.approved, 0);
   const grandTotal = items.reduce((a, r) => a + r.amount, 0);
   const hasPrevBalance = prevBalanceQty > 0;
@@ -489,6 +592,40 @@ function PrintCopy({
         <div className="flex justify-between"><span className="text-neutral-600">Total Qty</span><span className="font-semibold tabular-nums">{fmt(totalQty)}</span></div>
         <div className="flex justify-between border-t border-neutral-300 pt-0.5 text-sm font-bold"><span>Grand Total Amount</span><span className="tabular-nums">{money(grandTotal, sym)}</span></div>
       </div>
+
+      {/* Packing materials — its own table, below the products and outside the
+          money totals. These carry no price, so they must never fold into the
+          grand total. Omitted entirely when the demand has none, which keeps an
+          ordinary slip byte-identical to before. */}
+      {packingItems.length > 0 && (
+        <div className="avoid-break mt-5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Packing Materials</p>
+          <table className="mt-1 w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="border-y border-neutral-400 text-left">
+                <th className="py-1 pr-1 font-semibold">Item</th>
+                <th className="py-1 pl-1 text-right font-semibold">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {packingItems.map((p) => (
+                <tr key={p.materialName} className="border-b border-neutral-200">
+                  <td className="py-1 pr-1 font-medium">{p.materialName}</td>
+                  <td className="py-1 pl-1 text-right font-semibold tabular-nums">{fmt(p.qty)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-neutral-400 font-bold">
+                <td className="pt-1.5">Total</td>
+                <td className="pt-1.5 pl-1 text-right tabular-nums">
+                  {fmt(packingItems.reduce((a, p) => a + p.qty, 0))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       {/* Payment */}
       <div className="avoid-break mt-5 rounded-md border border-neutral-300 p-3">

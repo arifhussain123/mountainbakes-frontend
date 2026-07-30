@@ -23,6 +23,7 @@ export function ProductionStockPage() {
     col.accessor('preparedToday', { header: 'Prepared Today', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('totalStock', { header: 'Total Stock', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('approvedQty', { header: 'Approved Qty', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    col.accessor('soldToday', { header: 'Sold', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('balance', {
       header: 'Balance',
       cell: (i) => <span className={`font-semibold tabular-nums ${i.getValue() < 0 ? 'text-red-500' : ''}`}>{i.getValue()}</span>,

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall, ApiError } from '@/utils/api';
 import {
@@ -11,7 +12,7 @@ import {
   stockLevel,
   isLowStock,
   type StockLevel,
-  type CreatePosSaleInput,
+  type CreateProductionSaleInput,
   type Product,
   type AppSettings,
   type PaymentMethod,
@@ -24,7 +25,7 @@ import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, 
 import { Separator } from '@/components/ui/separator';
 import { Trash2, Plus, Printer, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, UNPAID_PAYMENT_METHOD } from '@/utils/constants';
 import { cn } from '@/lib/utils';
 import type { InvoiceData } from './InvoiceView';
 
@@ -101,6 +102,9 @@ export function SaleForm({
   stockError,
   onRefreshStock,
   onSaved,
+  endpoint = '/api/orders/pos',
+  paymentMethods = PAYMENT_METHODS,
+  schema = CreatePosSaleSchema as unknown as z.ZodType<CreateProductionSaleInput, z.ZodTypeDef, unknown>,
 }: {
   products: Product[];
   settings: AppSettings | null;
@@ -110,6 +114,17 @@ export function SaleForm({
   stockError: boolean;
   onRefreshStock: () => void;
   onSaved: (invoice: InvoiceData, shouldPrint: boolean) => void;
+  /**
+   * Which endpoint commits the sale. The default deducts the *branch's* stock;
+   * the Production dashboard passes '/api/orders/production-sale', which deducts
+   * the central pool instead. Both take the same body and return the same shape,
+   * so nothing else in this form changes.
+   */
+  endpoint?: string;
+  /** Selectable payment methods. The production counter passes a list including 'staff'. */
+  paymentMethods?: readonly string[];
+  /** Validation schema. Must match `endpoint` — it is what enforces the staff comment. */
+  schema?: z.ZodType<CreateProductionSaleInput, z.ZodTypeDef, unknown>;
 }) {
   const { token } = useAuth();
   const [submitting, setSubmitting] = useState(false);
@@ -120,8 +135,11 @@ export function SaleForm({
   const cur = settings?.currencySymbol || 'Rs.';
   const taxRate = settings?.gstEnabled ? (settings.gstRate / 100) : 0;
 
-  const form = useForm<CreatePosSaleInput>({
-    resolver: zodResolver(CreatePosSaleSchema),
+  // Typed on the production input because it is the SUPERSET — its paymentMethod
+  // union contains every branch method plus 'staff'. Which schema actually runs is
+  // the caller's choice, so branch mode still rejects 'staff' at validation time.
+  const form = useForm<CreateProductionSaleInput>({
+    resolver: zodResolver(schema) as Resolver<CreateProductionSaleInput>,
     defaultValues: {
       branchId,
       customerName: '',
@@ -135,6 +153,7 @@ export function SaleForm({
 
   const items = form.watch('items');
   const paymentMethod = form.watch('paymentMethod');
+  const isUnpaid = paymentMethod === UNPAID_PAYMENT_METHOD;
 
   // Refresh available stock on open and on a short poll while the dialog is mounted.
   useEffect(() => {
@@ -237,14 +256,14 @@ export function SaleForm({
     toast.error(firstMessage(errors) || 'Please review the form and try again.');
   }
 
-  async function onSubmit(data: CreatePosSaleInput) {
+  async function onSubmit(data: CreateProductionSaleInput) {
     const shouldPrint = printRef.current;
     printRef.current = false;
     setSubmitting(true);
     try {
       // Only send receivedCash on cash sales, and only when it is a valid number
       // (an empty field yields NaN → would fail server validation).
-      const body: CreatePosSaleInput = {
+      const body: CreateProductionSaleInput = {
         branchId: data.branchId,
         customerName: data.customerName,
         customerPhone: data.customerPhone,
@@ -254,7 +273,7 @@ export function SaleForm({
         ...(data.paymentMethod === 'cash' && receivedNum != null ? { receivedCash: receivedNum } : {}),
       };
       const result = await apiCall<PosSaleResponse>(
-        '/api/orders/pos',
+        endpoint,
         { method: 'POST', body: JSON.stringify(body) },
         token,
       );
@@ -528,7 +547,7 @@ export function SaleForm({
         <div className="space-y-2">
           <Label>Payment Method</Label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {PAYMENT_METHODS.map((m) => (
+            {paymentMethods.map((m) => (
               <button
                 key={m}
                 type="button"
@@ -544,7 +563,10 @@ export function SaleForm({
           </div>
         </div>
 
-        {/* Cash payments capture the tendered amount here; other methods keep Notes. */}
+        {/* Cash payments capture the tendered amount here; other methods keep Notes.
+            A staff sale collects nothing, so it never shows Received Cash — instead
+            its comment is mandatory, because that note is the only record of who
+            took the goods and why. */}
         {isCash ? (
           <div className="space-y-1">
             <Label>Received Cash</Label>
@@ -569,8 +591,17 @@ export function SaleForm({
           </div>
         ) : (
           <div className="space-y-1">
-            <Label>Notes (optional)</Label>
-            <Textarea placeholder="Any notes…" {...form.register('notes')} />
+            <Label>{isUnpaid ? 'Comment *' : 'Notes (optional)'}</Label>
+            <Textarea
+              placeholder={isUnpaid ? 'Who is taking this, and why? (required)' : 'Any notes…'}
+              aria-invalid={isUnpaid && !!form.formState.errors.notes}
+              {...form.register('notes')}
+            />
+            {isUnpaid && (
+              <p className={cn('text-xs', form.formState.errors.notes ? 'text-destructive' : 'text-muted-foreground')}>
+                {form.formState.errors.notes?.message ?? 'No payment is collected for a staff sale, so a comment is required.'}
+              </p>
+            )}
           </div>
         )}
       </div>

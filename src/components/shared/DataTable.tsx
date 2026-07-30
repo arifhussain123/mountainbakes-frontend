@@ -28,6 +28,14 @@ interface DataTableProps<TData> {
   onExport?: () => void;
   actions?: React.ReactNode;
   pageSize?: number;
+  /**
+   * Columns to hide, e.g. `{ search: false }`.
+   *
+   * The global filter only matches values it can reach through a column accessor,
+   * so making a field searchable without displaying it means adding a column and
+   * hiding it here.
+   */
+  columnVisibility?: Record<string, boolean>;
 }
 
 export function DataTable<TData>({
@@ -38,6 +46,7 @@ export function DataTable<TData>({
   onExport,
   actions,
   pageSize = 20,
+  columnVisibility,
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -45,7 +54,7 @@ export function DataTable<TData>({
   const table = useReactTable({
     data,
     columns,
-    state: { globalFilter, sorting },
+    state: { globalFilter, sorting, ...(columnVisibility ? { columnVisibility } : {}) },
     onGlobalFilterChange: setGlobalFilter,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),

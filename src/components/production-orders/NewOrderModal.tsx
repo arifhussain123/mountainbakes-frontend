@@ -12,8 +12,11 @@ import {
   ORDER_WINDOW_CLOSE_MINUTES,
 } from '@mb/shared';
 import { useSettings } from '@/hooks/useSettings';
+import { useAuth } from '@/hooks/useAuth';
+import { usePackingMaterials } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +27,8 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, Calendar, Clock, Eraser, Hash, Loader2, PackageCheck, Save, Send, Store, User } from 'lucide-react';
+import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Store, Trash2, User } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const EMPTY_PRODUCT_MESSAGE = 'Please enter the quantity for at least one product.';
@@ -51,8 +55,21 @@ export interface NewOrderModalProps {
   branchCode: string;
   userName: string;
   /** Submits the order (a TanStack Query mutation); resolves on success, throws on failure. */
-  submit: (items: { productId: string; qty: number }[]) => Promise<unknown>;
+  submit: (payload: {
+    items: { productId: string; qty: number }[];
+    packingItems: { packingMaterialId: string; qty: number }[];
+  }) => Promise<unknown>;
   submitting: boolean;
+}
+
+/**
+ * One in-progress packing row. Quantity is held as a STRING, matching how product
+ * quantities are held in `qtyById` — an empty input must stay empty rather than
+ * snapping to 0, and it is parsed only at submit time.
+ */
+interface PackingRow {
+  packingMaterialId: string;
+  qty: string;
 }
 
 /** Parse a raw qty string into a positive whole number (0 = blank / not ordered). */
@@ -101,9 +118,14 @@ export function NewOrderModal({
   const [now, setNow] = useState<Date | null>(null);
   const [orderNumber, setOrderNumber] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Packing materials are optional, so the section starts collapsed and its rows
+  // start empty — a demand with none must behave exactly as it did before.
+  const [packingOpen, setPackingOpen] = useState(false);
+  const [packingRows, setPackingRows] = useState<PackingRow[]>([]);
 
   const qtyRefs = useRef<(HTMLInputElement | null)[]>([]);
   const draftKey = branchId ? `mb:po-draft:${branchId}` : 'mb:po-draft';
+  const { token } = useAuth();
 
   // Order window comes from Admin → Business Hours (default 8:00 AM–2:00 AM, wraps midnight).
   const { settings } = useSettings();
@@ -121,8 +143,14 @@ export function NewOrderModal({
       if (raw) {
         // Older drafts may still carry a `remarksById` key — ignored now that
         // Remarks has been removed from the form.
-        const d = JSON.parse(raw) as { qtyById?: Record<string, string> };
-        if (d && typeof d === 'object') setQtyById(d.qtyById ?? {});
+        const d = JSON.parse(raw) as { qtyById?: Record<string, string>; packingRows?: PackingRow[] };
+        if (d && typeof d === 'object') {
+          setQtyById(d.qtyById ?? {});
+          // A draft saved before packing materials existed simply has no rows.
+          const rows = Array.isArray(d.packingRows) ? d.packingRows : [];
+          setPackingRows(rows);
+          if (rows.length > 0) setPackingOpen(true);
+        }
       }
     } catch {
       /* ignore malformed draft */
@@ -154,6 +182,53 @@ export function NewOrderModal({
   const totalQty = selectedItems.reduce((s, x) => s + x.qty, 0);
   const canSubmit = totalProducts > 0 && withinWindow && !submitting;
 
+  // ── Packing materials ──────────────────────────────────────────────────────
+  // Active only. The server re-checks this on submit (a material can be disabled
+  // while the form is open), so this is the convenience half of the rule.
+  const packingQ = usePackingMaterials(token, { enabled: open && !!token });
+  const packingMaterials = useMemo(() => packingQ.data ?? [], [packingQ.data]);
+
+  // Only complete rows count: a row where the user picked a material but hasn't
+  // typed a quantity yet is still being filled in, not a request.
+  const selectedPacking = useMemo(
+    () => packingRows.filter((r) => r.packingMaterialId && parseQty(r.qty) > 0),
+    [packingRows],
+  );
+  const packingCount = selectedPacking.length;
+
+  const addPackingRow = useCallback(() => {
+    setPackingOpen(true);
+    setPackingRows((rows) => [...rows, { packingMaterialId: '', qty: '' }]);
+  }, []);
+
+  const removePackingRow = useCallback((index: number) => {
+    setPackingRows((rows) => rows.filter((_, i) => i !== index));
+  }, []);
+
+  const setPackingMaterial = useCallback((index: number, materialId: string) => {
+    setPackingRows((rows) => rows.map((r, i) => (i === index ? { ...r, packingMaterialId: materialId } : r)));
+  }, []);
+
+  const setPackingQty = useCallback((index: number, raw: string) => {
+    setPackingRows((rows) => rows.map((r, i) => (i === index ? { ...r, qty: sanitizeQty(raw) } : r)));
+  }, []);
+
+  /**
+   * Options for one row: every active material except those already chosen in the
+   * OTHER rows. Keeping the row's own selection in the list means it still renders
+   * as the chosen value. This makes a duplicate unreachable in the UI; the schema
+   * and a unique constraint reject it anyway if something posts directly.
+   */
+  const optionsForRow = useCallback(
+    (index: number) => {
+      const takenElsewhere = new Set(
+        packingRows.filter((_, i) => i !== index).map((r) => r.packingMaterialId).filter(Boolean),
+      );
+      return packingMaterials.filter((m) => !takenElsewhere.has(m.id));
+    },
+    [packingRows, packingMaterials],
+  );
+
   const setQty = useCallback((id: string, raw: string) => setQtyById((p) => ({ ...p, [id]: sanitizeQty(raw) })), []);
 
   const handleQtyKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>, flatIndex: number) => {
@@ -171,6 +246,8 @@ export function NewOrderModal({
 
   function clearAll() {
     setQtyById({});
+    setPackingRows([]);
+    setPackingOpen(false);
     try {
       localStorage.removeItem(draftKey);
     } catch {
@@ -181,7 +258,7 @@ export function NewOrderModal({
 
   function saveDraft() {
     try {
-      localStorage.setItem(draftKey, JSON.stringify({ qtyById }));
+      localStorage.setItem(draftKey, JSON.stringify({ qtyById, packingRows }));
       toast.success('Draft saved');
     } catch {
       toast.error('Could not save draft');
@@ -200,9 +277,15 @@ export function NewOrderModal({
   async function confirmSubmit() {
     try {
       const items = selectedItems.map(({ product, qty }) => ({ productId: product.id, qty }));
-      await submit(items);
+      const packingItems = selectedPacking.map((r) => ({
+        packingMaterialId: r.packingMaterialId,
+        qty: parseQty(r.qty),
+      }));
+      await submit({ items, packingItems });
       toast.success('Production Order Submitted Successfully');
       setQtyById({});
+      setPackingRows([]);
+      setPackingOpen(false);
       try {
         localStorage.removeItem(draftKey);
       } catch {
@@ -344,6 +427,100 @@ export function NewOrderModal({
                 </div>
               </>
             )}
+
+            {/* ---------- Packing Materials (optional) ---------- */}
+            {/* Collapsed by default and never required: most demands are products
+                only, and the section must not add a step to that path. */}
+            <div className="mt-6 rounded-xl border bg-card">
+              <button
+                type="button"
+                onClick={() => setPackingOpen((o) => !o)}
+                aria-expanded={packingOpen}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  Packing Materials
+                  <span className="text-sm font-normal text-muted-foreground">(Optional)</span>
+                  {packingCount > 0 && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                      {packingCount} selected
+                    </span>
+                  )}
+                </span>
+                <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', packingOpen && 'rotate-180')} />
+              </button>
+
+              {packingOpen && (
+                <div className="space-y-3 border-t px-4 py-3">
+                  {packingRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No packing materials requested. Add a row to request some with this demand.
+                    </p>
+                  ) : (
+                    packingRows.map((row, i) => (
+                      <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <label className="text-xs text-muted-foreground sm:hidden">Packing Material</label>
+                          <Select
+                            value={row.packingMaterialId}
+                            onValueChange={(v) => v && setPackingMaterial(i, v)}
+                          >
+                            <SelectTrigger className="h-11 w-full sm:h-10">
+                              <SelectValue placeholder={packingQ.isLoading ? 'Loading…' : 'Select a packing material'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {optionsForRow(i).map((m) => (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.materialName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground sm:hidden">Quantity</label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            autoComplete="off"
+                            placeholder="0"
+                            aria-label="Packing material quantity"
+                            value={row.qty}
+                            onChange={(e) => setPackingQty(i, e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            className="h-11 w-full text-center text-base tabular-nums sm:h-10 sm:w-28"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove packing material row"
+                          onClick={() => removePackingRow(i)}
+                          className="h-11 w-11 shrink-0 self-end text-muted-foreground hover:text-destructive sm:h-10 sm:w-10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+
+                  <Button type="button" variant="outline" size="sm" onClick={addPackingRow}>
+                    <Plus className="mr-1 h-4 w-4" /> Add Row
+                  </Button>
+                </div>
+              )}
+
+              {!packingOpen && (
+                <div className="border-t px-4 py-3">
+                  <Button type="button" variant="outline" size="sm" onClick={addPackingRow}>
+                    <Plus className="mr-1 h-4 w-4" /> Add Packing Material
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ---------- Sticky footer ---------- */}
@@ -407,6 +584,13 @@ export function NewOrderModal({
               <dt className="text-muted-foreground">Total quantity</dt>
               <dd className="font-semibold tabular-nums">{totalQty}</dd>
             </div>
+            {/* Only when there are any — a products-only confirmation is unchanged. */}
+            {packingCount > 0 && (
+              <div className="flex justify-between px-3 py-2">
+                <dt className="text-muted-foreground">Packing materials</dt>
+                <dd className="font-semibold tabular-nums">{packingCount}</dd>
+              </div>
+            )}
           </dl>
 
           <DialogFooter>

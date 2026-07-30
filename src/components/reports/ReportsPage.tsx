@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import dynamic from 'next/dynamic';
 import { StatCard } from '@/components/shared/StatCard';
+import { PackingUsageReport } from './PackingUsageReport';
 import { ShoppingCart, DollarSign, TrendingDown, TrendingUp, BarChart3, Receipt, Printer } from 'lucide-react';
 import type { ReportSummary } from '@mb/shared';
 import { toast } from 'sonner';
@@ -153,6 +154,7 @@ export function ReportsPage() {
           <TabsTrigger value="sales">Sales Trend</TabsTrigger>
           {user?.role === 'super_admin' && <TabsTrigger value="branches">Branch Comparison</TabsTrigger>}
           <TabsTrigger value="products">Top Products</TabsTrigger>
+          <TabsTrigger value="packing">Packing Materials</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales" className="mt-4">
@@ -197,6 +199,12 @@ export function ReportsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Its own date range and filters — packing usage is asked about per day and
+            per material, independently of the sales period selected above. */}
+        <TabsContent value="packing" className="mt-4">
+          <PackingUsageReport />
         </TabsContent>
       </Tabs>
     </div>

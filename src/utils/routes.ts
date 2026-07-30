@@ -20,6 +20,7 @@ export const ROUTES = {
   // Production module
   PRODUCTION_DASHBOARD: '/production-dashboard',
   PRODUCTION_ORDERS: '/production-orders',
+  PRODUCTION_SALES: '/production-sales',
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',

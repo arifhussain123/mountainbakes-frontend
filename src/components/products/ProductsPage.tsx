@@ -8,6 +8,8 @@ import { useProducts } from '@/lib/queries';import { DataTable } from '@/compone
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PackingMaterialsPage } from '@/components/packing-materials/PackingMaterialsPage';
 import { ProductForm } from './ProductForm';
 import { ChangePriceDialog } from './ChangePriceDialog';
 import type { Product } from '@mb/shared';
@@ -136,15 +138,30 @@ export function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Products</h2>
-          <p className="text-sm text-muted-foreground">{products.length} products in catalog</p>
-        </div>
-        <Button onClick={() => { setEditProduct(null); setShowForm(true); }}>+ Add Product</Button>
-      </div>
+      {/* Two catalogues, deliberately never mixed: bakery products have prices and
+          are sold; packing materials are service items supplied with a demand. */}
+      <Tabs defaultValue="products">
+        <TabsList>
+          <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="packing">Packing Materials</TabsTrigger>
+        </TabsList>
 
-      <DataTable columns={columns} data={products} loading={loading} searchPlaceholder="Search products, SKUâ€¦" />
+        <TabsContent value="products" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Products</h2>
+              <p className="text-sm text-muted-foreground">{products.length} products in catalog</p>
+            </div>
+            <Button onClick={() => { setEditProduct(null); setShowForm(true); }}>+ Add Product</Button>
+          </div>
+
+          <DataTable columns={columns} data={products} loading={loading} searchPlaceholder="Search products, SKUâ€¦" />
+        </TabsContent>
+
+        <TabsContent value="packing" className="mt-4">
+          <PackingMaterialsPage />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-lg">

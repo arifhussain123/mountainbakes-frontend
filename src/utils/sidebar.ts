@@ -57,6 +57,7 @@ export const BRANCH_NAV: NavItem[] = [
 export const PRODUCTION_NAV: NavItem[] = [
   { label: 'Dashboard',         href: ROUTES.PRODUCTION_DASHBOARD,     icon: LayoutDashboard },
   { label: 'Orders',            href: ROUTES.PRODUCTION_ORDERS,        icon: ClipboardList },
+  { label: 'Sales',             href: ROUTES.PRODUCTION_SALES,         icon: ShoppingCart },
   { label: 'Production Stock',  href: ROUTES.PRODUCTION_STOCK,         icon: Factory },
   { label: 'Branch Stock',      href: ROUTES.PRODUCTION_BRANCH_STOCK,  icon: Boxes },
   { label: 'Returns',           href: ROUTES.PRODUCTION_RETURNS,       icon: Undo2 },
