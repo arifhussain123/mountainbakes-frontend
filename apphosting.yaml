@@ -1,0 +1,55 @@
+# Firebase App Hosting — build + runtime settings for the Next.js web app.
+#
+# App Hosting builds this app itself (Cloud Build + Firebase's Next.js integration),
+# so unlike the Cloud Run route in Dockerfile there is no image to build or push.
+# `firebase deploy --only apphosting` uploads this folder as the build source and
+# runs the package.json `build` script with pnpm.
+#
+# This file is the ONLY place build-time env can come from: .gitignore excludes
+# `.env*`, so nothing from .env reaches the build. Anything missing here is simply
+# undefined during `next build`.
+#
+# NEXT_PUBLIC_* is inlined into the browser bundle by `next build`, so every one of
+# them needs `availability: BUILD`. Setting them RUNTIME-only changes nothing in the
+# bundle — the same trap DEPLOY.md documents for Heroku. RUNTIME is listed too so
+# server components and route handlers read the same values.
+
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  # Express API origin — scheme + host, no trailing slash (concatenated onto
+  # '/api/...' in src/lib/api/client.ts). This app's origin must also appear in
+  # CORS_ORIGINS on the API, or every request is CORS-blocked.
+  - variable: NEXT_PUBLIC_API_URL
+    value: https://mountainproject-c84e8ec5e300.herokuapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # This app's own public URL (absolute metadata links). Update to the live App
+  # Hosting domain once the backend exists, then redeploy — it is baked in at build.
+  - variable: NEXT_PUBLIC_WEB_URL
+    value: https://mountainbakes-2f685.web.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Supabase Auth, read by src/lib/supabase/client.ts. The publishable ("anon") key
+  # is public by definition — it ships inside the JS bundle either way, so it is not
+  # a secret being leaked here. Rotate it in Supabase, not by hiding it.
+  - variable: NEXT_PUBLIC_SUPABASE_URL
+    value: https://wzjabtuoxrvyareptddq.supabase.co
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    value: sb_publishable_PCx8HWA_l9H0L19Y2HAU_Q_hKQaxN1B
+    availability:
+      - BUILD
+      - RUNTIME

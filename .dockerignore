@@ -21,6 +21,12 @@ build
 Dockerfile
 .dockerignore
 
+# Firebase App Hosting config — irrelevant to the Cloud Run image.
+firebase.json
+.firebaserc
+.firebase
+apphosting.yaml
+
 README.md
 DEPLOY.md
 *.md

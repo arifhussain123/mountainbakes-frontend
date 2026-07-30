@@ -10,12 +10,15 @@
  * Give it scheme + host with NO trailing slash: it is concatenated straight onto
  * `/api/...` in request() below.
  *
- * Leaving it unset is a misconfiguration, not a default. The browser then falls back
- * to a relative base and calls this app's own origin, where the only handlers are
- * src/app/api/login and /logout — so every other route 404s, which DEPLOY.md lists
- * as a failure mode. The server-side loopback fallback below is a leftover from the
- * retired single-dyno deploy, where the API shared this host behind an /api/* rewrite;
- * on a separate web dyno nothing is listening on that port.
+ * Leaving it unset is a misconfiguration, not a default. The browser would otherwise
+ * fall back to a relative base and call this app's own origin, where the only handlers
+ * are src/app/api/login and /logout — so every other route 404s with an HTML body,
+ * which DEPLOY.md lists as a failure mode. assertApiReachable() below rejects that
+ * case outright rather than letting it masquerade as a missing route.
+ *
+ * The server-side loopback fallback below is a leftover from the retired single-dyno
+ * deploy, where the API shared this host behind an /api/* rewrite; on a separate web
+ * dyno nothing is listening on that port.
  */
 const EXPLICIT_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
 
@@ -39,20 +42,32 @@ function isLocalHost(url: string): boolean {
 }
 
 /**
- * Guards the one remaining way to misconfigure this: NEXT_PUBLIC_API_URL was set
- * *explicitly* to a localhost URL (copied from .env.local, say) and the app was then
- * deployed to a real domain — so every request fails with ERR_CONNECTION_REFUSED or
- * a mixed-content block. Surface a clear error instead of an empty page.
+ * Guards the two ways to misconfigure the base URL, both of which otherwise surface as
+ * something that looks like a different bug entirely.
  *
- * Only fires when the variable is set explicitly — the early return below skips an
- * unset one, which is now a gap rather than a deliberate exemption: since nothing
- * proxies /api/* any more, unset on a non-localhost origin is equally broken. It is
- * left uncaught because it fails visibly on its own (404s on every route, which
- * DEPLOY.md names), not because it is valid.
+ * 1. Unset. Every request then goes to this app's own origin and 404s with Next's HTML
+ *    error page — which reads as "the API route is missing" rather than "the API was
+ *    never called". Nothing proxies /api/* any more, so this is broken everywhere, not
+ *    just in production.
+ * 2. Set *explicitly* to a localhost URL (copied from a dev .env, say) and then deployed
+ *    to a real domain — every request fails with ERR_CONNECTION_REFUSED or a mixed-content
+ *    block, and the page renders empty with nothing useful in the console.
+ *
+ * Browser-only: the server-side path legitimately uses the loopback fallback above, so it
+ * returns before either check.
  */
 function assertApiReachable(): void {
   if (typeof window === 'undefined') return;
-  if (!EXPLICIT_API_URL) return;
+  if (!EXPLICIT_API_URL) {
+    throw new ApiError(
+      `NEXT_PUBLIC_API_URL is unset, so every /api/* request goes to this app's own ` +
+        `origin instead of the Express API — only /api/login and /api/logout exist here, ` +
+        `so everything else 404s with an HTML page. Set it to the API's origin (scheme + ` +
+        `host, no trailing slash) and REBUILD: NEXT_PUBLIC_* is inlined at build time, so ` +
+        `setting it on a running app has no effect.`,
+      0
+    );
+  }
   const onLocalHost = isLocalHost(window.location.origin);
   if (!onLocalHost && isLocalHost(EXPLICIT_API_URL)) {
     throw new ApiError(
@@ -226,7 +241,12 @@ async function request<T>(
       }
     }
 
-    console.error(`[api] ${options.method || 'GET'} ${endpoint} → ${response.status}`, message);
+    // Log the full URL, not just the path: a 404 caused by the wrong base URL is
+    // indistinguishable from a genuinely missing route unless the origin is visible.
+    console.error(
+      `[api] ${options.method || 'GET'} ${API_URL}${endpoint} → ${response.status}`,
+      message
+    );
     throw new ApiError(message, response.status, body.details);
   }
 

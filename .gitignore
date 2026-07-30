@@ -40,6 +40,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# firebase deploy cache (firebase.json/.firebaserc/apphosting.yaml ARE committed —
+# App Hosting reads them from the uploaded source)
+.firebase/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
