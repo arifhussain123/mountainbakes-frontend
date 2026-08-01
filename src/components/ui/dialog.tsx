@@ -31,7 +31,9 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // 40% rather than 10%: behind a full-width bottom sheet a 10% scrim reads
+        // as a rendering glitch rather than as depth.
+        "fixed inset-0 isolate z-50 bg-black/40 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -39,25 +41,64 @@ function DialogOverlay({
   )
 }
 
+/**
+ * A modal at `md` and up; a bottom sheet (or a full-screen page) on a phone.
+ *
+ * There is deliberately no `useIsMobile()` branch here. `Sheet` and `Dialog` are
+ * the same base-ui primitive — they differ only by className — so the phone form
+ * is a *style* of this component, not a different one. Expressing it in CSS
+ * means no first-render flash, and no remount that would throw away the state of
+ * a long form (SaleForm, NewOrderModal) when the device rotates across the
+ * breakpoint.
+ *
+ * `mobile` picks the phone form:
+ *  - `'sheet'` (default) — bottom sheet, height driven by content, capped at 90dvh.
+ *  - `'fullscreen'` — edge to edge, full height. For the heavy multi-step forms.
+ *
+ * Width: the `md:max-w-lg` default is deliberately breakpoint-prefixed. Call
+ * sites must override with `md:max-w-*` too — an unprefixed `max-w-*` lands in a
+ * different tailwind-merge group, so both would survive and the `md:` default
+ * would win inside the media query. (That was exactly the bug here before: a
+ * trailing `sm:max-w-sm` silently capped every dialog in the app at 24rem.)
+ */
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  mobile = "sheet",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  mobile?: "sheet" | "fullscreen"
 }) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        data-mobile={mobile}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed z-50 grid w-full gap-4 overflow-y-auto bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none",
+          // Phone form.
+          mobile === "sheet"
+            ? "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))]"
+            : "inset-x-0 top-0 bottom-0 rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))]",
+          // md and up: the centred modal, positioned exactly as it always was.
+          "md:top-1/2 md:right-auto md:bottom-auto md:left-1/2 md:h-auto md:max-h-[90dvh] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:pb-4",
+          // Slides up from the bottom on a phone, zooms in place on a desktop.
+          "data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-bottom-4 data-closed:animate-out data-closed:fade-out-0 data-closed:slide-out-to-bottom-4",
+          "md:data-open:slide-in-from-bottom-0 md:data-open:zoom-in-95 md:data-closed:slide-out-to-bottom-0 md:data-closed:zoom-out-95",
           className
         )}
         {...props}
       >
+        {/* Grab handle — the affordance that says "this sheet drags down". */}
+        {mobile === "sheet" && (
+          <div
+            aria-hidden
+            className="mx-auto -mt-1 h-1 w-10 shrink-0 rounded-full bg-border md:hidden"
+          />
+        )}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
@@ -102,7 +143,12 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "-mx-4 flex flex-col-reverse gap-2 border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        // Cancels the popup's own bottom padding so the bar reaches the edge,
+        // then re-adds it inside — otherwise the buttons sit under the iOS home
+        // indicator on a sheet.
+        "-mb-[calc(1rem+env(safe-area-inset-bottom))] pb-[calc(1rem+env(safe-area-inset-bottom))]",
+        "md:-mb-4 md:rounded-b-xl md:pb-4",
         className
       )}
       {...props}

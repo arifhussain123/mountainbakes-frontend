@@ -27,8 +27,10 @@ export function StockPage() {
   useStockRealtime();
 
   const columns = [
-    col.accessor('stockCode', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
-    col.accessor('productName', { header: 'Product', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
+    // The remaining columns are the day's ledger for this product. As a card they
+    // become a label:value grid, which reads like the receipt it describes.
+    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('opening', { header: 'Opening Stock', cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('newQty', { header: 'New Stock', cell: (i) => <span className="text-emerald-600 dark:text-emerald-400">{i.getValue() ? `+${i.getValue()}` : 0}</span> }),
     col.accessor('sold', { header: 'Sold', cell: (i) => <span className="text-red-600 dark:text-red-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),

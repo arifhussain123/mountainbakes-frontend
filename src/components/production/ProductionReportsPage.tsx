@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ResponsiveMatrix } from '@/components/shared/ResponsiveMatrix';
 import { Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { businessDateStr, type ProductionStockRow } from '@mb/shared';
@@ -110,12 +111,12 @@ export function ProductionReportsPage() {
   return (
     <div className="space-y-6 print-area">
       {/* Controls */}
-      <div className="flex flex-wrap items-end justify-between gap-3 no-print">
-        <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-col items-stretch gap-3 no-print sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Report</label>
             <Select value={report} onValueChange={(v) => { if (v) setReport(v); }}>
-              <SelectTrigger className="h-9 w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-full sm:w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {REPORTS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
               </SelectContent>
@@ -124,13 +125,13 @@ export function ProductionReportsPage() {
           {isPrepared ? (
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Date</label>
-              <Input type="date" value={date} max={businessDateStr()} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" />
+              <Input type="date" value={date} max={businessDateStr()} onChange={(e) => setDate(e.target.value)} className="h-9 w-full sm:w-40" />
             </div>
           ) : (
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Period</label>
               <Select value={period} onValueChange={(v) => { if (v) setPeriod(v); }}>
-                <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 w-full sm:w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PERIODS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                 </SelectContent>
@@ -168,29 +169,13 @@ export function ProductionReportsPage() {
               </p>
               <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>Retry</Button>
             </div>
-          ) : !data || data.rows.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">No data for this report and period.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50 text-left">
-                    {data.headers.map((h) => (
-                      <th key={h} className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((row, i) => (
-                    <tr key={i} className="border-t hover:bg-muted/30">
-                      {row.map((cell, j) => (
-                        <td key={j} className={`px-3 py-2 ${j === 0 ? 'font-medium' : 'tabular-nums'}`}>{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ResponsiveMatrix
+              headers={data?.headers ?? []}
+              rows={data?.rows ?? []}
+              emptyTitle="No data for this report and period"
+              emptyDescription="Try a different report type or date range."
+            />
           )}
         </CardContent>
       </Card>

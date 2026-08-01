@@ -81,7 +81,7 @@ export function ForgotPasswordDialog({
         if (!o) reset();
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="md:max-w-sm">
         <DialogHeader>
           <DialogTitle>Forgot password?</DialogTitle>
           <DialogDescription>

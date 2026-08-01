@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/shared/EmptyState';
 import type { Order } from '@mb/shared';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -36,7 +37,43 @@ export function RecentOrdersTable({ branchId }: { branchId?: string }) {
         <CardTitle className="text-base">Recent Orders</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        {/* Phone cards. Progressive column hiding got this table from six columns
+            to four, but four still overflows 360px — so below `md` the same rows
+            render as cards instead. */}
+        <div className="space-y-3 p-4 md:hidden">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-2 rounded-lg border p-3">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            ))
+          ) : orders.length === 0 ? (
+            <EmptyState title="No orders yet" description="New orders will appear here as they come in." />
+          ) : (
+            orders.map((o) => (
+              <div key={o.id} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{o.customerName}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{o.orderNumber}</p>
+                  </div>
+                  <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${STATUS_COLORS[o.status] || ''}`}>
+                    {o.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    {o.createdAt ? formatDistanceToNow(new Date(o.createdAt), { addSuffix: true }) : ''}
+                  </span>
+                  <span className="font-semibold tabular-nums">Rs.{o.grandTotal?.toLocaleString()}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>

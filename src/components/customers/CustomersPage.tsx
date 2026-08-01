@@ -33,6 +33,8 @@ export function CustomersPage() {
   const columns = [
     col.accessor('name', {
       header: 'Customer',
+      // Cell already stacks name over email.
+      meta: { mobile: 'title' },
       cell: (info) => (
         <div>
           <p className="font-medium">{info.getValue()}</p>
@@ -44,6 +46,7 @@ export function CustomersPage() {
     col.accessor('branchName', { header: 'Branch' }),
     col.accessor('address', {
       header: 'Address',
+      meta: { mobileFull: true },
       cell: (info) => <span className="text-sm text-muted-foreground">{info.getValue() || 'â€”'}</span>,
     }),
     col.accessor('totalOrders', {
@@ -83,7 +86,7 @@ export function CustomersPage() {
       <DataTable columns={columns} data={customers} loading={loading} searchPlaceholder="Search customersâ€¦" />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="md:max-w-md">
           <DialogHeader>
             <DialogTitle>{editCustomer ? 'Edit Customer' : 'Add Customer'}</DialogTitle>
           </DialogHeader>

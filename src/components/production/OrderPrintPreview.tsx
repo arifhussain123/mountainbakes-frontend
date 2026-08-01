@@ -54,7 +54,8 @@ export function OrderPrintPreview({ open, onOpenChange, order, settings, token, 
     <Dialog open={open} onOpenChange={(o) => !reviewing && onOpenChange(o)}>
       <DialogContent
         showCloseButton
-        className="flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 top-0 left-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[92vh] sm:w-[90vw] sm:max-w-[90vw] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl lg:w-[80vw] lg:max-w-[960px]"
+        mobile="fullscreen"
+        className="flex flex-col gap-0 overflow-hidden p-0 md:max-h-[92vh] md:w-[90vw] md:max-w-[90vw] md:rounded-2xl lg:w-[80vw] lg:max-w-[960px]"
       >
         {order && (
           <PreviewBody

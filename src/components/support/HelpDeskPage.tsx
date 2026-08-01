@@ -89,12 +89,12 @@ function NewQueryDialog({ open, onOpenChange, onCreated }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="md:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Query</DialogTitle>
           <DialogDescription>
-            Search a sale (MB-…), expense (EXP-…), or stock (STK-…) ID. Its details load automatically —
-            then describe the issue for the admin.
+            Search a sale (MB-…), demand (DMD-…), expense (EXP-…), or stock (STK-…) ID. Its details
+            load automatically — then describe the issue for the admin.
           </DialogDescription>
         </DialogHeader>
 

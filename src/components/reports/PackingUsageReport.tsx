@@ -68,10 +68,12 @@ export function PackingUsageReport() {
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm tabular-nums">{i.getValue()}</span> }),
     col.accessor('materialName', {
       header: 'Packing Material',
+      meta: { mobile: 'title' },
       cell: (i) => <span className="font-medium">{i.getValue()}</span>,
     }),
     col.accessor('branchName', {
       header: 'Branch',
+      meta: { mobile: 'subtitle' },
       cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue()}</span>,
     }),
     col.accessor('requestedQty', {
@@ -98,21 +100,24 @@ export function PackingUsageReport() {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
+      {/* A grid below `sm` so each control gets a real width to fill — inside a
+          shrink-to-fit flex item, `w-full` resolves against the item's own
+          content width and the date inputs come out too narrow. */}
+      <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
         <div className="space-y-1">
           <label htmlFor="pu-from" className="text-xs font-medium text-muted-foreground">From</label>
-          <Input id="pu-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" />
+          <Input id="pu-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="h-9 w-full sm:w-40" />
         </div>
         <div className="space-y-1">
           <label htmlFor="pu-to" className="text-xs font-medium text-muted-foreground">To</label>
-          <Input id="pu-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" />
+          <Input id="pu-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="h-9 w-full sm:w-40" />
         </div>
 
         {!isBranchManager && (
-          <div className="space-y-1">
+          <div className="col-span-2 space-y-1 sm:col-auto">
             <label className="text-xs font-medium text-muted-foreground">Branch</label>
             <Select value={branchId} onValueChange={(v) => v && setBranchId(v)}>
-              <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-full sm:w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All branches</SelectItem>
                 {(branchesQ.data ?? []).map((b) => (
@@ -123,10 +128,10 @@ export function PackingUsageReport() {
           </div>
         )}
 
-        <div className="space-y-1">
+        <div className="col-span-2 space-y-1 sm:col-auto">
           <label className="text-xs font-medium text-muted-foreground">Packing Material</label>
           <Select value={materialId} onValueChange={(v) => v && setMaterialId(v)}>
-            <SelectTrigger className="h-9 w-56"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-full sm:w-56"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>All materials</SelectItem>
               {(materialsQ.data ?? []).map((m) => (
@@ -136,7 +141,7 @@ export function PackingUsageReport() {
           </Select>
         </div>
 
-        <Button variant="outline" className="h-9" onClick={resetFilters}>Reset</Button>
+        <Button variant="outline" className="col-span-2 h-9 sm:col-auto" onClick={resetFilters}>Reset</Button>
       </div>
 
       <DataTable

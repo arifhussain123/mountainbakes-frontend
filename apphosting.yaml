@@ -31,8 +31,18 @@ env:
       - BUILD
       - RUNTIME
 
-  # This app's own public URL (absolute metadata links). Update to the live App
-  # Hosting domain once the backend exists, then redeploy — it is baked in at build.
+  # This app's own public URL (absolute metadata links).
+  #
+  # STALE — points at mountainbakes-2f685, a project that has been DELETED. The
+  # replacement backend does not exist yet, so its domain is not knowable; App
+  # Hosting issues one of the form
+  #   <backendId>--<projectId>.<region>.hosted.app
+  # on first create. Set that value here and REDEPLOY: this is baked into the
+  # bundle at build time, so changing it on a running backend does nothing.
+  #
+  # The same domain must also be added to CORS_ORIGINS on the Heroku API, which
+  # currently allows only the deleted project's domains — until then the browser
+  # blocks every API call with nothing in the server log to show for it.
   - variable: NEXT_PUBLIC_WEB_URL
     value: https://mountainbakes-2f685.web.app
     availability:

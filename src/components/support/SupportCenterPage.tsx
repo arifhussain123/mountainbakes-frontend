@@ -14,7 +14,14 @@ import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, 
 import type { SupportTicket, SupportReference, SupportSaleItem, Product, PaymentMethod, StockFigures } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X } from 'lucide-react';
+import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { cn } from '@/lib/utils';
 
@@ -26,10 +33,13 @@ const STATUS_VARIANT: Record<SupportTicket['status'], 'default' | 'secondary' | 
   rejected: 'destructive',
 };
 
-// 'System' tickets are opened automatically when an unattended job fails (e.g. the
-// 2 AM closing summary) — they carry no editable reference, only the failure detail.
+// 'Demand' is a branch's production request (DMD-…), raised from the Production
+// Help Desk. 'System' tickets are opened automatically when an unattended job fails
+// (e.g. the 2 AM closing summary) — they carry no editable reference, only the
+// failure detail. Both are read-only; see `canChange` below.
 const TYPE_LABEL: Record<SupportReference['type'], string> = {
   sale: 'Sale',
+  demand: 'Demand',
   expense: 'Expense',
   stock: 'Stock',
   system: 'System',
@@ -99,10 +109,14 @@ export function SupportCenterPage() {
   const columns = [
     col.accessor('ticketNumber', {
       header: 'Ticket',
+      meta: { mobile: 'subtitle' },
       cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
     }),
     col.accessor('referenceId', {
       header: 'Reference',
+      // What the ticket is *about* is the useful heading; its number is the
+      // subtitle above.
+      meta: { mobile: 'title' },
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <Badge variant="outline">{TYPE_LABEL[row.original.referenceType]}</Badge>
@@ -121,10 +135,12 @@ export function SupportCenterPage() {
     }),
     col.accessor('message', {
       header: 'Issue',
+      meta: { mobileFull: true },
       cell: (info) => <span className="text-sm line-clamp-2 max-w-[24rem]">{info.getValue()}</span>,
     }),
     col.accessor('status', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (info) => <Badge variant={STATUS_VARIANT[info.getValue()]} className="capitalize">{info.getValue()}</Badge>,
     }),
     col.display({
@@ -132,14 +148,54 @@ export function SupportCenterPage() {
       header: '',
       cell: ({ row }) => {
         const t = row.original;
+        // Offer "Change figures" only where something can actually be changed. A
+        // read-only reference (demand, production pool, counter sale) and a
+        // 'system' ticket (no reference at all) are answered from View instead.
+        //
+        // Keyed on the snapshot's own flag rather than `editableFields.length`:
+        // sales legitimately carry an empty editableFields (they are corrected
+        // through saleItems), and legacy stock tickets with an empty one are still
+        // routed by type into StockFiguresDialog, which re-reads live figures.
+        // A length test would strand both. No stored snapshot has `readOnly`, so
+        // this cannot regress an existing ticket.
+        const canChange = Boolean(t.referenceSnapshot) && t.referenceSnapshot?.readOnly !== true;
+        const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
         return (
-          <div className="flex items-center gap-0.5 justify-end">
-            <IconBtn title="View" onClick={() => openDialog(t, 'view')}><Eye className="h-3.5 w-3.5" /></IconBtn>
-            <IconBtn title="Edit" onClick={() => openDialog(t, 'edit')}><Pencil className="h-3.5 w-3.5" /></IconBtn>
-            <IconBtn title="Change figures" onClick={() => openDialog(t, 'change')}><SlidersHorizontal className="h-3.5 w-3.5" /></IconBtn>
-            <IconBtn title="Reject" className="text-amber-600" onClick={() => openDialog(t, 'reject')}><Ban className="h-3.5 w-3.5" /></IconBtn>
-            <IconBtn title="Delete" className="text-destructive" onClick={() => handleDelete(t)}><Trash2 className="h-3.5 w-3.5" /></IconBtn>
-          </div>
+          <>
+            {/* Desktop keeps the dense icon row. */}
+            <div className="hidden items-center justify-end gap-0.5 md:flex">
+              <IconBtn title="View" onClick={() => openDialog(t, 'view')}><Eye className="h-3.5 w-3.5" /></IconBtn>
+              <IconBtn title="Edit" onClick={() => openDialog(t, 'edit')}><Pencil className="h-3.5 w-3.5" /></IconBtn>
+              <IconBtn title={changeTitle} disabled={!canChange} onClick={() => openDialog(t, 'change')}>
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </IconBtn>
+              <IconBtn title="Reject" className="text-amber-600" onClick={() => openDialog(t, 'reject')}><Ban className="h-3.5 w-3.5" /></IconBtn>
+              <IconBtn title="Delete" className="text-destructive" onClick={() => handleDelete(t)}><Trash2 className="h-3.5 w-3.5" /></IconBtn>
+            </div>
+
+            {/* On a phone five 44px targets are ~220px — more than half the screen
+                — so they collapse into one menu, matching UsersPage. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={`Actions for ${t.ticketNumber}`}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:hidden"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => openDialog(t, 'view')}><Eye className="h-4 w-4" /> View</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openDialog(t, 'edit')}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                <DropdownMenuItem disabled={!canChange} onClick={() => openDialog(t, 'change')}>
+                  <SlidersHorizontal className="h-4 w-4" /> Change figures
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openDialog(t, 'reject')}><Ban className="h-4 w-4" /> Reject</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(t)}>
+                  <Trash2 className="h-4 w-4" /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         );
       },
     }),
@@ -166,9 +222,9 @@ export function SupportCenterPage() {
   );
 }
 
-function IconBtn({ children, title, onClick, className }: { children: React.ReactNode; title: string; onClick: () => void; className?: string }) {
+function IconBtn({ children, title, onClick, className, disabled }: { children: React.ReactNode; title: string; onClick: () => void; className?: string; disabled?: boolean }) {
   return (
-    <Button variant="ghost" size="icon" className={`h-8 w-8 ${className ?? ''}`} title={title} onClick={onClick}>
+    <Button variant="ghost" size="icon" className={`h-8 w-8 ${className ?? ''}`} title={title} onClick={onClick} disabled={disabled}>
       {children}
     </Button>
   );
@@ -193,7 +249,7 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="md:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {ticket.ticketNumber}
@@ -257,7 +313,7 @@ function EditDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="md:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit {ticket.ticketNumber}</DialogTitle>
           <DialogDescription>Adjust the issue text or add an internal note.</DialogDescription>
@@ -373,7 +429,7 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="md:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit sale — {ticket.referenceId}</DialogTitle>
           <DialogDescription>
@@ -494,6 +550,14 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
 function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const ref = ticket.referenceSnapshot;
 
+  // Belt and braces behind the disabled button above — a stale client could still
+  // reach here. Without this, FieldEditDialog's no-editable-fields fallback would
+  // render the reference's DISPLAY fields as editable inputs and resolve the ticket
+  // with a "Correction recorded (manual follow-up)" note that corrected nothing.
+  // The server rejects the PATCH regardless; this keeps the UI honest.
+  if (!ref || ref.readOnly) {
+    return <NothingToChangeDialog onClose={onClose} />;
+  }
   // Sales get a dedicated line-item editor (change product / qty / amount, add /
   // remove lines) applied live to the order with stock reconciled server-side.
   if (ref?.type === 'sale' && ref.saleItems) {
@@ -505,6 +569,30 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
     return <StockFiguresDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
   }
   return <FieldEditDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
+}
+
+/**
+ * Terminal state for a reference that carries nothing correctable — a demand, the
+ * production stock pool, a Production counter sale, or a 'system' ticket. Answering
+ * it is a resolution note, which lives in View.
+ */
+function NothingToChangeDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="md:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Nothing to correct</DialogTitle>
+          <DialogDescription>
+            This reference is informational only — there is no figure here that can be written
+            back. Open <span className="font-medium">View</span> to reply and resolve the query.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** Read-only figure row inside the stock editor. */
@@ -656,7 +744,7 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="md:max-w-lg">
         <DialogHeader>
           <DialogTitle>Correct stock — {ticket.referenceId}</DialogTitle>
           <DialogDescription>
@@ -795,7 +883,7 @@ function FieldEditDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; o
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="md:max-w-lg">
         <DialogHeader>
           <DialogTitle>Change figures — {ticket.referenceId}</DialogTitle>
           <DialogDescription>
@@ -853,7 +941,7 @@ function RejectDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="md:max-w-md">
         <DialogHeader>
           <DialogTitle>Reject {ticket.ticketNumber}</DialogTitle>
           <DialogDescription>Let the raiser know why this query is being rejected.</DialogDescription>

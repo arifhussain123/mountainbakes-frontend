@@ -29,7 +29,7 @@ export function ChangePriceDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="md:max-w-md">
         <DialogHeader>
           <DialogTitle>Change Price</DialogTitle>
         </DialogHeader>

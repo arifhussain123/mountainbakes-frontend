@@ -75,3 +75,54 @@ export const NAV_MAP: Record<UserRole, NavItem[]> = {
 export function getNavItems(role: UserRole): NavItem[] {
   return NAV_MAP[role] ?? [];
 }
+
+/**
+ * The four destinations that get a permanent tab in the mobile bottom nav.
+ *
+ * The full nav is 14 / 7 / 9 items depending on role, which does not fit a bottom
+ * bar — four tabs plus a "More" tab is the most that stays tappable at 360px. So
+ * these are the daily-driver screens per role; everything else is one tap further
+ * away behind More, which shows the complete `NAV_MAP` list.
+ *
+ * Order matters: it is the left-to-right tab order. Hrefs must exist in that
+ * role's NAV_MAP — `getPrimaryNavItems` drops any that don't rather than
+ * rendering a tab that 404s or that the proxy would bounce.
+ */
+export const PRIMARY_NAV: Record<UserRole, string[]> = {
+  super_admin: [ROUTES.DASHBOARD, ROUTES.ORDERS, ROUTES.PRODUCTS, ROUTES.REPORTS],
+  branch_manager: [
+    ROUTES.BRANCH_DASHBOARD,
+    ROUTES.BRANCH_SALES,
+    ROUTES.BRANCH_NEW_ORDERS,
+    ROUTES.BRANCH_STOCK,
+  ],
+  production_user: [
+    ROUTES.PRODUCTION_DASHBOARD,
+    ROUTES.PRODUCTION_ORDERS,
+    ROUTES.PRODUCTION_STOCK,
+    ROUTES.PRODUCTION_SALES,
+  ],
+};
+
+/**
+ * Whether a nav item should render as the current page.
+ *
+ * Prefix matching is what makes a nested route keep its parent tab highlighted,
+ * but the dashboards are excluded from it: their hrefs are prefixes of nothing
+ * useful, and `/production-dashboard`.startsWith() would light up alongside the
+ * real match. Shared by the sidebar and the bottom nav so the two can never
+ * disagree about which item is active.
+ */
+export function isNavItemActive(pathname: string, href: string): boolean {
+  if (pathname === href) return true;
+  if (href.endsWith('-dashboard') || href === ROUTES.DASHBOARD) return false;
+  return pathname.startsWith(href);
+}
+
+/** The bottom-nav tabs for a role, resolved against NAV_MAP and in PRIMARY_NAV order. */
+export function getPrimaryNavItems(role: UserRole): NavItem[] {
+  const items = getNavItems(role);
+  return (PRIMARY_NAV[role] ?? [])
+    .map((href) => items.find((item) => item.href === href))
+    .filter((item): item is NavItem => item !== undefined);
+}

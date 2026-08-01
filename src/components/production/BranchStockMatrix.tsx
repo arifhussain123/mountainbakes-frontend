@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useProductionBranchStock } from '@/lib/queries';import { Card, CardContent } from '@/components/ui/card';
+import { useProductionBranchStock } from '@/lib/queries';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search } from 'lucide-react';
@@ -64,7 +65,7 @@ export function BranchStockMatrix() {
       {/* Mobile cards */}
       <div className="space-y-3 md:hidden">
         {rows.length === 0 ? (
-          <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No products found</CardContent></Card>
+          <EmptyState title="No products found" description={filter ? 'Try a different search term.' : undefined} />
         ) : (
           rows.map((r) => (
             <div key={r.productId} className="rounded-lg border bg-card p-3">

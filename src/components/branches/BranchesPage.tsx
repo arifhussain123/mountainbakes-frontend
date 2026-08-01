@@ -75,18 +75,22 @@ export function BranchesPage() {
     col.display({
       id: 'icon',
       header: '',
+      // Decoration that earns its place only in a wide row — a card already has
+      // the branch name as its heading.
+      meta: { mobile: 'hidden' },
       cell: () => (
         <div className="w-9 h-9 rounded-lg bg-secondary/10 flex items-center justify-center">
           <Store className="h-4 w-4 text-secondary" />
         </div>
       ),
     }),
-    col.accessor('name', { header: 'Branch Name', cell: (info) => <span className="font-semibold">{info.getValue()}</span> }),
-    col.accessor('location', { header: 'Location' }),
+    col.accessor('name', { header: 'Branch Name', meta: { mobile: 'title' }, cell: (info) => <span className="font-semibold">{info.getValue()}</span> }),
+    col.accessor('location', { header: 'Location', meta: { mobile: 'subtitle' } }),
     col.accessor('managerName', { header: 'Manager', cell: (info) => info.getValue() || <span className="text-muted-foreground">Unassigned</span> }),
     col.accessor('phone', { header: 'Phone' }),
     col.accessor('isActive', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (info) => <Badge variant={info.getValue() ? 'default' : 'secondary'}>{info.getValue() ? 'Active' : 'Inactive'}</Badge>,
     }),
     col.display({
@@ -126,7 +130,7 @@ export function BranchesPage() {
       <DataTable columns={columns} data={branches} loading={loading} searchPlaceholder="Search branchesâ€¦" />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="md:max-w-md">
           <DialogHeader><DialogTitle>{editBranch ? 'Edit Branch' : 'Add Branch'}</DialogTitle></DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             {(['name', 'location', 'phone', 'address', 'city'] as const).map((field) => (

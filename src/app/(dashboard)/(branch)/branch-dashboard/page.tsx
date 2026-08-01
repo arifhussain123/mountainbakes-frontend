@@ -1,13 +1,9 @@
-import { Topbar } from '@/components/layout/Topbar';
 import { BranchDashboard } from '@/components/dashboard/BranchDashboard';
 
 export default function Page() {
   return (
-    <>
-      <Topbar title="Branch Dashboard" />
-      <div className="p-6">
-        <BranchDashboard />
-      </div>
-    </>
+    <div className="p-4 sm:p-6">
+      <BranchDashboard />
+    </div>
   );
 }

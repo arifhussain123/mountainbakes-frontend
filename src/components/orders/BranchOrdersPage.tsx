@@ -30,7 +30,7 @@ export function BranchOrdersPage() {
       <OrdersPage refreshKey={refreshKey} />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="md:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create New Order</DialogTitle>
           </DialogHeader>

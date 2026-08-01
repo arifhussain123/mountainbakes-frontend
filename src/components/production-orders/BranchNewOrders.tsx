@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/shared/DataTable';
 import { Plus } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
+import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 
 type HistoryRow = { date: string; time: string; productName: string; qty: number; approvedQty?: number; pendingBalance?: number; status: string };
@@ -110,7 +111,7 @@ export function BranchNewOrders() {
   const columns = [
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    col.accessor('productName', { header: 'Product', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('qty', {
       header: 'Qty',
       cell: (i) => {
@@ -135,14 +136,14 @@ export function BranchNewOrders() {
           : <span className="text-muted-foreground">—</span>;
       },
     }),
-    col.accessor('status', { header: 'Status', cell: (i) => <StatusPill status={i.getValue()} /> }),
+    col.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
   ];
 
   // Same shape as the product columns minus Pending — see PackingHistoryRow.
   const packingColumns = [
     packCol.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     packCol.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    packCol.accessor('materialName', { header: 'Packing Material', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    packCol.accessor('materialName', { header: 'Packing Material', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     packCol.accessor('qty', {
       header: 'Qty',
       cell: (i) => {
@@ -158,7 +159,7 @@ export function BranchNewOrders() {
         );
       },
     }),
-    packCol.accessor('status', { header: 'Status', cell: (i) => <StatusPill status={i.getValue()} /> }),
+    packCol.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
   ];
 
   const branchCode = deriveBranchCode(user?.branchName ?? null, user?.branchId ?? null);
@@ -168,7 +169,8 @@ export function BranchNewOrders() {
     <div className="space-y-4">
       {/* New Order button (top-left) + section heading */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button size="lg" onClick={openModal}>
+        {/* Mobile gets this as the FAB at the bottom of this component. */}
+        <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
           <Plus className="mr-1.5 h-4 w-4" /> New Order
         </Button>
         <div className="text-right">
@@ -214,6 +216,8 @@ export function BranchNewOrders() {
         submit={(payload) => submitMut.mutateAsync(payload)}
         submitting={submitMut.isPending}
       />
+
+      <Fab onClick={openModal} icon={Plus} label="New production order" />
     </div>
   );
 }

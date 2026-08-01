@@ -109,6 +109,8 @@ export function NotificationRecipientsPage() {
   const columns = useMemo(() => [
     col.accessor('recipientName', {
       header: 'Recipient',
+      // Cell already stacks name over mobile number.
+      meta: { mobile: 'title' },
       cell: ({ row }) => (
         <div>
           <p className="font-medium">{row.original.recipientName}</p>
@@ -119,6 +121,7 @@ export function NotificationRecipientsPage() {
     col.display({
       id: 'scope',
       header: 'Receives',
+      meta: { mobile: 'badge' },
       cell: ({ row }) => <Badge variant="outline">{scopeLabel(row.original, branches)}</Badge>,
     }),
     col.accessor('channel', {
@@ -281,7 +284,7 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="md:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit recipient' : 'Add recipient'}</DialogTitle>
           <DialogDescription>
@@ -381,7 +384,7 @@ function LogsDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="md:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Delivery log</DialogTitle>
           <DialogDescription>Every closing-summary send attempt, newest first.</DialogDescription>

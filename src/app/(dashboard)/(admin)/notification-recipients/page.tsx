@@ -1,13 +1,9 @@
-import { Topbar } from '@/components/layout/Topbar';
 import { NotificationRecipientsPage } from '@/components/settings/NotificationRecipientsPage';
 
 export default function Page() {
   return (
-    <>
-      <Topbar title="Notification Recipients" />
-      <div className="p-6">
-        <NotificationRecipientsPage />
-      </div>
-    </>
+    <div className="p-4 sm:p-6">
+      <NotificationRecipientsPage />
+    </div>
   );
 }

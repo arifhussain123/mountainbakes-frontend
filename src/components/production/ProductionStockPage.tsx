@@ -19,7 +19,7 @@ export function ProductionStockPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const columns = [
-    col.accessor('productName', { header: 'Product', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('preparedToday', { header: 'Prepared Today', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('totalStock', { header: 'Total Stock', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('approvedQty', { header: 'Approved Qty', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),

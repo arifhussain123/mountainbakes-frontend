@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
+import { Fab } from '@/components/shared/Fab';
 import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
 import { InvoiceView, type InvoiceData } from './InvoiceView';
@@ -240,10 +241,11 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   }, [sales, methods]);
 
   const columns = [
-    col.accessor('orderNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
+    col.accessor('orderNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('createdAt', { header: 'Time', cell: (i) => <span className="text-sm">{i.getValue() ? karachiTimeStr(new Date(i.getValue())) : ''}</span> }),
     col.accessor('customerName', {
       header: 'Customer',
+      meta: { mobile: 'title' },
       cell: (i) => (
         <div>
           <p className="font-medium">{i.getValue()}</p>
@@ -253,6 +255,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     }),
     col.accessor('items', {
       header: 'Products',
+      meta: { mobileFull: true },
       cell: (i) => {
         const names = i.getValue().map((it) => it.productName).join(', ');
         return <span className="text-sm">{names.length > 40 ? names.slice(0, 40) + '…' : names}</span>;
@@ -273,6 +276,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
       ? [
           col.accessor('notes', {
             header: 'Comment',
+            // The whole audit trail for an unpaid staff sale — never squeeze it
+            // into half a card row.
+            meta: { mobileFull: true },
             cell: (i) => {
               const text = (i.getValue() ?? '').trim();
               if (!text) return <span className="text-muted-foreground">—</span>;
@@ -303,15 +309,15 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Sales</h2>
           <p className="text-sm text-muted-foreground">
             {isToday ? 'Today’s sales' : `Sales on ${date}`} · {sales.length} recorded
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-1 sm:flex-none">
             <label htmlFor="sales-date" className="text-xs font-medium text-muted-foreground">Date</label>
             {/* Capped at the current business day — there are no sales in the future,
                 and an accidental typo there would silently show an empty table. */}
@@ -321,17 +327,22 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               value={date}
               max={today}
               onChange={(e) => setDate(e.target.value || today)}
-              className="h-9 w-40"
+              className="h-9 w-full sm:w-40"
             />
           </div>
           {!isToday && (
             <Button variant="outline" className="h-9" onClick={() => setDate(today)}>Today</Button>
           )}
-          <Button className="h-9" disabled={!canSell} onClick={() => setShowForm(true)}>
+          {/* Mobile takes this as the FAB below instead. */}
+          <Button className="hidden h-9 md:inline-flex" disabled={!canSell} onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4 mr-1" /> New Sale
           </Button>
         </div>
       </div>
+
+      {canSell && (
+        <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
+      )}
 
       <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
 
@@ -366,7 +377,10 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
       {/* New Sale dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 top-0 left-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90vh] sm:w-[95vw] sm:max-w-[1100px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl lg:w-[90vw] lg:max-w-[1400px]">
+        <DialogContent
+          mobile="fullscreen"
+          className="flex flex-col gap-0 overflow-hidden p-0 md:w-[95vw] md:max-w-[1100px] md:rounded-2xl lg:w-[90vw] lg:max-w-[1400px]"
+        >
           <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12 sm:px-5">
             <DialogTitle>New Sale</DialogTitle>
           </DialogHeader>
@@ -394,7 +408,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
       {/* Invoice preview / print */}
       <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        {/* Full screen on a phone: the receipt is a fixed 384px column, so inside
+            a 90dvh sheet the Print button below it falls off the bottom. */}
+        <DialogContent mobile="fullscreen" className="md:max-w-md">
           <DialogHeader>
             <DialogTitle className="no-print">Invoice</DialogTitle>
           </DialogHeader>
@@ -407,7 +423,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
       {/* View sale details */}
       <Dialog open={!!viewOrder} onOpenChange={(o) => !o && setViewOrder(null)}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="md:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sale {viewOrder?.orderNumber}</DialogTitle>
           </DialogHeader>
@@ -430,8 +446,24 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
                 )}
               </div>
 
-              {/* Items */}
-              <div className="overflow-x-auto rounded-lg border">
+              {/* Items — five columns cannot hold their shape inside a sheet on a
+                  360px screen, so each line becomes its own small block. */}
+              <ul className="divide-y rounded-lg border md:hidden">
+                {viewOrder.items.map((it, idx) => (
+                  <li key={idx} className="space-y-1 p-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 font-medium">{it.productName}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{cur}{it.lineTotal.toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {it.qty} × {cur}{it.unitPrice.toLocaleString()}
+                      {it.discount ? ` · discount -${cur}${it.discount.toLocaleString()}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
                     <tr>

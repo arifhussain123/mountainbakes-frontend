@@ -129,7 +129,7 @@ export function ResetPasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="md:max-w-md">
         <DialogHeader>
           <DialogTitle>Reset password</DialogTitle>
           <DialogDescription>Reset this user&apos;s password and (optionally) email them a link.</DialogDescription>

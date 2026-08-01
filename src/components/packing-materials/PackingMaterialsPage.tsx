@@ -68,10 +68,12 @@ export function PackingMaterialsPage() {
   const columns = [
     col.accessor('materialCode', {
       header: 'Code',
+      meta: { mobile: 'subtitle' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span>,
     }),
     col.accessor('materialName', {
       header: 'Packing Material',
+      meta: { mobile: 'title' },
       cell: (i) => <span className="font-medium">{i.getValue()}</span>,
     }),
     col.accessor('category', {
@@ -80,6 +82,7 @@ export function PackingMaterialsPage() {
     }),
     col.accessor('isActive', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (i) => (
         <Badge variant={i.getValue() ? 'default' : 'secondary'}>{i.getValue() ? 'Active' : 'Inactive'}</Badge>
       ),
@@ -155,7 +158,7 @@ export function PackingMaterialsPage() {
       />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editMaterial ? 'Edit Packing Material' : 'Add Packing Material'}</DialogTitle>
           </DialogHeader>
@@ -164,7 +167,7 @@ export function PackingMaterialsPage() {
       </Dialog>
 
       <Dialog open={!!viewMaterial} onOpenChange={(o) => !o && setViewMaterial(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="md:max-w-md">
           <DialogHeader>
             <DialogTitle>{viewMaterial?.materialName}</DialogTitle>
           </DialogHeader>

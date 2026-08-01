@@ -260,6 +260,10 @@
      regardless of the on-screen viewport width. */
   .print-doc-table { display: table !important; }
   .print-doc-cards { display: none !important; }
+  /* Responsive data tables (DataTable, ResponsiveMatrix): the table branch is
+     `hidden md:block`, and whether `md:` applies on paper depends on the page
+     box width. Force it, so a printed report never depends on that. */
+  .print-table-wrap { display: block !important; }
   /* Content that exists only on paper (e.g. the Customer/Company print copies). */
   .print-only { display: block !important; }
 

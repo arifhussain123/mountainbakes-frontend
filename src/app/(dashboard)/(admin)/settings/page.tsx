@@ -1,13 +1,9 @@
-import { Topbar } from '@/components/layout/Topbar';
 import { SettingsPage } from '@/components/settings/SettingsPage';
 
 export default function Page() {
   return (
-    <>
-      <Topbar title="Settings" />
-      <div className="p-6">
-        <SettingsPage />
-      </div>
-    </>
+    <div className="p-4 sm:p-6">
+      <SettingsPage />
+    </div>
   );
 }

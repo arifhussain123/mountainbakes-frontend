@@ -1,13 +1,9 @@
-import { Topbar } from '@/components/layout/Topbar';
 import { SalesPage } from '@/components/sales/SalesPage';
 
 export default function Page() {
   return (
-    <>
-      <Topbar title="Sales" />
-      <div className="p-4 sm:p-6">
-        <SalesPage mode="production" />
-      </div>
-    </>
+    <div className="p-4 sm:p-6">
+      <SalesPage mode="production" />
+    </div>
   );
 }

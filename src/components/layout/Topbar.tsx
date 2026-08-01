@@ -18,9 +18,16 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { getPageTitle } from '@/utils/pageTitles';
 
+/**
+ * `title` is optional and normally omitted: the Topbar is mounted once in the
+ * dashboard layout and resolves its own heading from the route via PAGE_TITLES.
+ * The prop remains for the rare screen that needs a heading the URL cannot
+ * express, and overrides the map when passed.
+ */
 export function Topbar({ title }: { title?: string }) {
   const { toggleSidebar } = useAppStore();
   const { user, logout } = useAuth();
@@ -28,6 +35,8 @@ export function Topbar({ title }: { title?: string }) {
   const { theme, setTheme, accent, setAccent, mounted } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const heading = title ?? getPageTitle(pathname);
 
   async function handleLogout() {
     await logout();
@@ -43,8 +52,12 @@ export function Topbar({ title }: { title?: string }) {
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Page title */}
-        {title && <h1 className="text-base font-semibold text-foreground hidden sm:block">{title}</h1>}
+        {/* Page title. Shown on mobile too — with the sidebar closed by default
+            and the bottom nav only labelling five destinations, this heading is
+            the only thing telling a phone user which screen they are on. */}
+        {heading && (
+          <h1 className="truncate text-base font-semibold text-foreground">{heading}</h1>
+        )}
 
         <div className="flex-1" />
 

@@ -15,7 +15,8 @@ import { ChangePriceDialog } from './ChangePriceDialog';
 import type { Product } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Coins, Power } from 'lucide-react';
+import { Pencil, Trash2, Coins, Power, Plus } from 'lucide-react';
+import { Fab } from '@/components/shared/Fab';
 
 const col = createColumnHelper<Product>();
 
@@ -63,6 +64,8 @@ export function ProductsPage() {
   const columns = [
     col.accessor('name', {
       header: 'Product',
+      // The cell already stacks name over SKU, so it fills the card head alone.
+      meta: { mobile: 'title' },
       cell: (info) => (
         <div>
           <p className="font-medium">{info.getValue()}</p>
@@ -81,6 +84,7 @@ export function ProductsPage() {
     }),
     col.accessor('isActive', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (info) => (
         <Badge variant={info.getValue() ? 'default' : 'secondary'}>
           {info.getValue() ? 'Active' : 'Inactive'}
@@ -152,10 +156,25 @@ export function ProductsPage() {
               <h2 className="text-lg font-semibold">Products</h2>
               <p className="text-sm text-muted-foreground">{products.length} products in catalog</p>
             </div>
-            <Button onClick={() => { setEditProduct(null); setShowForm(true); }}>+ Add Product</Button>
+            {/* Mobile gets this as the FAB below instead. */}
+            <Button
+              className="hidden md:inline-flex"
+              onClick={() => { setEditProduct(null); setShowForm(true); }}
+            >
+              + Add Product
+            </Button>
           </div>
 
           <DataTable columns={columns} data={products} loading={loading} searchPlaceholder="Search products, SKUâ€¦" />
+
+          {/* Inside the tab panel on purpose: the Packing Materials tab owns its
+              own add action, so a FAB rendered at page level would fire the wrong
+              one while that tab is showing. */}
+          <Fab
+            onClick={() => { setEditProduct(null); setShowForm(true); }}
+            icon={Plus}
+            label="Add product"
+          />
         </TabsContent>
 
         <TabsContent value="packing" className="mt-4">
@@ -164,7 +183,7 @@ export function ProductsPage() {
       </Tabs>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
           </DialogHeader>

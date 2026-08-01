@@ -54,8 +54,12 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
+        // Full screen on a phone rather than the default bottom sheet: this
+        // dialog's first child is a text input, and a sheet pinned to the bottom
+        // edge sits exactly where the on-screen keyboard opens.
+        mobile="fullscreen"
         className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
+          "overflow-hidden p-0 md:top-1/3 md:bottom-auto md:h-auto md:translate-y-0 md:rounded-xl",
           className
         )}
         showCloseButton={showCloseButton}

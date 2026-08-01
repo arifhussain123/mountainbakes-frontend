@@ -82,13 +82,14 @@ export function ProductionOrdersPage() {
 
   const columns = [
     col.accessor('demandNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
-    col.display({ id: 'ref', header: 'Order #', cell: ({ row }) => <span className="font-mono text-xs">{slipReference(row.original)}</span> }),
+    col.display({ id: 'ref', header: 'Order #', meta: { mobile: 'subtitle' }, cell: ({ row }) => <span className="font-mono text-xs">{slipReference(row.original)}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    col.accessor('branchName', { header: 'Branch', cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
+    col.accessor('branchName', { header: 'Branch', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
     col.accessor('createdByName', { header: 'Requested By', cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('status', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (i) => (
         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[i.getValue()] ?? 'bg-muted text-muted-foreground'}`}>
           {i.getValue()}
