@@ -246,6 +246,21 @@ export function SettingsPage() {
               onCheckedChange={(v) => setSettings((p) => ({ ...p, orderConfirmationsEnabled: v }))}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Special Event Reminders</p>
+              <p className="text-xs text-muted-foreground">
+                WhatsApp/SMS branches and Production ahead of each event. Governs the automatic
+                daily send only — &ldquo;Send due reminders now&rdquo; on the Special Events screen
+                always works.
+              </p>
+            </div>
+            <Switch
+              checked={settings.eventNotificationsEnabled ?? false}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, eventNotificationsEnabled: v }))}
+            />
+          </div>
         </CardContent>
       </Card>
 

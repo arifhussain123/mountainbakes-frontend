@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PackagePlus, Save, Loader2, Eraser } from 'lucide-react';
+import { sortProducts } from '@/utils/productSort';
 import { toast } from 'sonner';
 
 function digits(raw: string): string {
@@ -26,13 +27,9 @@ export interface PrepareProductsModalProps {
 export function PrepareProductsModal({ open, onOpenChange, products, loadingProducts, submit, submitting }: PrepareProductsModalProps) {
   const [qtyById, setQtyById] = useState<Record<string, string>>({});
 
-  const ordered = useMemo(
-    () => [...products].sort((a, b) => {
-      const c = (a.categoryName || '').localeCompare(b.categoryName || '');
-      return c !== 0 ? c : a.name.localeCompare(b.name);
-    }),
-    [products],
-  );
+  // Same order the branch sees in its New Order popup — pound cakes grouped at
+  // the end — so the two screens never list the same products differently.
+  const ordered = useMemo(() => sortProducts(products), [products]);
 
   const selected = useMemo(
     () => ordered.map((p) => ({ productId: p.id, qty: parseInt(qtyById[p.id] ?? '', 10) || 0 })).filter((x) => x.qty > 0),

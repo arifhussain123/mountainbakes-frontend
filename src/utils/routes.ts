@@ -16,6 +16,7 @@ export const ROUTES = {
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',
   NOTIFICATION_RECIPIENTS: '/notification-recipients',
+  SPECIAL_EVENTS: '/special-events',
 
   // Production module
   PRODUCTION_DASHBOARD: '/production-dashboard',
@@ -27,6 +28,7 @@ export const ROUTES = {
   PRODUCTION_EXPENSES: '/production-expenses',
   PRODUCTION_REPORTS: '/production-reports',
   PRODUCTION_HELP_DESK: '/production-help-desk',
+  PRODUCTION_EVENTS: '/production-events',
   USERS: '/users',
   SETTINGS: '/settings',
 
@@ -40,6 +42,7 @@ export const ROUTES = {
   BRANCH_CUSTOMERS: '/branch-customers',
   BRANCH_REPORTS: '/branch-reports',
   BRANCH_HELP_DESK: '/branch-help-desk',
+  BRANCH_EVENTS: '/branch-events',
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];

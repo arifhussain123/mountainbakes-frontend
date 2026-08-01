@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   Headset,
   Send,
+  CalendarDays,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES } from './routes';
@@ -37,6 +38,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Customers',       href: ROUTES.CUSTOMERS,        icon: Users },
   { label: 'Branches',        href: ROUTES.BRANCHES,         icon: Store },
   { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
+  { label: 'Special Events',  href: ROUTES.SPECIAL_EVENTS,   icon: CalendarDays },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
@@ -50,6 +52,7 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Sales',         href: ROUTES.BRANCH_SALES,       icon: ShoppingCart },
   { label: 'Stock',         href: ROUTES.BRANCH_STOCK,       icon: Boxes },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
+  { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
   { label: 'Reports',       href: ROUTES.BRANCH_REPORTS,     icon: BarChart3 },
   { label: 'Help Desk',     href: ROUTES.BRANCH_HELP_DESK,   icon: Headset },
 ];
@@ -62,6 +65,7 @@ export const PRODUCTION_NAV: NavItem[] = [
   { label: 'Branch Stock',      href: ROUTES.PRODUCTION_BRANCH_STOCK,  icon: Boxes },
   { label: 'Returns',           href: ROUTES.PRODUCTION_RETURNS,       icon: Undo2 },
   { label: 'Expenses',          href: ROUTES.PRODUCTION_EXPENSES,      icon: Receipt },
+  { label: 'Events',            href: ROUTES.PRODUCTION_EVENTS,        icon: CalendarDays },
   { label: 'Reports',           href: ROUTES.PRODUCTION_REPORTS,       icon: BarChart3 },
   { label: 'Help Desk',         href: ROUTES.PRODUCTION_HELP_DESK,     icon: Headset },
 ];

@@ -81,7 +81,14 @@ export function proxy(req: NextRequest) {
   // Redirect /login → role home (already signed in)
   if (pathname === '/login') return NextResponse.redirect(new URL(home, req.url));
 
-  // Admin-only routes
+  // Admin-only routes.
+  //
+  // This list is an explicit allowlist, NOT derived from the (admin) route group —
+  // so a new admin route that matches neither the '/branch-' nor the
+  // '/production-' prefix below is unguarded until it is added here.
+  // '/special-events' is exactly that case; its branch and production siblings
+  // (/branch-events, /production-events) are already covered by the two prefix
+  // rules underneath.
   if (
     (pathname.startsWith('/dashboard') ||
       pathname.startsWith('/users') ||
@@ -93,6 +100,7 @@ export function proxy(req: NextRequest) {
       pathname.startsWith('/reports') ||
       pathname.startsWith('/support') ||
       pathname.startsWith('/notification-recipients') ||
+      pathname.startsWith('/special-events') ||
       pathname.startsWith('/settings')) &&
     role !== 'super_admin'
   ) {

@@ -2,6 +2,7 @@
 
 import { useProductionRealtime } from '@/hooks/useProductionRealtime';
 import { usePriceRealtime } from '@/hooks/usePriceRealtime';
+import { useEventsRealtime } from '@/hooks/useEventsRealtime';
 
 /**
  * App-wide notification → cache/toast bridge, mounted once in the dashboard
@@ -19,5 +20,6 @@ import { usePriceRealtime } from '@/hooks/usePriceRealtime';
 export function RealtimeBridge() {
   useProductionRealtime();
   usePriceRealtime();
+  useEventsRealtime();
   return null;
 }

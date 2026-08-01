@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { sortProducts } from '@/utils/productSort';
 import { toast } from 'sonner';
 
 const EMPTY_PRODUCT_MESSAGE = 'Please enter the quantity for at least one product.';
@@ -161,15 +162,10 @@ export function NewOrderModal({
 
   const withinWindow = now ? isWithinOrderWindow(karachiMinutesOfDay(now), openMin, closeMin) : true;
 
-  // Products sorted by Category, then Name (branch users can't reorder/edit — Admin-owned).
-  const orderedProducts = useMemo(
-    () =>
-      [...products].sort((a, b) => {
-        const c = (a.categoryName || '').localeCompare(b.categoryName || '');
-        return c !== 0 ? c : a.name.localeCompare(b.name);
-      }),
-    [products],
-  );
+  // Size, then Category, then Name — the 1 Pound / 2 Pound cakes collect at the
+  // bottom of the list instead of scattering through the plain cakes. Branch
+  // users can't reorder or edit products; this is Admin-owned data.
+  const orderedProducts = useMemo(() => sortProducts(products), [products]);
 
   const selectedItems = useMemo(
     () =>
