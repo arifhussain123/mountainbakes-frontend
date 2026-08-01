@@ -10,14 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
-import { useTheme } from '@/providers/ThemeProvider';
+import { useTheme, ACCENTS } from '@/providers/ThemeProvider';
 import type { AppSettings } from '@mb/shared';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
   const { token } = useAuth();
   const { settings: globalSettings, refreshSettings } = useSettings();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [settings, setSettings] = useState<Partial<AppSettings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -104,18 +104,18 @@ export function SettingsPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Finance & Tax</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>Currency</Label>
               <Input
-                value={settings.currency || 'PKR'}
+                value={settings.currency ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, currency: e.target.value }))}
               />
             </div>
             <div className="space-y-1">
               <Label>Symbol</Label>
               <Input
-                value={settings.currencySymbol || 'Rs.'}
+                value={settings.currencySymbol ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, currencySymbol: e.target.value }))}
               />
             </div>
@@ -139,8 +139,14 @@ export function SettingsPage() {
                 type="number"
                 min={0}
                 max={100}
-                value={settings.gstRate || 0}
-                onChange={(e) => setSettings((p) => ({ ...p, gstRate: parseFloat(e.target.value) }))}
+                value={settings.gstRate ?? 0}
+                // parseFloat('') is NaN, and JSON.stringify turns NaN into null —
+                // which the server's z.number() rejects with a 400. Clearing the
+                // field must fall back to 0, not poison the payload.
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  setSettings((p) => ({ ...p, gstRate: Number.isFinite(n) ? n : 0 }));
+                }}
               />
             </div>
           )}
@@ -161,7 +167,7 @@ export function SettingsPage() {
               <Label>Business Start Time</Label>
               <Input
                 type="time"
-                value={settings.businessStartTime || '08:00'}
+                value={settings.businessStartTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, businessStartTime: e.target.value }))}
               />
             </div>
@@ -169,7 +175,7 @@ export function SettingsPage() {
               <Label>Business Closing Time</Label>
               <Input
                 type="time"
-                value={settings.businessClosingTime || '02:00'}
+                value={settings.businessClosingTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, businessClosingTime: e.target.value }))}
               />
             </div>
@@ -177,7 +183,7 @@ export function SettingsPage() {
               <Label>Order Start Time</Label>
               <Input
                 type="time"
-                value={settings.orderStartTime || '08:00'}
+                value={settings.orderStartTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, orderStartTime: e.target.value }))}
               />
             </div>
@@ -185,7 +191,7 @@ export function SettingsPage() {
               <Label>Order End Time</Label>
               <Input
                 type="time"
-                value={settings.orderEndTime || '02:00'}
+                value={settings.orderEndTime ?? ''}
                 onChange={(e) => setSettings((p) => ({ ...p, orderEndTime: e.target.value }))}
               />
             </div>
@@ -212,13 +218,41 @@ export function SettingsPage() {
               onCheckedChange={(v) => setSettings((p) => ({ ...p, autoStockClosing: v }))}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Closing Summary Notifications</p>
+              <p className="text-xs text-muted-foreground">
+                WhatsApp/SMS each branch, Production &amp; Admin their summary after the 2:00 AM close.
+                Manage numbers under Recipients.
+              </p>
+            </div>
+            <Switch
+              checked={settings.closingNotificationsEnabled ?? false}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, closingNotificationsEnabled: v }))}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Order Confirmation SMS</p>
+              <p className="text-xs text-muted-foreground">
+                Text the customer their order number and total when an order is placed.
+                Sends only when a phone number is on the order.
+              </p>
+            </div>
+            <Switch
+              checked={settings.orderConfirmationsEnabled ?? false}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, orderConfirmationsEnabled: v }))}
+            />
+          </div>
         </CardContent>
       </Card>
 
       {/* Appearance */}
       <Card>
         <CardHeader><CardTitle className="text-base">Appearance</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-sm">Dark Mode</p>
@@ -228,6 +262,29 @@ export function SettingsPage() {
               checked={theme === 'dark'}
               onCheckedChange={(v) => setTheme(v ? 'dark' : 'light')}
             />
+          </div>
+
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <p className="font-medium text-sm">Accent Color</p>
+              <p className="text-xs text-muted-foreground">Recolor buttons, highlights and charts</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.value}
+                  type="button"
+                  title={a.label}
+                  aria-label={a.label}
+                  aria-pressed={accent === a.value}
+                  onClick={() => setAccent(a.value)}
+                  className={`h-6 w-6 rounded-full border-2 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    accent === a.value ? 'border-foreground' : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: a.swatch }}
+                />
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

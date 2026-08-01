@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ResponsiveMatrix } from '@/components/shared/ResponsiveMatrix';
 import { Download, Upload, CheckCircle2, AlertTriangle, MinusCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -99,7 +100,7 @@ export function PriceListPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Export Price List</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
+        <CardContent className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <p className="mr-auto text-sm text-muted-foreground">Download the current price list — edit it and re-import to bulk-update.</p>
           <Button variant="outline" onClick={() => exportList('excel')} disabled={exporting !== null}>
             {exporting === 'excel' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />} Export Excel
@@ -112,7 +113,7 @@ export function PriceListPage() {
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Export by Category</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
+        <CardContent className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <p className="mr-auto text-sm text-muted-foreground">
             Same columns, grouped and sorted by category — still a valid re-import template.
           </p>
@@ -127,7 +128,7 @@ export function PriceListPage() {
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Import Price List</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
+        <CardContent className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <p className="mr-auto text-sm text-muted-foreground">
             Upload an Excel/CSV with <span className="font-medium text-foreground">Product Code</span> and{' '}
             <span className="font-medium text-foreground">Current Price</span> columns. You&apos;ll preview before saving.
@@ -140,12 +141,15 @@ export function PriceListPage() {
       </Card>
 
       <Dialog open={previewOpen} onOpenChange={(o) => !committing && setPreviewOpen(o)}>
-        <DialogContent className="flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 top-0 left-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90vh] sm:w-[92vw] sm:max-w-[820px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
+        <DialogContent
+          mobile="fullscreen"
+          className="flex flex-col gap-0 overflow-hidden p-0 md:w-[92vw] md:max-w-[820px] md:rounded-2xl"
+        >
           <DialogHeader className="shrink-0 border-b px-5 py-4"><DialogTitle>Review Price Import</DialogTitle></DialogHeader>
 
           {preview && (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <SummaryStat icon={CheckCircle2} label="Will update" value={preview.summary.valid} tone="emerald" />
                 <SummaryStat icon={MinusCircle} label="Unchanged" value={preview.summary.unchanged} tone="muted" />
                 <SummaryStat icon={AlertTriangle} label="Errors" value={preview.summary.errors} tone="red" />
@@ -230,26 +234,7 @@ function PreviewSection({ title, children }: { title: string; children: React.Re
 }
 
 function MiniTable({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-muted/50 text-left">
-            {head.map((h) => (
-              <th key={h} className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-t">
-              {row.map((cell, j) => (
-                <td key={j} className={`px-3 py-2 ${j === 0 ? 'font-medium' : ''}`}>{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  // Same headers/rows shape as the production reports, so it shares their
+  // responsive renderer rather than keeping a second copy of the markup.
+  return <ResponsiveMatrix headers={head} rows={rows} numeric={false} emptyTitle="Nothing here" />;
 }

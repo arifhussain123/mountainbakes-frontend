@@ -119,6 +119,7 @@ export function UsersPage() {
   const columns = [
     col.accessor('displayName', {
       header: 'User',
+      meta: { mobile: 'title' },
       cell: (info) => (
         <div>
           <p className="font-medium">{info.getValue()}</p>
@@ -126,9 +127,10 @@ export function UsersPage() {
         </div>
       ),
     }),
-    col.accessor('username', { header: 'Username', cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span> }),
+    col.accessor('username', { header: 'Username', meta: { mobile: 'subtitle' }, cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span> }),
     col.accessor('role', {
       header: 'Role',
+      meta: { mobile: 'badge' },
       cell: (info) => (
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${ROLE_COLORS[info.getValue()]}`}>
           {info.getValue().replace('_', ' ')}
@@ -139,6 +141,7 @@ export function UsersPage() {
     col.accessor('phone', { header: 'Phone' }),
     col.accessor('status', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (info) => (
         <Badge variant={info.getValue() === 'active' ? 'default' : 'secondary'} className="capitalize">
           {info.getValue()}
@@ -212,7 +215,7 @@ export function UsersPage() {
       </Tabs>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="md:max-w-md">
           <DialogHeader><DialogTitle>Create User</DialogTitle></DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

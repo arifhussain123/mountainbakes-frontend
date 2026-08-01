@@ -1,28 +1,20 @@
 'use client';
 
-import {
-  createContext, useContext, useEffect, useState, useCallback,
-} from 'react';
-import {
-  collection, query, where, orderBy, onSnapshot, doc, updateDoc, limit,
-  addDoc, serverTimestamp,
-} from 'firebase/firestore';
-import { db } from '@/utils/firebase';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import type { Notification } from '@mb/shared';
+import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { logger } from '@/utils/logger';
-import type {
-  Notification, Chat, ChatMember, CreateGroupChatInput, GroupChatType,
-} from '@mb/shared';
 
 /**
- * One place for the always-on realtime streams a signed-in user needs
- * (notifications + chats). Previously these lived in `useNotifications` /
- * `useChats`, which were called from the per-page `<Topbar>` (and again from the
- * realtime bridges), so every navigation tore down and re-opened 3+ Firestore
- * `onSnapshot` listeners — and pages that use a bridge opened the notifications
- * stream twice. Mounting this once in the dashboard layout keeps a single set of
- * listeners alive across navigation and shares their state with every consumer.
+ * Notifications are live again, read straight from the `notifications` table
+ * over Supabase Realtime — the design the schema was built for (migration 07:
+ * "the table the client subscribes to via Supabase Realtime"). RLS (migration
+ * 09) scopes each user's feed to notifications addressed to them personally or
+ * broadcast to their role/branch, so no client-side filtering is needed.
  */
+
+// How many recent notifications to hold in the in-app feed.
+const FEED_LIMIT = 50;
 
 // ── Notifications ──────────────────────────────────────────────────────────
 
@@ -35,292 +27,210 @@ interface NotificationsValue {
 
 const NotificationsContext = createContext<NotificationsValue | null>(null);
 
-function NotificationsProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    if (!user) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return;
-    }
-
-    // Two separate queries so Firestore can statically verify each rule branch:
-    // 1. targetRole query — works when the `role` custom claim is set on the token
-    // 2. targetUserId query — always works (rule trivially satisfied by the uid match)
-    let roleItems: Notification[] = [];
-    let userItems: Notification[] = [];
-
-    function merge() {
-      const seen = new Set<string>();
-      const all: Notification[] = [];
-      for (const n of [...roleItems, ...userItems]) {
-        if (!seen.has(n.id)) {
-          seen.add(n.id);
-          all.push(n);
-        }
-      }
-      all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      const top50 = all.slice(0, 50);
-      setNotifications(top50);
-      setUnreadCount(top50.filter((n) => !n.isRead).length);
-    }
-
-    const qRole = query(
-      collection(db, 'notifications'),
-      where('targetRole', '==', user.role),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-
-    const qUser = query(
-      collection(db, 'notifications'),
-      where('targetUserId', '==', user.uid),
-      orderBy('createdAt', 'desc'),
-      limit(25)
-    );
-
-    const unsubRole = onSnapshot(
-      qRole,
-      (snap) => {
-        roleItems = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification));
-        merge();
-      },
-      (err) => {
-        // Silently ignore if role claim isn't set on the token yet
-        if (err.code !== 'permission-denied') console.error('Notifications (role):', err);
-      }
-    );
-
-    const unsubUser = onSnapshot(
-      qUser,
-      (snap) => {
-        userItems = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification));
-        merge();
-      },
-      (err) => {
-        console.error('Notifications (user):', err);
-      }
-    );
-
-    return () => {
-      unsubRole();
-      unsubUser();
-    };
-  }, [user]);
-
-  const markAsRead = useCallback(async (id: string) => {
-    await updateDoc(doc(db, 'notifications', id), { isRead: true });
-  }, []);
-
-  const markAllAsRead = useCallback(async () => {
-    await Promise.all(
-      notifications
-        .filter((n) => !n.isRead)
-        .map((n) => updateDoc(doc(db, 'notifications', n.id), { isRead: true }))
-    );
-  }, [notifications]);
-
-  return (
-    <NotificationsContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead }}>
-      {children}
-    </NotificationsContext.Provider>
-  );
-}
-
 export function useNotifications(): NotificationsValue {
   const ctx = useContext(NotificationsContext);
   if (!ctx) throw new Error('useNotifications must be used within <RealtimeProvider>');
   return ctx;
 }
 
-// ── Chats ──────────────────────────────────────────────────────────────────
+/** Shape of a `notifications` row as it comes back from PostgREST/Realtime. */
+interface NotificationRow {
+  id: string;
+  type: Notification['type'];
+  title: string;
+  message: string;
+  is_read: boolean;
+  target_user_id: string | null;
+  target_role: string | null;
+  branch_id: string | null;
+  related_id: string | null;
+  created_at: string;
+}
 
-function docToChat(id: string, data: Record<string, unknown>): Chat {
-  const toISO = (v: unknown) => {
-    if (!v) return new Date().toISOString();
-    if (typeof v === 'object' && 'toDate' in (v as object)) return (v as { toDate: () => Date }).toDate().toISOString();
-    return String(v);
-  };
+/** Map a snake_case DB row to the camelCase `Notification` the app consumes. */
+function mapRow(r: NotificationRow): Notification {
   return {
-    id,
-    type: (data.type as Chat['type']) ?? 'dm',
-    name: (data.name as string | null) ?? null,
-    description: (data.description as string | null) ?? null,
-    avatarUrl: (data.avatarUrl as string | null) ?? null,
-    members: (data.members as string[]) ?? [],
-    memberDetails: (data.memberDetails as Record<string, ChatMember>) ?? {},
-    createdBy: (data.createdBy as string) ?? '',
-    createdAt: toISO(data.createdAt),
-    updatedAt: toISO(data.updatedAt),
-    lastMessage: (data.lastMessage as Chat['lastMessage']) ?? null,
-    unreadCounts: (data.unreadCounts as Record<string, number>) ?? {},
-    typing: (data.typing as Record<string, string>) ?? {},
-    isPinned: (data.isPinned as Record<string, boolean>) ?? {},
-    isArchived: (data.isArchived as Record<string, boolean>) ?? {},
-    groupType: (data.groupType as GroupChatType | null) ?? null,
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    message: r.message,
+    isRead: r.is_read,
+    targetUserId: r.target_user_id,
+    targetRole: r.target_role as Notification['targetRole'],
+    branchId: r.branch_id,
+    relatedId: r.related_id,
+    createdAt: r.created_at,
   };
 }
 
-interface ChatsValue {
-  chats: Chat[];
-  unreadTotal: number;
-  loading: boolean;
-  error: string | null;
-  createDM: (targetMember: ChatMember) => Promise<string>;
-  createGroup: (input: CreateGroupChatInput) => Promise<string>;
-  archiveChat: (chatId: string) => Promise<void>;
-  pinChat: (chatId: string, pinned: boolean) => Promise<void>;
+/** A `notification_reads` row — one per (notification, recipient) that has been read. */
+interface NotificationReadRow { notification_id: string; user_id: string }
+
+/**
+ * Flatten a PostgREST error into one readable line.
+ *
+ * Logging the error object directly renders as `{}` in the Next dev overlay —
+ * it serialises with JSON.stringify, and the interesting fields (message, and
+ * often details/hint) are either non-enumerable or undefined. That hides the
+ * SQLSTATE, which is the only part that says what actually went wrong.
+ */
+function describeError(e: unknown): string {
+  if (!e || typeof e !== 'object') return String(e);
+  const { message, code, details, hint } = e as {
+    message?: string; code?: string; details?: string; hint?: string;
+  };
+  const parts = [message, code && `code=${code}`, details && `details=${details}`, hint && `hint=${hint}`];
+  return parts.filter(Boolean).join(' | ') || JSON.stringify(e);
 }
 
-const ChatsContext = createContext<ChatsValue | null>(null);
-
-function ChatsProvider({ children }: { children: React.ReactNode }) {
+function useNotificationsState(): NotificationsValue {
   const { user } = useAuth();
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [unreadTotal, setUnreadTotal] = useState(0);
+  const uid = user?.uid;
+  // Raw rows straight from PostgREST/Realtime; the effective feed overlays this
+  // user's read-set (see `notifications` below).
+  const [rawNotifications, setRawNotifications] = useState<Notification[]>([]);
+  // IDs this user has read, sourced from the per-recipient `notification_reads`
+  // table. Unlike notifications.is_read (one shared flag per row, unwritable by
+  // broadcast recipients), this is per (notification, user) — so read-state works
+  // for role/branch broadcasts and syncs across devices via Realtime.
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+
+  // Upsert by id, newest first — used for both the initial load and every
+  // realtime INSERT/UPDATE so a row is never duplicated.
+  const upsert = useCallback((incoming: Notification) => {
+    setRawNotifications((prev) => {
+      const next = prev.filter((n) => n.id !== incoming.id);
+      next.unshift(incoming);
+      next.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return next.slice(0, FEED_LIMIT);
+    });
+  }, []);
+
+  const addReadId = useCallback((id: string) => {
+    setReadIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
 
   useEffect(() => {
-    if (!user) { setChats([]); setUnreadTotal(0); setLoading(false); return; }
+    // Signed out: nothing to subscribe to. Any prior session's feed is cleared
+    // by the cleanup of the previous run, so we don't touch state here.
+    if (!uid) return;
 
-    const q = query(
-      collection(db, 'chats'),
-      where('members', 'array-contains', user.uid),
-      orderBy('updatedAt', 'desc')
-    );
+    let cancelled = false;
 
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => docToChat(d.id, d.data() as Record<string, unknown>));
-        const filtered = list.filter((c) => !c.isArchived[user.uid]);
-        setChats(filtered);
-        setUnreadTotal(filtered.reduce((sum, c) => sum + (c.unreadCounts[user.uid] ?? 0), 0));
-        setLoading(false);
-      },
-      (err) => {
-        logger.error('useChats snapshot error', err);
-        setError('Failed to load chats');
-        setLoading(false);
+    // The shared Supabase client keeps the realtime socket's JWT in sync via
+    // onAuthStateChange, so RLS can evaluate role/branch broadcasts
+    // (app.jwt_role() / app.jwt_branch_id()) without a manual setAuth here.
+
+    // Initial load: the feed and this user's read-set together. RLS scopes both.
+    (async () => {
+      const [feedRes, readsRes] = await Promise.all([
+        supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(FEED_LIMIT),
+        supabase.from('notification_reads').select('notification_id'),
+      ]);
+      if (cancelled) return;
+      if (readsRes.error) {
+        console.error('[notifications] read-set load failed:', describeError(readsRes.error));
+      } else {
+        setReadIds(new Set((readsRes.data ?? []).map((r) => (r as NotificationReadRow).notification_id)));
       }
-    );
+      if (feedRes.error) {
+        console.error('[notifications] initial load failed:', describeError(feedRes.error));
+        return;
+      }
+      setRawNotifications((feedRes.data ?? []).map((r) => mapRow(r as NotificationRow)));
+    })();
 
-    return unsub;
-  }, [user]);
+    // Live updates: new notifications, and this user's read rows (so a read on
+    // one device clears the badge on another).
+    const channel = supabase
+      .channel('notifications-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
+        (payload) => upsert(mapRow(payload.new as NotificationRow)),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications' },
+        (payload) => upsert(mapRow(payload.new as NotificationRow)),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notification_reads', filter: `user_id=eq.${uid}` },
+        (payload) => addReadId((payload.new as NotificationReadRow).notification_id),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'notification_reads', filter: `user_id=eq.${uid}` },
+        (payload) => {
+          const removed = (payload.old as NotificationReadRow).notification_id;
+          setReadIds((prev) => {
+            if (!prev.has(removed)) return prev;
+            const next = new Set(prev);
+            next.delete(removed);
+            return next;
+          });
+        },
+      )
+      .subscribe();
 
-  const createDM = useCallback(async (targetMember: ChatMember): Promise<string> => {
-    if (!user) throw new Error('Not authenticated');
-
-    // Check if DM already exists
-    const existing = chats.find(
-      (c) => c.type === 'dm' && c.members.includes(targetMember.uid) && c.members.length === 2
-    );
-    if (existing) return existing.id;
-
-    const myMember: ChatMember = {
-      uid: user.uid,
-      displayName: user.displayName,
-      role: user.role,
-      branchName: user.branchName,
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+      // Drop this session's feed and read-set so a different user never inherits it.
+      setRawNotifications([]);
+      setReadIds(new Set());
     };
+  }, [uid, upsert, addReadId]);
 
-    const ref = await addDoc(collection(db, 'chats'), {
-      type: 'dm',
-      name: null,
-      description: null,
-      avatarUrl: null,
-      members: [user.uid, targetMember.uid],
-      memberDetails: { [user.uid]: myMember, [targetMember.uid]: targetMember },
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      lastMessage: null,
-      unreadCounts: { [user.uid]: 0, [targetMember.uid]: 0 },
-      typing: {},
-      isPinned: {},
-      isArchived: {},
-      groupType: null,
-    });
-
-    return ref.id;
-  }, [user, chats]);
-
-  const createGroup = useCallback(async (input: CreateGroupChatInput): Promise<string> => {
-    if (!user) throw new Error('Not authenticated');
-
-    const myMember: ChatMember = {
-      uid: user.uid,
-      displayName: user.displayName,
-      role: user.role,
-      branchName: user.branchName,
-    };
-
-    const allMemberDetails = { ...input.memberDetails, [user.uid]: myMember };
-    const allMemberUids = Array.from(new Set([...input.memberUids, user.uid]));
-    const initialUnread = Object.fromEntries(allMemberUids.map((uid) => [uid, 0]));
-
-    const ref = await addDoc(collection(db, 'chats'), {
-      type: 'group',
-      name: input.name,
-      description: input.description ?? null,
-      avatarUrl: null,
-      members: allMemberUids,
-      memberDetails: allMemberDetails,
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      lastMessage: null,
-      unreadCounts: initialUnread,
-      typing: {},
-      isPinned: {},
-      isArchived: {},
-      groupType: input.groupType,
-    });
-
-    return ref.id;
-  }, [user]);
-
-  const archiveChat = useCallback(async (chatId: string): Promise<void> => {
-    if (!user) return;
-    await updateDoc(doc(db, 'chats', chatId), {
-      [`isArchived.${user.uid}`]: true,
-      updatedAt: serverTimestamp(),
-    });
-  }, [user]);
-
-  const pinChat = useCallback(async (chatId: string, pinned: boolean): Promise<void> => {
-    if (!user) return;
-    await updateDoc(doc(db, 'chats', chatId), {
-      [`isPinned.${user.uid}`]: pinned,
-      updatedAt: serverTimestamp(),
-    });
-  }, [user]);
-
-  return (
-    <ChatsContext.Provider
-      value={{ chats, unreadTotal, loading, error, createDM, createGroup, archiveChat, pinChat }}
-    >
-      {children}
-    </ChatsContext.Provider>
+  // The feed the app consumes: a row is read if the legacy is_read flag says so
+  // OR this user has a notification_reads row for it.
+  const notifications = useMemo(
+    () => rawNotifications.map((n) => (n.isRead || readIds.has(n.id) ? { ...n, isRead: true } : n)),
+    [rawNotifications, readIds],
   );
-}
 
-export function useChats(): ChatsValue {
-  const ctx = useContext(ChatsContext);
-  if (!ctx) throw new Error('useChats must be used within <RealtimeProvider>');
-  return ctx;
+  const markAsRead = useCallback(async (id: string) => {
+    if (!uid) return;
+    addReadId(id); // optimistic
+    // Per-recipient read row; ON CONFLICT DO NOTHING makes a repeat click a no-op.
+    const { error } = await supabase
+      .from('notification_reads')
+      .upsert({ notification_id: id, user_id: uid }, { onConflict: 'notification_id,user_id', ignoreDuplicates: true });
+    if (error) console.error('[notifications] markAsRead failed:', describeError(error));
+  }, [uid, addReadId]);
+
+  const markAllAsRead = useCallback(async () => {
+    if (!uid) return;
+    const unreadIds = notifications.filter((n) => !n.isRead).map((n) => n.id);
+    if (!unreadIds.length) return;
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      unreadIds.forEach((i) => next.add(i));
+      return next;
+    });
+    const rows = unreadIds.map((notification_id) => ({ notification_id, user_id: uid }));
+    const { error } = await supabase
+      .from('notification_reads')
+      .upsert(rows, { onConflict: 'notification_id,user_id', ignoreDuplicates: true });
+    if (error) console.error('[notifications] markAllAsRead failed:', describeError(error));
+  }, [uid, notifications]);
+
+  const unreadCount = useMemo(
+    () => notifications.reduce((acc, n) => (n.isRead ? acc : acc + 1), 0),
+    [notifications],
+  );
+
+  return { notifications, unreadCount, markAsRead, markAllAsRead };
 }
 
 // ── Composed provider ────────────────────────────────────────────────────────
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
+  const notifications = useNotificationsState();
   return (
-    <NotificationsProvider>
-      <ChatsProvider>{children}</ChatsProvider>
-    </NotificationsProvider>
+    <NotificationsContext.Provider value={notifications}>
+      {children}
+    </NotificationsContext.Provider>
   );
 }

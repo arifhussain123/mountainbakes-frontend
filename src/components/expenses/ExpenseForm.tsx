@@ -5,11 +5,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { CreateExpenseSchema, type CreateExpenseInput, type ExpensePaymentMethod, businessDateStr } from '@mb/shared';
+import { CreateExpenseSchema, EXPENSE_CATEGORIES, type CreateExpenseInput, type ExpensePaymentMethod, businessDateStr } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -24,16 +25,17 @@ export function ExpenseForm({ onSuccess }: { onSuccess?: () => void }) {
 
   const form = useForm<CreateExpenseInput>({
     resolver: zodResolver(CreateExpenseSchema),
-    defaultValues: { date: businessDateStr(), description: '', paymentMethod: 'cash', amount: undefined, remarks: '' },
+    defaultValues: { date: businessDateStr(), category: '', description: '', paymentMethod: 'cash', amount: undefined, remarks: '' },
   });
   const paymentMethod = form.watch('paymentMethod');
+  const category = form.watch('category');
 
   async function onSubmit(data: CreateExpenseInput) {
     setSubmitting(true);
     try {
       await apiCall('/api/expenses', { method: 'POST', body: JSON.stringify(data) }, token);
       toast.success('Expense saved');
-      form.reset({ date: businessDateStr(), description: '', paymentMethod: 'cash', amount: undefined, remarks: '' });
+      form.reset({ date: businessDateStr(), category: '', description: '', paymentMethod: 'cash', amount: undefined, remarks: '' });
       onSuccess?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save expense');
@@ -54,6 +56,17 @@ export function ExpenseForm({ onSuccess }: { onSuccess?: () => void }) {
           <Input type="number" min={0} step="0.01" placeholder="0" {...form.register('amount', { valueAsNumber: true })} />
           {form.formState.errors.amount && <p className="text-xs text-destructive">{form.formState.errors.amount.message}</p>}
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <Label>Category</Label>
+        <Select value={category} onValueChange={(v) => form.setValue('category', (v as string) ?? '', { shouldValidate: true })}>
+          <SelectTrigger className="w-full"><SelectValue placeholder="Select category" /></SelectTrigger>
+          <SelectContent>
+            {EXPENSE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {form.formState.errors.category && <p className="text-xs text-destructive">{form.formState.errors.category.message}</p>}
       </div>
 
       <div className="space-y-1">

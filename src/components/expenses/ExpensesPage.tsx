@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { Fab } from '@/components/shared/Fab';
 import { ExpenseForm } from './ExpenseForm';
 import { Plus } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -38,11 +39,13 @@ export function ExpensesPage() {
   const total = useMemo(() => expenses.reduce((s, e) => s + (e.amount || 0), 0), [expenses]);
 
   const columns = [
+    col.accessor('expenseNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    col.accessor('description', { header: 'Description', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('category', { header: 'Category', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('description', { header: 'Description', meta: { mobileFull: true }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
     col.accessor('amount', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> }),
-    col.accessor('remarks', { header: 'Remarks', cell: (i) => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('remarks', { header: 'Remarks', meta: { mobileFull: true }, cell: (i) => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
   ];
 
   return (
@@ -52,7 +55,8 @@ export function ExpensesPage() {
           <h2 className="text-lg font-semibold">Shop Expenses</h2>
           <p className="text-sm text-muted-foreground">Last 7 days</p>
         </div>
-        <Button onClick={() => setShowForm(true)}>
+        {/* Mobile gets this as a FAB instead — see the bottom of this component. */}
+        <Button className="hidden md:inline-flex" onClick={() => setShowForm(true)}>
           <Plus className="h-4 w-4 mr-1" /> Shop Expense
         </Button>
       </div>
@@ -67,13 +71,15 @@ export function ExpensesPage() {
       </Card>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="md:max-w-lg">
           <DialogHeader>
             <DialogTitle>New Shop Expense</DialogTitle>
           </DialogHeader>
           <ExpenseForm onSuccess={() => { setShowForm(false); load(); }} />
         </DialogContent>
       </Dialog>
+
+      <Fab onClick={() => setShowForm(true)} icon={Plus} label="New shop expense" />
     </div>
   );
 }

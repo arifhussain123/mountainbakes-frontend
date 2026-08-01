@@ -1,0 +1,15 @@
+{
+  "apphosting": {
+    "backendId": "mountainbakes-web",
+    "rootDir": ".",
+    "alwaysDeployFromSource": true,
+    "ignore": [
+      ".git",
+      ".next",
+      "node_modules",
+      "**/.env*",
+      "tsconfig.tsbuildinfo",
+      "*.odt"
+    ]
+  }
+}

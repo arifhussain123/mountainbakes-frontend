@@ -9,9 +9,10 @@ export type ProductionStockMovementType =
   | 'prepare' // Production prepared units → pool +
   | 'transfer_out' // demand approved, moved to a branch → pool −
   | 'return_in' // accepted return added back → pool +
+  | 'sale' // sold at the production counter → pool − (branch stock untouched)
   | 'adjustment';
 
-/** Running balance for the central production pool. Firestore doc id = `${productId}`. */
+/** Running balance for the central production pool. Keyed by `productId`. */
 export interface ProductionStockDoc {
   productId: string;
   productName: string;
@@ -41,6 +42,7 @@ export interface ProductionStockRow {
   approvedQty: number; // Σ transferred out today
   balance: number; // current pool balance
   returned: number; // Σ returns added back today
+  soldToday: number; // Σ sold at the production counter today
 }
 
 // ── Product Returns ──────────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ export type ProductionExpensePaymentMethod = 'cash' | 'easypaisa' | 'bank_accoun
 
 export interface ProductionExpense {
   id: string;
+  expenseNumber: string; // human-readable EXP-###### (unique across branch + production expenses)
   date: string; // 'YYYY-MM-DD' (Karachi)
   category: string;
   description: string;

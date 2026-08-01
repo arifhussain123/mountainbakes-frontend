@@ -4,26 +4,34 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { apiCall } from '@/utils/api';
-import { useProducts } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import {
+import { useProducts, useProductionStock } from '@/lib/queries';import {
+  CreateProductionSaleSchema,
   type Order,
   type Branch,
   type StockRow,
+  businessDateStr,
   businessDayBounds,
   karachiDateStr,
   karachiTimeStr,
 } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
+import { Fab } from '@/components/shared/Fab';
+import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
 import { InvoiceView, type InvoiceData } from './InvoiceView';
 import { Eye, Plus, Printer } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  PRODUCTION_SALE_PAYMENT_METHODS,
+  UNPAID_PAYMENT_METHOD,
+} from '@/utils/constants';
 
 const col = createColumnHelper<Order>();
 
@@ -52,9 +60,21 @@ function orderToInvoice(o: Order): InvoiceData {
   };
 }
 
-export function SalesPage() {
+/**
+ * The counter/POS screen, shared by two dashboards.
+ *
+ * - `mode="branch"` (default) — a branch manager sells their own branch's stock.
+ *   `branchId` comes from their session claim.
+ * - `mode="production"` — the production counter sells out of the **central pool**.
+ *   There is no branch to choose: availability is read from Production Stock, the
+ *   sale posts to /api/orders/production-sale (which moves the pool and leaves
+ *   every branch's stock alone), and the server pins the order to the Production
+ *   sentinel branch. This mode also offers the unpaid 'staff' payment method.
+ */
+export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' }) {
   const { token, user } = useAuth();
   const { settings } = useSettings();
+  const isProduction = mode === 'production';
   const [branch, setBranch] = useState<Branch | null>(null);
   const [sales, setSales] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,22 +85,38 @@ export function SalesPage() {
   const [stockById, setStockById] = useState<Record<string, number>>({});
   const [stockLoaded, setStockLoaded] = useState(false);
   const [stockError, setStockError] = useState(false);
+  // Which business day the records below show. Defaults to the one in progress;
+  // this is a *business* date, so a sale rung at 00:30 stays on the previous day
+  // rather than jumping to the calendar date the clock says.
+  const [date, setDate] = useState(businessDateStr());
+
+  const today = businessDateStr();
+  const isToday = date === today;
 
   const cur = settings?.currencySymbol || 'Rs.';
 
   // A price change — from this browser or another device — refreshes the product
   // list backing the New Sale form, so the cashier never quotes a stale rate.
-  usePriceRealtime();
-
   // isActive:true → qk.products(true). Must NOT be the unfiltered key, or inactive
   // products would appear in the POS picker. `?? []` preserves the previous
   // behaviour of rendering an empty combobox rather than crashing on a load failure.
   const productsQ = useProducts(token, { isActive: true });
   const products = productsQ.data ?? [];
 
+  // Only the branch flavour has a branch. Production sales carry no branch the user
+  // can see or choose — the server pins them to its own sentinel row.
+  const branchId = user?.branchId ?? '';
+  const canSell = isProduction || !!branchId;
+
+  // Production availability comes from the central pool, which is what a
+  // production sale actually deducts — reading /api/stock here would show branch
+  // balances the sale never touches, and the two would disagree on every 409.
+  // Keyed without a date so it shares a cache entry with the Production Stock page.
+  const poolQ = useProductionStock(token, null, { enabled: isProduction });
+
   // Current available balance per product (derived stock). Refreshed on open, on a
   // short poll while the form is open, and after every sale — so validation stays live.
-  const loadStock = useCallback(() => {
+  const loadBranchStock = useCallback(() => {
     if (!token) return;
     apiCall<{ rows: StockRow[] }>('/api/stock', {}, token)
       .then((r) => {
@@ -97,26 +133,58 @@ export function SalesPage() {
       });
   }, [token]);
 
+  // refetch (not poolQ) is the dependency: React Query keeps it stable, whereas the
+  // query object is a new identity every render and would make this callback churn.
+  const refetchPool = poolQ.refetch;
+  const loadStock = useCallback(() => {
+    if (isProduction) void refetchPool();
+    else loadBranchStock();
+  }, [isProduction, refetchPool, loadBranchStock]);
+
+  // One shape for SaleForm regardless of which ledger backs it.
+  const poolStockById = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const row of poolQ.data ?? []) m[row.productId] = row.balance;
+    return m;
+  }, [poolQ.data]);
+
+  const effectiveStock = isProduction
+    ? { stockById: poolStockById, stockLoaded: !poolQ.isLoading, stockError: poolQ.isError }
+    : { stockById, stockLoaded, stockError };
+
+  // Branch mode only: the branch record supplies the invoice header. Production
+  // receipts fall back to the company details in settings, since the sentinel
+  // branch is an accounting device rather than a place with an address.
   useEffect(() => {
-    if (!token) return;
-    if (user?.branchId) {
-      apiCall<{ branch: Branch }>(`/api/branches/${user.branchId}`, {}, token)
-        .then((r) => setBranch(r.branch))
-        .catch(() => setBranch(null));
-    }
-    loadStock();
-  }, [token, user?.branchId, loadStock]);
+    if (!token || isProduction || !branchId) return;
+    let cancelled = false;
+    apiCall<{ branch: Branch }>(`/api/branches/${branchId}`, {}, token)
+      .then((r) => { if (!cancelled) setBranch(r.branch); })
+      .catch(() => { if (!cancelled) setBranch(null); });
+    loadBranchStock();
+    return () => { cancelled = true; };
+  }, [token, branchId, isProduction, loadBranchStock]);
 
   function loadSales() {
     if (!token) return;
     setLoading(true);
-    const from = businessDayBounds().fromISO;
-    apiCall<{ orders: Order[] }>(`/api/orders?status=delivered&from=${encodeURIComponent(from)}`, {}, token)
+    // Both ends of the window, not just `from` — a past date must not drag in
+    // every sale since. The bounds run 02:00 → next-day 01:59:59.999 Karachi,
+    // which is what makes a late-night sale count against the right day.
+    const { fromISO, toISO } = businessDayBounds(date);
+    const range = `from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
+    // The production counter has its own list endpoint. The generic one is no use
+    // here: it caps production users to active statuses (a delivered sale would
+    // 403), and the scoping is a sentinel branch the client never learns.
+    const url = isProduction
+      ? `/api/orders/production-sales?${range}`
+      : `/api/orders?status=delivered&${range}`;
+    apiCall<{ orders: Order[] }>(url, {}, token)
       .then((r) => setSales(r.orders ?? []))
       .catch(() => setSales([]))
       .finally(() => setLoading(false));
   }
-  useEffect(loadSales, [token]);
+  useEffect(loadSales, [token, date, isProduction]);
 
   // Auto-open the browser print dialog when a sale is saved with "Save & Print"
   useEffect(() => {
@@ -128,7 +196,15 @@ export function SalesPage() {
 
   function handleSaved(inv: InvoiceData, shouldPrint: boolean) {
     setShowForm(false);
-    loadSales();
+    // A new sale always books against the business day in progress, so snap the
+    // filter back to it — otherwise the cashier rings up a sale while browsing an
+    // older date and the table appears not to have recorded it. Re-read the date
+    // rather than using the render-time value: a page left open across 02:00 has
+    // a stale one. Changing it reloads via the effect; only reload directly when
+    // the view is already on today, or the fetch would fire twice.
+    const current = businessDateStr();
+    if (date === current) loadSales();
+    else setDate(current);
     loadStock(); // reflect the just-deducted balances
     if (shouldPrint) {
       setInvoice(inv);
@@ -142,22 +218,34 @@ export function SalesPage() {
     setInvoiceOpen(true);
   }
 
-  // Daily summary by payment method
+  // Which methods this flavour of the page can produce. Production adds the unpaid
+  // 'staff' method; the branch list is unchanged.
+  const methods = isProduction ? PRODUCTION_SALE_PAYMENT_METHODS : PAYMENT_METHODS;
+
+  // Daily summary by payment method.
+  //
+  // `total` is money actually taken, so staff sales are summed separately and left
+  // out of it — they moved goods but collected nothing. Same rule the server applies
+  // to reports and the daily closing, so the two never disagree.
   const summary = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const m of PAYMENT_METHODS) totals[m] = 0;
+    for (const m of methods) totals[m] = 0;
     let total = 0;
+    let staff = 0;
     for (const s of sales) {
       totals[s.paymentMethod] = (totals[s.paymentMethod] ?? 0) + s.grandTotal;
-      total += s.grandTotal;
+      if (s.paymentMethod === UNPAID_PAYMENT_METHOD) staff += s.grandTotal;
+      else total += s.grandTotal;
     }
-    return { totals, total };
-  }, [sales]);
+    return { totals, total, staff };
+  }, [sales, methods]);
 
   const columns = [
+    col.accessor('orderNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('createdAt', { header: 'Time', cell: (i) => <span className="text-sm">{i.getValue() ? karachiTimeStr(new Date(i.getValue())) : ''}</span> }),
     col.accessor('customerName', {
       header: 'Customer',
+      meta: { mobile: 'title' },
       cell: (i) => (
         <div>
           <p className="font-medium">{i.getValue()}</p>
@@ -167,14 +255,47 @@ export function SalesPage() {
     }),
     col.accessor('items', {
       header: 'Products',
+      meta: { mobileFull: true },
       cell: (i) => {
         const names = i.getValue().map((it) => it.productName).join(', ');
         return <span className="text-sm">{names.length > 40 ? names.slice(0, 40) + '…' : names}</span>;
       },
     }),
     col.display({ id: 'qty', header: 'Qty', cell: ({ row }) => <span>{row.original.items.reduce((s, it) => s + it.qty, 0)}</span> }),
-    col.accessor('grandTotal', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> }),
+    // Amount is branch-only. The production counter's rows mix paid and unpaid
+    // sales, so a per-row figure invites reading the column as takings; the money
+    // lives in the Daily Summary below, which keeps staff out of the total.
+    ...(isProduction
+      ? []
+      : [col.accessor('grandTotal', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> })]),
     col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
+    // Production only. A staff sale is unpaid, so its comment is the whole audit
+    // trail — leaving it to the View dialog would hide the one field that explains
+    // why the goods left. Branch sales keep their original column set.
+    ...(isProduction
+      ? [
+          col.accessor('notes', {
+            header: 'Comment',
+            // The whole audit trail for an unpaid staff sale — never squeeze it
+            // into half a card row.
+            meta: { mobileFull: true },
+            cell: (i) => {
+              const text = (i.getValue() ?? '').trim();
+              if (!text) return <span className="text-muted-foreground">—</span>;
+              const isUnpaidSale = i.row.original.paymentMethod === UNPAID_PAYMENT_METHOD;
+              return (
+                <span
+                  // Full text on hover: truncation must never be the only copy.
+                  title={text}
+                  className={cn('text-sm', isUnpaidSale ? 'font-medium' : 'text-muted-foreground')}
+                >
+                  {text.length > 40 ? text.slice(0, 40) + '…' : text}
+                </span>
+              );
+            },
+          }),
+        ]
+      : []),
     col.display({
       id: 'actions',
       header: 'Actions',
@@ -188,24 +309,51 @@ export function SalesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Sales</h2>
-          <p className="text-sm text-muted-foreground">Today&rsquo;s sales · {sales.length} recorded</p>
+          <p className="text-sm text-muted-foreground">
+            {isToday ? 'Today’s sales' : `Sales on ${date}`} · {sales.length} recorded
+          </p>
         </div>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="h-4 w-4 mr-1" /> New Sale
-        </Button>
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-1 sm:flex-none">
+            <label htmlFor="sales-date" className="text-xs font-medium text-muted-foreground">Date</label>
+            {/* Capped at the current business day — there are no sales in the future,
+                and an accidental typo there would silently show an empty table. */}
+            <Input
+              id="sales-date"
+              type="date"
+              value={date}
+              max={today}
+              onChange={(e) => setDate(e.target.value || today)}
+              className="h-9 w-full sm:w-40"
+            />
+          </div>
+          {!isToday && (
+            <Button variant="outline" className="h-9" onClick={() => setDate(today)}>Today</Button>
+          )}
+          {/* Mobile takes this as the FAB below instead. */}
+          <Button className="hidden h-9 md:inline-flex" disabled={!canSell} onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-1" /> New Sale
+          </Button>
+        </div>
       </div>
+
+      {canSell && (
+        <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
+      )}
 
       <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
 
       {/* Daily summary */}
       <Card>
         <CardContent className="p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Daily Summary</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Daily Summary · {date}
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {PAYMENT_METHODS.map((m) => (
+            {methods.filter((m) => m !== UNPAID_PAYMENT_METHOD).map((m) => (
               <div key={m} className="rounded-lg border bg-muted/30 p-3">
                 <p className="text-xs text-muted-foreground">{PAYMENT_METHOD_LABELS[m]}</p>
                 <p className="text-lg font-bold">{cur}{summary.totals[m]!.toLocaleString()}</p>
@@ -215,26 +363,42 @@ export function SalesPage() {
               <p className="text-xs text-primary">Total Sales</p>
               <p className="text-lg font-bold text-primary">{cur}{summary.total.toLocaleString()}</p>
             </div>
+            {/* Staff sits outside the payment tiles and after the total, because it is
+                not money taken — it is the value of what left the counter unpaid. */}
+            {isProduction && (
+              <div className="rounded-lg border border-dashed p-3">
+                <p className="text-xs text-muted-foreground">Staff (unpaid)</p>
+                <p className="text-lg font-bold text-muted-foreground">{cur}{summary.staff.toLocaleString()}</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
       {/* New Sale dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 top-0 left-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90vh] sm:w-[95vw] sm:max-w-[1100px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl lg:w-[90vw] lg:max-w-[1400px]">
+        <DialogContent
+          mobile="fullscreen"
+          className="flex flex-col gap-0 overflow-hidden p-0 md:w-[95vw] md:max-w-[1100px] md:rounded-2xl lg:w-[90vw] lg:max-w-[1400px]"
+        >
           <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12 sm:px-5">
             <DialogTitle>New Sale</DialogTitle>
           </DialogHeader>
-          {user?.branchId ? (
+          {canSell ? (
             <SaleForm
               products={products}
               settings={settings}
-              branchId={user.branchId}
-              stockById={stockById}
-              stockLoaded={stockLoaded}
-              stockError={stockError}
+              // Production sales carry no branch: the server pins them to its own
+              // sentinel row and ignores whatever is sent here.
+              branchId={branchId}
+              stockById={effectiveStock.stockById}
+              stockLoaded={effectiveStock.stockLoaded}
+              stockError={effectiveStock.stockError}
               onRefreshStock={loadStock}
               onSaved={handleSaved}
+              endpoint={isProduction ? '/api/orders/production-sale' : '/api/orders/pos'}
+              paymentMethods={methods}
+              schema={isProduction ? CreateProductionSaleSchema : undefined}
             />
           ) : (
             <p className="px-4 py-4 text-sm text-destructive">No branch assigned to your account.</p>
@@ -244,7 +408,9 @@ export function SalesPage() {
 
       {/* Invoice preview / print */}
       <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        {/* Full screen on a phone: the receipt is a fixed 384px column, so inside
+            a 90dvh sheet the Print button below it falls off the bottom. */}
+        <DialogContent mobile="fullscreen" className="md:max-w-md">
           <DialogHeader>
             <DialogTitle className="no-print">Invoice</DialogTitle>
           </DialogHeader>
@@ -257,7 +423,7 @@ export function SalesPage() {
 
       {/* View sale details */}
       <Dialog open={!!viewOrder} onOpenChange={(o) => !o && setViewOrder(null)}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="md:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sale {viewOrder?.orderNumber}</DialogTitle>
           </DialogHeader>
@@ -270,10 +436,34 @@ export function SalesPage() {
                 <div><p className="text-xs text-muted-foreground">Customer</p><p className="font-medium">{viewOrder.customerName}</p></div>
                 <div><p className="text-xs text-muted-foreground">Mobile</p><p className="font-medium">{viewOrder.customerPhone || '—'}</p></div>
                 <div><p className="text-xs text-muted-foreground">Payment Method</p><p className="font-medium">{PAYMENT_METHOD_LABELS[viewOrder.paymentMethod] ?? viewOrder.paymentMethod}</p></div>
+                {/* Only when there is one, so a sale without a note looks exactly as
+                    it did before. Spans the grid because a comment is free text. */}
+                {viewOrder.notes?.trim() && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Comment</p>
+                    <p className="font-medium whitespace-pre-wrap break-words">{viewOrder.notes.trim()}</p>
+                  </div>
+                )}
               </div>
 
-              {/* Items */}
-              <div className="overflow-x-auto rounded-lg border">
+              {/* Items — five columns cannot hold their shape inside a sheet on a
+                  360px screen, so each line becomes its own small block. */}
+              <ul className="divide-y rounded-lg border md:hidden">
+                {viewOrder.items.map((it, idx) => (
+                  <li key={idx} className="space-y-1 p-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 font-medium">{it.productName}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{cur}{it.lineTotal.toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {it.qty} × {cur}{it.unitPrice.toLocaleString()}
+                      {it.discount ? ` · discount -${cur}${it.discount.toLocaleString()}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
                     <tr>

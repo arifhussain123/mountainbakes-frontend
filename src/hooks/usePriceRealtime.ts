@@ -9,9 +9,9 @@ import { useNotifications } from './useNotifications';
  * Real-time price propagation.
  *
  * The API already fires a `price_changed` notification to branch managers when a
- * price goes live (products.routes.ts). Rather than opening a Firestore listener
- * on `products` — blocked by rules, and against the API-data-layer convention —
- * we piggyback on the existing notifications stream and invalidate the products
+ * price goes live (products.routes.ts). Rather than opening a direct realtime
+ * subscription on `products` — blocked by RLS, and against the API-data-layer
+ * convention — we piggyback on the existing notifications stream and invalidate the products
  * cache, exactly like useProductionRealtime does for production collections.
  *
  * React Query invalidation already keeps tabs in one browser consistent; this is

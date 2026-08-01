@@ -1,11 +1,9 @@
 // Re-export API client so the rest of the app imports from @/utils/api
 export { apiCall, ApiError } from '@/lib/api/client';
 
-// Same resolution as lib/api/client.ts: relative (same-origin, proxied to the
-// co-located Express API) unless NEXT_PUBLIC_API_URL names an external API host.
-export const API_BASE_URL =
-  (process.env.NEXT_PUBLIC_API_URL || '').trim() ||
-  (typeof window === 'undefined' ? `http://127.0.0.1:${process.env.API_PORT || '3001'}` : '');
+// The API base URL is resolved in exactly one place — lib/api/client.ts. A second
+// copy lived here and drifted: it still described requests as being proxied to a
+// co-located API, which stopped being true when the /api/* rewrite was removed.
 
 // Common API endpoint paths
 export const API_ENDPOINTS = {

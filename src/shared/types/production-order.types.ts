@@ -1,3 +1,5 @@
+import type { BranchProductionOrderPackingItem } from './packing-material.types';
+
 // Named "Branch…" to avoid colliding with production.types.ts `ProductionOrder`
 // (the production-queue view of a customer order). This is the branch's daily
 // production *request* (collection `production_orders`).
@@ -25,11 +27,18 @@ export interface BranchProductionOrderItem {
 
 export interface BranchProductionOrder {
   id: string;
+  demandNumber: string; // human-readable DMD-######
   branchId: string;
   branchName: string;
   date: string; // 'YYYY-MM-DD' (Karachi)
   time: string; // 'HH:mm' (Karachi)
   items: BranchProductionOrderItem[];
+  /**
+   * Optional packing materials requested with this demand. Empty on most orders and
+   * on every order created before the packing-material module — always read it as
+   * `?? []` rather than assuming presence.
+   */
+  packingItems?: BranchProductionOrderPackingItem[];
   status: BranchProductionOrderStatus;
   /** True when any approved quantity differed from the requested quantity. Powers the "Changed Orders" metric. */
   wasChanged?: boolean;
@@ -48,7 +57,7 @@ export interface BranchProductionOrder {
 
 /**
  * Per-(branch, product) outstanding demand that Production has not yet fulfilled.
- * Firestore doc id is `${branchId}_${productId}`. `pendingQty` is an absolute
+ * Keyed by (branchId, productId). `pendingQty` is an absolute
  * running balance: each approval SETS it to that order's remaining balance
  * (overwrite, never increment — `totalRequiredQty` already folds the prior balance in).
  */

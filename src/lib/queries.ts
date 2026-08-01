@@ -31,6 +31,10 @@ import type {
   ProductionReturn,
   ProductionStockRow,
   PriceHistoryDoc,
+  PackingMaterial,
+  PackingMaterialUsageRow,
+  CreatePackingMaterialInput,
+  UpdatePackingMaterialInput,
   ReportSummary,
   StockRow,
 } from '@mb/shared';
@@ -39,7 +43,12 @@ import type {
 // them without importing these hooks. Re-exported here for existing call sites.
 export { qk };
 
-type ProductionOrderItem = { productId: string; qty: number; remarks: string };
+// `remarks` was removed from the New Production Order form; the API's Zod schema
+// defaults it to '' server-side, so it is simply not sent.
+type ProductionOrderItem = { productId: string; qty: number };
+
+/** Optional packing-material line submitted with the same demand. */
+type ProductionOrderPackingItem = { packingMaterialId: string; qty: number };
 
 // Live/intraday queries: kept fresh by notification-driven invalidation
 // (useProductionRealtime / usePriceRealtime) rather than by constant refetching.
@@ -142,6 +151,88 @@ export function useCommitPriceImport(token: string) {
   return useMutation({ mutationFn: (input: SaveImportInput) => saveImport(input, { token }) });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Packing materials — company service items with no price, requested alongside a
+// branch demand. Kept in their own table and their own endpoint (see migration 38).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `includeInactive` is the admin catalogue view. The server only honours it for a
+ * super admin, so a branch or production user always gets active rows — which is
+ * what stops a disabled material appearing in the demand dropdown.
+ */
+export function usePackingMaterials(token: string, opts?: { includeInactive?: boolean; enabled?: boolean }) {
+  const includeInactive = opts?.includeInactive ?? false;
+  return useQuery({
+    queryKey: qk.packingMaterials(includeInactive),
+    queryFn: () =>
+      apiCall<{ packingMaterials: PackingMaterial[] }>(
+        `/api/packing-materials${includeInactive ? '?includeInactive=true' : ''}`,
+        {},
+        token,
+      ),
+    select: (r) => r.packingMaterials ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+function invalidatePackingMaterials(qc: ReturnType<typeof useQueryClient>) {
+  // Prefix match: both the active-only and include-inactive cache entries.
+  qc.invalidateQueries({ queryKey: ['packingMaterials'] });
+}
+
+export function useCreatePackingMaterial(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreatePackingMaterialInput) =>
+      apiCall('/api/packing-materials', { method: 'POST', body: JSON.stringify(input) }, token),
+    onSuccess: () => invalidatePackingMaterials(qc),
+  });
+}
+
+export function useUpdatePackingMaterial(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdatePackingMaterialInput }) =>
+      apiCall(`/api/packing-materials/${v.id}`, { method: 'PUT', body: JSON.stringify(v.input) }, token),
+    onSuccess: () => invalidatePackingMaterials(qc),
+  });
+}
+
+export function useDeletePackingMaterial(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall(`/api/packing-materials/${id}`, { method: 'DELETE' }, token),
+    onSuccess: () => invalidatePackingMaterials(qc),
+  });
+}
+
+/** Daily Packing Material Usage report. `deliveredQty` is derived from approval. */
+export function usePackingUsage(
+  token: string,
+  filters: { from?: string | null; to?: string | null; branchId?: string | null; packingMaterialId?: string | null },
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.packingUsage(filters),
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (filters.from) qs.set('from', filters.from);
+      if (filters.to) qs.set('to', filters.to);
+      if (filters.branchId) qs.set('branchId', filters.branchId);
+      if (filters.packingMaterialId) qs.set('packingMaterialId', filters.packingMaterialId);
+      const query = qs.toString();
+      return apiCall<{ usage: PackingMaterialUsageRow[] }>(
+        `/api/reports/packing-usage${query ? `?${query}` : ''}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.usage ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
 export function useBranches(token: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: qk.branches(),
@@ -161,6 +252,27 @@ export function useReportSummary(token: string, period: string, branchId?: strin
         token,
       ),
     enabled: !!token,
+  });
+}
+
+/**
+ * The full derived stock rows (Opening / New / Sold / Returned / Adjustment /
+ * Balance) for the Stock page.
+ *
+ * Deliberately shares `qk.stock(branchId)` with `useStock` below: `select` runs per
+ * observer, not per cache entry, so both hooks read one cached response and ONE
+ * invalidation refreshes the table and every balance map at once. Do not give this
+ * its own key — that would let the two drift apart.
+ */
+export function useStockRows(token: string, opts?: { branchId?: string | null; enabled?: boolean }) {
+  const branchId = opts?.branchId;
+  return useQuery({
+    queryKey: qk.stock(branchId),
+    queryFn: () =>
+      apiCall<{ rows: StockRow[] }>(`/api/stock${branchId ? `?branchId=${branchId}` : ''}`, {}, token),
+    select: (r) => r.rows ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
   });
 }
 
@@ -234,8 +346,14 @@ export function useMarkPrinted(token: string) {
 export function useSubmitProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (items: ProductionOrderItem[]) =>
-      apiCall('/api/production-orders', { method: 'POST', body: JSON.stringify({ items }) }, token),
+    // Packing items are optional; an omitted/empty array posts exactly the payload
+    // this endpoint accepted before the packing-material module existed.
+    mutationFn: (v: { items: ProductionOrderItem[]; packingItems?: ProductionOrderPackingItem[] }) =>
+      apiCall(
+        '/api/production-orders',
+        { method: 'POST', body: JSON.stringify({ items: v.items, packingItems: v.packingItems ?? [] }) },
+        token,
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['productionOrders'] });
       qc.invalidateQueries({ queryKey: ['stock'] });
@@ -294,8 +412,14 @@ export function useProductionOverview(token: string) {
   });
 }
 
-/** Central production-pool table for a Karachi day (defaults to today). */
-export function useProductionStock(token: string, date?: string | null) {
+/**
+ * Central production-pool table for a Karachi day (defaults to today).
+ *
+ * `enabled` matters here: /api/production-stock is requireRole('super_admin',
+ * 'production_user'), so a branch manager mounting a component that calls this
+ * unconditionally would just collect 403s.
+ */
+export function useProductionStock(token: string, date?: string | null, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: qk.productionStock(date),
     queryFn: () =>
@@ -305,7 +429,7 @@ export function useProductionStock(token: string, date?: string | null) {
         token,
       ),
     select: (r) => r.rows ?? [],
-    enabled: !!token,
+    enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
   });
 }
@@ -326,6 +450,8 @@ export interface ReviewOrderPayload {
   id: string;
   status: 'approved' | 'rejected';
   approvedItems?: { productId: string; approvedQty: number }[];
+  /** Packing-material overrides. Omitted on an order with no packing lines. */
+  approvedPackingItems?: { packingMaterialId: string; approvedQty: number }[];
   reason?: string;
 }
 

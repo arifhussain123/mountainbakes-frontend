@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { apiCall, ApiError } from '@/utils/api';
+import { resetErrorMessage } from '@/utils/authErrors';
 import {
   Dialog,
   DialogContent,
@@ -62,8 +63,10 @@ export function ForgotPasswordDialog({
           'Password recovery is only available for Administrator accounts. Please contact your system administrator.'
         );
       } else {
+        // Log the raw error — the mapped text deliberately drops detail that
+        // only helps a developer.
         console.error('Forgot password failed', err);
-        setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+        setError(resetErrorMessage(err));
       }
     } finally {
       setLoading(false);
@@ -78,7 +81,7 @@ export function ForgotPasswordDialog({
         if (!o) reset();
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="md:max-w-sm">
         <DialogHeader>
           <DialogTitle>Forgot password?</DialogTitle>
           <DialogDescription>

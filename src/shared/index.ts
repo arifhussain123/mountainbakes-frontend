@@ -7,16 +7,18 @@ export * from './types/order.types';
 export * from './types/production.types';
 export * from './types/production-order.types';
 export * from './types/production-ops.types';
+export * from './types/packing-material.types';
 export * from './types/expense.types';
 export * from './types/stock.types';
 export * from './types/notification.types';
 export * from './types/settings.types';
 export * from './types/report.types';
 
-export * from './types/chat.types';
 export * from './types/audit.types';
 export * from './types/business-day.types';
 export * from './types/price.types';
+export * from './types/support.types';
+export * from './types/closing-notifications.types';
 
 // Zod schemas + inferred input types
 export * from './schemas/user.schemas';
@@ -26,9 +28,12 @@ export * from './schemas/customer.schemas';
 export * from './schemas/order.schemas';
 export * from './schemas/production-order.schemas';
 export * from './schemas/production-ops.schemas';
+export * from './schemas/packing-material.schemas';
 export * from './schemas/expense.schemas';
 export * from './schemas/settings.schemas';
 export * from './schemas/price.schemas';
+export * from './schemas/support.schemas';
+export * from './schemas/closing-notifications.schemas';
 
 // Utils
 export * from './utils/timezone';

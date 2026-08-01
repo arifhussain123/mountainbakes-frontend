@@ -1,38 +1,31 @@
 import { create } from 'zustand';
-import type { AppSettings } from '@mb/shared';
 
+// Client-only UI state. Server state (settings, products, orders, …) lives in
+// TanStack Query — see lib/queries.ts and hooks/useSettings.ts — so it is fetched,
+// cached, deduped and invalidated in one place rather than mirrored here.
 interface AppStore {
-  // Sidebar
+  // Sidebar — the mobile drawer
   sidebarOpen: boolean;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
 
-  // Settings
-  settings: AppSettings | null;
-  setSettings: (settings: AppSettings) => void;
-
-  // Chat
-  chatOpen: boolean;
-  activeChatId: string | null;
-  openChat: (chatId?: string | null) => void;
-  closeChat: () => void;
-  setActiveChatId: (id: string | null) => void;
+  // Sidebar — the tablet icon rail (md → lg only; ignored on mobile and desktop)
+  sidebarCollapsed: boolean;
+  toggleSidebarCollapsed: () => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
   // Sidebar
-  sidebarOpen: true,
+  //
+  // MUST default to false. This flag only drives the MOBILE drawer: Sidebar
+  // pins itself open at md+ with `md:relative md:translate-x-0`, so desktop
+  // ignores it entirely. Defaulting to true meant the drawer and its black
+  // overlay covered the whole app on a phone's first paint, and the user had to
+  // dismiss it before seeing any content.
+  sidebarOpen: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-  // Settings
-  settings: null,
-  setSettings: (settings) => set({ settings }),
-
-  // Chat
-  chatOpen: false,
-  activeChatId: null,
-  openChat: (chatId) => set({ chatOpen: true, activeChatId: chatId ?? null }),
-  closeChat: () => set({ chatOpen: false, activeChatId: null }),
-  setActiveChatId: (id) => set({ activeChatId: id }),
+  sidebarCollapsed: false,
+  toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 }));

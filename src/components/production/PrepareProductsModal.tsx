@@ -59,7 +59,8 @@ export function PrepareProductsModal({ open, onOpenChange, products, loadingProd
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
       <DialogContent
         showCloseButton
-        className="flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 top-0 left-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90vh] sm:w-[80vw] sm:max-w-[80vw] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl lg:w-[70vw] lg:max-w-[1000px]"
+        mobile="fullscreen"
+        className="flex flex-col gap-0 overflow-hidden p-0 md:w-[80vw] md:max-w-[80vw] md:rounded-2xl lg:w-[70vw] lg:max-w-[1000px]"
       >
         <div className="shrink-0 border-b bg-card px-5 py-4">
           <h2 className="flex items-center gap-2 font-heading text-base font-semibold sm:text-lg">

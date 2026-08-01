@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
-import { ROUTES } from '@/utils/routes';
+import { getRoleHome } from '@/utils/roleHome';
 import { COMPANY_NAME, APP_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
 import { Button } from '@/components/ui/button';
@@ -13,12 +13,6 @@ import { Label } from '@/components/ui/label';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
-
-function getRoleHome(role: string): string {
-  if (role === 'super_admin') return ROUTES.DASHBOARD;
-  if (role === 'branch_manager') return ROUTES.BRANCH_DASHBOARD;
-  return ROUTES.PRODUCTION_DASHBOARD;
-}
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Invalid email or password.',
@@ -36,6 +30,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showForgot, setShowForgot] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -47,27 +42,28 @@ export default function LoginPage() {
       if (signInError || !data.session) throw signInError ?? new Error('Login failed. Please try again.');
 
       const authedUser = data.session.user;
-      const claims = (authedUser.app_metadata ?? {}) as {
-        role?: string;
-        branchId?: string | null;
-        branchName?: string | null;
-        mustChangePassword?: boolean;
-      };
-      const role = claims.role ?? 'branch_manager';
+      const claims = (authedUser.app_metadata ?? {}) as { mustChangePassword?: boolean };
       const forceChange = claims.mustChangePassword === true;
       const displayName = (authedUser.user_metadata as { displayName?: string } | null)?.displayName;
 
-      await fetch('/api/login', {
+      // Send only the access token — /api/login verifies it server-side and derives
+      // role/branch from it. Claims are deliberately NOT sent from here; the route
+      // will not trust them.
+      const sessionRes = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: authedUser.id,
-          role,
-          branchId: claims.branchId ?? null,
-          branchName: claims.branchName ?? null,
-          mustChangePassword: forceChange,
-        }),
+        body: JSON.stringify({ accessToken: data.session.access_token, rememberMe }),
       });
+
+      if (!sessionRes.ok) {
+        // Session cookie was refused (e.g. account has no role assigned). Drop the
+        // half-established Supabase session so the app isn't left in a limbo state.
+        const { error: sessionErr } = (await sessionRes.json().catch(() => ({}))) as { error?: string };
+        await supabase.auth.signOut();
+        throw new Error(sessionErr || 'Could not start your session. Please try again.');
+      }
+
+      const { role } = (await sessionRes.json()) as { role: string };
 
       if (forceChange) {
         toast.info('Please set a new password to continue.');
@@ -185,8 +181,22 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Forgot password */}
-            <div className="flex justify-end -mt-2">
+            {/* Remember me + forgot password */}
+            <div className="flex items-center justify-between -mt-2">
+              <label
+                htmlFor="remember-me"
+                className="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer select-none"
+              >
+                <input
+                  id="remember-me"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  disabled={loading}
+                  className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
+                />
+                Remember me
+              </label>
               <button
                 type="button"
                 onClick={() => setShowForgot(true)}

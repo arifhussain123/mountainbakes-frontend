@@ -6,9 +6,7 @@ import type { ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useProductionReturns, useCreateReturn, useReviewReturn, useBranches, useProducts,
-} from '@/lib/queries';
-import { useProductionRealtime } from '@/hooks/useProductionRealtime';
-import { Button } from '@/components/ui/button';
+} from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,8 +25,6 @@ const short = (name: string) => name.replace('Mountain Bakes ', '');
 
 export function ProductionReturnsPage() {
   const { token } = useAuth();
-  useProductionRealtime();
-
   const returnsQ = useProductionReturns(token);
   const branchesQ = useBranches(token);
   const productsQ = useProducts(token, { isActive: true });
@@ -73,12 +69,13 @@ export function ProductionReturnsPage() {
   const col = createColumnHelper<ProductionReturn>();
   const columns = [
     col.accessor('date', { header: 'Return Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    col.accessor('branchName', { header: 'Branch', cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
-    col.accessor('productName', { header: 'Product', cell: (i) => <span>{i.getValue()}</span> }),
+    col.accessor('branchName', { header: 'Branch', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
+    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('qty', { header: 'Qty', cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span> }),
-    col.accessor('reason', { header: 'Reason', cell: (i) => <span className="text-muted-foreground">{i.getValue()}</span> }),
+    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <span className="text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('status', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (i) => (
         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[i.getValue()] ?? 'bg-muted'}`}>{i.getValue()}</span>
       ),
@@ -114,7 +111,7 @@ export function ProductionReturnsPage() {
       <DataTable columns={columns} data={returnsQ.data ?? []} loading={returnsQ.isLoading} searchPlaceholder="Search returns…" />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="md:max-w-lg">
           <DialogHeader><DialogTitle>Record a Product Return</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">

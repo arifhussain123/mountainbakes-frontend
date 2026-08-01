@@ -9,6 +9,7 @@ import {
   flexRender,
   type ColumnDef,
   type SortingState,
+  type Table as TanstackTable,
 } from '@tanstack/react-table';
 import { useState } from 'react';
 import {
@@ -18,6 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import { EmptyState } from './EmptyState';
+import { bucketCells, mobileLabel } from './table-meta';
 
 interface DataTableProps<TData> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +32,26 @@ interface DataTableProps<TData> {
   onExport?: () => void;
   actions?: React.ReactNode;
   pageSize?: number;
+  /**
+   * Columns to hide, e.g. `{ search: false }`.
+   *
+   * The global filter only matches values it can reach through a column accessor,
+   * so making a field searchable without displaying it means adding a column and
+   * hiding it here.
+   */
+  columnVisibility?: Record<string, boolean>;
+  /** Shown when there are no rows after filtering. Defaults to a plain EmptyState. */
+  empty?: React.ReactNode;
+  /**
+   * How rows render below `md`.
+   *
+   * `'cards'` (the default) turns each row into a card, routing cells by the
+   * `meta.mobile` annotations on the column defs — see `table-meta.ts`.
+   * `'table'` keeps the horizontally-scrolling table at every width, which is
+   * the right call for a wide numeric ledger whose columns only mean something
+   * side by side.
+   */
+  mobileLayout?: 'cards' | 'table';
 }
 
 export function DataTable<TData>({
@@ -38,6 +62,9 @@ export function DataTable<TData>({
   onExport,
   actions,
   pageSize = 20,
+  columnVisibility,
+  empty,
+  mobileLayout = 'cards',
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -45,7 +72,7 @@ export function DataTable<TData>({
   const table = useReactTable({
     data,
     columns,
-    state: { globalFilter, sorting },
+    state: { globalFilter, sorting, ...(columnVisibility ? { columnVisibility } : {}) },
     onGlobalFilterChange: setGlobalFilter,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
@@ -55,32 +82,44 @@ export function DataTable<TData>({
     initialState: { pagination: { pageSize } },
   });
 
+  const cards = mobileLayout === 'cards';
+  const emptyHint = globalFilter ? 'Try a different search term.' : undefined;
+
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="relative flex-1 max-w-sm">
+      {/* Toolbar — stacks on a phone so the search field gets the full width. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder={searchPlaceholder}
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9 h-9"
+            className="pl-9 h-11 md:h-9"
           />
         </div>
-        <div className="flex items-center gap-2">
-          {actions}
-          {onExport && (
-            <Button variant="outline" size="sm" onClick={onExport} className="h-9">
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Export
-            </Button>
-          )}
-        </div>
+        {(actions || onExport) && (
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            {actions}
+            {onExport && (
+              <Button variant="outline" size="sm" onClick={onExport} className="h-11 flex-1 md:h-9 sm:flex-none">
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Export
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border bg-card overflow-hidden">
+      {/* Desktop table. Markup unchanged — only the visibility wrapper is new.
+          `print-table-wrap` forces this branch onto paper regardless of how the
+          `md:` breakpoint resolves against the print page box. */}
+      <div
+        className={cn(
+          'rounded-lg border bg-card overflow-hidden',
+          cards && 'hidden md:block print-table-wrap'
+        )}
+      >
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -106,8 +145,10 @@ export function DataTable<TData>({
               ))
             ) : table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center py-12 text-muted-foreground">
-                  No results found
+                <TableCell colSpan={columns.length} className="p-0">
+                  {empty ?? (
+                    <EmptyState title="No results found" description={emptyHint} className="border-0" />
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -125,8 +166,23 @@ export function DataTable<TData>({
         </Table>
       </div>
 
+      {/* Phone cards.
+          A CSS branch rather than a `useIsMobile()` branch on purpose: the hook
+          returns false on the server and on the first client render, so a JS
+          branch would flash the wrong layout — and `display:none` keeps the
+          inactive branch out of the tab order and the accessibility tree. */}
+      {cards && (
+        <div className="md:hidden no-print">
+          <DataTableCards
+            table={table}
+            loading={loading}
+            empty={empty ?? <EmptyState title="No results found" description={emptyHint} />}
+          />
+        </div>
+      )}
+
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <span>
           {table.getFilteredRowModel().rows.length} total
           {globalFilter && ` (filtered from ${data.length})`}
@@ -136,23 +192,135 @@ export function DataTable<TData>({
           <Button
             variant="outline"
             size="icon"
-            className="h-7 w-7"
+            className="h-11 w-11 md:h-7 md:w-7"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
+            aria-label="Previous page"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="h-7 w-7"
+            className="h-11 w-11 md:h-7 md:w-7"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
+            aria-label="Next page"
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The phone rendering of the same rows: one card each, cells routed into slots
+ * by their `meta.mobile` role.
+ *
+ * Un-annotated tables still read correctly — `bucketCells` promotes the first
+ * cell to the title and detects the actions column by id.
+ */
+function DataTableCards<TData>({
+  table,
+  loading,
+  empty,
+}: {
+  table: TanstackTable<TData>;
+  loading?: boolean;
+  empty: React.ReactNode;
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="space-y-2 rounded-lg border bg-card p-3">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const rows = table.getRowModel().rows;
+  if (rows.length === 0) return <>{empty}</>;
+
+  return (
+    <div className="space-y-3">
+      {rows.map((row) => {
+        const { title, subtitle, badges, fields, actions } = bucketCells(row);
+        return (
+          <div key={row.id} className="rounded-lg border bg-card p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                {title && (
+                  <div className="font-medium">
+                    {flexRender(title.column.columnDef.cell, title.getContext())}
+                  </div>
+                )}
+                {subtitle && (
+                  <div className="text-xs text-muted-foreground">
+                    {flexRender(subtitle.column.columnDef.cell, subtitle.getContext())}
+                  </div>
+                )}
+              </div>
+              {badges.length > 0 && (
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                  {badges.map((c) => (
+                    <span key={c.id}>{flexRender(c.column.columnDef.cell, c.getContext())}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {fields.length > 0 && (
+              <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                {fields.map((c) => {
+                  // Full-width fields carry prose (notes, remarks, an issue
+                  // description), so they stack and read left-to-right. Narrow
+                  // fields are short values that line up better right-aligned
+                  // against their label.
+                  const full = c.column.columnDef.meta?.mobileFull;
+                  return (
+                    <div
+                      key={c.id}
+                      className={cn(
+                        'flex gap-2',
+                        full
+                          ? 'col-span-2 flex-col items-start gap-0.5'
+                          : 'items-baseline justify-between'
+                      )}
+                    >
+                      <dt className="shrink-0 text-muted-foreground">{mobileLabel(c)}</dt>
+                      <dd
+                        className={cn(
+                          'min-w-0 font-medium',
+                          full ? 'w-full text-left' : 'text-right tabular-nums'
+                        )}
+                      >
+                        {flexRender(c.column.columnDef.cell, c.getContext())}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            )}
+
+            {actions && (
+              // Touch targets, centrally. `min-height` has no competing declaration
+              // from the `h-8`/`size-8` on the icon buttons inside, and this
+              // descendant selector outranks those single-class utilities anyway —
+              // so every actions column reaches 44px without touching a call site.
+              <div className="mt-3 flex flex-wrap items-center justify-end gap-1 border-t pt-2.5 [&_button]:min-h-11 [&_button]:min-w-11 [&_svg]:size-4.5">
+                {flexRender(actions.column.columnDef.cell, actions.getContext())}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

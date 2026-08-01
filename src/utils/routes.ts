@@ -14,15 +14,19 @@ export const ROUTES = {
   BRANCHES: '/branches',
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
+  SUPPORT_CENTER: '/support',
+  NOTIFICATION_RECIPIENTS: '/notification-recipients',
 
   // Production module
   PRODUCTION_DASHBOARD: '/production-dashboard',
   PRODUCTION_ORDERS: '/production-orders',
+  PRODUCTION_SALES: '/production-sales',
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',
   PRODUCTION_EXPENSES: '/production-expenses',
   PRODUCTION_REPORTS: '/production-reports',
+  PRODUCTION_HELP_DESK: '/production-help-desk',
   USERS: '/users',
   SETTINGS: '/settings',
 
@@ -35,9 +39,7 @@ export const ROUTES = {
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
   BRANCH_REPORTS: '/branch-reports',
-
-  // Chat (future deep-link support)
-  CHAT: '/chat',
+  BRANCH_HELP_DESK: '/branch-help-desk',
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];

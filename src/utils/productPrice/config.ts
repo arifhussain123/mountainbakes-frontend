@@ -29,7 +29,7 @@ export function configureProductPrice(cfg: ProductPriceConfig): void {
   config = cfg;
 }
 
-/** @internal Explicit token wins; then the configured getter; then lazy-firebase. */
+/** @internal Explicit token wins; then the configured getter. */
 export async function resolveToken(explicit?: string): Promise<string> {
   if (explicit) return explicit;
   if (config) return (await config.getToken()) || '';

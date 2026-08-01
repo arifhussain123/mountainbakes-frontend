@@ -4,18 +4,19 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { useProducts } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import { DataTable } from '@/components/shared/DataTable';
+import { useProducts } from '@/lib/queries';import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PackingMaterialsPage } from '@/components/packing-materials/PackingMaterialsPage';
 import { ProductForm } from './ProductForm';
 import { ChangePriceDialog } from './ChangePriceDialog';
 import type { Product } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Coins } from 'lucide-react';
+import { Pencil, Trash2, Coins, Power, Plus } from 'lucide-react';
+import { Fab } from '@/components/shared/Fab';
 
 const col = createColumnHelper<Product>();
 
@@ -28,8 +29,6 @@ export function ProductsPage() {
   const [showPricing, setShowPricing] = useState(false);
 
   // A price change on another device reaches this table without a reload.
-  usePriceRealtime();
-
   const productsQ = useProducts(token);
   const products = productsQ.data ?? [];
   const loading = productsQ.isLoading;
@@ -52,9 +51,21 @@ export function ProductsPage() {
     }
   }
 
+  async function handleActivate(id: string, name: string) {
+    try {
+      await apiCall(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify({ isActive: true }) }, token);
+      loadProducts();
+      toast.success(`${name} activated`);
+    } catch {
+      toast.error('Activate failed');
+    }
+  }
+
   const columns = [
     col.accessor('name', {
       header: 'Product',
+      // The cell already stacks name over SKU, so it fills the card head alone.
+      meta: { mobile: 'title' },
       cell: (info) => (
         <div>
           <p className="font-medium">{info.getValue()}</p>
@@ -73,6 +84,7 @@ export function ProductsPage() {
     }),
     col.accessor('isActive', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (info) => (
         <Badge variant={info.getValue() ? 'default' : 'secondary'}>
           {info.getValue() ? 'Active' : 'Inactive'}
@@ -102,14 +114,27 @@ export function ProductsPage() {
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            onClick={() => handleDelete(row.original.id, row.original.name)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {row.original.isActive ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              title="Deactivate product"
+              onClick={() => handleDelete(row.original.id, row.original.name)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-emerald-600 hover:text-emerald-600"
+              title="Activate product"
+              onClick={() => handleActivate(row.original.id, row.original.name)}
+            >
+              <Power className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     }),
@@ -117,18 +142,48 @@ export function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Products</h2>
-          <p className="text-sm text-muted-foreground">{products.length} products in catalog</p>
-        </div>
-        <Button onClick={() => { setEditProduct(null); setShowForm(true); }}>+ Add Product</Button>
-      </div>
+      {/* Two catalogues, deliberately never mixed: bakery products have prices and
+          are sold; packing materials are service items supplied with a demand. */}
+      <Tabs defaultValue="products">
+        <TabsList>
+          <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="packing">Packing Materials</TabsTrigger>
+        </TabsList>
 
-      <DataTable columns={columns} data={products} loading={loading} searchPlaceholder="Search products, SKUâ€¦" />
+        <TabsContent value="products" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Products</h2>
+              <p className="text-sm text-muted-foreground">{products.length} products in catalog</p>
+            </div>
+            {/* Mobile gets this as the FAB below instead. */}
+            <Button
+              className="hidden md:inline-flex"
+              onClick={() => { setEditProduct(null); setShowForm(true); }}
+            >
+              + Add Product
+            </Button>
+          </div>
+
+          <DataTable columns={columns} data={products} loading={loading} searchPlaceholder="Search products, SKUâ€¦" />
+
+          {/* Inside the tab panel on purpose: the Packing Materials tab owns its
+              own add action, so a FAB rendered at page level would fire the wrong
+              one while that tab is showing. */}
+          <Fab
+            onClick={() => { setEditProduct(null); setShowForm(true); }}
+            icon={Plus}
+            label="Add product"
+          />
+        </TabsContent>
+
+        <TabsContent value="packing" className="mt-4">
+          <PackingMaterialsPage />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editProduct ? 'Edit Product' : 'Add Product'}</DialogTitle>
           </DialogHeader>

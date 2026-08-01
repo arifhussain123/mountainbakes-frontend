@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { usePriceHistory } from '@/lib/queries';
-import { usePriceRealtime } from '@/hooks/usePriceRealtime';
-import { exportPriceHistory, formatBusinessDate } from '@/utils/productPrice';
+import { usePriceHistory } from '@/lib/queries';import { exportPriceHistory, formatBusinessDate } from '@/utils/productPrice';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import type { PriceHistoryDoc } from '@mb/shared';
@@ -26,8 +24,6 @@ const STATUS_PILL: Record<string, string> = {
 export function PriceHistoryPage() {
   const { user, token } = useAuth();
   const [exporting, setExporting] = useState(false);
-
-  usePriceRealtime();
 
   const historyQ = usePriceHistory(token);
   const rows = historyQ.data ?? [];
@@ -53,8 +49,10 @@ export function PriceHistoryPage() {
   }
 
   const columns = [
+    col.accessor('priceNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', {
       header: 'Product',
+      meta: { mobile: 'title' },
       cell: (i) => (
         <div>
           <p className="font-medium">{i.getValue()}</p>
@@ -69,13 +67,14 @@ export function PriceHistoryPage() {
     col.accessor('changedOn', { header: 'Changed On', cell: (i) => <span className="tabular-nums text-muted-foreground">{dmy(i.getValue())}</span> }),
     col.accessor('status', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (i) => (
         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_PILL[i.getValue()] ?? 'bg-muted text-muted-foreground'}`}>
           {i.getValue()}
         </span>
       ),
     }),
-    col.accessor('reason', { header: 'Reason', cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() || '—'}</span> }),
   ];
 
   return (

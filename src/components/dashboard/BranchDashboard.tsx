@@ -64,7 +64,7 @@ export function BranchDashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard title="Sales" value={loading ? '…' : money(summary?.totalRevenue ?? 0)} icon={DollarSign} color="green" loading={loading} />
         <StatCard title="Expenses" value={loading ? '…' : money(summary?.totalExpenses ?? 0)} icon={Receipt} color="red" loading={loading} />
-        <StatCard title="Profit" value={loading ? '…' : money(summary?.totalProfit ?? 0)} icon={TrendingUp} color="orange" loading={loading} />
+        <StatCard title="Net Amount" value={loading ? '…' : money(summary?.totalProfit ?? 0)} icon={TrendingUp} color="orange" loading={loading} />
         <StatCard title="Orders" value={loading ? '…' : (summary?.totalOrders ?? 0).toLocaleString()} icon={ShoppingCart} color="blue" loading={loading} />
       </div>
 

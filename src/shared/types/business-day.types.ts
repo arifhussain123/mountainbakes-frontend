@@ -6,15 +6,16 @@ export type ClosureTrigger = 'scheduler' | 'manual';
 
 /** Sales rollup for a closed business day. */
 export interface SalesSummary {
-  totalSales: number; // Σ grandTotal
+  totalSales: number; // Σ grandTotal of PAID orders — excludes staff (unpaid)
+  staffSales: number; // Σ grandTotal of staff (unpaid) orders, tracked but not revenue
   totalOrders: number;
-  byPaymentMethod: Record<PaymentMethod, number>; // cash / easypaisa / foodpanda / bank_account
+  byPaymentMethod: Record<PaymentMethod, number>; // cash / easypaisa / foodpanda / bank_account / staff
   totalDiscounts: number; // Σ discountTotal
   governmentTax: number; // Σ taxAmount
   netSales: number; // totalSales − totalDiscounts − governmentTax
 }
 
-/** Expense rollup. `byCategory` is keyed by category (production) or description (shop). */
+/** Expense rollup. `byCategory` is keyed by expense category (both shop and production). */
 export interface ExpenseSummary {
   total: number;
   byCategory: Record<string, number>;
@@ -39,7 +40,7 @@ export interface StockSnapshotBranch {
 
 /**
  * One document per closed business day — the archive + idempotency lock.
- * Firestore collection `business_day_closures`, doc id = the business date.
+ * Table `business_day_closures`, keyed by the business date.
  */
 export interface DailyClosure {
   businessDate: string; // 'YYYY-MM-DD'

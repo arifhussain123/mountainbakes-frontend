@@ -76,10 +76,14 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
   const columns = [
     col.accessor('orderNumber', {
       header: 'Order #',
+      meta: { mobile: 'subtitle' },
       cell: (info) => <span className="font-mono text-xs font-medium">{info.getValue()}</span>,
     }),
     col.accessor('customerName', {
+      // Card heading: who the order is for reads better than its number, which
+      // stays available as the subtitle.
       header: 'Customer',
+      meta: { mobile: 'title' },
       cell: (info) => (
         <div>
           <p className="font-medium">{info.getValue()}</p>
@@ -102,6 +106,7 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
     }),
     col.accessor('status', {
       header: 'Status',
+      meta: { mobile: 'badge' },
       cell: (info) => <OrderStatusBadge status={info.getValue()} />,
     }),
     col.accessor('createdAt', {

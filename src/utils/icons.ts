@@ -91,18 +91,7 @@ export {
   Sun,
   Moon,
 
-  // Chat
-  MessageSquare,
+  // Actions
   Send,
-  Paperclip,
-  SmilePlus,
-  Reply,
-  Pin,
   Pencil,
-  CheckCheck,
-  ArrowDown,
-  ArrowUp,
-  Circle,
-  Dot,
-  Archive,
 } from 'lucide-react';

@@ -16,20 +16,25 @@ export const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'delivered', 'ca
 
 // Branch retail payment methods (replaces legacy cash/card/online).
 export const PAYMENT_METHODS = ['cash', 'easypaisa', 'foodpanda', 'bank_account'] as const;
+
+/**
+ * The production counter's list. 'staff' is an UNPAID sale — it takes no money, is
+ * excluded from every revenue total, and requires a comment. It is offered here
+ * only: PAYMENT_METHODS above stays as-is so branch sales cannot select it, and
+ * /api/orders/pos rejects it server-side.
+ */
+export const PRODUCTION_SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, 'staff'] as const;
+
+/** Payment method that collects nothing — drives the "no cash tendered" UI. */
+export const UNPAID_PAYMENT_METHOD = 'staff';
+
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
   easypaisa: 'Easypaisa',
   foodpanda: 'Foodpanda',
   bank_account: 'Bank Account',
+  staff: 'Staff',
   // legacy values that may still exist on old orders
   card: 'Card',
   online: 'Online',
 };
-
-// Chat
-export const CHAT_MESSAGE_LIMIT = 40;
-export const CHAT_TYPING_TIMEOUT_MS = 3000;
-export const CHAT_ATTACHMENT_MAX_MB = 10;
-export const CHAT_ATTACHMENT_MAX_BYTES = CHAT_ATTACHMENT_MAX_MB * 1024 * 1024;
-export const STORAGE_CHAT_PATH = 'chat-attachments';
-export const CHAT_ACCEPTED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] as const;

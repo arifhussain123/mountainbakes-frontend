@@ -34,9 +34,10 @@ export function ProductionExpensesPage() {
   const money = (n: number) => `${cur}${n.toLocaleString()}`;
 
   const columns = [
+    col.accessor('expenseNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    col.accessor('category', { header: 'Category', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    col.accessor('description', { header: 'Description', cell: (i) => <span>{i.getValue()}</span> }),
+    col.accessor('category', { header: 'Category', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('description', { header: 'Description', meta: { mobileFull: true }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
     col.accessor('supplier', { header: 'Supplier', cell: (i) => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('amount', { header: 'Amount', cell: (i) => <span className="font-semibold">{money(i.getValue() || 0)}</span> }),
@@ -71,7 +72,7 @@ export function ProductionExpensesPage() {
       <DataTable columns={columns} data={expensesQ.data ?? []} loading={expensesQ.isLoading} searchPlaceholder="Search expenses…" />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="md:max-w-lg">
           <DialogHeader><DialogTitle>New Production Expense</DialogTitle></DialogHeader>
           <ProductionExpenseForm onSuccess={() => setOpen(false)} />
         </DialogContent>

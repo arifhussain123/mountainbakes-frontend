@@ -8,10 +8,19 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/shared/DataTable';
 import { Plus } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
+import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 
 type HistoryRow = { date: string; time: string; productName: string; qty: number; approvedQty?: number; pendingBalance?: number; status: string };
 const col = createColumnHelper<HistoryRow>();
+
+/**
+ * Packing lines from the same demands. No `pendingBalance` field: products carry
+ * unmet demand forward through production_balances, packing materials deliberately
+ * do not — an unfilled shopper request simply ends, and the branch re-requests.
+ */
+type PackingHistoryRow = { date: string; time: string; materialName: string; qty: number; approvedQty?: number; status: string };
+const packCol = createColumnHelper<PackingHistoryRow>();
 
 /** Branch model has no `code` field — derive a short code from the branch name initials. */
 function deriveBranchCode(name: string | null, branchId: string | null): string {
@@ -82,10 +91,27 @@ export function BranchNewOrders() {
     [ordersQ.data],
   );
 
+  // `?? []` matters: packingItems is optional and absent on every demand created
+  // before the packing-material module existed.
+  const packingHistoryRows = useMemo<PackingHistoryRow[]>(
+    () =>
+      (ordersQ.data ?? []).flatMap((o) =>
+        (o.packingItems ?? []).map((it) => ({
+          date: o.date,
+          time: o.time,
+          materialName: it.materialName,
+          qty: it.qty,
+          approvedQty: it.approvedQty,
+          status: o.status,
+        })),
+      ),
+    [ordersQ.data],
+  );
+
   const columns = [
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    col.accessor('productName', { header: 'Product', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('qty', {
       header: 'Qty',
       cell: (i) => {
@@ -110,7 +136,30 @@ export function BranchNewOrders() {
           : <span className="text-muted-foreground">—</span>;
       },
     }),
-    col.accessor('status', { header: 'Status', cell: (i) => <StatusPill status={i.getValue()} /> }),
+    col.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
+  ];
+
+  // Same shape as the product columns minus Pending — see PackingHistoryRow.
+  const packingColumns = [
+    packCol.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
+    packCol.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    packCol.accessor('materialName', { header: 'Packing Material', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    packCol.accessor('qty', {
+      header: 'Qty',
+      cell: (i) => {
+        const approved = i.row.original.approvedQty;
+        const requested = i.getValue();
+        return (
+          <span className="font-semibold tabular-nums">
+            {requested}
+            {approved != null && approved !== requested && (
+              <span className="ml-1 font-medium text-emerald-600">→ {approved}</span>
+            )}
+          </span>
+        );
+      },
+    }),
+    packCol.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
   ];
 
   const branchCode = deriveBranchCode(user?.branchName ?? null, user?.branchId ?? null);
@@ -120,7 +169,8 @@ export function BranchNewOrders() {
     <div className="space-y-4">
       {/* New Order button (top-left) + section heading */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button size="lg" onClick={openModal}>
+        {/* Mobile gets this as the FAB at the bottom of this component. */}
+        <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
           <Plus className="mr-1.5 h-4 w-4" /> New Order
         </Button>
         <div className="text-right">
@@ -130,7 +180,26 @@ export function BranchNewOrders() {
       </div>
 
       {/* Order history */}
+      {packingHistoryRows.length > 0 && (
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Products</h4>
+      )}
       <DataTable columns={columns} data={historyRows} loading={ordersQ.isLoading} searchPlaceholder="Search order history…" />
+
+      {/* Packing materials requested with these demands. Rendered only when there
+          are any, so a branch that never requests them sees the page unchanged.
+          Shows every request with its status; the approved quantity appears as
+          "30 → 25" once Production reviews it, matching the product rows above. */}
+      {packingHistoryRows.length > 0 && (
+        <>
+          <h4 className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packing Materials</h4>
+          <DataTable
+            columns={packingColumns}
+            data={packingHistoryRows}
+            loading={ordersQ.isLoading}
+            searchPlaceholder="Search packing materials…"
+          />
+        </>
+      )}
 
       {/* Order-entry popup */}
       <NewOrderModal
@@ -144,9 +213,11 @@ export function BranchNewOrders() {
         branchName={user?.branchName ?? ''}
         branchCode={branchCode}
         userName={userName}
-        submit={submitMut.mutateAsync}
+        submit={(payload) => submitMut.mutateAsync(payload)}
         submitting={submitMut.isPending}
       />
+
+      <Fab onClick={openModal} icon={Plus} label="New production order" />
     </div>
   );
 }

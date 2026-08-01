@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall, ApiError } from '@/utils/api';
 import {
@@ -11,7 +12,7 @@ import {
   stockLevel,
   isLowStock,
   type StockLevel,
-  type CreatePosSaleInput,
+  type CreateProductionSaleInput,
   type Product,
   type AppSettings,
   type PaymentMethod,
@@ -24,7 +25,7 @@ import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, 
 import { Separator } from '@/components/ui/separator';
 import { Trash2, Plus, Printer, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, UNPAID_PAYMENT_METHOD } from '@/utils/constants';
 import { cn } from '@/lib/utils';
 import type { InvoiceData } from './InvoiceView';
 
@@ -72,6 +73,16 @@ interface PosSaleResponse {
 // A "%" entry is resolved against the line's gross (rate × qty); the result is clamped
 // to [0, gross] so a line can never go negative. This resolved rupee number is what we
 // store — the shared schema and the server keep treating `discount` as a plain number.
+// Product search matches on the product code (SKU) or the name, case-insensitively,
+// so a cashier can type either. This is passed to the Combobox's `filter` so search
+// stays correct independent of how each row's display label is formatted.
+function productMatchesQuery(p: Product | null, query: string): boolean {
+  if (p == null) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+}
+
 function resolveDiscount(raw: string, lineGross: number): number {
   const t = (raw || '').trim();
   if (!t) return 0;
@@ -91,6 +102,9 @@ export function SaleForm({
   stockError,
   onRefreshStock,
   onSaved,
+  endpoint = '/api/orders/pos',
+  paymentMethods = PAYMENT_METHODS,
+  schema = CreatePosSaleSchema as unknown as z.ZodType<CreateProductionSaleInput, z.ZodTypeDef, unknown>,
 }: {
   products: Product[];
   settings: AppSettings | null;
@@ -100,6 +114,17 @@ export function SaleForm({
   stockError: boolean;
   onRefreshStock: () => void;
   onSaved: (invoice: InvoiceData, shouldPrint: boolean) => void;
+  /**
+   * Which endpoint commits the sale. The default deducts the *branch's* stock;
+   * the Production dashboard passes '/api/orders/production-sale', which deducts
+   * the central pool instead. Both take the same body and return the same shape,
+   * so nothing else in this form changes.
+   */
+  endpoint?: string;
+  /** Selectable payment methods. The production counter passes a list including 'staff'. */
+  paymentMethods?: readonly string[];
+  /** Validation schema. Must match `endpoint` — it is what enforces the staff comment. */
+  schema?: z.ZodType<CreateProductionSaleInput, z.ZodTypeDef, unknown>;
 }) {
   const { token } = useAuth();
   const [submitting, setSubmitting] = useState(false);
@@ -110,8 +135,11 @@ export function SaleForm({
   const cur = settings?.currencySymbol || 'Rs.';
   const taxRate = settings?.gstEnabled ? (settings.gstRate / 100) : 0;
 
-  const form = useForm<CreatePosSaleInput>({
-    resolver: zodResolver(CreatePosSaleSchema),
+  // Typed on the production input because it is the SUPERSET — its paymentMethod
+  // union contains every branch method plus 'staff'. Which schema actually runs is
+  // the caller's choice, so branch mode still rejects 'staff' at validation time.
+  const form = useForm<CreateProductionSaleInput>({
+    resolver: zodResolver(schema) as Resolver<CreateProductionSaleInput>,
     defaultValues: {
       branchId,
       customerName: '',
@@ -125,6 +153,7 @@ export function SaleForm({
 
   const items = form.watch('items');
   const paymentMethod = form.watch('paymentMethod');
+  const isUnpaid = paymentMethod === UNPAID_PAYMENT_METHOD;
 
   // Refresh available stock on open and on a short poll while the dialog is mounted.
   useEffect(() => {
@@ -148,6 +177,22 @@ export function SaleForm({
 
   // Client-side gate. Falls back to server enforcement when stock couldn't be loaded.
   const stockReady = stockLoaded && !stockError;
+
+  // Product search ordering: in-stock items on top, out-of-stock sink to the bottom.
+  // Within the in-stock group we sort ascending by available balance so the
+  // nearly-sold-out items surface first. Only reorder once stock has loaded —
+  // before then every balance reads as 0 and the sort would be meaningless.
+  const sortedProducts = useMemo(() => {
+    if (!stockReady) return products;
+    return [...products].sort((a, b) => {
+      const sa = stockById[a.id] ?? 0;
+      const sb = stockById[b.id] ?? 0;
+      const aOut = sa <= 0;
+      const bOut = sb <= 0;
+      if (aOut !== bOut) return aOut ? 1 : -1; // available first, out-of-stock last
+      return sa - sb; // ascending available balance
+    });
+  }, [products, stockById, stockReady]);
   const stockBlocked = stockReady && Object.entries(requestedByProduct).some(([pid, req]) => {
     const available = stockById[pid] ?? 0;
     return available <= 0 || req > available;
@@ -192,14 +237,33 @@ export function SaleForm({
   const receivedNum = typeof receivedCashRaw === 'number' && Number.isFinite(receivedCashRaw) ? receivedCashRaw : null;
   const cashShort = isCash && (receivedNum == null || receivedNum < grandTotal);
 
-  async function onSubmit(data: CreatePosSaleInput) {
+  // Surface client-side (Zod) validation failures instead of letting the Save
+  // button silently do nothing. Walk into the (possibly nested) error tree and
+  // show the first message we find.
+  function onInvalid(errors: typeof form.formState.errors) {
+    function firstMessage(node: unknown): string | undefined {
+      if (!node || typeof node !== 'object') return undefined;
+      if ('message' in node && typeof (node as { message?: unknown }).message === 'string') {
+        return (node as { message: string }).message;
+      }
+      for (const value of Object.values(node as Record<string, unknown>)) {
+        const found = firstMessage(value);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    printRef.current = false;
+    toast.error(firstMessage(errors) || 'Please review the form and try again.');
+  }
+
+  async function onSubmit(data: CreateProductionSaleInput) {
     const shouldPrint = printRef.current;
     printRef.current = false;
     setSubmitting(true);
     try {
       // Only send receivedCash on cash sales, and only when it is a valid number
       // (an empty field yields NaN → would fail server validation).
-      const body: CreatePosSaleInput = {
+      const body: CreateProductionSaleInput = {
         branchId: data.branchId,
         customerName: data.customerName,
         customerPhone: data.customerPhone,
@@ -209,7 +273,7 @@ export function SaleForm({
         ...(data.paymentMethod === 'cash' && receivedNum != null ? { receivedCash: receivedNum } : {}),
       };
       const result = await apiCall<PosSaleResponse>(
-        '/api/orders/pos',
+        endpoint,
         { method: 'POST', body: JSON.stringify(body) },
         token,
       );
@@ -283,7 +347,7 @@ export function SaleForm({
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+    <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex min-h-0 flex-1 flex-col">
       {/* Scrollable body — only this region scrolls; header and footer stay put */}
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5">
         {/* Customer */}
@@ -350,7 +414,8 @@ export function SaleForm({
                     <div className="col-span-2 space-y-1 sm:col-span-1 sm:space-y-0">
                       <Label className="text-xs sm:hidden">Product</Label>
                       <Combobox
-                        items={products}
+                        items={sortedProducts}
+                        filter={productMatchesQuery}
                         value={selected ?? null}
                         onValueChange={(p: Product | null) => form.setValue(`items.${i}.productId`, p?.id ?? '', { shouldValidate: true })}
                         itemToStringLabel={(p: Product) => `${p.sku} — ${p.name}`}
@@ -482,7 +547,7 @@ export function SaleForm({
         <div className="space-y-2">
           <Label>Payment Method</Label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {PAYMENT_METHODS.map((m) => (
+            {paymentMethods.map((m) => (
               <button
                 key={m}
                 type="button"
@@ -498,7 +563,10 @@ export function SaleForm({
           </div>
         </div>
 
-        {/* Cash payments capture the tendered amount here; other methods keep Notes. */}
+        {/* Cash payments capture the tendered amount here; other methods keep Notes.
+            A staff sale collects nothing, so it never shows Received Cash — instead
+            its comment is mandatory, because that note is the only record of who
+            took the goods and why. */}
         {isCash ? (
           <div className="space-y-1">
             <Label>Received Cash</Label>
@@ -508,13 +576,32 @@ export function SaleForm({
               inputMode="decimal"
               placeholder="0"
               className="h-11 text-base"
-              {...form.register('receivedCash', { valueAsNumber: true })}
+              {...form.register('receivedCash', {
+                // NOT valueAsNumber: an empty/cleared number input yields NaN, and
+                // z.number().optional() rejects NaN (it's a number, so .optional()
+                // doesn't skip it) — which would silently block the submit. Coerce
+                // empty → undefined so the field is truly optional.
+                setValueAs: (v) => {
+                  if (v === '' || v == null) return undefined;
+                  const n = typeof v === 'number' ? v : parseFloat(v);
+                  return Number.isFinite(n) ? n : undefined;
+                },
+              })}
             />
           </div>
         ) : (
           <div className="space-y-1">
-            <Label>Notes (optional)</Label>
-            <Textarea placeholder="Any notes…" {...form.register('notes')} />
+            <Label>{isUnpaid ? 'Comment *' : 'Notes (optional)'}</Label>
+            <Textarea
+              placeholder={isUnpaid ? 'Who is taking this, and why? (required)' : 'Any notes…'}
+              aria-invalid={isUnpaid && !!form.formState.errors.notes}
+              {...form.register('notes')}
+            />
+            {isUnpaid && (
+              <p className={cn('text-xs', form.formState.errors.notes ? 'text-destructive' : 'text-muted-foreground')}>
+                {form.formState.errors.notes?.message ?? 'No payment is collected for a staff sale, so a comment is required.'}
+              </p>
+            )}
           </div>
         )}
       </div>

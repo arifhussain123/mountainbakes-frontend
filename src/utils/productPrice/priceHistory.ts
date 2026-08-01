@@ -7,7 +7,7 @@ import { updateProductPrice, type PriceOpts } from './productPrice';
 /**
  * Price-change history. Append-only and written exclusively server-side, inside
  * the same transaction that updates products.price — so this module is read-only
- * by design (firestore.rules also denies all client writes to the collection).
+ * by design (RLS also denies all client writes to the table).
  *
  * Every price change, manual or bulk import, appends one immutable row carrying a
  * per-product monotonic versionNumber. Previous sales are unaffected: orders

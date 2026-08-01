@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { apiCall } from '@/utils/api';
+import { useStockRows } from '@/lib/queries';
+import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { type StockRow, businessDateStr } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
@@ -15,29 +16,35 @@ const col = createColumnHelper<StockRow>();
 
 export function StockPage() {
   const { token, user } = useAuth();
-  const [rows, setRows] = useState<StockRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [returnOpen, setReturnOpen] = useState(false);
 
-  const loadStock = useCallback(() => {
-    if (!token) return;
-    setLoading(true);
-    apiCall<{ date: string; rows: StockRow[] }>('/api/stock', {}, token)
-      .then((r) => setRows(r.rows ?? []))
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    loadStock();
-  }, [loadStock]);
+  // On TanStack Query (per the project convention) rather than a one-shot fetch,
+  // so an invalidation can reach it — that is what makes the page pick up stock
+  // moved elsewhere: a Production approval, or an admin correcting a Help Desk
+  // query. `useStockRealtime` fires those invalidations off the notifications
+  // stream; the ReturnItemsModal reuses the same refetch after saving.
+  const { data: rows = [], isPending, refetch } = useStockRows(token ?? '');
+  useStockRealtime();
 
   const columns = [
-    col.accessor('productName', { header: 'Product', cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
+    // The remaining columns are the day's ledger for this product. As a card they
+    // become a label:value grid, which reads like the receipt it describes.
+    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('opening', { header: 'Opening Stock', cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('newQty', { header: 'New Stock', cell: (i) => <span className="text-emerald-600 dark:text-emerald-400">{i.getValue() ? `+${i.getValue()}` : 0}</span> }),
     col.accessor('sold', { header: 'Sold', cell: (i) => <span className="text-red-600 dark:text-red-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),
     col.accessor('returned', { header: 'Returned', cell: (i) => <span className="text-amber-600 dark:text-amber-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),
+    // Signed, unlike Sold/Returned: an admin correction can go either way, and
+    // without it the row does not add up to Balance.
+    col.accessor('adjustment', {
+      header: 'Adjustment',
+      cell: (i) => {
+        const v = i.getValue();
+        if (!v) return <span>0</span>;
+        return <span className="text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
+      },
+    }),
     col.accessor('balance', {
       header: 'Balance',
       cell: (i) => <span className={cn('font-semibold', i.getValue() < 0 && 'text-destructive')}>{i.getValue()}</span>,
@@ -52,18 +59,18 @@ export function StockPage() {
         </Button>
         <div className="order-1 sm:order-2 sm:text-right">
           <h2 className="text-lg font-semibold">Stock</h2>
-          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval</p>
+          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections</p>
         </div>
       </div>
 
-      <DataTable columns={columns} data={rows} loading={loading} searchPlaceholder="Search products…" pageSize={50} />
+      <DataTable columns={columns} data={rows} loading={isPending} searchPlaceholder="Search products…" pageSize={50} />
 
       <ReturnItemsModal
         open={returnOpen}
         onOpenChange={setReturnOpen}
         rows={rows}
         branchName={user?.branchName ?? ''}
-        onSaved={loadStock}
+        onSaved={refetch}
       />
     </div>
   );

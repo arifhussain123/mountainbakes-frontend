@@ -8,17 +8,60 @@ import { useSettings } from '@/hooks/useSettings';
 import { useAppStore } from '@/stores/useAppStore';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, LogOut } from '@/utils/icons';
-import { getNavItems } from '@/utils/sidebar';
+import { getNavItems, isNavItemActive } from '@/utils/sidebar';
 import { COMPANY_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
+/**
+ * Role navigation.
+ *
+ * Rendered twice from one definition: as a static `<aside>` at md+, and inside a
+ * left Sheet below md. The mobile drawer used to be hand-rolled here — a fixed
+ * overlay plus a translate-x transition — which meant no focus trap, no Esc, no
+ * scroll lock, and an `aria-hidden`-less panel that screen readers walked into
+ * while it was off-screen. The Sheet primitive (already in the codebase, just
+ * unused) provides all of that.
+ */
 export function Sidebar() {
+  const { sidebarOpen, setSidebarOpen } = useAppStore();
+
+  return (
+    <>
+      {/* Desktop / tablet: always visible, part of the flex row. */}
+      <aside className="hidden md:flex w-64 flex-shrink-0 flex-col bg-sidebar text-sidebar-foreground">
+        <SidebarBody />
+      </aside>
+
+      {/* Mobile: drawer. */}
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="md:hidden w-64 max-w-[85vw] gap-0 bg-sidebar p-0 text-sidebar-foreground sm:max-w-[85vw]"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SidebarBody onNavigate={() => setSidebarOpen(false)} />
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+/**
+ * The sidebar's contents, independent of how it is presented.
+ *
+ * `onNavigate` fires after a link tap and is how the mobile drawer closes itself.
+ * The desktop aside passes nothing, so the previous `window.innerWidth < 768`
+ * check inside the click handler is gone — presentation decides the behaviour
+ * rather than each link re-measuring the viewport.
+ */
+function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
-  const { sidebarOpen, toggleSidebar } = useAppStore();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -33,111 +76,99 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={toggleSidebar}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          'fixed left-0 top-0 h-full w-64 z-50 flex flex-col transition-transform duration-200',
-          'bg-sidebar text-sidebar-foreground',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          'md:relative md:translate-x-0'
-        )}
-      >
-        {/* Brand */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-3">
-            {settings?.logoUrl ? (
-              <Image
-                src={settings.logoUrl}
-                alt={settings.companyName || 'Logo'}
-                width={36}
-                height={36}
-                className="rounded-lg object-contain flex-shrink-0"
-                unoptimized
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
-                <Image
-                  src={IMAGES.logo}
-                  alt={settings?.companyName || COMPANY_NAME}
-                  width={36}
-                  height={36}
-                  className="w-full h-full object-contain"
-                  unoptimized
-                />
-              </div>
-            )}
-            <div>
-              <p className="font-bold text-sm text-sidebar-foreground leading-tight">
-                {settings?.companyName || COMPANY_NAME}
-              </p>
-              <p className="text-xs opacity-60 capitalize">{user.role.replace('_', ' ')}</p>
-            </div>
+      {/* Brand */}
+      <div className="flex items-center gap-3 border-b border-sidebar-border px-6 py-7">
+        {settings?.logoUrl ? (
+          <Image
+            src={settings.logoUrl}
+            alt={settings.companyName || 'Logo'}
+            width={64}
+            height={64}
+            className="h-16 w-16 flex-shrink-0 rounded-full object-cover"
+            priority
+            unoptimized
+          />
+        ) : (
+          <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary">
+            <Image
+              src={IMAGES.logo}
+              alt={settings?.companyName || COMPANY_NAME}
+              width={64}
+              height={64}
+              className="h-full w-full object-cover"
+              priority
+              unoptimized
+            />
           </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold leading-tight text-sidebar-foreground">
+            {settings?.companyName || COMPANY_NAME}
+          </p>
+          <p className="text-xs capitalize opacity-60">{user.role.replace('_', ' ')}</p>
+        </div>
+
+        {/* Drawer-only: collapse the sheet. Sheet also closes on backdrop tap and
+            Esc, but a visible affordance is what people reach for on a phone. */}
+        {onNavigate && (
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden text-sidebar-foreground hover:bg-sidebar-accent h-7 w-7"
-            onClick={toggleSidebar}
+            aria-label="Close navigation"
+            className="h-7 w-7 flex-shrink-0 text-sidebar-foreground hover:bg-sidebar-accent"
+            onClick={onNavigate}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-        </div>
-
-        {/* Branch name for branch managers */}
-        {user.branchName && (
-          <div className="px-6 py-3 bg-sidebar-accent/50">
-            <p className="text-xs font-semibold text-primary truncate">{user.branchName}</p>
-          </div>
         )}
+      </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
-          <div className="space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href || (item.href !== '/dashboard' && item.href !== '/branch-dashboard' && pathname.startsWith(item.href));
-              return (
-                <Link key={item.href} href={item.href} onClick={() => window.innerWidth < 768 && toggleSidebar()}>
-                  <div
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary text-white'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                    )}
-                  >
-                    <Icon className="h-4 w-4 flex-shrink-0" />
-                    {item.label}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-
-        {/* Footer */}
-        <div className="p-3 border-t border-sidebar-border">
-          <div className="px-3 py-2 mb-2">
-            <p className="text-xs font-medium text-sidebar-foreground truncate">{user.displayName}</p>
-            <p className="text-xs opacity-50 truncate">{user.email}</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign Out
-          </button>
+      {/* Branch name for branch managers */}
+      {user.branchName && (
+        <div className="bg-sidebar-accent/50 px-6 py-3">
+          <p className="truncate text-xs font-semibold text-primary">{user.branchName}</p>
         </div>
-      </aside>
+      )}
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = isNavItemActive(pathname, item.href);
+            return (
+              <Link key={item.href} href={item.href} onClick={onNavigate}>
+                <div
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-white'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  )}
+                >
+                  <Icon className="h-4 w-4 flex-shrink-0" />
+                  {item.label}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Footer */}
+      <div className="border-t border-sidebar-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="mb-2 px-3 py-2">
+          <p className="truncate text-xs font-medium text-sidebar-foreground">{user.displayName}</p>
+          <p className="truncate text-xs opacity-50">{user.email}</p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </button>
+      </div>
     </>
   );
 }

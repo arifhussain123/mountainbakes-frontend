@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import type { AppSettings, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
+import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances } from '@/lib/queries';
+import { useProductionBalances, useProducts, useBranches } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { CheckCircle2, XCircle, Printer, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
+import { formatDate, formatTime } from '@/utils/date';
 
 /** Human reference for the slip header (production_orders has no orderNumber field). */
 export function slipReference(order: Pick<BranchProductionOrder, 'date' | 'time'>): string {
@@ -27,6 +28,9 @@ function digits(raw: string): string {
   return raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
 }
 
+const fmt = (n: number) => n.toLocaleString();
+const money = (n: number, sym: string) => `${sym}${Math.round(n).toLocaleString()}`;
+
 export interface OrderPrintPreviewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,20 +43,21 @@ export interface OrderPrintPreviewProps {
 }
 
 /**
- * Clicking "View" on the Production Orders page opens this directly — a professional
- * A4 production slip that IS both the on-screen preview and what prints. Shows the
- * pending-balance carry-forward (Previous Balance + New Demand = Total Required) and
- * lets Production approve/adjust/print in one place.
+ * Production Order print preview / delivery challan. The on-screen half is the
+ * review surface (approve / adjust approved quantities — amounts recalc live).
+ * Printing emits TWO copies in one action — Customer Copy + Company Copy — each a
+ * professional challan with prices, totals, and sign-off blocks (the Company Copy
+ * also carries the cash-payment acknowledgement).
  */
 export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted }: OrderPrintPreviewProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => !reviewing && onOpenChange(o)}>
       <DialogContent
         showCloseButton
-        className="flex h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 top-0 left-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[92vh] sm:w-[90vw] sm:max-w-[90vw] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl lg:w-[80vw] lg:max-w-[920px]"
+        mobile="fullscreen"
+        className="flex flex-col gap-0 overflow-hidden p-0 md:max-h-[92vh] md:w-[90vw] md:max-w-[90vw] md:rounded-2xl lg:w-[80vw] lg:max-w-[960px]"
       >
         {order && (
-          // Keyed so state re-initialises cleanly whenever a different order opens.
           <PreviewBody
             key={order.id}
             order={order}
@@ -81,36 +86,76 @@ function PreviewBody({
   onClose: () => void;
 }) {
   const readOnly = order.status !== 'pending';
-  const frozen = order.status === 'approved'; // carry-forward figures persisted on the item
+  const frozen = order.status === 'approved';
   const [editing, setEditing] = useState(false);
-  const [edits, setEdits] = useState<Record<string, string>>({}); // productId -> approved qty (only when adjusted)
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState(order.changeReason ?? '');
 
-  // Live pending balances for a still-pending order (advisory — the approval
-  // transaction recomputes authoritatively). Approved orders read their frozen fields.
   const balancesQ = useProductionBalances(token, { branchId: order.branchId, enabled: order.status === 'pending' });
   const liveBalances = balancesQ.data ?? {};
+  const productsQ = useProducts(token);
+  const branchesQ = useBranches(token);
+
+  const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
+  const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
+  const sym = settings?.currencySymbol || 'Rs.';
 
   function rowFor(it: BranchProductionOrderItem) {
     const newDemand = it.qty;
     const previousBalance = frozen ? (it.previousBalanceQty ?? 0) : (liveBalances[it.productId] ?? 0);
-    const totalRequired = frozen ? (it.totalRequiredQty ?? previousBalance + newDemand) : previousBalance + newDemand;
+    const totalDemand = frozen ? (it.totalRequiredQty ?? previousBalance + newDemand) : previousBalance + newDemand;
     const approved = frozen
-      ? (it.approvedQty ?? totalRequired)
-      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : totalRequired);
-    const remaining = frozen
-      ? (it.remainingBalanceQty ?? Math.max(0, totalRequired - approved))
-      : Math.max(0, totalRequired - approved);
-    return { newDemand, previousBalance, totalRequired, approved, remaining };
+      ? (it.approvedQty ?? totalDemand)
+      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : totalDemand);
+    const unitPrice = priceById.get(it.productId) ?? 0;
+    const amount = approved * unitPrice;
+    return { newDemand, previousBalance, totalDemand, approved, unitPrice, amount };
   }
 
   const rows = order.items.map((it) => ({ it, ...rowFor(it) }));
   const approvedItems = rows.map(({ it, approved }) => ({ productId: it.productId, approvedQty: approved }));
-  const changed = rows.some(({ approved, totalRequired }) => approved !== totalRequired);
+
+  // Packing materials. Much simpler than products: no previous balance and no
+  // carry-forward, so requested is the only baseline and approved defaults to it.
+  const packingItems = order.packingItems ?? [];
+  const packingRows = packingItems.map((it) => {
+    const approved = frozen
+      ? (it.approvedQty ?? it.qty)
+      : (packingEdits[it.packingMaterialId] !== undefined
+          ? (parseInt(packingEdits[it.packingMaterialId]!, 10) || 0)
+          : it.qty);
+    return { it, requested: it.qty, approved };
+  });
+  const approvedPackingItems = packingRows.map(({ it, approved }) => ({
+    packingMaterialId: it.packingMaterialId,
+    approvedQty: approved,
+  }));
+
+  const changed =
+    rows.some(({ approved, totalDemand }) => approved !== totalDemand) ||
+    packingRows.some(({ approved, requested }) => approved !== requested);
+
+  const printRows: PrintRow[] = rows.map(({ it, ...r }) => ({ productName: it.productName, ...r }));
+  // The slip prints the APPROVED quantity, which is what actually ships.
+  const packingPrintRows = packingRows.map(({ it, approved }) => ({ materialName: it.materialName, qty: approved }));
+  const totals = printRows.reduce(
+    (a, r) => ({ demand: a.demand + r.totalDemand, approved: a.approved + r.approved, amount: a.amount + r.amount }),
+    { demand: 0, approved: 0, amount: 0 },
+  );
+
+  // Print stamp (when the slip is generated) and the aggregate carried-forward
+  // balance. Amount is derived (qty × unit price) since only a quantity balance
+  // is tracked — there is no stored monetary balance or previous-order reference.
+  const now = new Date();
+  const printDate = formatDate(now);
+  const printTime = formatTime(now);
+  const prevBalanceQty = printRows.reduce((a, r) => a + r.previousBalance, 0);
+  const prevBalanceAmount = printRows.reduce((a, r) => a + r.previousBalance * r.unitPrice, 0);
 
   async function approve() {
     try {
-      await review({ id: order.id, status: 'approved', approvedItems, reason: changed ? reason : undefined });
+      await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
       toast.success('Order approved — stock transferred to branch');
       onClose();
     } catch (err) {
@@ -131,11 +176,11 @@ function PreviewBody({
   async function print() {
     try {
       if (order.status === 'pending') {
-        await review({ id: order.id, status: 'approved', approvedItems, reason: changed ? reason : undefined });
+        await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
         toast.success('Order approved');
       }
-      setEditing(false); // render plain numbers (not inputs) into the printed slip
-      markPrinted(order.id).catch(() => {}); // best-effort flag; never blocks printing
+      setEditing(false);
+      markPrinted(order.id).catch(() => {});
       setTimeout(() => {
         window.print();
         onClose();
@@ -145,130 +190,214 @@ function PreviewBody({
     }
   }
 
-  const logo = settings?.logoUrl;
+  const logo = settings?.logoUrl ?? undefined;
   const companyName = settings?.companyName || COMPANY_NAME;
 
   return (
     <>
-      {/* Scrollable A4 document — this whole surface is the print target. */}
       <div
         className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 px-3 py-4 sm:px-6 dark:bg-neutral-900"
         style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
       >
-        <div className="print-area mx-auto max-w-[820px] bg-white p-5 text-black shadow-sm sm:p-8">
-          {/* Header */}
-          <div className="flex items-center gap-4 border-b border-neutral-300 pb-4">
-            {logo && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logo} alt="logo" className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16" />
-            )}
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-xl font-bold sm:text-2xl">{companyName}</h2>
-              <p className="text-sm font-medium text-neutral-600">Production Department</p>
-            </div>
-            <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>
-              {order.status}
-            </span>
-          </div>
+        {/* ── On-screen review (never prints) — edit Approved, Amount recalcs live ── */}
+        <div className="no-print mx-auto max-w-[880px] bg-white p-5 text-black shadow-sm sm:p-7">
+          <SlipHeader logo={logo} companyName={companyName} status={order.status} branch={branch} />
+          <OrderMeta order={order} />
 
-          {/* Meta */}
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3 py-4 text-sm sm:grid-cols-3">
-            <Meta label="Order #" value={slipReference(order)} mono />
-            <Meta label="Date" value={order.date} />
-            <Meta label="Time" value={order.time} />
-            <Meta label="Branch" value={order.branchName} />
-            <Meta label="Requested By" value={order.createdByName} />
-            <Meta label="Status" value={order.status} />
-          </div>
-
-          {/* Product table — desktop + always on print */}
-          <table className="print-doc-table hidden w-full border-collapse text-sm md:table">
-            <thead>
-              <tr className="border-y border-neutral-300 text-left">
-                <th className="py-2 pr-2 font-semibold">Product</th>
-                <th className="px-2 py-2 text-right font-semibold">Previous Balance</th>
-                <th className="px-2 py-2 text-right font-semibold">New Demand</th>
-                <th className="px-2 py-2 text-right font-semibold">Total Required</th>
-                <th className="px-2 py-2 text-right font-semibold">Approved</th>
-                <th className="py-2 pl-2 font-semibold">Remarks</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ it, newDemand, previousBalance, totalRequired, approved }) => (
-                <tr key={it.productId} className="border-b border-neutral-200 align-top">
-                  <td className="py-2 pr-2 font-medium">{it.productName}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{previousBalance}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{newDemand}</td>
-                  <td className="px-2 py-2 text-right font-semibold tabular-nums text-primary">{totalRequired}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">
-                    {editing && !readOnly ? (
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        value={edits[it.productId] ?? String(totalRequired)}
-                        onChange={(e) => setEdits((p) => ({ ...p, [it.productId]: digits(e.target.value) }))}
-                        className="ml-auto h-8 w-20 text-right tabular-nums"
-                      />
-                    ) : (
-                      <span className="font-semibold">{approved}</span>
-                    )}
-                  </td>
-                  <td className="py-2 pl-2 text-neutral-600">{it.remarks || '—'}</td>
+          {/* Review table — desktop */}
+          <div className="mt-3 overflow-x-auto">
+            <table className="hidden w-full border-collapse text-xs md:table">
+              <thead>
+                <tr className="border-y border-neutral-400 text-left">
+                  <th className="py-1.5 pr-2 font-semibold">Product</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Prev. Bal.</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">New Demand</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Total Demand</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Approved</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Unit Price</th>
+                  <th className="py-1.5 pl-2 text-right font-semibold">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
+                  <tr key={it.productId} className="border-b border-neutral-200 align-top">
+                    <td className="py-1.5 pr-2 font-medium">{it.productName}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(previousBalance)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(newDemand)}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{fmt(totalDemand)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {editing && !readOnly ? (
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={edits[it.productId] ?? String(totalDemand)}
+                          onChange={(e) => setEdits((p) => ({ ...p, [it.productId]: digits(e.target.value) }))}
+                          className="ml-auto h-8 w-20 text-right tabular-nums"
+                        />
+                      ) : (
+                        <span className="font-semibold">{fmt(approved)}</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-neutral-600">{money(unitPrice, sym)}</td>
+                    <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">{money(amount, sym)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-neutral-400 font-semibold">
+                  <td className="pt-2" colSpan={3}>Totals</td>
+                  <td className="px-2 pt-2 text-right tabular-nums">{fmt(totals.demand)}</td>
+                  <td className="px-2 pt-2 text-right tabular-nums">{fmt(totals.approved)}</td>
+                  <td className="px-2 pt-2 text-right"></td>
+                  <td className="pt-2 pl-2 text-right tabular-nums">{money(totals.amount, sym)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
-          {/* Product cards — mobile screen only (never on print) */}
-          <div className="print-doc-cards space-y-3 md:hidden">
-            {rows.map(({ it, newDemand, previousBalance, totalRequired, approved }) => (
+          {/* Review cards — mobile */}
+          <div className="mt-3 space-y-3 md:hidden">
+            {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
               <div key={it.productId} className="rounded-lg border border-neutral-200 p-3">
                 <p className="font-semibold">{it.productName}</p>
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
-                  <Field label="Previous Balance" value={previousBalance} />
-                  <Field label="New Demand" value={newDemand} />
-                  <Field label="Total Required" value={totalRequired} strong />
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <Field label="Prev. Balance" value={fmt(previousBalance)} />
+                  <Field label="New Demand" value={fmt(newDemand)} />
+                  <Field label="Total Demand" value={fmt(totalDemand)} strong />
+                  <Field label="Unit Price" value={money(unitPrice, sym)} />
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Approved</p>
                     {editing && !readOnly ? (
                       <Input
                         type="text"
                         inputMode="numeric"
-                        value={edits[it.productId] ?? String(totalRequired)}
+                        value={edits[it.productId] ?? String(totalDemand)}
                         onChange={(e) => setEdits((p) => ({ ...p, [it.productId]: digits(e.target.value) }))}
                         className="mt-0.5 h-8 w-24 text-right tabular-nums"
                       />
                     ) : (
-                      <p className="font-semibold tabular-nums">{approved}</p>
+                      <p className="font-semibold tabular-nums">{fmt(approved)}</p>
                     )}
                   </div>
+                  <Field label="Amount" value={money(amount, sym)} strong />
                 </div>
-                {it.remarks && <p className="mt-2 text-xs text-neutral-600">Remarks: {it.remarks}</p>}
               </div>
             ))}
+            <div className="rounded-lg bg-neutral-100 p-3 text-xs">
+              <div className="flex justify-between"><span>Total Demand</span><span className="font-semibold tabular-nums">{fmt(totals.demand)}</span></div>
+              <div className="flex justify-between"><span>Total Approved</span><span className="font-semibold tabular-nums">{fmt(totals.approved)}</span></div>
+              <div className="flex justify-between"><span>Total Amount</span><span className="font-bold tabular-nums">{money(totals.amount, sym)}</span></div>
+            </div>
           </div>
 
-          {/* Change reason (screen only) */}
+          {/* ── Packing Material Demand ──────────────────────────────────────
+              A separate section, not extra rows in the product table: these have
+              no previous balance, no unit price and no amount, so they would leave
+              four columns empty. Rendered only when the demand has packing lines,
+              so an ordinary order looks exactly as it did. */}
+          {packingRows.length > 0 && (
+            <div className="mt-6">
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-600">
+                Packing Material Demand
+              </h3>
+
+              <div className="overflow-x-auto">
+                <table className="hidden w-full border-collapse text-xs md:table">
+                  <thead>
+                    <tr className="border-y border-neutral-400 text-left">
+                      <th className="py-1.5 pr-2 font-semibold">Packing Material</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Requested Qty</th>
+                      <th className="py-1.5 pl-2 text-right font-semibold">Approved Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {packingRows.map(({ it, requested, approved }) => (
+                      <tr key={it.packingMaterialId} className="border-b border-neutral-200 align-top">
+                        <td className="py-1.5 pr-2 font-medium">{it.materialName}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{fmt(requested)}</td>
+                        <td className="py-1.5 pl-2 text-right tabular-nums">
+                          {editing && !readOnly ? (
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={packingEdits[it.packingMaterialId] ?? String(requested)}
+                              onChange={(e) =>
+                                setPackingEdits((p) => ({ ...p, [it.packingMaterialId]: digits(e.target.value) }))
+                              }
+                              className="ml-auto h-8 w-20 text-right tabular-nums"
+                            />
+                          ) : (
+                            <span className="font-semibold">{fmt(approved)}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="space-y-3 md:hidden">
+                {packingRows.map(({ it, requested, approved }) => (
+                  <div key={it.packingMaterialId} className="rounded-lg border border-neutral-200 p-3">
+                    <p className="font-semibold">{it.materialName}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <Field label="Requested Qty" value={fmt(requested)} />
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Approved Qty</p>
+                        {editing && !readOnly ? (
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={packingEdits[it.packingMaterialId] ?? String(requested)}
+                            onChange={(e) =>
+                              setPackingEdits((p) => ({ ...p, [it.packingMaterialId]: digits(e.target.value) }))
+                            }
+                            className="mt-0.5 h-8 w-24 text-right tabular-nums"
+                          />
+                        ) : (
+                          <p className="font-semibold tabular-nums">{fmt(approved)}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {editing && !readOnly && changed && (
-            <div className="no-print mt-4 space-y-1">
+            <div className="mt-4 space-y-1">
               <label className="text-sm font-medium">Reason for change</label>
               <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why was the quantity adjusted?" />
             </div>
           )}
 
-          {/* Signatures */}
-          <div className="mt-12 grid grid-cols-2 gap-8 text-xs text-neutral-700">
-            <div className="text-center">
-              <div className="border-t border-neutral-400 pt-1">Prepared By</div>
-            </div>
-            <div className="text-center">
-              <div className="border-t border-neutral-400 pt-1">Approved By</div>
-            </div>
-          </div>
+          <p className="mt-6 text-center text-[11px] text-neutral-400">
+            Print produces a Customer Copy and a Company Copy in one action.
+          </p>
+        </div>
+
+        {/* ── Print-only: Customer Copy + Company Copy (two pages, one click) ── */}
+        <div className="print-area print-only">
+          <PrintCopy
+            copyLabel="Customer Copy"
+            logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
+            printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
+            prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
+            receiptFooter={settings?.receiptFooter ?? null}
+          />
+          <PrintCopy
+            copyLabel="Company Copy"
+            logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
+            printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
+            prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
+            receiptFooter={settings?.receiptFooter ?? null}
+          />
         </div>
       </div>
 
-      {/* Action bar — fixed at the bottom of the modal, hidden on print */}
+      {/* Action bar — hidden on print */}
       <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Button variant="outline" onClick={onClose} disabled={reviewing}>Close</Button>
         {!readOnly && (
@@ -292,16 +421,266 @@ function PreviewBody({
   );
 }
 
-function Meta({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+interface PrintRow {
+  productName: string;
+  previousBalance: number;
+  newDemand: number;
+  totalDemand: number;
+  approved: number;
+  unitPrice: number;
+  amount: number;
+}
+
+function SlipHeader({ logo, companyName, status, branch, copyLabel }: { logo?: string; companyName: string; status: string; branch: Branch | null; copyLabel?: string }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className={`truncate font-medium ${mono ? 'font-mono text-sm' : ''}`} title={value}>{value || '—'}</p>
+    <div className="border-b border-neutral-300 pb-3">
+      {copyLabel && <p className="text-center text-[11px] font-bold uppercase tracking-[0.25em] text-neutral-500">{copyLabel}</p>}
+      <div className={`flex items-start gap-3 ${copyLabel ? 'mt-1' : ''}`}>
+        {logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="logo" className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16" />
+        )}
+        <div className="min-w-0 flex-1 text-center">
+          <h2 className="text-lg font-bold leading-tight sm:text-xl">{companyName}</h2>
+          <p className="text-xs font-medium text-neutral-600">Production Department</p>
+          {branch?.name && <p className="text-[11px] text-neutral-600">{branch.name}</p>}
+          {branch?.address && <p className="text-[11px] text-neutral-600">{branch.address}{branch.city ? `, ${branch.city}` : ''}</p>}
+          {branch?.phone && <p className="text-[11px] text-neutral-600">Phone: {branch.phone}</p>}
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_STYLES[status] ?? 'bg-neutral-200 text-neutral-700'}`}>
+          {status}
+        </span>
+      </div>
     </div>
   );
 }
 
-function Field({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+function OrderMeta({ order }: { order: BranchProductionOrder }) {
+  return (
+    <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-3 text-[11px] sm:grid-cols-3">
+      <MetaKV k="Order #" v={slipReference(order)} mono />
+      <MetaKV k="Business Date" v={order.date} />
+      <MetaKV k="Time" v={order.time} />
+      <MetaKV k="Branch" v={order.branchName} />
+      <MetaKV k="Requested By" v={order.createdByName} />
+      <MetaKV k="Status" v={order.status} />
+    </div>
+  );
+}
+
+function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <span className="text-neutral-500">{k}: </span>
+      <span className={`font-medium break-words ${mono ? 'font-mono' : ''}`}>{v || '—'}</span>
+    </div>
+  );
+}
+
+/**
+ * One printed copy (Customer or Company) — a full A4 delivery challan. Both copies
+ * carry identical information (spec); only the corner watermark label differs. The
+ * product table lists approved products only, with derived amounts and grand total.
+ */
+function PrintCopy({
+  copyLabel, logo, companyName, sym, order, branch, printRows, packingPrintRows, printDate, printTime, prevBalanceQty, prevBalanceAmount, receiptFooter,
+}: {
+  copyLabel: string;
+  logo?: string;
+  companyName: string;
+  sym: string;
+  order: BranchProductionOrder;
+  branch: Branch | null;
+  printRows: PrintRow[];
+  /** Approved packing lines. Empty on a products-only demand. */
+  packingPrintRows: { materialName: string; qty: number }[];
+  printDate: string;
+  printTime: string;
+  prevBalanceQty: number;
+  prevBalanceAmount: number;
+  receiptFooter: string | null;
+}) {
+  const items = printRows.filter((r) => r.approved > 0);
+  // Same rule as products: the slip is a delivery document, so it lists what is
+  // actually going out — a line approved down to zero is not delivered.
+  const packingItems = packingPrintRows.filter((p) => p.qty > 0);
+  const totalQty = items.reduce((a, r) => a + r.approved, 0);
+  const grandTotal = items.reduce((a, r) => a + r.amount, 0);
+  const hasPrevBalance = prevBalanceQty > 0;
+
+  return (
+    <div className="production-slip print-page relative mx-auto w-full max-w-[720px] bg-white p-6 text-black">
+      {/* Large corner watermark identifying the copy */}
+      <span className="copy-watermark pointer-events-none absolute right-3 top-3 select-none text-right text-2xl font-black uppercase leading-none tracking-widest text-neutral-200 sm:text-3xl">
+        {copyLabel}
+      </span>
+
+      {/* Header */}
+      <div className="avoid-break border-b-2 border-neutral-800 pb-3">
+        <div className="flex items-start gap-3">
+          {logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo} alt="logo" className="h-16 w-16 shrink-0 object-contain" />
+          )}
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-bold leading-tight">{companyName}</h2>
+            <p className="text-xs font-medium text-neutral-600">Production Department</p>
+            <p className="mt-0.5 text-sm font-semibold uppercase tracking-wide text-neutral-800">Production Order</p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 pr-24 text-[11px] sm:grid-cols-3">
+          <MetaKV k="Production Order No" v={slipReference(order)} mono />
+          <MetaKV k="Business Date" v={order.date} />
+          <MetaKV k="Branch" v={order.branchName} />
+          <MetaKV k="Print Date" v={printDate} />
+          <MetaKV k="Print Time" v={printTime} />
+          <div className="min-w-0">
+            <span className="text-neutral-500">Status: </span>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>{order.status}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Previous order balance — above the product table */}
+      <div className="avoid-break mt-3 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
+        {hasPrevBalance ? (
+          <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-4">
+            <MetaKV k="Previous Pending Qty" v={fmt(prevBalanceQty)} />
+            <MetaKV k="Previous Pending Amount" v={money(prevBalanceAmount, sym)} />
+            <MetaKV k="Previous Order No" v="—" />
+            <MetaKV k="Previous Business Date" v="—" />
+          </div>
+        ) : (
+          <p className="mt-1 text-[11px] font-medium text-neutral-500">No Previous Balance</p>
+        )}
+      </div>
+
+      {/* Approved products */}
+      <table className="mt-3 w-full border-collapse text-[11px]">
+        <thead>
+          <tr className="border-y border-neutral-400 text-left">
+            <th className="py-1 pr-1 font-semibold">Product</th>
+            <th className="px-1 py-1 text-right font-semibold">Approved Qty</th>
+            <th className="px-1 py-1 text-right font-semibold">Unit Price</th>
+            <th className="py-1 pl-1 text-right font-semibold">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.length === 0 ? (
+            <tr><td colSpan={4} className="py-3 text-center text-neutral-500">No approved products.</td></tr>
+          ) : items.map((r) => (
+            <tr key={r.productName} className="border-b border-neutral-200 align-top">
+              <td className="py-1 pr-1 font-medium">{r.productName}</td>
+              <td className="px-1 py-1 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
+              <td className="px-1 py-1 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
+              <td className="py-1 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-neutral-400 font-bold">
+            <td className="pt-1.5">Totals</td>
+            <td className="px-1 pt-1.5 text-right tabular-nums">{fmt(totalQty)}</td>
+            <td className="pt-1.5"></td>
+            <td className="pt-1.5 pl-1 text-right tabular-nums">{money(grandTotal, sym)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {/* Totals recap */}
+      <div className="avoid-break mt-2 ml-auto w-full max-w-[240px] space-y-0.5 text-[11px]">
+        <div className="flex justify-between"><span className="text-neutral-600">Total Qty</span><span className="font-semibold tabular-nums">{fmt(totalQty)}</span></div>
+        <div className="flex justify-between border-t border-neutral-300 pt-0.5 text-sm font-bold"><span>Grand Total Amount</span><span className="tabular-nums">{money(grandTotal, sym)}</span></div>
+      </div>
+
+      {/* Packing materials — its own table, below the products and outside the
+          money totals. These carry no price, so they must never fold into the
+          grand total. Omitted entirely when the demand has none, which keeps an
+          ordinary slip byte-identical to before. */}
+      {packingItems.length > 0 && (
+        <div className="avoid-break mt-5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Packing Materials</p>
+          <table className="mt-1 w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="border-y border-neutral-400 text-left">
+                <th className="py-1 pr-1 font-semibold">Item</th>
+                <th className="py-1 pl-1 text-right font-semibold">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {packingItems.map((p) => (
+                <tr key={p.materialName} className="border-b border-neutral-200">
+                  <td className="py-1 pr-1 font-medium">{p.materialName}</td>
+                  <td className="py-1 pl-1 text-right font-semibold tabular-nums">{fmt(p.qty)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-neutral-400 font-bold">
+                <td className="pt-1.5">Total</td>
+                <td className="pt-1.5 pl-1 text-right tabular-nums">
+                  {fmt(packingItems.reduce((a, p) => a + p.qty, 0))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* Payment */}
+      <div className="avoid-break mt-5 rounded-md border border-neutral-300 p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Payment</p>
+        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <FillField label="Cash Paid" prefix={sym} />
+          <FillField label="Payment Status" />
+          <FillField label="Received By (Rider)" />
+          <FillField label="Signature" />
+        </div>
+      </div>
+
+      {/* Sign-off: shop (left) + rider (right) */}
+      <div className="mt-4 grid grid-cols-2 gap-6">
+        <div className="avoid-break">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-700">Collected By (Shop)</p>
+          <FillField label="Shop Name" value={order.branchName} />
+          <FillField label="Representative" />
+          <FillField label="Signature" />
+          <FillField label="Date" />
+        </div>
+        <div className="avoid-break">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-700">Delivered By (Rider)</p>
+          <FillField label="Rider Name" />
+          <FillField label="Mobile" />
+          <FillField label="Signature" />
+          <FillField label="Date" />
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-6 border-t border-neutral-300 pt-3 text-center text-[10px] text-neutral-600">
+        <p className="text-xs font-semibold text-neutral-800">{companyName}</p>
+        <p className="font-medium">{receiptFooter || 'Thank you'}</p>
+        {branch?.phone && <p>Phone: {branch.phone}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** A labeled fill-in row: an optional printed value sitting on a signature rule. */
+function FillField({ label, value, prefix }: { label: string; value?: string; prefix?: string }) {
+  return (
+    <div className="text-[11px]">
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
+      <div className="mt-3 flex min-h-[18px] items-end gap-1 border-b border-neutral-500 pb-0.5">
+        {prefix && value == null && <span className="text-neutral-400">{prefix}</span>}
+        <span className="font-medium">{value ?? ''}</span>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{label}</p>

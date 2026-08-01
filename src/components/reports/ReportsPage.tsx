@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import dynamic from 'next/dynamic';
 import { StatCard } from '@/components/shared/StatCard';
+import { PackingUsageReport } from './PackingUsageReport';
 import { ShoppingCart, DollarSign, TrendingDown, TrendingUp, BarChart3, Receipt, Printer } from 'lucide-react';
 import type { ReportSummary } from '@mb/shared';
 import { toast } from 'sonner';
@@ -153,6 +154,7 @@ export function ReportsPage() {
           <TabsTrigger value="sales">Sales Trend</TabsTrigger>
           {user?.role === 'super_admin' && <TabsTrigger value="branches">Branch Comparison</TabsTrigger>}
           <TabsTrigger value="products">Top Products</TabsTrigger>
+          <TabsTrigger value="packing">Packing Materials</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales" className="mt-4">
@@ -171,7 +173,27 @@ export function ReportsPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Top 10 Products</CardTitle></CardHeader>
               <CardContent className="p-0">
-                <table className="w-full text-sm">
+                {/* Phone list — a ranked leaderboard rather than a four-column
+                    table, which cannot hold its shape at 360px. */}
+                <ul className="divide-y divide-border md:hidden no-print">
+                  {(summary?.topProducts ?? []).slice(0, 10).map((p, i) => (
+                    <li key={p.productId} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{p.productName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{p.categoryName}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold tabular-nums">Rs.{p.totalRevenue.toLocaleString()}</p>
+                        <p className="text-xs tabular-nums text-muted-foreground">{p.totalQty} sold</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* `print-doc-table` (display:table) rather than the block-level
+                    `print-table-wrap` — this element is the table itself. */}
+                <table className="hidden w-full text-sm md:table print-doc-table">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">#</th>
@@ -197,6 +219,12 @@ export function ReportsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Its own date range and filters — packing usage is asked about per day and
+            per material, independently of the sales period selected above. */}
+        <TabsContent value="packing" className="mt-4">
+          <PackingUsageReport />
         </TabsContent>
       </Tabs>
     </div>

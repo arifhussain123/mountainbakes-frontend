@@ -1,11 +1,10 @@
 'use client';
 
-import { Menu, Bell, Moon, Sun, Search, MessageSquare } from '@/utils/icons';
+import { Menu, Bell, Moon, Sun, Search, Palette, Check } from '@/utils/icons';
 import { useAppStore } from '@/stores/useAppStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useChats } from '@/hooks/useChats';
-import { useTheme } from '@/providers/ThemeProvider';
+import { useTheme, ACCENTS } from '@/providers/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -17,20 +16,27 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
-import { ChatPanel } from '@/components/chat';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { getPageTitle } from '@/utils/pageTitles';
 
+/**
+ * `title` is optional and normally omitted: the Topbar is mounted once in the
+ * dashboard layout and resolves its own heading from the route via PAGE_TITLES.
+ * The prop remains for the rare screen that needs a heading the URL cannot
+ * express, and overrides the map when passed.
+ */
 export function Topbar({ title }: { title?: string }) {
-  const { toggleSidebar, openChat } = useAppStore();
+  const { toggleSidebar } = useAppStore();
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const { unreadTotal: chatUnread } = useChats();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, accent, setAccent, mounted } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const heading = title ?? getPageTitle(pathname);
 
   async function handleLogout() {
     await logout();
@@ -46,8 +52,12 @@ export function Topbar({ title }: { title?: string }) {
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Page title */}
-        {title && <h1 className="text-base font-semibold text-foreground hidden sm:block">{title}</h1>}
+        {/* Page title. Shown on mobile too — with the sidebar closed by default
+            and the bottom nav only labelling five destinations, this heading is
+            the only thing telling a phone user which screen they are on. */}
+        {heading && (
+          <h1 className="truncate text-base font-semibold text-foreground">{heading}</h1>
+        )}
 
         <div className="flex-1" />
 
@@ -68,24 +78,34 @@ export function Topbar({ title }: { title?: string }) {
           <Search className="h-4 w-4" />
         </Button>
 
+        {/* Accent color picker */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Accent color"
+          >
+            <Palette className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Accent color</div>
+            {ACCENTS.map((a) => (
+              <DropdownMenuItem key={a.value} onClick={() => setAccent(a.value)} className="gap-2">
+                <span className="h-4 w-4 rounded-full border" style={{ backgroundColor: a.swatch }} />
+                <span className="flex-1">{a.label}</span>
+                {accent === a.value && <Check className="h-3.5 w-3.5 text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {/* Theme toggle */}
         <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
-
-        {/* Chat */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          onClick={() => openChat()}
-          title="Messages"
-        >
-          <MessageSquare className="h-4 w-4" />
-          {chatUnread > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-primary">
-              {chatUnread > 9 ? '9+' : chatUnread}
-            </Badge>
+          {/* Render the icon only after mount so the resolved theme is known —
+              avoids both a hydration mismatch and a wrong-icon flash. */}
+          {mounted ? (
+            theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
+          ) : (
+            <span className="h-4 w-4" />
           )}
         </Button>
 
@@ -154,7 +174,6 @@ export function Topbar({ title }: { title?: string }) {
       </header>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
-      <ChatPanel />
     </>
   );
 }

@@ -12,7 +12,12 @@
  * call sites keep working.
  */
 export const qk = {
+  settings: () => ['settings'] as const,
   products: (isActive?: boolean) => ['products', { isActive: isActive ?? null }] as const,
+  packingMaterials: (includeInactive?: boolean) =>
+    ['packingMaterials', { includeInactive: includeInactive ?? false }] as const,
+  packingUsage: (filters: { from?: string | null; to?: string | null; branchId?: string | null; packingMaterialId?: string | null }) =>
+    ['packingUsage', filters.from ?? null, filters.to ?? null, filters.branchId ?? null, filters.packingMaterialId ?? null] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
   priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
