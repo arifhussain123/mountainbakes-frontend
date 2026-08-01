@@ -1,4 +1,4 @@
-import { ROUTES } from './routes';
+import { ROUTES, normalizePath } from './routes';
 
 /**
  * Topbar heading per route.
@@ -26,6 +26,9 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.REPORTS]: 'Reports & Analytics',
   [ROUTES.SUPPORT_CENTER]: 'Support Center',
   [ROUTES.NOTIFICATION_RECIPIENTS]: 'Notification Recipients',
+  // /special-events/<id> is deliberately absent: a dynamic route cannot have a
+  // static title here, so EventDetailPage renders its own heading.
+  [ROUTES.SPECIAL_EVENTS]: 'Special Events',
   [ROUTES.USERS]: 'Users',
   [ROUTES.SETTINGS]: 'Settings',
 
@@ -39,6 +42,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.BRANCH_CUSTOMERS]: 'Customers',
   [ROUTES.BRANCH_REPORTS]: 'Branch Reports',
   [ROUTES.BRANCH_HELP_DESK]: 'Help Desk',
+  [ROUTES.BRANCH_EVENTS]: 'Special Events',
 
   // Production
   [ROUTES.PRODUCTION_DASHBOARD]: 'Production Dashboard',
@@ -50,9 +54,10 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRODUCTION_EXPENSES]: 'Production Expenses',
   [ROUTES.PRODUCTION_REPORTS]: 'Production Reports',
   [ROUTES.PRODUCTION_HELP_DESK]: 'Help Desk',
+  [ROUTES.PRODUCTION_EVENTS]: 'Special Events',
   [ROUTES.PRODUCTION_QUEUE]: 'Production Queue',
 };
 
 export function getPageTitle(pathname: string): string | undefined {
-  return PAGE_TITLES[pathname];
+  return PAGE_TITLES[normalizePath(pathname)];
 }

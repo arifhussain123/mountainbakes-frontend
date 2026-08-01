@@ -5,8 +5,6 @@ import { RealtimeBridge } from '@/components/layout/RealtimeBridge';
 import { PushNotifications } from '@/components/pwa/PushNotifications';
 import { RealtimeProvider } from '@/providers/RealtimeProvider';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * Chrome for every signed-in screen.
  *

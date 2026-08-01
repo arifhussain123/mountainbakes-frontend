@@ -13,6 +13,12 @@ export interface AuthUser {
   role: UserRole;
   branchId: string | null;
   branchName: string | null;
+  /**
+   * Admin has flagged this account for a forced password change. Read here rather
+   * than from a cookie because the app is a static export with no middleware —
+   * RouteGuard uses it to pin the user to /change-password.
+   */
+  mustChangePassword: boolean;
 }
 
 interface AuthContextValue {
@@ -38,6 +44,7 @@ function toAuthUser(u: SupabaseUser): AuthUser | null {
     role?: UserRole;
     branchId?: string | null;
     branchName?: string | null;
+    mustChangePassword?: boolean;
   };
   if (!isValidRole(claims.role)) return null;
 
@@ -49,6 +56,7 @@ function toAuthUser(u: SupabaseUser): AuthUser | null {
     role: claims.role,
     branchId: claims.branchId ?? null,
     branchName: claims.branchName ?? null,
+    mustChangePassword: claims.mustChangePassword === true,
   };
 }
 
@@ -101,9 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Signing out of Supabase is the whole of it: the app is a static export, so
+    // there is no server session and no `mb_session` cookie left to invalidate.
     await supabase.auth.signOut();
-    // Invalidate server cookie
-    await fetch('/api/logout', { method: 'POST' });
   }, []);
 
   const refreshToken = useCallback(async () => {

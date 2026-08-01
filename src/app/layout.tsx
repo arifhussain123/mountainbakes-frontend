@@ -3,6 +3,7 @@ import { Geist } from 'next/font/google';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { RouteGuard } from '@/components/auth/RouteGuard';
 import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/pwa/ServiceWorkerRegister';
 import { InstallPrompt } from '@/components/pwa/InstallPrompt';
@@ -65,7 +66,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <QueryProvider>
             <AuthProvider>
-              {children}
+              {/* Replaces the deleted src/proxy.ts middleware — a static export has
+                  no server to guard a navigation, so it happens here. Wraps only
+                  {children}: the PWA and toast layers below must stay mounted while
+                  the guard is holding a redirect. */}
+              <RouteGuard>{children}</RouteGuard>
               <ServiceWorkerRegister />
               <NetworkStatus />
               <InstallPrompt />

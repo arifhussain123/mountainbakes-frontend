@@ -32,4 +32,18 @@ export const qk = {
   productionReturns: () => ['productionReturns'] as const,
   productionExpenses: () => ['productionExpenses'] as const,
   productionExpenseSummary: () => ['productionExpenseSummary'] as const,
+  // Special Events. The list key carries its filters so switching year/category
+  // does not serve a stale page; everything else is keyed by event id so a single
+  // event's detail can be invalidated without dropping the list.
+  specialEvents: (filters?: { year?: number | null; category?: string | null; status?: string | null }) =>
+    ['specialEvents', filters?.year ?? null, filters?.category ?? null, filters?.status ?? null] as const,
+  specialEvent: (id: string) => ['specialEvent', id] as const,
+  eventCalendar: (year: number, month: number) => ['eventCalendar', year, month] as const,
+  eventSummary: () => ['eventSummary'] as const,
+  eventDemands: (eventId: string) => ['eventDemands', eventId] as const,
+  eventMyDemand: (eventId: string) => ['eventMyDemand', eventId] as const,
+  eventConsolidatedDemand: (eventId: string) => ['eventConsolidatedDemand', eventId] as const,
+  eventProductionStatus: (eventId: string) => ['eventProductionStatus', eventId] as const,
+  eventNotifications: (eventId?: string | null, status?: string | null) =>
+    ['eventNotifications', eventId ?? 'all', status ?? null] as const,
 };

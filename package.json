@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "firebase emulators:start --only hosting",
+    "preview": "firebase emulators:start --only hosting",
+    "deploy": "next build && firebase deploy --only hosting",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },

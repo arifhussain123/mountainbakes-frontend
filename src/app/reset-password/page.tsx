@@ -57,7 +57,6 @@ export default function ResetPasswordPage() {
       if (updErr) throw updErr;
       // Recovery grants a real session — sign out so the user signs in fresh.
       await supabase.auth.signOut();
-      await fetch('/api/logout', { method: 'POST' });
       toast.success('Password updated. Please sign in.');
       router.replace('/login');
     } catch (err) {

@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { Notification } from '@mb/shared';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { sleep } from '@/utils/helpers';
 
 /**
  * Notifications are live again, read straight from the `notifications` table
@@ -83,6 +84,73 @@ function describeError(e: unknown): string {
   return parts.filter(Boolean).join(' | ') || JSON.stringify(e);
 }
 
+/**
+ * Is this failure worth retrying, or is it the server's considered answer?
+ *
+ * Keyed on the PostgREST error CODE, not the HTTP status — and that distinction
+ * is the whole point. PGRST301/303 come back as 401, so the usual "never retry a
+ * 4xx" rule (see the retry predicate in hooks/useSettings.ts, which is right for
+ * the Express API) would skip exactly the case this exists for.
+ *
+ *   PGRST301  JWT expired      ┐ clock skew between Supabase's own GoTrue and
+ *   PGRST303  JWT issued at future ┘ PostgREST nodes. PostgREST already allows
+ *             30s of skew, so seeing these means the drift is larger than that.
+ *             It resolves on its own as wall-clock time advances.
+ *   PGRST000-002  could not connect / schema cache — a restart or a blip.
+ *   no code at all — fetch itself threw (offline, DNS, TLS).
+ *
+ * Everything else is deliberate: 42501 is an RLS denial, other PGRST3xx are real
+ * auth rejections. Repeating those burns requests and buries the actual problem.
+ *
+ * NOTE: do NOT "fix" a PGRST303 by calling supabase.auth.refreshSession(). A new
+ * token carries a LATER iat, which is further into the lagging node's future —
+ * strictly worse. Waiting is the only thing that helps.
+ */
+const TRANSIENT_CODES = new Set(['PGRST301', 'PGRST303', 'PGRST000', 'PGRST001', 'PGRST002']);
+
+function isTransient(e: unknown): boolean {
+  if (!e) return false;
+  const code = (e as { code?: string }).code;
+  // A thrown fetch (offline, DNS, TLS) never carries a PostgREST code.
+  if (!code) return true;
+  return TRANSIENT_CODES.has(code);
+}
+
+/** Initial attempt plus three retries — 1s + 2s + 4s, roughly 7s before giving up. */
+const MAX_ATTEMPTS = 4;
+
+/**
+ * Run one PostgREST read, repeating it while the failure looks transient.
+ *
+ * Each read retries on its own schedule so one failing call cannot hold the other
+ * back — in the PGRST303 report only the read-set failed while the feed loaded
+ * fine, and re-fetching a feed that already succeeded would be pure waste.
+ *
+ * Returns null once it gives up; the caller leaves that slice of state alone
+ * rather than clobbering it with an empty set.
+ */
+async function loadWithRetry<T>(
+  label: string,
+  run: () => PromiseLike<{ data: T[] | null; error: unknown }>,
+  isCancelled: () => boolean,
+): Promise<T[] | null> {
+  for (let attempt = 0; ; attempt++) {
+    const { data, error } = await run();
+    if (isCancelled()) return null;
+    if (!error) return data ?? [];
+
+    const exhausted = attempt >= MAX_ATTEMPTS - 1;
+    if (!isTransient(error) || exhausted) {
+      const suffix = exhausted && isTransient(error) ? ` (gave up after ${MAX_ATTEMPTS} attempts)` : '';
+      console.error(`[notifications] ${label} failed${suffix}:`, describeError(error));
+      return null;
+    }
+
+    await sleep(Math.min(1000 * 2 ** attempt, 8000));
+    if (isCancelled()) return null;
+  }
+}
+
 function useNotificationsState(): NotificationsValue {
   const { user } = useAuth();
   const uid = user?.uid;
@@ -110,35 +178,51 @@ function useNotificationsState(): NotificationsValue {
     setReadIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }, []);
 
+  // Load the feed and this user's read-set. RLS scopes both. Each half retries
+  // independently on a transient failure, so a blip costs a few seconds of
+  // backoff instead of wedging the bell for the whole session.
+  const load = useCallback(async (isCancelled: () => boolean) => {
+    const [feed, reads] = await Promise.all([
+      loadWithRetry<NotificationRow>(
+        'initial load',
+        () => supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(FEED_LIMIT),
+        isCancelled,
+      ),
+      loadWithRetry<NotificationReadRow>(
+        'read-set load',
+        () => supabase.from('notification_reads').select('notification_id'),
+        isCancelled,
+      ),
+    ]);
+    if (isCancelled()) return;
+    // A null means that half gave up — leave its state as it was rather than
+    // overwriting a good feed with an empty one on a later reconnect.
+    if (reads) setReadIds(new Set(reads.map((r) => r.notification_id)));
+    if (feed) setRawNotifications(feed.map(mapRow));
+  }, []);
+
   useEffect(() => {
     // Signed out: nothing to subscribe to. Any prior session's feed is cleared
     // by the cleanup of the previous run, so we don't touch state here.
     if (!uid) return;
 
     let cancelled = false;
+    const isCancelled = () => cancelled;
 
     // The shared Supabase client keeps the realtime socket's JWT in sync via
     // onAuthStateChange, so RLS can evaluate role/branch broadcasts
     // (app.jwt_role() / app.jwt_branch_id()) without a manual setAuth here.
-
-    // Initial load: the feed and this user's read-set together. RLS scopes both.
-    (async () => {
-      const [feedRes, readsRes] = await Promise.all([
-        supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(FEED_LIMIT),
-        supabase.from('notification_reads').select('notification_id'),
-      ]);
-      if (cancelled) return;
-      if (readsRes.error) {
-        console.error('[notifications] read-set load failed:', describeError(readsRes.error));
-      } else {
-        setReadIds(new Set((readsRes.data ?? []).map((r) => (r as NotificationReadRow).notification_id)));
-      }
-      if (feedRes.error) {
-        console.error('[notifications] initial load failed:', describeError(feedRes.error));
-        return;
-      }
-      setRawNotifications((feedRes.data ?? []).map((r) => mapRow(r as NotificationRow)));
+    //
+    // Wrapped in an IIFE rather than called directly so react-hooks can see that
+    // nothing in `load` writes state synchronously — every setState in it sits
+    // behind the awaited round-trip.
+    void (async () => {
+      await load(isCancelled);
     })();
+
+    // `subscribe` reports SUBSCRIBED on the first connect too, and the load above
+    // already covers that one. Only a RE-subscribe is interesting.
+    let subscribedBefore = false;
 
     // Live updates: new notifications, and this user's read rows (so a read on
     // one device clears the badge on another).
@@ -172,7 +256,18 @@ function useNotificationsState(): NotificationsValue {
           });
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== 'SUBSCRIBED') return;
+        if (!subscribedBefore) {
+          subscribedBefore = true;
+          return;
+        }
+        // The socket dropped and came back, so every INSERT during the outage was
+        // missed and the in-memory feed is stale. Re-reading is also the second
+        // chance for a clock-skew window that outlasted the backoff above —
+        // QueryProvider disables refetch-on-focus globally, so nothing else would.
+        void load(isCancelled);
+      });
 
     return () => {
       cancelled = true;
@@ -181,7 +276,7 @@ function useNotificationsState(): NotificationsValue {
       setRawNotifications([]);
       setReadIds(new Set());
     };
-  }, [uid, upsert, addReadId]);
+  }, [uid, upsert, addReadId, load]);
 
   // The feed the app consumes: a row is read if the legacy is_read flag says so
   // OR this user has a notification_reads row for it.

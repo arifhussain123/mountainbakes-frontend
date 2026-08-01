@@ -9,37 +9,46 @@ loadEnvConfig(process.cwd());
 // time), so there is no same-dyno loopback proxy any more. The API's own CORS
 // allowlist (CORS_ORIGINS, server/src/app.ts) is what permits those requests.
 //
-// Note /api/login and /api/logout are this app's OWN Next route handlers
-// (src/app/api/*) and are unaffected — they set the first-party mb_session cookie.
+// This app is now a pure CLIENT-SIDE app: `next build` writes a static bundle to
+// out/ and nothing of ours runs on a server at request time. Nothing under /api
+// belongs to this origin any more — the old /api/login and /api/logout route
+// handlers are gone and the session lives entirely in the browser (Supabase,
+// localStorage).
 
 const nextConfig: NextConfig = {
-  // Emits .next/standalone with a traced, minimal node_modules and its own
-  // server.js — the container copies that instead of the whole dependency tree.
-  // Required by the Cloud Run image (see Dockerfile); harmless for `next dev`.
-  output: 'standalone',
+  // Static export (CSR). Every route is pre-rendered to a plain .html shell at
+  // build time and everything else happens in the browser, so the output can be
+  // served by any static host — Firebase Hosting, in our case.
+  //
+  // What this rules out, permanently: route handlers (src/app/api/*), middleware
+  // (the old src/proxy.ts), server actions, ISR/`revalidate`, `dynamic =
+  // 'force-dynamic'`, and next/image optimisation. Adding any of them back turns
+  // `next build` into a hard error. Route guarding is done by
+  // src/components/auth/RouteGuard.tsx instead.
+  output: 'export',
+
+  // Emit out/login/index.html rather than out/login.html, so every route is served
+  // by a plain directory-index lookup on the host.
+  //
+  // The alternative is Firebase's `cleanUrls`, which maps /login onto login.html —
+  // but it also 301s any *.html request, and public/sw.js precaches /offline.html
+  // with `cache.add()`, which rejects outright on a redirected response. The offline
+  // shell would silently never cache (install uses allSettled, so nothing would even
+  // log) and the PWA's offline fallback would quietly stop working.
+  trailingSlash: true,
+
+  // No optimisation server exists to resize and re-encode images, so next/image
+  // must pass the source through untouched. Without this, `output: 'export'`
+  // fails the build outright.
   images: {
+    unoptimized: true,
     remotePatterns: [],
   },
-  async headers() {
-    const swHeaders = [
-      { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
-      { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
-      // Allow a worker served from /sw.js to control the whole origin.
-      { key: 'Service-Worker-Allowed', value: '/' },
-    ];
-    return [
-      {
-        // Baseline security headers on every route (Lighthouse best practices).
-        source: '/:path*',
-        headers: [
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-        ],
-      },
-      { source: '/sw.js', headers: swHeaders },
-    ];
-  },
+
+  // NOTE: `headers()` is deliberately absent. A static export has no server to
+  // attach response headers to, and Next warns that the block is inert. The
+  // security headers and the /sw.js caching rules that used to live here are now
+  // in the `headers` block of firebase.json — edit them there.
 };
 
 export default nextConfig;

@@ -11,14 +11,16 @@
  * `/api/...` in request() below.
  *
  * Leaving it unset is a misconfiguration, not a default. The browser would otherwise
- * fall back to a relative base and call this app's own origin, where the only handlers
- * are src/app/api/login and /logout — so every other route 404s with an HTML body,
- * which DEPLOY.md lists as a failure mode. assertApiReachable() below rejects that
- * case outright rather than letting it masquerade as a missing route.
+ * fall back to a relative base and call this app's own origin — which is a static
+ * bundle on Firebase Hosting with nothing at all under /api, so every request 404s
+ * with an HTML body. DEPLOY.md lists that as a failure mode; assertApiReachable()
+ * below rejects the case outright rather than letting it masquerade as a missing
+ * route.
  *
  * The server-side loopback fallback below is a leftover from the retired single-dyno
- * deploy, where the API shared this host behind an /api/* rewrite; on a separate web
- * dyno nothing is listening on that port.
+ * deploy, where the API shared this host behind an /api/* rewrite. It survives only
+ * because this module is still imported during the static prerender, which never
+ * issues a request.
  */
 const EXPLICIT_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
 
@@ -45,10 +47,10 @@ function isLocalHost(url: string): boolean {
  * Guards the two ways to misconfigure the base URL, both of which otherwise surface as
  * something that looks like a different bug entirely.
  *
- * 1. Unset. Every request then goes to this app's own origin and 404s with Next's HTML
- *    error page — which reads as "the API route is missing" rather than "the API was
- *    never called". Nothing proxies /api/* any more, so this is broken everywhere, not
- *    just in production.
+ * 1. Unset. Every request then goes to this app's own origin and 404s with the host's
+ *    HTML error page — which reads as "the API route is missing" rather than "the API
+ *    was never called". Nothing proxies /api/* any more, so this is broken everywhere,
+ *    not just in production.
  * 2. Set *explicitly* to a localhost URL (copied from a dev .env, say) and then deployed
  *    to a real domain — every request fails with ERR_CONNECTION_REFUSED or a mixed-content
  *    block, and the page renders empty with nothing useful in the console.
@@ -61,10 +63,10 @@ function assertApiReachable(): void {
   if (!EXPLICIT_API_URL) {
     throw new ApiError(
       `NEXT_PUBLIC_API_URL is unset, so every /api/* request goes to this app's own ` +
-        `origin instead of the Express API — only /api/login and /api/logout exist here, ` +
-        `so everything else 404s with an HTML page. Set it to the API's origin (scheme + ` +
-        `host, no trailing slash) and REBUILD: NEXT_PUBLIC_* is inlined at build time, so ` +
-        `setting it on a running app has no effect.`,
+        `origin instead of the Express API. This origin is a static bundle with nothing ` +
+        `under /api, so every request 404s with an HTML page. Set it to the API's origin ` +
+        `(scheme + host, no trailing slash) and REBUILD: NEXT_PUBLIC_* is inlined at ` +
+        `build time, so setting it on a running app has no effect.`,
       0
     );
   }
@@ -127,14 +129,13 @@ let sessionTeardown: Promise<void> | null = null;
  * End a session the server will no longer honour.
  *
  * A 401 that survives the refresh above means the Supabase session is gone for
- * good — but nothing bounces the user out, because route guarding runs off the
- * separate first-party `mb_session` cookie (src/proxy.ts), which lives up to
- * seven days of its own. The two expire independently, so the user keeps sitting
- * on a fully rendered page where every single request 401s and no screen ever
- * loads its data. Clear both and send them to the login screen.
+ * good. Signing out locally is what makes RouteGuard notice: it reads `user` from
+ * AuthProvider, so until the Supabase session is actually cleared the user keeps
+ * sitting on a fully rendered page where every single request 401s and no screen
+ * ever loads its data.
  *
- * A hard navigation rather than router.replace(): it re-runs proxy.ts with the
- * cookie gone and drops all the React state built on the dead identity.
+ * A hard navigation rather than router.replace(): it drops all the React state
+ * built on the dead identity, which a client-side route change would keep.
  */
 function endDeadSession(): void {
   if (typeof window === 'undefined') return;
@@ -145,9 +146,8 @@ function endDeadSession(): void {
       const { supabase } = await import('@/lib/supabase/client');
       await supabase.auth.signOut();
     } catch {
-      // The session is already unusable; clearing the cookie is what matters.
+      // The session is already unusable; leaving the page is what matters.
     }
-    await fetch('/api/logout', { method: 'POST' }).catch(() => {});
     window.location.replace('/login');
   })();
 }

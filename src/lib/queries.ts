@@ -37,6 +37,14 @@ import type {
   UpdatePackingMaterialInput,
   ReportSummary,
   StockRow,
+  ConsolidatedDemandRow,
+  EventBranchDemand,
+  EventDashboardSummary,
+  EventDispatchResult,
+  EventNotificationRow,
+  EventProductionStatusRow,
+  EventScheduleResult,
+  SpecialEventView,
 } from '@mb/shared';
 
 // Query keys live in ./queryKeys so non-React code (@/utils/productPrice) can reuse
@@ -542,5 +550,330 @@ export function useCreateProductionExpense(token: string) {
       qc.invalidateQueries({ queryKey: ['productionExpenses'] });
       qc.invalidateQueries({ queryKey: ['productionExpenseSummary'] });
     },
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Special Events
+//
+// Every screen in the module is driven from here. Note that the list, calendar
+// and summary endpoints are role-scoped SERVER-side — a branch manager calling
+// /api/special-events gets only the events its branch participates in — so these
+// hooks are shared across the admin, branch and production pages rather than
+// duplicated per role.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useSpecialEvents(
+  token: string,
+  filters?: { year?: number | null; category?: string | null; status?: string | null },
+  opts?: { enabled?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (filters?.year) params.set('year', String(filters.year));
+  if (filters?.category) params.set('category', filters.category);
+  if (filters?.status) params.set('status', filters.status);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: qk.specialEvents(filters),
+    queryFn: () =>
+      apiCall<{ events: SpecialEventView[] }>(`/api/special-events${qs ? `?${qs}` : ''}`, {}, token),
+    select: (r) => r.events ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+export function useSpecialEvent(token: string, id: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.specialEvent(id),
+    queryFn: () =>
+      apiCall<{ event: SpecialEventView; stages: EventProductionStatusRow[] }>(
+        `/api/special-events/${id}`,
+        {},
+        token,
+      ),
+    enabled: !!token && !!id && (opts?.enabled ?? true),
+  });
+}
+
+export function useEventCalendar(token: string, year: number, month: number) {
+  return useQuery({
+    queryKey: qk.eventCalendar(year, month),
+    queryFn: () =>
+      apiCall<{ events: SpecialEventView[] }>(
+        `/api/special-events/calendar?year=${year}&month=${month}`,
+        {},
+        token,
+      ),
+    select: (r) => r.events ?? [],
+    enabled: !!token,
+  });
+}
+
+export function useEventSummary(token: string) {
+  return useQuery({
+    queryKey: qk.eventSummary(),
+    queryFn: () => apiCall<{ summary: EventDashboardSummary }>('/api/special-events/summary', {}, token),
+    select: (r) => r.summary,
+    enabled: !!token,
+  });
+}
+
+/**
+ * Invalidate everything an event mutation can touch. Broad on purpose: dates,
+ * branch assignment and status all feed the list, the calendar, the summary cards
+ * and the reminder schedule at once, and a missed invalidation here shows up as a
+ * stale countdown rather than an error.
+ */
+function invalidateEvents(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['specialEvents'] });
+  qc.invalidateQueries({ queryKey: ['specialEvent'] });
+  qc.invalidateQueries({ queryKey: ['eventCalendar'] });
+  qc.invalidateQueries({ queryKey: ['eventSummary'] });
+  qc.invalidateQueries({ queryKey: ['eventNotifications'] });
+}
+
+export function useCreateEvent(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      apiCall<{ event: SpecialEventView }>('/api/special-events', { method: 'POST', body: JSON.stringify(body) }, token),
+    onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+export function useUpdateEvent(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiCall<{ event: SpecialEventView }>(`/api/special-events/${id}`, { method: 'PUT', body: JSON.stringify(body) }, token),
+    onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+export function useConfirmEventDate(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, confirmedDate }: { id: string; confirmedDate: string | null }) =>
+      apiCall<{ event: SpecialEventView }>(
+        `/api/special-events/${id}/confirm-date`,
+        { method: 'PATCH', body: JSON.stringify({ confirmedDate }) },
+        token,
+      ),
+    onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+export function useUpdateEventStatus(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiCall(`/api/special-events/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token),
+    onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+export function useDeleteEvent(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall(`/api/special-events/${id}`, { method: 'DELETE' }, token),
+    onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+export function useEventDemands(token: string, eventId: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.eventDemands(eventId),
+    queryFn: () =>
+      apiCall<{ demands: EventBranchDemand[] }>(`/api/special-events/${eventId}/demands`, {}, token),
+    select: (r) => r.demands ?? [],
+    enabled: !!token && !!eventId && (opts?.enabled ?? true),
+  });
+}
+
+export function useEventConsolidatedDemand(token: string, eventId: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.eventConsolidatedDemand(eventId),
+    queryFn: () =>
+      apiCall<{ rows: ConsolidatedDemandRow[]; branchesIncluded: number }>(
+        `/api/special-events/${eventId}/demands/consolidated`,
+        {},
+        token,
+      ),
+    enabled: !!token && !!eventId && (opts?.enabled ?? true),
+  });
+}
+
+export function useMyEventDemand(token: string, eventId: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.eventMyDemand(eventId),
+    queryFn: () =>
+      apiCall<{ demand: EventBranchDemand | null }>(`/api/special-events/${eventId}/my-demand`, {}, token),
+    select: (r) => r.demand,
+    enabled: !!token && !!eventId && (opts?.enabled ?? true),
+  });
+}
+
+function invalidateDemands(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['eventDemands'] });
+  qc.invalidateQueries({ queryKey: ['eventMyDemand'] });
+  qc.invalidateQueries({ queryKey: ['eventConsolidatedDemand'] });
+  qc.invalidateQueries({ queryKey: ['specialEvents'] });
+  qc.invalidateQueries({ queryKey: ['specialEvent'] });
+  qc.invalidateQueries({ queryKey: ['eventSummary'] });
+}
+
+export function useSaveEventDemand(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, ...body }: { eventId: string } & Record<string, unknown>) =>
+      apiCall<{ id: string }>(
+        `/api/special-events/${eventId}/demands`,
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => invalidateDemands(qc),
+  });
+}
+
+export function useSubmitEventDemand(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, demandId }: { eventId: string; demandId: string }) =>
+      apiCall(`/api/special-events/${eventId}/demands/${demandId}/submit`, { method: 'POST' }, token),
+    onSuccess: () => invalidateDemands(qc),
+  });
+}
+
+export function useReviewEventDemand(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ demandId, ...body }: { demandId: string } & Record<string, unknown>) =>
+      apiCall(
+        `/api/special-events/demands/${demandId}/review`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => invalidateDemands(qc),
+  });
+}
+
+export function useEventProductionStatus(token: string, eventId: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.eventProductionStatus(eventId),
+    queryFn: () =>
+      apiCall<{ stages: EventProductionStatusRow[]; readinessPercentage: number }>(
+        `/api/special-events/${eventId}/production-status`,
+        {},
+        token,
+      ),
+    enabled: !!token && !!eventId && (opts?.enabled ?? true),
+  });
+}
+
+export function useUpdateEventStage(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      eventId,
+      stage,
+      ...body
+    }: { eventId: string; stage: string } & Record<string, unknown>) =>
+      apiCall(
+        `/api/special-events/${eventId}/production-status/${stage}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['eventProductionStatus'] });
+      qc.invalidateQueries({ queryKey: ['specialEvent'] });
+      qc.invalidateQueries({ queryKey: ['specialEvents'] });
+      qc.invalidateQueries({ queryKey: ['eventSummary'] });
+    },
+  });
+}
+
+export function useEventNotifications(
+  token: string,
+  eventId?: string | null,
+  status?: string | null,
+  opts?: { enabled?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (eventId) params.set('eventId', eventId);
+  if (status) params.set('status', status);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: qk.eventNotifications(eventId, status),
+    queryFn: () =>
+      apiCall<{ notifications: EventNotificationRow[] }>(
+        `/api/special-events/notifications${qs ? `?${qs}` : ''}`,
+        {},
+        token,
+      ),
+    select: (r) => r.notifications ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+/**
+ * Send every reminder due on or before today.
+ *
+ * This is the delivery mechanism, not a convenience button: the server's cron
+ * schedulers are commented out, so nothing sends until an admin presses this.
+ */
+export function useDispatchEventNotifications(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { onDate?: string; dryRun?: boolean } = {}) =>
+      apiCall<EventDispatchResult>(
+        '/api/special-events/notifications/dispatch',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['eventNotifications'] });
+      qc.invalidateQueries({ queryKey: ['eventSummary'] });
+    },
+  });
+}
+
+export function useRegenerateEventSchedule(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (eventId: string) =>
+      apiCall<EventScheduleResult>(`/api/special-events/${eventId}/notifications/regenerate`, { method: 'POST' }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['eventNotifications'] }),
+  });
+}
+
+/**
+ * Recompute Hijri estimates. Must be run once after migration 41 — the seeded
+ * catalogue ships with no resolved dates, so until this runs the calendar is empty.
+ */
+export function useRefreshEventEstimates(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { year?: number } = {}) =>
+      apiCall<{ updated: number; unresolved: number; schedulesRegenerated: number }>(
+        '/api/special-events/maintenance/refresh-estimates',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+export function useRollForwardEvents(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { targetYear?: number } = {}) =>
+      apiCall<{ created: number; skipped: number }>(
+        '/api/special-events/maintenance/roll-forward',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => invalidateEvents(qc),
   });
 }
