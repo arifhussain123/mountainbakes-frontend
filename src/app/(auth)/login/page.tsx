@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
-import { getRoleHome } from '@/utils/roleHome';
+// Aliased: `setRememberMe` is already the useState setter for the checkbox below.
+import { supabase, setRememberMe as persistRememberMeChoice } from '@/lib/supabase/client';
+import { getRoleHome, isValidRole } from '@/utils/roleHome';
 import { COMPANY_NAME, APP_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
 import { Button } from '@/components/ui/button';
@@ -38,32 +39,33 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Must precede sign-in: it decides whether the session Supabase is about to
+      // issue lands in localStorage (persists) or sessionStorage (dies with the tab).
+      persistRememberMeChoice(rememberMe);
+
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError || !data.session) throw signInError ?? new Error('Login failed. Please try again.');
 
       const authedUser = data.session.user;
-      const claims = (authedUser.app_metadata ?? {}) as { mustChangePassword?: boolean };
+      const claims = (authedUser.app_metadata ?? {}) as {
+        role?: string;
+        mustChangePassword?: boolean;
+      };
       const forceChange = claims.mustChangePassword === true;
       const displayName = (authedUser.user_metadata as { displayName?: string } | null)?.displayName;
 
-      // Send only the access token — /api/login verifies it server-side and derives
-      // role/branch from it. Claims are deliberately NOT sent from here; the route
-      // will not trust them.
-      const sessionRes = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: data.session.access_token, rememberMe }),
-      });
-
-      if (!sessionRes.ok) {
-        // Session cookie was refused (e.g. account has no role assigned). Drop the
-        // half-established Supabase session so the app isn't left in a limbo state.
-        const { error: sessionErr } = (await sessionRes.json().catch(() => ({}))) as { error?: string };
+      // Role comes from app_metadata on the session Supabase just issued — never from
+      // anything the form supplied. app_metadata is writable only with the service-role
+      // key (the Express API), so it is exactly as trustworthy as the JWT itself.
+      //
+      // Fail closed, mirroring AuthProvider and the API's `authenticate` middleware: an
+      // account with no recognised role gets no session at all rather than a default
+      // one. Drop the half-established Supabase session so the app isn't left in limbo.
+      if (!isValidRole(claims.role)) {
         await supabase.auth.signOut();
-        throw new Error(sessionErr || 'Could not start your session. Please try again.');
+        throw new Error('This account has no role assigned. Contact your administrator.');
       }
-
-      const { role } = (await sessionRes.json()) as { role: string };
+      const role = claims.role;
 
       if (forceChange) {
         toast.info('Please set a new password to continue.');

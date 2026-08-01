@@ -1,4 +1,4 @@
-import { ROUTES } from './routes';
+import { ROUTES, normalizePath } from './routes';
 
 /**
  * Topbar heading per route.
@@ -59,5 +59,5 @@ export const PAGE_TITLES: Record<string, string> = {
 };
 
 export function getPageTitle(pathname: string): string | undefined {
-  return PAGE_TITLES[pathname];
+  return PAGE_TITLES[normalizePath(pathname)];
 }

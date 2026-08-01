@@ -7,9 +7,9 @@ export { apiCall, ApiError } from '@/lib/api/client';
 
 // Common API endpoint paths
 export const API_ENDPOINTS = {
-  // Auth
+  // Auth. These are paths on the EXPRESS API, not this origin — sign-in and
+  // sign-out themselves go straight to Supabase from the browser.
   LOGIN: '/api/auth/login',
-  LOGOUT: '/api/logout',
 
   // Settings
   SETTINGS: '/api/settings',

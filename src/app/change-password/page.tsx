@@ -13,12 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, Lock, ShieldAlert, Eye, EyeOff, AlertCircle } from 'lucide-react';
-
-function getRoleHome(role: string): string {
-  if (role === 'super_admin') return '/dashboard';
-  if (role === 'branch_manager') return '/branch-dashboard';
-  return '/production-dashboard';
-}
+import { getRoleHome } from '@/utils/roleHome';
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -45,20 +40,11 @@ export default function ChangePasswordPage() {
     setSubmitting(true);
     try {
       await apiCall('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ newPassword }) }, token);
-      // Refresh the Supabase session so the cleared must-change claim is reflected,
-      // then update the session cookie so middleware stops redirecting here.
+      // The API clears the mustChangePassword claim in app_metadata; refreshing the
+      // session is what pulls the new claim into the JWT this app reads. RouteGuard
+      // routes off that claim, so without the refresh it would bounce straight back
+      // here — nothing else clears the gate.
       await supabase.auth.refreshSession();
-      await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: user?.uid,
-          role: user?.role,
-          branchId: user?.branchId ?? null,
-          branchName: user?.branchName ?? null,
-          mustChangePassword: false,
-        }),
-      });
       toast.success('Password updated. Welcome!');
       router.replace(getRoleHome(user?.role ?? ''));
     } catch (err) {

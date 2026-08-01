@@ -20,7 +20,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
-import { ROUTES } from './routes';
+import { ROUTES, normalizePath } from './routes';
 
 export type NavItem = {
   label: string;
@@ -90,7 +90,7 @@ export function getNavItems(role: UserRole): NavItem[] {
  *
  * Order matters: it is the left-to-right tab order. Hrefs must exist in that
  * role's NAV_MAP — `getPrimaryNavItems` drops any that don't rather than
- * rendering a tab that 404s or that the proxy would bounce.
+ * rendering a tab that 404s or that RouteGuard would bounce.
  */
 export const PRIMARY_NAV: Record<UserRole, string[]> = {
   super_admin: [ROUTES.DASHBOARD, ROUTES.ORDERS, ROUTES.PRODUCTS, ROUTES.REPORTS],
@@ -118,9 +118,10 @@ export const PRIMARY_NAV: Record<UserRole, string[]> = {
  * disagree about which item is active.
  */
 export function isNavItemActive(pathname: string, href: string): boolean {
-  if (pathname === href) return true;
+  const path = normalizePath(pathname);
+  if (path === href) return true;
   if (href.endsWith('-dashboard') || href === ROUTES.DASHBOARD) return false;
-  return pathname.startsWith(href);
+  return path.startsWith(href);
 }
 
 /** The bottom-nav tabs for a role, resolved against NAV_MAP and in PRIMARY_NAV order. */

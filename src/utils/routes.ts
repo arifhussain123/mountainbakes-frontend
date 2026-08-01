@@ -46,3 +46,35 @@ export const ROUTES = {
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];
+
+/**
+ * Strip the trailing slash so a live pathname can be compared against ROUTES.
+ *
+ * next.config.ts sets `trailingSlash: true` (the static export emits directories,
+ * not .html files), which means `usePathname()` can hand back '/dashboard/' while
+ * every path in ROUTES is written without the slash. Left unnormalised, that is a
+ * silent failure: nav items stop highlighting, page headings vanish, and RouteGuard
+ * stops recognising '/login'. Normalise wherever a pathname meets a ROUTES value.
+ *
+ * '/' is preserved — it is the one route whose slash is the path.
+ */
+export function normalizePath(pathname: string): string {
+  return pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+}
+
+/**
+ * The single id the /special-events/[id] shell is built at under `output: 'export'`.
+ *
+ * A static export must know every path it emits, and event ids are runtime data, so
+ * one shell is emitted here and Firebase Hosting rewrites every real event URL onto
+ * it (see `rewrites` in firebase.json); EventDetailRoute then reads the actual id
+ * back out of the address bar.
+ *
+ * It lives in this module — not next to the component that consumes it — because
+ * `generateStaticParams` runs on the server: importing it from a `'use client'`
+ * file hands the build a client reference instead of the string, which fails with
+ * "a required parameter (id) was not provided as a string".
+ *
+ * Underscores keep it from ever colliding with a real UUID.
+ */
+export const EVENT_ID_PLACEHOLDER = '__event__';

@@ -1,7 +1,14 @@
 import type { MetadataRoute } from 'next';
 
 /**
- * Web App Manifest — served by Next.js at `/manifest.webmanifest`.
+ * Metadata routes are route handlers under the hood, and `output: 'export'` refuses
+ * to build one that hasn't declared itself static. Nothing here varies per request,
+ * so this just writes out/manifest.webmanifest once at build time.
+ */
+export const dynamic = 'force-static';
+
+/**
+ * Web App Manifest — emitted at `/manifest.webmanifest`.
  *
  * Note on orientation: the brief's example manifest locked `portrait`, but
  * requirements #3 and #6 explicitly ask the app to work in BOTH portrait and

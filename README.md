@@ -3,22 +3,27 @@
 The Next.js 16 (App Router) web client for Mountain Bakes ERP — admin, branch, and
 production dashboards.
 
+It is a **fully client-rendered app**: `next build` static-exports it to `out/`
+(`output: 'export'`) and Firebase Hosting serves those files. There is no server
+side to this app — no route handlers, no middleware, no SSR. See
+[DEPLOY.md](DEPLOY.md) for what that rules out.
+
 This folder is a **standalone project**. Its sibling `../server/` is the Express REST
 API, deployed separately. Neither depends on any file above this directory.
 
 ```
 frontend/
 ├── src/
-│   ├── app/              # App Router pages — (auth), (dashboard), api/
+│   ├── app/              # App Router pages — (auth), (dashboard)
 │   ├── components/       # feature components + ui/
+│   │   └── auth/RouteGuard.tsx   # role-based route guard (client-side)
 │   ├── hooks/  stores/  utils/
 │   ├── lib/              # api client, supabase, react-query
 │   ├── providers/        # Auth, Query, Realtime, Theme
 │   └── shared/           # schemas/types (mirrored in server/src/shared)
 ├── public/               # PWA icons, splash screens, service workers
-├── src/proxy.ts          # role-based route guard (Next 16 proxy convention)
-├── next.config.ts
-└── Procfile              # web: pnpm start
+├── next.config.ts        # output: 'export' — the whole CSR setup
+└── firebase.json         # Hosting: headers, rewrites, out/
 ```
 
 The client never reads privileged database tables directly — every dashboard
@@ -54,10 +59,24 @@ exact origin.
 > rebuild — setting it on a running host does nothing. This is the single most
 > common deploy mistake; see [DEPLOY.md](DEPLOY.md).
 
-`/api/login` and `/api/logout` are this app's **own** Next route handlers, not the
-Express API. They set and clear the first-party `mb_session` cookie that
-`src/proxy.ts` reads to guard routes. That cookie never leaves this origin, which
-is why the API can live on a different host.
+**Nothing under `/api` belongs to this origin.** Every `/api/*` path is on the
+Express host. Sign-in and sign-out go straight from the browser to Supabase; the
+session lives in Web Storage (localStorage when "Remember me" is ticked,
+sessionStorage otherwise — see `src/lib/supabase/client.ts`), and
+`src/components/auth/RouteGuard.tsx` routes off the role claim in it.
+
+That guard is navigation UX, not an authorisation boundary — the API authorises
+every request against the JWT on its own. See [DEPLOY.md](DEPLOY.md).
+
+## Previewing a production build
+
+`pnpm dev` does not apply `firebase.json`, so it cannot catch a broken rewrite or
+a missing header. For anything hosting-shaped:
+
+```bash
+pnpm build
+pnpm preview                  # http://127.0.0.1:5000
+```
 
 ## PWA assets
 
