@@ -20,6 +20,9 @@ export const qk = {
     ['packingUsage', filters.from ?? null, filters.to ?? null, filters.branchId ?? null, filters.packingMaterialId ?? null] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
+  branchLocations: () => ['branchLocations'] as const,
+  geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
+    ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
   priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
   reportSummary: (period: string, branchId?: string | null) =>
     ['reportSummary', period, branchId ?? null] as const,

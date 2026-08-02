@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { Separator } from '@/components/ui/separator';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -169,6 +170,10 @@ export function ReturnItemsModal({
           <DialogTitle>Return Items</DialogTitle>
         </DialogHeader>
 
+        {/* A return moves stock, so it is a transaction and carries the same
+            location rule as a sale (POST /api/stock/return is guarded server-side
+            too). Viewing the stock table behind this modal stays unrestricted. */}
+        <GeofenceGate action="Stock updates">
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {/* Auto fields */}
           <div className="grid grid-cols-2 gap-3">
@@ -299,6 +304,7 @@ export function ReturnItemsModal({
             </Button>
           </div>
         </div>
+        </GeofenceGate>
       </DialogContent>
     </Dialog>
   );

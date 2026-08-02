@@ -264,6 +264,108 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Geofencing — migration 48. Off by default; turning it on is what starts
+          refusing sales, so it is deliberately an explicit act. */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Geofencing</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Restrict sales to the branch area</p>
+              <p className="text-xs text-muted-foreground">
+                Branch users may only record sales, orders and stock returns while their device
+                is inside their branch&rsquo;s configured radius. Reports, past sales and the help
+                desk stay available everywhere. A branch with no location set is unrestricted —
+                see Admin &rarr; Branch Locations.
+              </p>
+            </div>
+            <Switch
+              checked={settings.geofencingEnabled ?? false}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, geofencingEnabled: v }))}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor="geo-radius" className="text-sm font-medium">Default Radius (KM)</label>
+              <p className="text-xs text-muted-foreground">
+                Applied to a branch that has no radius of its own.
+              </p>
+              <Input
+                id="geo-radius"
+                inputMode="decimal"
+                value={settings.geofenceDefaultRadiusKm ?? 50}
+                onChange={(e) =>
+                  setSettings((p) => ({ ...p, geofenceDefaultRadiusKm: Number(e.target.value) || 0 }))
+                }
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="geo-interval" className="text-sm font-medium">Verification Interval (minutes)</label>
+              <p className="text-xs text-muted-foreground">
+                How often an open session re-checks its position.
+              </p>
+              <Input
+                id="geo-interval"
+                inputMode="numeric"
+                value={settings.geofenceVerifyIntervalMin ?? 5}
+                onChange={(e) =>
+                  setSettings((p) => ({ ...p, geofenceVerifyIntervalMin: Number(e.target.value) || 0 }))
+                }
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="geo-timeout" className="text-sm font-medium">GPS Timeout (seconds)</label>
+              <p className="text-xs text-muted-foreground">
+                How long to wait for the device to produce a fix.
+              </p>
+              <Input
+                id="geo-timeout"
+                inputMode="numeric"
+                value={settings.geofenceGpsTimeoutSec ?? 20}
+                onChange={(e) =>
+                  setSettings((p) => ({ ...p, geofenceGpsTimeoutSec: Number(e.target.value) || 0 }))
+                }
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="geo-age" className="text-sm font-medium">Maximum Position Age (seconds)</label>
+              <p className="text-xs text-muted-foreground">
+                Oldest reading the server will accept. Keep it comfortably above the
+                verification interval.
+              </p>
+              <Input
+                id="geo-age"
+                inputMode="numeric"
+                value={settings.geofenceMaxPositionAgeSec ?? 300}
+                onChange={(e) =>
+                  setSettings((p) => ({ ...p, geofenceMaxPositionAgeSec: Number(e.target.value) || 0 }))
+                }
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Require high-accuracy GPS</p>
+              <p className="text-xs text-muted-foreground">
+                Refuse a reading too imprecise to place the device on one side of the boundary,
+                rather than falling back to its centre point. Only affects genuinely borderline
+                readings — a clearly-inside or clearly-outside fix is decided either way. Turn
+                off if staff work indoors where only wifi positioning is available.
+              </p>
+            </div>
+            <Switch
+              checked={settings.geofenceRequireHighAccuracy ?? true}
+              onCheckedChange={(v) => setSettings((p) => ({ ...p, geofenceRequireHighAccuracy: v }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Appearance */}
       <Card>
         <CardHeader><CardTitle className="text-base">Appearance</CardTitle></CardHeader>

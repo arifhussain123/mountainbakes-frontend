@@ -18,6 +18,7 @@ import {
   Headset,
   Send,
   CalendarDays,
+  MapPin,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -37,6 +38,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Price History',   href: ROUTES.PRICE_HISTORY,    icon: History },
   { label: 'Customers',       href: ROUTES.CUSTOMERS,        icon: Users },
   { label: 'Branches',        href: ROUTES.BRANCHES,         icon: Store },
+  { label: 'Branch Locations', href: ROUTES.BRANCH_LOCATIONS, icon: MapPin },
   { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
   { label: 'Special Events',  href: ROUTES.SPECIAL_EVENTS,   icon: CalendarDays },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },

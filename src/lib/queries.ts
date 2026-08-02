@@ -35,6 +35,11 @@ import type {
   PackingMaterialUsageRow,
   CreatePackingMaterialInput,
   UpdatePackingMaterialInput,
+  BranchLocation,
+  BranchLocationRow,
+  BranchLocationStats,
+  GeofenceLog,
+  UpsertBranchLocationInput,
   ReportSummary,
   StockRow,
   ConsolidatedDemandRow,
@@ -157,6 +162,96 @@ export function useRemoveProduct(token: string) {
 
 export function useCommitPriceImport(token: string) {
   return useMutation({ mutationFn: (input: SaveImportInput) => saveImport(input, { token }) });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Branch locations — the geofence catalogue (migration 48).
+//
+// The listing deliberately returns EVERY branch, configured or not: the admin
+// module's "Missing GPS" tile counts the ones without a location, so they have to
+// be in the same payload rather than filtered out of it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BranchLocationsResponse {
+  branches: BranchLocationRow[];
+  stats: BranchLocationStats;
+  geofencingEnabled: boolean;
+}
+
+export function useBranchLocations(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.branchLocations(),
+    queryFn: () => apiCall<BranchLocationsResponse>('/api/branch-locations', {}, token),
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+/**
+ * Prefix invalidation, so both the listing and the log views refresh. A location
+ * change moves the "GPS Configured" / "Missing GPS" tiles as well as the row.
+ */
+function invalidateBranchLocations(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['branchLocations'] });
+  qc.invalidateQueries({ queryKey: ['geofenceLogs'] });
+}
+
+export function useUpsertBranchLocation(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { branchId: string; input: UpsertBranchLocationInput }) =>
+      apiCall<{ location: BranchLocation }>(
+        `/api/branch-locations/${v.branchId}`,
+        { method: 'PUT', body: JSON.stringify(v.input) },
+        token,
+      ),
+    onSuccess: () => invalidateBranchLocations(qc),
+  });
+}
+
+export function useSetBranchLocationStatus(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { branchId: string; isActive: boolean }) =>
+      apiCall(
+        `/api/branch-locations/${v.branchId}/status`,
+        { method: 'PATCH', body: JSON.stringify({ isActive: v.isActive }) },
+        token,
+      ),
+    onSuccess: () => invalidateBranchLocations(qc),
+  });
+}
+
+export function useDeleteBranchLocation(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (branchId: string) =>
+      apiCall(`/api/branch-locations/${branchId}`, { method: 'DELETE' }, token),
+    onSuccess: () => invalidateBranchLocations(qc),
+  });
+}
+
+/** The geofence audit trail. Admin-only on the server; `blockedOnly` is the hot filter. */
+export function useGeofenceLogs(
+  token: string,
+  filters: { branchId?: string | null; blockedOnly?: boolean },
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.geofenceLogs(filters),
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (filters.branchId) qs.set('branchId', filters.branchId);
+      if (filters.blockedOnly) qs.set('blockedOnly', 'true');
+      const query = qs.toString();
+      return apiCall<{ logs: GeofenceLog[] }>(
+        `/api/branch-locations/logs${query ? `?${query}` : ''}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.logs ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

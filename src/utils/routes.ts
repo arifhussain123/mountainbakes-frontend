@@ -12,6 +12,14 @@ export const ROUTES = {
   PRICE_HISTORY: '/price-history',
   CUSTOMERS: '/customers',
   BRANCHES: '/branches',
+  /**
+   * Admin → Branch Locations. The path is '/geofencing', NOT '/branch-locations':
+   * RouteGuard maps every '/branch-*' prefix to the branch_manager role, so an
+   * admin route under that prefix would bounce a super admin to their own home
+   * page — silently, and only once deployed. The API path is still
+   * /api/branch-locations; only this app's own URL had to move.
+   */
+  BRANCH_LOCATIONS: '/geofencing',
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',

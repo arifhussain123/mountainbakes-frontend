@@ -56,6 +56,10 @@ const ADMIN_PREFIXES = [
   '/settings',
   '/price-list',
   '/price-history',
+  // Admin → Branch Locations. Named '/geofencing' rather than '/branch-locations'
+  // precisely so it does not collide with the '/branch-' rule below, which would
+  // have bounced super admins off their own screen. See ROUTES.BRANCH_LOCATIONS.
+  '/geofencing',
 ];
 
 function isPublic(pathname: string): boolean {

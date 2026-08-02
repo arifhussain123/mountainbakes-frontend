@@ -23,6 +23,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRICE_HISTORY]: 'Price History',
   [ROUTES.CUSTOMERS]: 'Customers',
   [ROUTES.BRANCHES]: 'Branches',
+  [ROUTES.BRANCH_LOCATIONS]: 'Branch Locations',
   [ROUTES.REPORTS]: 'Reports & Analytics',
   [ROUTES.SUPPORT_CENTER]: 'Support Center',
   [ROUTES.NOTIFICATION_RECIPIENTS]: 'Notification Recipients',
