@@ -19,6 +19,14 @@ import {
   Send,
   CalendarDays,
   MapPin,
+  BookOpenCheck,
+  Wallet,
+  Landmark,
+  UserCog,
+  HandCoins,
+  ListTree,
+  CalendarCheck,
+  ShieldCheck,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -44,8 +52,36 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
+  { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
+];
+
+/**
+ * Finance Ledger navigation.
+ *
+ * ONE list for all four finance roles. They see the same screens and differ only
+ * in which actions are offered once inside — hiding Reports from an Accountant
+ * or Settings from an Auditor would leave them staring at a nav that changes
+ * shape depending on who is logged in, with no way to tell whether a screen is
+ * missing or they simply lack the grant. financeCan() disables the buttons; the
+ * nav stays honest.
+ *
+ * Ordered the way the work flows: see the position, read the book, deal with
+ * what is waiting, then the periodic and administrative screens.
+ */
+export const FINANCE_NAV: NavItem[] = [
+  { label: 'Dashboard',        href: ROUTES.FINANCE_DASHBOARD,         icon: LayoutDashboard },
+  { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
+  { label: 'Branch Income',    href: ROUTES.FINANCE_INCOME,            icon: Landmark },
+  { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
+  { label: 'Salaries',         href: ROUTES.FINANCE_SALARIES,          icon: UserCog },
+  { label: 'Partner Expenses', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: HandCoins },
+  { label: 'Ledger Heads',     href: ROUTES.FINANCE_HEADS,             icon: ListTree },
+  { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
+  { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
+  { label: 'Audit Trail',      href: ROUTES.FINANCE_AUDIT,             icon: ShieldCheck },
+  { label: 'Settings',         href: ROUTES.FINANCE_SETTINGS,          icon: Settings },
 ];
 
 export const BRANCH_NAV: NavItem[] = [
@@ -76,6 +112,10 @@ export const NAV_MAP: Record<UserRole, NavItem[]> = {
   super_admin:     ADMIN_NAV,
   branch_manager:  BRANCH_NAV,
   production_user: PRODUCTION_NAV,
+  finance_admin:   FINANCE_NAV,
+  finance_manager: FINANCE_NAV,
+  accountant:      FINANCE_NAV,
+  finance_auditor: FINANCE_NAV,
 };
 
 export function getNavItems(role: UserRole): NavItem[] {
@@ -94,6 +134,13 @@ export function getNavItems(role: UserRole): NavItem[] {
  * role's NAV_MAP — `getPrimaryNavItems` drops any that don't rather than
  * rendering a tab that 404s or that RouteGuard would bounce.
  */
+const FINANCE_PRIMARY: string[] = [
+  ROUTES.FINANCE_DASHBOARD,
+  ROUTES.FINANCE_LEDGER,
+  ROUTES.FINANCE_INCOME,
+  ROUTES.FINANCE_ENTRIES,
+];
+
 export const PRIMARY_NAV: Record<UserRole, string[]> = {
   super_admin: [ROUTES.DASHBOARD, ROUTES.ORDERS, ROUTES.PRODUCTS, ROUTES.REPORTS],
   branch_manager: [
@@ -108,6 +155,12 @@ export const PRIMARY_NAV: Record<UserRole, string[]> = {
     ROUTES.PRODUCTION_STOCK,
     ROUTES.PRODUCTION_SALES,
   ],
+  // The four screens a finance user opens every day. Everything else — heads,
+  // audit, settings — is configuration or investigation and lives behind More.
+  finance_admin:   FINANCE_PRIMARY,
+  finance_manager: FINANCE_PRIMARY,
+  accountant:      FINANCE_PRIMARY,
+  finance_auditor: FINANCE_PRIMARY,
 };
 
 /**

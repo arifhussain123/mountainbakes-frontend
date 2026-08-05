@@ -51,6 +51,28 @@ export const ROUTES = {
   BRANCH_REPORTS: '/branch-reports',
   BRANCH_HELP_DESK: '/branch-help-desk',
   BRANCH_EVENTS: '/branch-events',
+
+  /**
+   * Finance Ledger.
+   *
+   * Every path is under the '/finance-' prefix, which RouteGuard maps to the
+   * finance roles the same way '/branch-' and '/production-' work. That is the
+   * reason there is no '/ledger' or '/salaries' here: an unprefixed finance
+   * route would fall through to the admin allowlist and be unguarded, exactly
+   * the trap ROUTES.BRANCH_LOCATIONS documents from the other direction.
+   */
+  FINANCE_LOGIN: '/finance-login',
+  FINANCE_DASHBOARD: '/finance-dashboard',
+  FINANCE_LEDGER: '/finance-ledger',
+  FINANCE_INCOME: '/finance-income',
+  FINANCE_ENTRIES: '/finance-entries',
+  FINANCE_SALARIES: '/finance-salaries',
+  FINANCE_PARTNER_EXPENSES: '/finance-partner-expenses',
+  FINANCE_HEADS: '/finance-heads',
+  FINANCE_CLOSING: '/finance-closing',
+  FINANCE_REPORTS: '/finance-reports',
+  FINANCE_AUDIT: '/finance-audit',
+  FINANCE_SETTINGS: '/finance-settings',
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];

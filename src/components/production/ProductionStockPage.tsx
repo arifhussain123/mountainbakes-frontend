@@ -19,6 +19,10 @@ export function ProductionStockPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const columns = [
+    // The STK-###### the Help Desk needs to raise a query against this item —
+    // same column, same place as the branch Stock page. It is searchable through
+    // the DataTable's filter, so an ID from a ticket finds its row here.
+    col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
     col.accessor('preparedToday', { header: 'Prepared Today', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('totalStock', { header: 'Total Stock', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { User, Branch, UserRole } from '@mb/shared';
-import { CreateUserSchema, type CreateUserInput } from '@mb/shared';
+import { CreateUserSchema, FINANCE_ROLE_LABELS, FINANCE_ROLES, type CreateUserInput } from '@mb/shared';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -32,10 +32,17 @@ import { MoreHorizontal, Pencil, KeyRound, Eye, Trash2, UserCheck, UserX } from 
 
 const col = createColumnHelper<User>();
 
+// The four finance roles share one colour: they are one department to everyone
+// looking at this list, and what separates them is what they may DO in the
+// Finance Ledger, which no user-management screen shows.
 const ROLE_COLORS: Record<UserRole, string> = {
   super_admin: 'bg-primary/10 text-primary',
   branch_manager: 'bg-secondary/10 text-secondary',
   production_user: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  finance_admin: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+  finance_manager: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+  accountant: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+  finance_auditor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
 };
 
 export function UsersPage() {
@@ -255,6 +262,15 @@ export function UsersPage() {
                     <SelectItem value="super_admin">Super Admin</SelectItem>
                     <SelectItem value="branch_manager">Branch Manager</SelectItem>
                     <SelectItem value="production_user">Production User</SelectItem>
+                    {/* Finance Ledger accounts are provisioned here like every
+                        other account — the role rides in app_metadata and is what
+                        the module's own login checks. Without these four options
+                        there is no way to create a finance user at all. */}
+                    {FINANCE_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {FINANCE_ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, Product, PaymentMethod, StockFigures } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, Product, PaymentMethod, StockFigures, ProductionStockFigures } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
@@ -63,6 +63,20 @@ function ReferenceDetail({ reference }: { reference: SupportReference }) {
 }
 
 /**
+ * Is this stock ticket about the central production pool rather than a branch?
+ *
+ * The snapshot's own flag when it has one; otherwise the raiser's role, which is
+ * equally decisive — a production user's stock lookup has only ever resolved to the
+ * pool. The fallback is what makes tickets raised BEFORE the pool became correctable
+ * (they carry `readOnly: true` and no flag) correctable now. Mirrors the same test
+ * on the server, which is the one that actually authorises the write.
+ */
+function isPoolStockTicket(ticket: SupportTicket): boolean {
+  if (ticket.referenceType !== 'stock') return false;
+  return ticket.referenceSnapshot?.isProductionPool === true || ticket.raisedByRole === 'production_user';
+}
+
+/**
  * The reference as it reads NOW.
  *
  * `referenceSnapshot` is frozen onto the ticket when the query is RAISED. That is
@@ -71,15 +85,15 @@ function ReferenceDetail({ reference }: { reference: SupportReference }) {
  * applied in between. So every dialog that displays a reference re-reads it, and
  * falls back to the snapshot if the read fails.
  *
- * A READ-ONLY reference is never re-read. A production pool or counter-sale ticket
- * has no branch ledger, and an admin's unscoped lookup of the same ID resolves to
- * an all-branches figure that does not describe it — the snapshot is the only
- * honest answer there.
+ * Read-only references are not re-read — a demand or a counter sale has nothing to
+ * correct, and re-reading buys nothing. A POOL ticket is re-read even when its
+ * (legacy) snapshot says read-only, because that flag is now out of date.
  */
 function useLiveReference(ticket: SupportTicket) {
   const { token } = useAuth();
   const snapshot = ticket.referenceSnapshot;
-  const canRefresh = Boolean(snapshot) && snapshot?.readOnly !== true;
+  const isPool = isPoolStockTicket(ticket);
+  const canRefresh = Boolean(snapshot) && (snapshot?.readOnly !== true || isPool);
   const [reference, setReference] = useState<SupportReference | null>(snapshot);
   const [loading, setLoading] = useState(canRefresh);
 
@@ -88,16 +102,20 @@ function useLiveReference(ticket: SupportTicket) {
 
   useEffect(() => {
     if (!token || !canRefresh) return;
-    // branchId scopes a STOCK lookup to the raiser's branch (the server ignores it
-    // for every other type); without it an admin gets an all-branches total.
-    const url = `/api/support/lookup?ref=${encodeURIComponent(referenceId)}${branchId ? `&branchId=${branchId}` : ''}`;
+    // A stock lookup has to be told WHICH ledger: `pool=1` for the production pool,
+    // `branchId` for the raiser's branch. With neither, an admin's stock lookup
+    // resolves to an all-branches total, which is not a ledger anything can be
+    // applied to. The pool wins — a pool ticket has no branch to fall back on, even
+    // when the production account that raised it happens to carry one.
+    const scope = isPool ? '&pool=1' : branchId ? `&branchId=${branchId}` : '';
+    const url = `/api/support/lookup?ref=${encodeURIComponent(referenceId)}${scope}`;
     let cancelled = false;
     apiCall<{ reference: SupportReference }>(url, {}, token)
       .then((r) => { if (!cancelled) setReference(r.reference); })
       .catch(() => { /* keep the snapshot — it is still a truthful record of the query */ })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [token, canRefresh, referenceId, branchId]);
+  }, [token, canRefresh, referenceId, branchId, isPool]);
 
   return { reference, loading };
 }
@@ -231,9 +249,13 @@ export function SupportCenterPage() {
         // sales legitimately carry an empty editableFields (they are corrected
         // through saleItems), and legacy stock tickets with an empty one are still
         // routed by type into StockFiguresDialog, which re-reads live figures.
-        // A length test would strand both. No stored snapshot has `readOnly`, so
-        // this cannot regress an existing ticket.
-        const canChange = Boolean(t.referenceSnapshot) && t.referenceSnapshot?.readOnly !== true;
+        // A length test would strand both.
+        //
+        // A POOL ticket overrides the flag: production stock became correctable
+        // (migration 50) after those snapshots were frozen with `readOnly: true`,
+        // and the dialog re-reads the pool live before writing anything.
+        const canChange =
+          Boolean(t.referenceSnapshot) && (t.referenceSnapshot?.readOnly !== true || isPoolStockTicket(t));
         const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
         return (
           <>
@@ -328,7 +350,10 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="md:max-w-lg">
+      {/* Wider than the other dialogs, and the body scrolls inside itself: a sale
+          reference is a five-column item table under a dozen detail rows, which
+          would otherwise push the footer buttons off the bottom of the popup. */}
+      <DialogContent className="md:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {ticket.ticketNumber}
@@ -339,7 +364,7 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
           {reference && <ReferenceDetail reference={reference} />}
           {/* A sale's lines, exactly as the branch's Sale view prints them. */}
           {reference?.saleItems && reference.saleItems.length > 0 && (
@@ -506,13 +531,16 @@ function SaleItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
       .catch(() => toast.error('Could not load products'));
   }, [token]);
 
-  // Reseed the form the moment the live sale lands. `live` is set exactly once, so
-  // this cannot run again over an admin's half-finished edit.
-  useEffect(() => {
-    if (!live || live === snapshot) return;
+  // Reseed the form the moment the live sale lands — React's "adjust state when a
+  // value changes" pattern, during render rather than in an effect, so there is no
+  // extra commit showing the snapshot's lines. `seededFrom` makes it run exactly
+  // once per reference, never over an admin's half-finished edit.
+  const [seededFrom, setSeededFrom] = useState<SupportReference | null>(snapshot);
+  if (live && live !== seededFrom) {
+    setSeededFrom(live);
     if (live.saleItems) setRows(live.saleItems.map((it, i) => ({ ...it, key: `live-${i}` })));
     setPayment(live.paymentMethod);
-  }, [live, snapshot]);
+  }
 
   const totals = useMemo(() => previewTotals(rows, reference.saleTotals), [rows, reference.saleTotals]);
 
@@ -738,6 +766,11 @@ function SaleItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
 function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const ref = ticket.referenceSnapshot;
 
+  // The production pool, checked BEFORE the read-only gate: a legacy pool snapshot
+  // still says read-only, and the pool editor re-reads it live anyway.
+  if (ref && isPoolStockTicket(ticket)) {
+    return <ProductionStockFiguresDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
+  }
   // Belt and braces behind the disabled button above — a stale client could still
   // reach here. Without this, FieldEditDialog's no-editable-fields fallback would
   // render the reference's DISPLAY fields as editable inputs and resolve the ticket
@@ -1009,6 +1042,230 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
               day’s takings or payment method. For a sale recorded wrongly, raise the
               query against its sale ID (MB-…) instead, which corrects the order, its
               total and its tender along with the stock.
+            </p>
+
+            <div className="space-y-1">
+              <Label>Note (optional)</Label>
+              <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Reason for the correction" />
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || loading || !figures || invalid || !changed}>
+            {busy ? 'Applying…' : 'Apply & Resolve'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** What /figures reports back when it corrected the production pool. */
+interface ProductionCorrectionResult {
+  applied: boolean;
+  productName: string;
+  before: ProductionStockFigures;
+  after: ProductionStockFigures;
+  movements: { type: string; delta: number }[];
+}
+
+const PRODUCTION_FIELDS = [
+  { key: 'preparedToday', label: 'Prepared Today', hint: 'units made today' },
+  { key: 'approvedQty', label: 'Approved Qty', hint: 'units sent out on demands' },
+  { key: 'soldToday', label: 'Sold', hint: 'units sold at the counter' },
+  { key: 'returned', label: 'Returned', hint: 'units taken back from branches' },
+] as const;
+
+/**
+ * Production-pool correction — the pool's counterpart of StockFiguresDialog.
+ *
+ * Same shape and same rules: the LIVE row is re-read (the ticket's snapshot is from
+ * when the query was raised), each figure is set to what it should read, and the
+ * server sizes one compensating movement per figure.
+ *
+ * Two differences from the branch editor, both following the pool's own model:
+ *   · There is no Opening. The pool carries one running balance and no per-day
+ *     open/close, so the four movement figures plus Balance are the whole row.
+ *   · A negative Balance is ALLOWED — the pool is flagged when negative, never
+ *     blocked, and a product already negative has to stay correctable. It is warned
+ *     about rather than refused.
+ *
+ * Total Stock is shown but not editable: it is balance + approved + sold, so it
+ * follows the figures above it and has no movement of its own to correct.
+ */
+function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
+  const { token } = useAuth();
+  const { reference, loading } = useLiveReference(ticket);
+  const figures = reference?.productionFigures ?? null;
+  // Only what the admin actually typed. Everything else is DERIVED from the live
+  // figures below, so the inputs need no seeding effect and cannot show a stale
+  // value if the lookup resolves late.
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const productName = reference?.fields.find((f) => f.label === 'Product')?.value ?? ticket.referenceId;
+
+  const num = (v: string | undefined) => Number(v ?? 0);
+  const t: Record<string, string> = {
+    ...(figures
+      ? {
+          preparedToday: String(figures.preparedToday),
+          approvedQty: String(figures.approvedQty),
+          soldToday: String(figures.soldToday),
+          returned: String(figures.returned),
+        }
+      : {}),
+    ...edited,
+  };
+  // Until the admin edits Balance themselves, it tracks the four figures above it.
+  const balanceTouched = edited['balance'] !== undefined;
+
+  /**
+   * Balance implied by the figures as typed. Prepared and returned add to the pool;
+   * approved and sold take from it — the same arithmetic the server applies, so the
+   * preview and the write agree.
+   */
+  const implied = figures
+    ? figures.balance +
+      (num(t['preparedToday']) - figures.preparedToday) -
+      (num(t['approvedQty']) - figures.approvedQty) +
+      (num(t['returned']) - figures.returned) -
+      (num(t['soldToday']) - figures.soldToday)
+    : 0;
+
+  const extraAdjustment = balanceTouched ? num(t['balance']) - implied : 0;
+  const finalBalance = balanceTouched ? num(t['balance']) : implied;
+
+  function setFigure(key: string, value: string) {
+    setEdited((prev) => ({ ...prev, [key]: value }));
+  }
+
+  const shownBalance = balanceTouched ? (t['balance'] ?? '') : String(implied);
+
+  const invalid =
+    !figures ||
+    PRODUCTION_FIELDS.some((f) => {
+      const v = num(t[f.key]);
+      return t[f.key] === '' || !Number.isFinite(v) || v < 0;
+    }) ||
+    // A cleared Balance is not "zero" — it is no figure at all.
+    (balanceTouched && (t['balance'] === '' || !Number.isFinite(num(t['balance']))));
+
+  /**
+   * Only the figures the admin actually moved. An untouched figure is omitted so a
+   * movement recorded while the dialog was open is not reverted by a stale absolute
+   * target — the same reason the branch editor sends a partial set.
+   */
+  const edits: Record<string, number> = {};
+  if (figures) {
+    for (const f of PRODUCTION_FIELDS) {
+      if (num(t[f.key]) !== figures[f.key]) edits[f.key] = num(t[f.key]);
+    }
+    if (balanceTouched && num(t['balance']) !== implied) edits['balance'] = num(t['balance']);
+  }
+
+  const changed = Object.keys(edits).length > 0;
+
+  async function submit() {
+    if (invalid) { toast.error('Prepared, Approved, Sold and Returned must each be 0 or more'); return; }
+    if (!changed) { toast.error('Change at least one figure'); return; }
+    setBusy(true);
+    try {
+      const res = await apiCall<{ applied: boolean; productionStock: ProductionCorrectionResult | null }>(
+        `/api/support/${ticket.id}/figures`,
+        { method: 'PATCH', body: JSON.stringify({ edits, note }) },
+        token,
+      );
+      toast.success(
+        res.productionStock?.applied
+          ? `Production stock corrected — balance ${res.productionStock.before.balance} → ${res.productionStock.after.balance}`
+          : 'Production stock already matched — query resolved',
+      );
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to correct the production stock');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="md:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Correct production stock — {ticket.referenceId}</DialogTitle>
+          <DialogDescription>
+            {productName} · central production pool — set each figure to what it should
+            read. The pool is adjusted to match and the query is resolved.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && !figures ? (
+          <p className="text-sm text-muted-foreground">Loading current pool figures…</p>
+        ) : !figures ? (
+          <p className="text-sm text-muted-foreground">Current pool figures are unavailable.</p>
+        ) : (
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+              <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="balance + what left today" />
+              {figures.adjustment !== 0 && (
+                <FigureRow
+                  label="Adjustment so far"
+                  value={figures.adjustment > 0 ? `+${figures.adjustment}` : String(figures.adjustment)}
+                  hint="earlier corrections today"
+                />
+              )}
+            </div>
+
+            {PRODUCTION_FIELDS.map((f) => (
+              <div key={f.key} className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>{f.label}</Label>
+                  <span className="text-xs text-muted-foreground">
+                    now {figures[f.key]} · {f.hint}
+                  </span>
+                </div>
+                <Input
+                  type="number" min="0" step="0.001" inputMode="decimal"
+                  className="text-right"
+                  value={t[f.key] ?? ''}
+                  onChange={(e) => setFigure(f.key, e.target.value)}
+                />
+              </div>
+            ))}
+
+            <div className="space-y-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label>Balance</Label>
+                <span className="text-xs text-muted-foreground">
+                  now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
+                </span>
+              </div>
+              <Input
+                type="number" step="0.001" inputMode="decimal"
+                className={cn('text-right', finalBalance < 0 && 'border-amber-500')}
+                value={shownBalance}
+                onChange={(e) => setFigure('balance', e.target.value)}
+              />
+              {extraAdjustment !== 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Booked as an adjustment of {extraAdjustment > 0 ? `+${extraAdjustment}` : extraAdjustment}.
+                </p>
+              )}
+              {finalBalance < 0 && (
+                <p className="text-xs text-amber-600">
+                  This leaves the pool negative. Allowed — the Production Stock page flags
+                  it in red — but check it is really what the shelf says.
+                </p>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Correcting <strong>Sold</strong> moves pool stock only — it does not change
+              the counter sale, its total or its tender. Production counter sales are not
+              editable from here, so answer the sale query in words and correct its stock
+              effect above.
             </p>
 
             <div className="space-y-1">

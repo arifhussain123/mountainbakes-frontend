@@ -57,6 +57,21 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRODUCTION_HELP_DESK]: 'Help Desk',
   [ROUTES.PRODUCTION_EVENTS]: 'Special Events',
   [ROUTES.PRODUCTION_QUEUE]: 'Production Queue',
+
+  // Finance Ledger. Several deliberately differ from their nav label — the nav
+  // has a column of finance items and does not need to say "Finance" eleven
+  // times, whereas the page heading is read on its own.
+  [ROUTES.FINANCE_DASHBOARD]: 'Finance Dashboard',
+  [ROUTES.FINANCE_LEDGER]: 'Daily Ledger',
+  [ROUTES.FINANCE_INCOME]: 'Branch Income Approvals',
+  [ROUTES.FINANCE_ENTRIES]: 'Income & Expense Entries',
+  [ROUTES.FINANCE_SALARIES]: 'Salary Ledger',
+  [ROUTES.FINANCE_PARTNER_EXPENSES]: 'Partner Expenses',
+  [ROUTES.FINANCE_HEADS]: 'Ledger Heads',
+  [ROUTES.FINANCE_CLOSING]: 'Daily Closing',
+  [ROUTES.FINANCE_REPORTS]: 'Finance Reports',
+  [ROUTES.FINANCE_AUDIT]: 'Audit Trail',
+  [ROUTES.FINANCE_SETTINGS]: 'Finance Settings',
 };
 
 export function getPageTitle(pathname: string): string | undefined {

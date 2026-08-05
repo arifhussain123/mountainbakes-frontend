@@ -49,4 +49,35 @@ export const qk = {
   eventProductionStatus: (eventId: string) => ['eventProductionStatus', eventId] as const,
   eventNotifications: (eventId?: string | null, status?: string | null) =>
     ['eventNotifications', eventId ?? 'all', status ?? null] as const,
+
+  // ── Finance Ledger ──
+  // Every finance key starts with the literal 'finance' so a sign-out or a
+  // settings change can drop the whole module with one
+  // `invalidateQueries({ queryKey: ['finance'] })` prefix match, without also
+  // clearing the operations caches sitting next to it.
+  financeDashboard: (businessDate?: string | null) =>
+    ['finance', 'dashboard', businessDate ?? 'today'] as const,
+  // The ledger key carries its full filter object: the Daily Ledger page changes
+  // date, branch and head independently, and a key that dropped any of them
+  // would serve one filter's rows under another's heading.
+  financeLedger: (filters: Record<string, unknown>) => ['finance', 'ledger', filters] as const,
+  financeLedgerEntry: (id: string) => ['finance', 'ledgerEntry', id] as const,
+  financeHeads: (includeInactive?: boolean) =>
+    ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
+  financeIncome: (filters: Record<string, unknown>) => ['finance', 'income', filters] as const,
+  financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,
+  financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
+  financeEmployees: (includeInactive?: boolean) =>
+    ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,
+  financePartnerExpenses: (filters: Record<string, unknown>) =>
+    ['finance', 'partnerExpenses', filters] as const,
+  financeClosing: (businessDate?: string | null) =>
+    ['finance', 'closing', businessDate ?? 'today'] as const,
+  financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,
+  financeSettings: () => ['finance', 'settings'] as const,
+  financeAudit: (filters: Record<string, unknown>) => ['finance', 'audit', filters] as const,
+  financeReport: (query: Record<string, unknown>) => ['finance', 'report', query] as const,
 };
+
+/** Prefix that matches every finance cache entry. See the note above. */
+export const FINANCE_QK_ROOT = ['finance'] as const;
