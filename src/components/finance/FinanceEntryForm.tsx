@@ -17,12 +17,14 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useLedgerHeads } from '@/lib/finance';
+import { ApiError } from '@/utils/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { TriangleAlert } from 'lucide-react';
 
 /**
  * Raise a manual income or expense document.
@@ -38,6 +40,25 @@ import { cn } from '@/lib/utils';
  * back to it, and that is a decision made at the moment of pressing, not while
  * reading the form.
  */
+
+interface DuplicateIncomeMatch {
+  voucherNo: string;
+  entryDate: string;
+  amount: number;
+  ledgerHeadName: string;
+}
+
+/** Narrows ApiError.details (unknown) to the shape assertNotDuplicateIncome attaches. */
+function isDuplicateIncomeDetails(
+  details: unknown,
+): details is { code: 'duplicate_income'; existing: DuplicateIncomeMatch } {
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    (details as { code?: unknown }).code === 'duplicate_income' &&
+    typeof (details as { existing?: unknown }).existing === 'object'
+  );
+}
 export function FinanceEntryForm({
   entry,
   onSuccess,
@@ -52,6 +73,11 @@ export function FinanceEntryForm({
   const mut = useFinanceMutation();
 
   const [headType, setHeadType] = useState<LedgerHeadType>(entry?.txnType ?? 'expense');
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    match: DuplicateIncomeMatch;
+    data: CreateFinanceTransactionInput;
+    asDraft: boolean;
+  } | null>(null);
 
   const form = useForm<CreateFinanceTransactionInput>({
     resolver: zodResolver(CreateFinanceTransactionSchema),
@@ -85,6 +111,7 @@ export function FinanceEntryForm({
       : (branchesQ.data ?? []);
 
   async function save(data: CreateFinanceTransactionInput, asDraft: boolean) {
+    setDuplicateWarning(null);
     try {
       if (entry) {
         // Editing only ever touches a draft or a rejected document — a posted one
@@ -104,8 +131,27 @@ export function FinanceEntryForm({
       }
       onSuccess?.();
     } catch (err) {
+      // The server rejects a NEW income entry that matches an already-posted
+      // Branch Income entry (same head/amount/date) rather than silently
+      // double-counting it — see assertNotDuplicateIncome. Offer to override
+      // instead of just failing, for the rare genuine coincidence.
+      const duplicate =
+        !entry && err instanceof ApiError && err.status === 409 && isDuplicateIncomeDetails(err.details)
+          ? err.details.existing
+          : null;
+      if (duplicate) {
+        setDuplicateWarning({ match: duplicate, data, asDraft });
+        return;
+      }
       toast.error(err instanceof Error ? err.message : 'Could not save this entry');
     }
+  }
+
+  async function createAnyway() {
+    if (!duplicateWarning) return;
+    const { data, asDraft } = duplicateWarning;
+    setDuplicateWarning(null);
+    await save({ ...data, confirmDuplicate: true }, asDraft);
   }
 
   const errors = form.formState.errors;
@@ -255,6 +301,28 @@ export function FinanceEntryForm({
         <Label>Notes (optional)</Label>
         <Textarea rows={2} placeholder="Anything an approver should know" {...form.register('notes')} />
       </div>
+
+      {duplicateWarning && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+          <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1 space-y-2">
+            <p className="text-amber-900 dark:text-amber-200">
+              This matches <span className="font-mono">{duplicateWarning.match.voucherNo}</span> —{' '}
+              {duplicateWarning.match.ledgerHeadName}, already posted from Branch Income for{' '}
+              {duplicateWarning.match.entryDate} at the same amount. If this is a genuinely separate
+              transaction that happens to coincide, create it anyway.
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setDuplicateWarning(null)}>
+                Cancel
+              </Button>
+              <Button type="button" size="sm" disabled={mut.isPending} onClick={() => void createAnyway()}>
+                {mut.isPending ? 'Creating…' : 'Create anyway'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row">
         {!entry && (

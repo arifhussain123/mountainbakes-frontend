@@ -44,11 +44,11 @@ export function useEventsRealtime() {
       switch (n.type) {
         case 'event_created':
           refreshEvents = true;
-          toast('📅 New Special Event', { description: n.message });
+          toast('📅 New Special Event');
           break;
         case 'event_reminder':
           refreshEvents = true;
-          toast(`🔔 ${n.title}`, { description: n.message });
+          toast(`🔔 ${n.title}`);
           try {
             navigator.vibrate?.(200);
           } catch {
@@ -59,19 +59,17 @@ export function useEventsRealtime() {
           refreshEvents = true;
           refreshDemands = true;
           // The deadline one deserves to stay on screen longer than the rest.
-          toast(`⏰ ${n.title}`, { description: n.message, duration: 10_000 });
+          toast(`⏰ ${n.title}`, { duration: 10_000 });
           break;
         case 'event_demand_submitted':
           refreshDemands = true;
           refreshEvents = true;
-          toast('📥 Event Demand Submitted', { description: n.message });
+          toast('📥 Event Demand Submitted');
           break;
         case 'event_demand_reviewed':
           refreshDemands = true;
           refreshEvents = true;
-          toast(n.title.includes('Approved') ? '✅ Event Demand Approved' : '❌ Event Demand Rejected', {
-            description: n.message,
-          });
+          toast(n.title.includes('Approved') ? '✅ Event Demand Approved' : '❌ Event Demand Rejected');
           break;
         case 'event_production_updated':
           refreshEvents = true;

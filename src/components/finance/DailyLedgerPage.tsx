@@ -51,6 +51,29 @@ const PAGE_SIZE = 50;
 /** A row as rendered — either a real ledger entry, or two of them merged into one. */
 type DisplayEntry = LedgerEntry & { merged?: boolean };
 
+const BRANCH_INCOME_SOURCE_TYPES = new Set(['branch_income', 'company_share', 'branch_share']);
+
+/**
+ * If someone manually re-keys money as an Income & Expense entry that was
+ * ALREADY posted from a branch's daily closing — same ledger head, same
+ * amount, same date — the business gets counted twice. Fixing that at the
+ * source (blocking the duplicate at entry time) is the real fix and isn't
+ * done here; this only hides the manual duplicate from the cash book so it
+ * isn't double-visible. It does NOT remove the double-count from the
+ * totals/closing balance in the footer — both entries are still real, posted
+ * rows, so the footer's totalDebit/closingBalance still include the hidden
+ * one. This is purely "don't show it twice on screen", not an accounting fix.
+ */
+function hideDuplicateManualEntries(entries: LedgerEntry[]): LedgerEntry[] {
+  const key = (e: LedgerEntry) => `${e.ledgerHeadId}|${e.entryDate}|${e.debit || e.credit}`;
+  const branchIncomeKeys = new Set(
+    entries.filter((e) => BRANCH_INCOME_SOURCE_TYPES.has(e.sourceType)).map(key),
+  );
+  if (branchIncomeKeys.size === 0) return entries;
+
+  return entries.filter((e) => e.sourceType !== 'manual' || !branchIncomeKeys.has(key(e)));
+}
+
 /**
  * Branch income approval posts a company-share entry and a branch-share
  * entry as two SEPARATE, real ledger rows (same sourceId, sourceType
@@ -188,7 +211,10 @@ export function DailyLedgerPage() {
   // today" is one number, not a 75/25 split. Display-only — the two postings
   // underneath are untouched, which is why Adjust is disabled on a merged row
   // (see the `merged` flag on DisplayEntry).
-  const entries = useMemo(() => mergeBranchIncomePairs(data?.entries ?? []), [data?.entries]);
+  const entries = useMemo(
+    () => mergeBranchIncomePairs(hideDuplicateManualEntries(data?.entries ?? [])),
+    [data?.entries],
+  );
   const total = data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rangeFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;

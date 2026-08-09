@@ -48,7 +48,7 @@ export function usePriceRealtime(opts?: { toastOnChange?: boolean }) {
     qc.invalidateQueries({ queryKey: ['priceHistory'] });
 
     if (opts?.toastOnChange) {
-      for (const n of priceChanges) toast('💰 Price Updated', { description: n.message });
+      priceChanges.forEach(() => toast('💰 Price Updated'));
     }
   }, [notifications, qc, opts?.toastOnChange]);
 }
