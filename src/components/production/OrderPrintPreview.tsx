@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PrintButton } from '@/components/shared/PrintButton';
+import { PrintPortal } from '@/components/shared/PrintPortal';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
@@ -585,35 +586,41 @@ function PreviewBody({
           </p>
         </div>
 
-        {/* ── Print-only: either the Customer/Company Copy pair, or the
-            Production Check sheet — whichever printCheck()/print() picked. ── */}
-        <div className="print-area print-only">
-          {printMode === 'slip' ? (
-            <>
-              <PrintCopy
-                copyLabel="Customer Copy"
-                logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
-                printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-                previousRef={previousRef} deliveredValue={deliveredValue}
-                companySharePct={companySharePct} companyShareValue={companyShareValue}
-                returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
-                receiptFooter={settings?.receiptFooter ?? null}
-              />
-              <PrintCopy
-                copyLabel="Company Copy"
-                logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
-                printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-                previousRef={previousRef} deliveredValue={deliveredValue}
-                companySharePct={companySharePct} companyShareValue={companyShareValue}
-                returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
-                receiptFooter={settings?.receiptFooter ?? null}
-              />
-            </>
-          ) : (
-            <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
-          )}
-        </div>
       </div>
+
+      {/* ── Print-only: either the Customer/Company Copy pair, or the
+          Production Check sheet — whichever printCheck()/print() picked.
+
+          Portalled to <body> deliberately. Left inside the dialog it is an
+          absolutely positioned box inside a fixed, translated, overflow-clipped
+          ancestor, and the printer only ever gets the part that fits the dialog
+          — see PrintPortal. ── */}
+      <PrintPortal>
+        {printMode === 'slip' ? (
+          <>
+            <PrintCopy
+              copyLabel="Customer Copy"
+              logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
+              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
+              previousRef={previousRef} deliveredValue={deliveredValue}
+              companySharePct={companySharePct} companyShareValue={companyShareValue}
+              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
+              receiptFooter={settings?.receiptFooter ?? null}
+            />
+            <PrintCopy
+              copyLabel="Company Copy"
+              logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
+              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
+              previousRef={previousRef} deliveredValue={deliveredValue}
+              companySharePct={companySharePct} companyShareValue={companyShareValue}
+              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
+              receiptFooter={settings?.receiptFooter ?? null}
+            />
+          </>
+        ) : (
+          <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
+        )}
+      </PrintPortal>
 
       {/* Action bar — hidden on print */}
       <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

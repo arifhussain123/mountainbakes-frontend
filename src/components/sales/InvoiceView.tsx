@@ -33,7 +33,10 @@ export function InvoiceView({ invoice, settings, branch }: { invoice: InvoiceDat
   const money = (n: number) => `${cur}${n.toLocaleString()}`;
 
   return (
-    <div className="print-area mx-auto max-w-sm bg-white p-6 text-black">
+    // No `print-area` here: the receipt is rendered twice — once on screen and
+    // once inside a PrintPortal — and it is the portalled copy that carries the
+    // print class. See PrintPortal for why the on-screen one cannot print.
+    <div className="mx-auto max-w-sm bg-white p-6 text-black">
       {/* Header */}
       <div className="text-center">
         {settings?.logoUrl && (

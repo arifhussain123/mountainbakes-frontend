@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { InvoiceView, type InvoiceData } from './InvoiceView';
+import { PrintPortal } from '@/components/shared/PrintPortal';
 import { Eye, Plus } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
@@ -421,7 +422,18 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           <DialogHeader>
             <DialogTitle className="no-print">Invoice</DialogTitle>
           </DialogHeader>
-          {invoice && <InvoiceView invoice={invoice} settings={settings} branch={branch} />}
+          {invoice && (
+            <>
+              {/* On screen only — the printed copy is the portalled one below,
+                  because print CSS crops anything laid out inside the dialog. */}
+              <div className="no-print">
+                <InvoiceView invoice={invoice} settings={settings} branch={branch} />
+              </div>
+              <PrintPortal>
+                <InvoiceView invoice={invoice} settings={settings} branch={branch} />
+              </PrintPortal>
+            </>
+          )}
           <PrintButton className="w-full" />
         </DialogContent>
       </Dialog>
