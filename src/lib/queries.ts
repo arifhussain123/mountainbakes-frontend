@@ -622,7 +622,23 @@ export interface VerifyOrderPayload {
   newItems: { productId: string; qty: number }[];
 }
 
-/** Branch confirms physical receipt of an 'awaiting_verification' demand — moves it to 'approved'. */
+/**
+ * Production's closing sign-off on a branch-verified demand ('verified' →
+ * 'approved'). Status only — stock moved at verification.
+ */
+export function useFinalApproveProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall(`/api/production-orders/${id}/final-approve`, { method: 'PUT' }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
+/** Branch confirms physical receipt of an 'awaiting_verification' demand — moves it to 'verified'. */
 export function useVerifyProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({

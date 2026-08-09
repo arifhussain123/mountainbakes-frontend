@@ -23,12 +23,14 @@ export function slipReference(order: Pick<BranchProductionOrder, 'date' | 'time'
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   awaiting_verification: 'bg-blue-100 text-blue-700',
+  verified: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-red-100 text-red-700',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   awaiting_verification: 'Awaiting Verification',
+  verified: 'Verified — Awaiting Approval',
 };
 
 /** Every other status already reads fine capitalized as-is; only this one needs a real label. */
@@ -65,6 +67,9 @@ export interface OrderPrintPreviewProps {
   review: (payload: ReviewOrderPayload) => Promise<unknown>;
   reviewing: boolean;
   markPrinted: (id: string) => Promise<unknown>;
+  /** Production's closing sign-off on a branch-verified order. */
+  finalApprove: (id: string) => Promise<unknown>;
+  finalApproving: boolean;
 }
 
 /**
@@ -75,7 +80,7 @@ export interface OrderPrintPreviewProps {
  * net amount to collect against the previous demand (the Company Copy also carries
  * the cash-payment acknowledgement).
  */
-export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted }: OrderPrintPreviewProps) {
+export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted, finalApprove, finalApproving }: OrderPrintPreviewProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => !reviewing && onOpenChange(o)}>
       <DialogContent
@@ -92,6 +97,8 @@ export function OrderPrintPreview({ open, onOpenChange, order, settings, token, 
             review={review}
             reviewing={reviewing}
             markPrinted={markPrinted}
+            finalApprove={finalApprove}
+            finalApproving={finalApproving}
             onClose={() => onOpenChange(false)}
           />
         )}
@@ -101,7 +108,7 @@ export function OrderPrintPreview({ open, onOpenChange, order, settings, token, 
 }
 
 function PreviewBody({
-  order, settings, token, review, reviewing, markPrinted, onClose,
+  order, settings, token, review, reviewing, markPrinted, finalApprove, finalApproving, onClose,
 }: {
   order: BranchProductionOrder;
   settings: AppSettings | null;
@@ -109,14 +116,20 @@ function PreviewBody({
   review: (payload: ReviewOrderPayload) => Promise<unknown>;
   reviewing: boolean;
   markPrinted: (id: string) => Promise<unknown>;
+  finalApprove: (id: string) => Promise<unknown>;
+  finalApproving: boolean;
   onClose: () => void;
 }) {
   const readOnly = order.status !== 'pending';
   // Item balance fields (previousBalanceQty/totalRequiredQty/approvedQty) are
   // frozen onto the row by review_production_order the moment the order leaves
-  // 'pending' — true for 'awaiting_verification' exactly as it was for the old
-  // direct-to-'approved' outcome, so both read the frozen values, not live balances.
-  const frozen = order.status === 'awaiting_verification' || order.status === 'approved';
+  // 'pending', and verification overwrites approvedQty with the counted figure.
+  // All three post-review states therefore read the stored values, never live
+  // balances — a rejected order has none, so it keeps the live path.
+  const frozen =
+    order.status === 'awaiting_verification' ||
+    order.status === 'verified' ||
+    order.status === 'approved';
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
@@ -233,6 +246,18 @@ function PreviewBody({
       setAddQty('');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add product');
+    }
+  }
+
+  // Closing sign-off on an order the branch has already verified. Status only —
+  // the stock moved at verification, which is why there is no reject beside it.
+  async function approveFinal() {
+    try {
+      await finalApprove(order.id);
+      toast.success('Order approved');
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to approve order');
     }
   }
 
@@ -593,10 +618,18 @@ function PreviewBody({
       {/* Action bar — hidden on print */}
       <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Button variant="outline" onClick={onClose} disabled={reviewing}>Close</Button>
-        {/* Terminal state, not a control: once the branch has verified, Production
-            has nothing left to act on, and an empty button row read as "still
-            loading" rather than "done". Disabled at full opacity — dimming it
-            would undercut the one thing it exists to say. */}
+        {/* The branch has counted the goods and stock has already moved; this is
+            Production's closing sign-off. No Reject beside it on purpose —
+            undoing it would mean clawing stock back out of branch inventory. */}
+        {order.status === 'verified' && (
+          <Button onClick={approveFinal} disabled={finalApproving}>
+            {finalApproving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />} Approve
+          </Button>
+        )}
+        {/* Terminal state, not a control: once approved, Production has nothing
+            left to act on, and an empty button row read as "still loading"
+            rather than "done". Disabled at full opacity — dimming it would
+            undercut the one thing it exists to say. */}
         {order.status === 'approved' && (
           <Button
             variant="outline"

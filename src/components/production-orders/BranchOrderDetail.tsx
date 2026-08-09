@@ -13,12 +13,14 @@ import { toast } from 'sonner';
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
   awaiting_verification: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  verified: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   awaiting_verification: 'Awaiting Verification',
+  verified: 'Verified — Awaiting Approval',
 };
 
 function StatusPill({ status }: { status: string }) {
@@ -39,7 +41,8 @@ function digits(raw: string): string {
  * 'awaiting_verification' this becomes interactive: the branch checks what
  * physically arrived against what Production recorded, corrects any
  * shortage/overage, and can add items that showed up unrequested, then clicks
- * Verify — which is what finally moves the order to 'approved'.
+ * Verify. That is the point at which stock actually moves into branch
+ * inventory, for the counted quantity; Production then signs the order off.
  */
 export function BranchOrderDetail({
   open,
@@ -92,7 +95,7 @@ export function BranchOrderDetail({
         verifiedItems,
         newItems: newItems.map(({ productId, qty }) => ({ productId, qty })),
       });
-      toast.success('Verified — order approved');
+      toast.success('Verified — sent to Production for final approval');
       resetLocalState();
       onOpenChange(false);
     } catch (err) {
@@ -124,6 +127,7 @@ export function BranchOrderDetail({
                 <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
                   Check the physical items received against the quantities below. Correct any shortage or
                   overage in &quot;Verified Qty&quot;, add anything that arrived but isn&apos;t listed, then click Verify.
+                  Verifying is what adds these goods to your branch stock, so count before you confirm.
                 </p>
               )}
 
