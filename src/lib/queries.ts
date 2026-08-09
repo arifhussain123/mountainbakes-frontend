@@ -439,6 +439,8 @@ export interface PreviousOrderBalance {
   companySharePct: number;
   companyShareValue: number;
   returnsValue: number;
+  /** The exact accepted returns that returnsValue was built from. */
+  returnItems: { productName: string; qty: number; amount: number }[];
   amountToCollect: number;
 }
 

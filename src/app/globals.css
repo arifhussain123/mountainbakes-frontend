@@ -267,10 +267,30 @@
   /* Content that exists only on paper (e.g. the Customer/Company print copies). */
   .print-only { display: block !important; }
 
-  /* Each printed copy (Customer / Company) starts on its own page. The last one
-     carries no trailing break so it doesn't emit a blank page. */
+  /* A standalone printed document (e.g. the Production Check sheet) starts on its
+     own page. The last one carries no trailing break so it doesn't emit a blank
+     page. */
   .print-page { page-break-after: always; break-after: page; }
   .print-page:last-child { page-break-after: auto; break-after: auto; }
+
+  /* One demand = one sheet. `.print-sheet` is the page; the two `.print-half`
+     children are the Customer Copy (top) and Company Copy (bottom), split by a
+     dashed cut line.
+
+     A4 is 297mm and `@page` takes 12mm off each end, so the content box is 273mm
+     and each half claims 134mm — a couple of millimetres under a true half, so
+     rounding can't tip the pair onto a second sheet. `min-height`, not `height`,
+     on purpose: an
+     unusually long demand grows past its half and paginates onto a second sheet
+     rather than silently clipping lines off a delivery document — the halves stay
+     aligned for every demand that does fit, which is the normal case. */
+  .print-sheet { page-break-after: always; break-after: page; }
+  .print-sheet:last-child { page-break-after: auto; break-after: auto; }
+  .print-half { box-sizing: border-box; min-height: 134mm; }
+  .print-half + .print-half {
+    border-top: 1px dashed oklch(0.55 0 0);
+    padding-top: 4mm;
+  }
 
   /* Repeat the product-table header on every page a long table spills onto. */
   .print-area table { page-break-inside: auto; }

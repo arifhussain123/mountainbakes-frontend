@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances, useProducts, useBranches, useProductionReturns, useAddProductionOrderItem, usePreviousOrderBalance } from '@/lib/queries';
+import { useProductionBalances, useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -46,13 +46,6 @@ function digits(raw: string): string {
 const fmt = (n: number) => n.toLocaleString();
 const money = (n: number, sym: string) => `${sym}${Math.round(n).toLocaleString()}`;
 
-/** One calendar day before a 'YYYY-MM-DD' business-date string. */
-function previousDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(Date.UTC(y!, m! - 1, d! - 1));
-  return dt.toISOString().slice(0, 10);
-}
-
 /** Split into `parts` roughly-equal, contiguous chunks (drops empty tail chunks). */
 function chunk<T>(arr: T[], parts: number): T[][] {
   const size = Math.ceil(arr.length / parts);
@@ -76,10 +69,10 @@ export interface OrderPrintPreviewProps {
 /**
  * Production Order print preview / delivery challan. The on-screen half is the
  * review surface (approve / adjust approved quantities — amounts recalc live).
- * Printing emits TWO copies in one action — Customer Copy + Company Copy — each a
- * professional challan with prices, totals, the previous-day return items and the
- * net amount to collect against the previous demand (the Company Copy also carries
- * the cash-payment acknowledgement).
+ * Printing emits TWO copies on ONE sheet — Customer Copy on the top half, Company
+ * Copy on the bottom half, split by a cut line — each a challan with prices,
+ * totals, the previous-day return items and the net amount to collect against the
+ * previous demand (the Company Copy also carries the cash-payment acknowledgement).
  */
 export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted, finalApprove, finalApproving }: OrderPrintPreviewProps) {
   return (
@@ -146,7 +139,6 @@ function PreviewBody({
   const liveBalances = balancesQ.data ?? {};
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
-  const returnsQ = useProductionReturns(token);
   const addItemMut = useAddProductionOrderItem(token);
   const prevBalanceQ = usePreviousOrderBalance(token, order.id);
 
@@ -201,20 +193,17 @@ function PreviewBody({
   const printDate = formatDate(now);
   const printTime = formatTime(now);
 
-  // Items this branch returned the day before this demand, accepted back into the
-  // production pool. Valued at today's price — no historical price is stored
-  // against a return, so a repricing moves this retroactively.
-  const prevDate = previousDate(order.date);
-  const returnRows = (returnsQ.data ?? [])
-    .filter((r) => r.branchId === order.branchId && r.status === 'accepted' && r.date === prevDate)
-    .map((r) => ({ productName: r.productName, qty: r.qty, amount: r.qty * (priceById.get(r.productId) ?? 0) }));
-  const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
 
   // The receivable for the PREVIOUS delivery — server-computed, because
   // company_share_pct lives in finance_settings and production users cannot read
   // it. This is NOT `production_balances`: that is unmet demand (goods owed TO
   // the branch), which is the opposite direction from money to collect.
   const prevBal = prevBalanceQ.data;
+  // Itemised by the server from the same rows it totalled, so the lines printed
+  // are by construction the ones deducted — a client-side re-filter could drift
+  // from the total and make the slip unauditable at the counter.
+  const returnRows = prevBal?.returnItems ?? [];
+  const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
   const deliveredValue = prevBal?.deliveredValue ?? 0;
   const companySharePct = prevBal?.companySharePct ?? 0;
   const companyShareValue = prevBal?.companyShareValue ?? 0;
@@ -555,7 +544,7 @@ function PreviewBody({
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="border-y border-neutral-300 text-left">
-                      <th className="py-1.5 pr-2 font-semibold">Returned Product (Prev. Day)</th>
+                      <th className="py-1.5 pr-2 font-semibold">Returned Product (Since Last Order)</th>
                       <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
                       <th className="py-1.5 pl-2 text-right font-semibold">Value</th>
                     </tr>
@@ -582,7 +571,7 @@ function PreviewBody({
           )}
 
           <p className="mt-6 text-center text-[11px] text-neutral-400">
-            Print produces a Customer Copy and a Company Copy in one action.
+            Print produces one page — Customer Copy on top, Company Copy below the cut line.
           </p>
         </div>
 
@@ -597,26 +586,27 @@ function PreviewBody({
           — see PrintPortal. ── */}
       <PrintPortal>
         {printMode === 'slip' ? (
-          <>
+          /* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
+             the bottom half, with a cut line between them. See `.print-sheet` /
+             `.print-half` in globals.css. */
+          <div className="print-sheet">
             <PrintCopy
               copyLabel="Customer Copy"
-              logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
+              logo={logo} companyName={companyName} sym={sym} order={order}
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
               companySharePct={companySharePct} companyShareValue={companyShareValue}
               returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
-              receiptFooter={settings?.receiptFooter ?? null}
             />
             <PrintCopy
               copyLabel="Company Copy"
-              logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
+              logo={logo} companyName={companyName} sym={sym} order={order}
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
               companySharePct={companySharePct} companyShareValue={companyShareValue}
               returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
-              receiptFooter={settings?.receiptFooter ?? null}
             />
-          </>
+          </div>
         ) : (
           <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
         )}
@@ -731,21 +721,24 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
 }
 
 /**
- * One printed copy (Customer or Company) — a full A4 delivery challan. Both copies
- * carry identical information (spec); only the corner watermark label differs. The
+ * One printed copy (Customer or Company) — HALF of an A4 delivery challan: the two
+ * copies share one sheet, Customer on top, Company below the cut line. Both carry
+ * identical information (spec); only the corner watermark label differs. The
  * product table lists approved products only, with derived amounts and grand total.
+ *
+ * Everything here is sized for a half page, so the spacing/type scale is tighter
+ * than a standalone document and the column split kicks in far sooner — see `cols`.
  */
 function PrintCopy({
-  copyLabel, logo, companyName, sym, order, branch, printRows, packingPrintRows, printDate, printTime,
+  copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
   previousRef, deliveredValue, companySharePct, companyShareValue,
-  returnRows, returnsQty, returnsAmount, collectionAmount, receiptFooter,
+  returnRows, returnsQty, returnsAmount, collectionAmount,
 }: {
   copyLabel: string;
   logo?: string;
   companyName: string;
   sym: string;
   order: BranchProductionOrder;
-  branch: Branch | null;
   printRows: PrintRow[];
   /** Approved packing lines. Empty on a products-only demand. */
   packingPrintRows: { materialName: string; qty: number }[];
@@ -758,13 +751,12 @@ function PrintCopy({
   companySharePct: number;
   /** deliveredValue × companySharePct. */
   companyShareValue: number;
-  /** Items this branch returned the previous business day, accepted into the pool. */
+  /** Accepted returns received since the order being billed, itemised by the server. */
   returnRows: { productName: string; qty: number; amount: number }[];
   returnsQty: number;
   returnsAmount: number;
   /** companyShareValue less returnsAmount — what the rider actually collects. */
   collectionAmount: number;
-  receiptFooter: string | null;
 }) {
   const items = printRows.filter((r) => r.approved > 0);
   // Same rule as products: the slip is a delivery document, so it lists what is
@@ -774,37 +766,38 @@ function PrintCopy({
   const grandTotal = items.reduce((a, r) => a + r.amount, 0);
   const hasPrevBalance = !!previousRef;
   const isCompanyCopy = copyLabel === 'Company Copy';
-  // A long demand splits into 2-3 side-by-side columns so it still fits one
+  // A long demand splits into 2-3 side-by-side columns so it still fits its half
   // page instead of a long single-column list; the Totals recap below already
-  // covers the grand total, so split tables skip their own <tfoot>.
-  const cols = items.length > 30 ? 3 : items.length > 12 ? 2 : 1;
+  // covers the grand total, so split tables skip their own <tfoot>. Thresholds are
+  // roughly half the full-page ones, because a copy now gets half the height.
+  const cols = items.length > 16 ? 3 : items.length > 6 ? 2 : 1;
   const groups = chunk(items, cols);
 
   return (
-    <div className="production-slip print-page relative mx-auto w-full max-w-[720px] bg-white p-6 text-black">
+    <div className="production-slip print-half relative mx-auto w-full max-w-[720px] bg-white px-5 py-3 text-black">
       {/* Large corner watermark identifying the copy */}
-      <span className="copy-watermark pointer-events-none absolute right-3 top-3 select-none text-right text-2xl font-black uppercase leading-none tracking-widest text-neutral-200 sm:text-3xl">
+      <span className="copy-watermark pointer-events-none absolute right-2 top-2 select-none text-right text-base font-black uppercase leading-none tracking-widest text-neutral-300">
         {copyLabel}
       </span>
 
       {/* Header — the branded name/department/order-type lines are dropped on the
           Company Copy, which is an internal working copy, not a customer-facing
           document. The watermark above and the meta grid below still identify it. */}
-      <div className="avoid-break border-b-2 border-neutral-800 pb-3">
-        <div className="flex items-start gap-3">
+      <div className="avoid-break border-b-2 border-neutral-800 pb-1.5">
+        <div className="flex items-start gap-2">
           {logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logo} alt="logo" className="h-16 w-16 shrink-0 object-contain" />
+            <img src={logo} alt="logo" className="h-9 w-9 shrink-0 object-contain" />
           )}
           {!isCompanyCopy && (
             <div className="min-w-0 flex-1">
-              <h2 className="text-xl font-bold leading-tight">{companyName}</h2>
-              <p className="text-xs font-medium text-neutral-600">Production Department</p>
-              <p className="mt-0.5 text-sm font-semibold uppercase tracking-wide text-neutral-800">Production Order</p>
+              <h2 className="text-base font-bold leading-tight">{companyName}</h2>
+              <p className="text-[10px] font-medium leading-tight text-neutral-600">Production Department</p>
+              <p className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-neutral-800">Production Order</p>
             </div>
           )}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 pr-24 text-[11px] sm:grid-cols-3">
+        <div className="mt-1.5 grid grid-cols-3 gap-x-4 pr-20 text-[9px] leading-tight">
           <MetaKV k="Production Order No" v={slipReference(order)} mono />
           <MetaKV k="Business Date" v={order.date} />
           <MetaKV k="Branch" v={order.branchName} />
@@ -812,7 +805,7 @@ function PrintCopy({
           <MetaKV k="Print Time" v={printTime} />
           <div className="min-w-0">
             <span className="text-neutral-500">Status: </span>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>{statusLabel(order.status)}</span>
+            <span className={`rounded-full px-1.5 text-[9px] font-semibold uppercase ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>{statusLabel(order.status)}</span>
           </div>
         </div>
       </div>
@@ -822,12 +815,12 @@ function PrintCopy({
           doesn't need it on their delivery receipt. */}
       {isCompanyCopy && (
         <>
-          <div className="avoid-break mt-3 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
+          <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
             {hasPrevBalance ? (
               // Full working shown, not just the total — this is counted out in
               // cash at the counter and has to be verifiable line by line.
-              <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
                 <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
                 <MetaKV k="Previous Business Date" v={previousRef!.date} />
                 <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
@@ -836,7 +829,7 @@ function PrintCopy({
                 <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
               </div>
             ) : (
-              <p className="mt-1 text-[11px] font-medium text-neutral-500">
+              <p className="text-[9px] font-medium text-neutral-500">
                 No previous delivery for this branch — nothing to collect.
               </p>
             )}
@@ -846,30 +839,30 @@ function PrintCopy({
               the branch actually returned something, so an ordinary slip is
               unchanged. */}
           {returnRows.length > 0 && (
-            <div className="avoid-break mt-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Return Items (Previous Day)</p>
-              <table className="mt-1 w-full border-collapse text-[11px]">
+            <div className="avoid-break mt-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Return Items (Since Last Order)</p>
+              <table className="w-full border-collapse text-[9px] leading-tight">
                 <thead>
                   <tr className="border-y border-neutral-400 text-left">
-                    <th className="py-1 pr-1 font-semibold">Product</th>
-                    <th className="px-1 py-1 text-right font-semibold">Qty</th>
-                    <th className="py-1 pl-1 text-right font-semibold">Value</th>
+                    <th className="py-0.5 pr-1 font-semibold">Product</th>
+                    <th className="px-1 py-0.5 text-right font-semibold">Qty</th>
+                    <th className="py-0.5 pl-1 text-right font-semibold">Value</th>
                   </tr>
                 </thead>
                 <tbody>
                   {returnRows.map((r) => (
                     <tr key={r.productName} className="border-b border-neutral-200">
-                      <td className="py-1 pr-1 font-medium">{r.productName}</td>
-                      <td className="px-1 py-1 text-right tabular-nums">{fmt(r.qty)}</td>
-                      <td className="py-1 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+                      <td className="py-0.5 pr-1 font-medium">{r.productName}</td>
+                      <td className="px-1 py-0.5 text-right tabular-nums">{fmt(r.qty)}</td>
+                      <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-neutral-400 font-bold">
-                    <td className="pt-1.5">Total</td>
-                    <td className="px-1 pt-1.5 text-right tabular-nums">{fmt(returnsQty)}</td>
-                    <td className="pt-1.5 pl-1 text-right tabular-nums">{money(returnsAmount, sym)}</td>
+                    <td className="pt-0.5">Total</td>
+                    <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(returnsQty)}</td>
+                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(returnsAmount, sym)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -880,67 +873,67 @@ function PrintCopy({
 
       {/* Approved products */}
       {items.length === 0 ? (
-        <table className="mt-3 w-full border-collapse text-[11px]">
+        <table className="mt-1.5 w-full border-collapse text-[9px] leading-tight">
           <thead>
             <tr className="border-y border-neutral-400 text-left">
-              <th className="py-1 pr-1 font-semibold">Product</th>
-              <th className="px-1 py-1 text-right font-semibold">Approved Qty</th>
-              <th className="px-1 py-1 text-right font-semibold">Unit Price</th>
-              <th className="py-1 pl-1 text-right font-semibold">Amount</th>
+              <th className="py-0.5 pr-1 font-semibold">Product</th>
+              <th className="px-1 py-0.5 text-right font-semibold">Approved Qty</th>
+              <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
+              <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td colSpan={4} className="py-3 text-center text-neutral-500">No approved products.</td></tr>
+            <tr><td colSpan={4} className="py-2 text-center text-neutral-500">No approved products.</td></tr>
           </tbody>
         </table>
       ) : cols === 1 ? (
-        <table className="mt-3 w-full border-collapse text-[11px]">
+        <table className="mt-1.5 w-full border-collapse text-[9px] leading-tight">
           <thead>
             <tr className="border-y border-neutral-400 text-left">
-              <th className="py-1 pr-1 font-semibold">Product</th>
-              <th className="px-1 py-1 text-right font-semibold">Approved Qty</th>
-              <th className="px-1 py-1 text-right font-semibold">Unit Price</th>
-              <th className="py-1 pl-1 text-right font-semibold">Amount</th>
+              <th className="py-0.5 pr-1 font-semibold">Product</th>
+              <th className="px-1 py-0.5 text-right font-semibold">Approved Qty</th>
+              <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
+              <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
             {items.map((r) => (
               <tr key={r.productName} className="border-b border-neutral-200 align-top">
-                <td className="py-1 pr-1 font-medium">{r.productName}</td>
-                <td className="px-1 py-1 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
-                <td className="px-1 py-1 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
-                <td className="py-1 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+                <td className="py-0.5 pr-1 font-medium">{r.productName}</td>
+                <td className="px-1 py-0.5 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
+                <td className="px-1 py-0.5 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
+                <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-neutral-400 font-bold">
-              <td className="pt-1.5">Totals</td>
-              <td className="px-1 pt-1.5 text-right tabular-nums">{fmt(totalQty)}</td>
-              <td className="pt-1.5"></td>
-              <td className="pt-1.5 pl-1 text-right tabular-nums">{money(grandTotal, sym)}</td>
+              <td className="pt-0.5">Totals</td>
+              <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(totalQty)}</td>
+              <td className="pt-0.5"></td>
+              <td className="pt-0.5 pl-1 text-right tabular-nums">{money(grandTotal, sym)}</td>
             </tr>
           </tfoot>
         </table>
       ) : (
-        <div className={`avoid-break mt-3 grid gap-x-4 ${cols === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <div className={`avoid-break mt-1.5 grid gap-x-3 ${cols === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {groups.map((group, gi) => (
-            <table key={gi} className="w-full border-collapse text-[11px]">
+            <table key={gi} className="w-full border-collapse text-[9px] leading-tight">
               <thead>
                 <tr className="border-y border-neutral-400 text-left">
-                  <th className="py-1 pr-1 font-semibold">Product</th>
-                  <th className="px-1 py-1 text-right font-semibold">Qty</th>
-                  <th className="px-1 py-1 text-right font-semibold">Price</th>
-                  <th className="py-1 pl-1 text-right font-semibold">Amount</th>
+                  <th className="py-0.5 pr-1 font-semibold">Product</th>
+                  <th className="px-1 py-0.5 text-right font-semibold">Qty</th>
+                  <th className="px-1 py-0.5 text-right font-semibold">Price</th>
+                  <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {group.map((r) => (
                   <tr key={r.productName} className="border-b border-neutral-200 align-top">
-                    <td className="py-1 pr-1 font-medium">{r.productName}</td>
-                    <td className="px-1 py-1 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
-                    <td className="px-1 py-1 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
-                    <td className="py-1 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+                    <td className="py-0.5 pr-1 font-medium">{r.productName}</td>
+                    <td className="px-1 py-0.5 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
+                    <td className="px-1 py-0.5 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
+                    <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -950,9 +943,9 @@ function PrintCopy({
       )}
 
       {/* Totals recap */}
-      <div className="avoid-break mt-2 ml-auto w-full max-w-[240px] space-y-0.5 text-[11px]">
+      <div className="avoid-break mt-1 ml-auto w-full max-w-[220px] text-[9px] leading-tight">
         <div className="flex justify-between"><span className="text-neutral-600">Total Qty</span><span className="font-semibold tabular-nums">{fmt(totalQty)}</span></div>
-        <div className="flex justify-between border-t border-neutral-300 pt-0.5 text-sm font-bold"><span>Grand Total Amount</span><span className="tabular-nums">{money(grandTotal, sym)}</span></div>
+        <div className="flex justify-between border-t border-neutral-300 text-[11px] font-bold"><span>Grand Total Amount</span><span className="tabular-nums">{money(grandTotal, sym)}</span></div>
       </div>
 
       {/* Packing materials — its own table, below the products and outside the
@@ -960,27 +953,27 @@ function PrintCopy({
           grand total. Omitted entirely when the demand has none, which keeps an
           ordinary slip byte-identical to before. */}
       {packingItems.length > 0 && (
-        <div className="avoid-break mt-5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Packing Materials</p>
-          <table className="mt-1 w-full border-collapse text-[11px]">
+        <div className="avoid-break mt-1.5">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Packing Materials</p>
+          <table className="w-full border-collapse text-[9px] leading-tight">
             <thead>
               <tr className="border-y border-neutral-400 text-left">
-                <th className="py-1 pr-1 font-semibold">Item</th>
-                <th className="py-1 pl-1 text-right font-semibold">Qty</th>
+                <th className="py-0.5 pr-1 font-semibold">Item</th>
+                <th className="py-0.5 pl-1 text-right font-semibold">Qty</th>
               </tr>
             </thead>
             <tbody>
               {packingItems.map((p) => (
                 <tr key={p.materialName} className="border-b border-neutral-200">
-                  <td className="py-1 pr-1 font-medium">{p.materialName}</td>
-                  <td className="py-1 pl-1 text-right font-semibold tabular-nums">{fmt(p.qty)}</td>
+                  <td className="py-0.5 pr-1 font-medium">{p.materialName}</td>
+                  <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{fmt(p.qty)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-neutral-400 font-bold">
-                <td className="pt-1.5">Total</td>
-                <td className="pt-1.5 pl-1 text-right tabular-nums">
+                <td className="pt-0.5">Total</td>
+                <td className="pt-0.5 pl-1 text-right tabular-nums">
                   {fmt(packingItems.reduce((a, p) => a + p.qty, 0))}
                 </td>
               </tr>
@@ -991,9 +984,9 @@ function PrintCopy({
 
       {/* Payment — internal cash-collection log, Company Copy only. */}
       {isCompanyCopy && (
-        <div className="avoid-break mt-5 rounded-md border border-neutral-300 p-3">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Payment</p>
-          <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        <div className="avoid-break mt-1.5 rounded border border-neutral-300 px-2 py-1">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Payment</p>
+          <div className="mt-0.5 grid grid-cols-4 gap-x-4">
             <FillField label="Cash Paid" prefix={sym} />
             <FillField label="Payment Status" />
             <FillField label="Received By (Rider)" />
@@ -1002,14 +995,6 @@ function PrintCopy({
         </div>
       )}
 
-      {/* Footer — company name / thank-you text, Company Copy only. */}
-      {isCompanyCopy && (
-        <div className="mt-6 border-t border-neutral-300 pt-3 text-center text-[10px] text-neutral-600">
-          <p className="text-xs font-semibold text-neutral-800">{companyName}</p>
-          <p className="font-medium">{receiptFooter || 'Thank you'}</p>
-          {branch?.phone && <p>Phone: {branch.phone}</p>}
-        </div>
-      )}
     </div>
   );
 }
@@ -1084,9 +1069,9 @@ function ProductionCheckSheet({
 /** A labeled fill-in row: an optional printed value sitting on a signature rule. */
 function FillField({ label, value, prefix }: { label: string; value?: string; prefix?: string }) {
   return (
-    <div className="text-[11px]">
-      <p className="text-[9px] font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
-      <div className="mt-3 flex min-h-[18px] items-end gap-1 border-b border-neutral-500 pb-0.5">
+    <div className="text-[10px]">
+      <p className="text-[8px] font-semibold uppercase leading-tight tracking-wide text-neutral-500">{label}</p>
+      <div className="mt-2 flex min-h-[12px] items-end gap-1 border-b border-neutral-500">
         {prefix && value == null && <span className="text-neutral-400">{prefix}</span>}
         <span className="font-medium">{value ?? ''}</span>
       </div>
