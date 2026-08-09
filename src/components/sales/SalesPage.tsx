@@ -342,12 +342,6 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         </div>
       </div>
 
-      {canSell && (
-        <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
-      )}
-
-      <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
-
       {/* Daily summary */}
       <Card>
         <CardContent className="p-4">
@@ -376,6 +370,12 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           </div>
         </CardContent>
       </Card>
+
+      {canSell && (
+        <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
+      )}
+
+      <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
 
       {/* New Sale dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>

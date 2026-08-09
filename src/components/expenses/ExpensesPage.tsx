@@ -61,14 +61,14 @@ export function ExpensesPage() {
         </Button>
       </div>
 
-      <DataTable columns={columns} data={expenses} loading={loading} searchPlaceholder="Search expenses…" />
-
       <Card>
         <CardContent className="flex items-center justify-between p-4">
           <p className="text-sm font-medium text-muted-foreground">Total (last 7 days)</p>
           <p className="text-xl font-bold text-primary">{cur}{total.toLocaleString()}</p>
         </CardContent>
       </Card>
+
+      <DataTable columns={columns} data={expenses} loading={loading} searchPlaceholder="Search expenses…" />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="md:max-w-lg">
