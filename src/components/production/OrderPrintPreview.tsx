@@ -580,6 +580,19 @@ function PreviewBody({
       {/* Action bar — hidden on print */}
       <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <Button variant="outline" onClick={onClose} disabled={reviewing}>Close</Button>
+        {/* Terminal state, not a control: once the branch has verified, Production
+            has nothing left to act on, and an empty button row read as "still
+            loading" rather than "done". Disabled at full opacity — dimming it
+            would undercut the one thing it exists to say. */}
+        {order.status === 'approved' && (
+          <Button
+            variant="outline"
+            disabled
+            className="border-emerald-300 bg-emerald-50 text-emerald-700 disabled:opacity-100 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400"
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Approved
+          </Button>
+        )}
         {!readOnly && (
           <>
             <Button variant="outline" onClick={() => setAddingProduct((a) => !a)} disabled={reviewing}>
