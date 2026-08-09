@@ -8,6 +8,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/pwa/ServiceWorkerRegister';
 import { InstallPrompt } from '@/components/pwa/InstallPrompt';
 import { NetworkStatus } from '@/components/pwa/NetworkStatus';
+import { OrientationLock } from '@/components/pwa/OrientationLock';
 import { appleStartupImages } from '@/utils/pwa-splash';
 import './globals.css';
 
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <ServiceWorkerRegister />
               <NetworkStatus />
               <InstallPrompt />
+              <OrientationLock />
               <Toaster richColors position="top-right" />
             </AuthProvider>
           </QueryProvider>

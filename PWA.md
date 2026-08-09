@@ -59,4 +59,7 @@ deploy).
 - **Install** triggers the native `beforeinstallprompt`. On iOS Safari (no such
   event) it shows *Share → Add to Home Screen* instructions.
 - Once installed the app opens standalone (no address bar) with the Mountain
-  Bakes splash screen, in portrait **or** landscape.
+  Bakes splash screen. The app is locked to **portrait** — `manifest.ts` sets
+  `orientation: 'portrait'` and `OrientationLock` (mounted in the root layout)
+  backs it with a runtime lock attempt plus a "please rotate" overlay for
+  browsers that ignore the manifest hint.
