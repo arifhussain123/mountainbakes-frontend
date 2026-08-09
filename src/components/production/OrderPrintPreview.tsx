@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances, useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance } from '@/lib/queries';
+import { useProductionBalances, useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +11,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
-import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
 import { formatDate, formatTime } from '@/utils/date';
@@ -134,12 +134,17 @@ function PreviewBody({
   const [addingProduct, setAddingProduct] = useState(false);
   const [addProductId, setAddProductId] = useState('');
   const [addQty, setAddQty] = useState('');
+  const [returning, setReturning] = useState(false);
+  const [returnProductId, setReturnProductId] = useState('');
+  const [returnQty, setReturnQty] = useState('');
+  const [returnReason, setReturnReason] = useState('');
 
   const balancesQ = useProductionBalances(token, { branchId: order.branchId, enabled: order.status === 'pending' });
   const liveBalances = balancesQ.data ?? {};
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
   const addItemMut = useAddProductionOrderItem(token);
+  const createReturnMut = useCreateReturn(token);
   const prevBalanceQ = usePreviousOrderBalance(token, order.id);
 
   const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
@@ -251,6 +256,30 @@ function PreviewBody({
     }
   }
 
+  // Records goods coming back against this delivery. Goes through the ordinary
+  // production_returns flow (created 'pending', accepted separately), so the pool
+  // is only credited once someone reviews it — this button records the claim, it
+  // does not move stock.
+  async function recordReturn() {
+    const qty = parseInt(returnQty, 10);
+    if (!returnProductId || !qty || qty <= 0 || !returnReason.trim()) return;
+    try {
+      await createReturnMut.mutateAsync({
+        branchId: order.branchId,
+        productId: returnProductId,
+        qty,
+        reason: returnReason.trim(),
+      });
+      toast.success('Return recorded — awaiting review');
+      setReturning(false);
+      setReturnProductId('');
+      setReturnQty('');
+      setReturnReason('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to record return');
+    }
+  }
+
   async function reject() {
     try {
       await review({ id: order.id, status: 'rejected' });
@@ -312,6 +341,62 @@ function PreviewBody({
         <div className="no-print mx-auto max-w-[880px] bg-white p-5 text-black shadow-sm sm:p-7">
           <SlipHeader logo={logo} companyName={companyName} status={order.status} branch={branch} />
           <OrderMeta order={order} />
+
+          {/* Goods coming back against this delivery. Scoped to what was actually
+              delivered — a product that never went out cannot come back — and
+              filed as an ordinary pending return for review, not an instant
+              credit to the pool. */}
+          {returning && order.status === 'verified' && (
+            <div className="mt-4 space-y-2 rounded-lg border border-neutral-300 bg-neutral-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Record a Return</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <label className="text-xs font-medium text-neutral-600">Product</label>
+                  <Select value={returnProductId} onValueChange={(v) => v && setReturnProductId(v)}>
+                    <SelectTrigger className="h-9 w-full bg-white">
+                      <SelectValue placeholder="Select a delivered product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {order.items
+                        .filter((it) => (it.approvedQty ?? 0) > 0)
+                        .map((it) => (
+                          <SelectItem key={it.productId} value={it.productId}>{it.productName}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 sm:w-24">
+                  <label className="text-xs font-medium text-neutral-600">Qty</label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={returnQty}
+                    onChange={(e) => setReturnQty(digits(e.target.value))}
+                    className="h-9 bg-white"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-600">Reason</label>
+                <Input
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Why is this coming back?"
+                  className="h-9 bg-white"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" className="h-9" onClick={() => setReturning(false)}>Cancel</Button>
+                <Button
+                  className="h-9"
+                  disabled={!returnProductId || !returnQty || !returnReason.trim() || createReturnMut.isPending}
+                  onClick={recordReturn}
+                >
+                  {createReturnMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null} Record Return
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Add a product not on the original demand — before submission only;
               once submitted the branch's own verify step is where extra items
@@ -619,9 +704,14 @@ function PreviewBody({
             Production's closing sign-off. No Reject beside it on purpose —
             undoing it would mean clawing stock back out of branch inventory. */}
         {order.status === 'verified' && (
-          <Button onClick={approveFinal} disabled={finalApproving}>
-            {finalApproving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />} Approve
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setReturning((r) => !r)} disabled={finalApproving}>
+              <Undo2 className="mr-1.5 h-4 w-4" /> Return
+            </Button>
+            <Button onClick={approveFinal} disabled={finalApproving}>
+              {finalApproving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />} Approve
+            </Button>
+          </>
         )}
         {/* Terminal state, not a control: once approved, Production has nothing
             left to act on, and an empty button row read as "still loading"
@@ -653,10 +743,15 @@ function PreviewBody({
           </>
         )}
         {/* Simplified branch/product/qty/amount sheet for the production floor —
-            not a customer-facing document, so no printer/PDF picker menu. */}
-        <Button variant="outline" onClick={printCheck} disabled={reviewing}>
-          <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
-        </Button>
+            not a customer-facing document, so no printer/PDF picker menu.
+            Only while the demand is still pending: it is the sheet used to check
+            and prepare stock against a newly received order, so it has no purpose
+            once the goods have gone out. */}
+        {order.status === 'pending' && (
+          <Button variant="outline" onClick={printCheck} disabled={reviewing}>
+            <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
+          </Button>
+        )}
         {/* Says "Print" or "Save as PDF" depending on the device — same action either way. */}
         <PrintButton variant="secondary" onPrint={print} disabled={reviewing} />
       </div>
