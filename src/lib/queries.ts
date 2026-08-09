@@ -551,14 +551,14 @@ export function usePrepareProducts(token: string) {
 
 export interface ReviewOrderPayload {
   id: string;
-  status: 'approved' | 'rejected';
+  status: 'awaiting_verification' | 'rejected';
   approvedItems?: { productId: string; approvedQty: number }[];
   /** Packing-material overrides. Omitted on an order with no packing lines. */
   approvedPackingItems?: { packingMaterialId: string; approvedQty: number }[];
   reason?: string;
 }
 
-/** Approve/reject a production demand (with optional qty overrides). */
+/** Submit a production demand for branch verification, or reject it (with optional qty overrides). */
 export function useReviewProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -567,6 +567,44 @@ export function useReviewProductionOrder(token: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['productionOrders'] });
       qc.invalidateQueries({ queryKey: ['productionBalances'] });
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
+/** Production adding an extra line to a still-'pending' order before submitting it. */
+export function useAddProductionOrderItem(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, productId, qty, remarks }: { id: string; productId: string; qty: number; remarks?: string }) =>
+      apiCall(
+        `/api/production-orders/${id}/items`,
+        { method: 'POST', body: JSON.stringify({ productId, qty, remarks: remarks ?? '' }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+    },
+  });
+}
+
+export interface VerifyOrderPayload {
+  id: string;
+  verifiedItems: { productId: string; verifiedQty: number }[];
+  newItems: { productId: string; qty: number }[];
+}
+
+/** Branch confirms physical receipt of an 'awaiting_verification' demand — moves it to 'approved'. */
+export function useVerifyProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: VerifyOrderPayload) =>
+      apiCall(`/api/production-orders/${id}/verify`, { method: 'PUT', body: JSON.stringify(body) }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['productionStock'] });
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });

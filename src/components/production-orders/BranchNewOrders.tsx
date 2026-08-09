@@ -24,10 +24,12 @@ function deriveBranchCode(name: string | null, branchId: string | null): string 
   return (branchId ?? '').slice(0, 6).toUpperCase() || '—';
 }
 
-// Production-order statuses are pending/approved/rejected today; the extra labels are
-// supported so the pill still renders correctly if the lifecycle is extended later.
+// Production-order statuses are pending/awaiting_verification/approved/rejected
+// today; the extra labels are supported so the pill still renders correctly if
+// the lifecycle is extended later.
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+  awaiting_verification: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   preparing: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   ready: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
@@ -35,10 +37,14 @@ const STATUS_STYLES: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  awaiting_verification: 'Awaiting Verification',
+};
+
 function StatusPill({ status }: { status: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[status] ?? 'bg-muted text-muted-foreground'}`}>
-      {status}
+      {STATUS_LABELS[status] ?? status}
     </span>
   );
 }
@@ -130,8 +136,9 @@ export function BranchNewOrders() {
       {/* Order history — one row per demand submission; open View for line items. */}
       <DataTable columns={columns} data={historyRows} loading={ordersQ.isLoading} searchPlaceholder="Search order history…" />
 
-      {/* Read-only demand detail (products + packing materials) */}
-      <BranchOrderDetail open={viewOpen} onOpenChange={setViewOpen} order={viewOrder} />
+      {/* Demand detail — read-only, except an 'awaiting_verification' order,
+          where the branch checks physical items and verifies. */}
+      <BranchOrderDetail open={viewOpen} onOpenChange={setViewOpen} order={viewOrder} token={token} />
 
       {/* Order-entry popup */}
       <NewOrderModal

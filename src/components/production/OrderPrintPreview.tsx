@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances, useProducts, useBranches, useProductionReturns } from '@/lib/queries';
+import { useProductionBalances, useProducts, useBranches, useProductionReturns, useAddProductionOrderItem } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PrintButton } from '@/components/shared/PrintButton';
-import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
 import { formatDate, formatTime } from '@/utils/date';
@@ -21,9 +22,19 @@ export function slipReference(order: Pick<BranchProductionOrder, 'date' | 'time'
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
+  awaiting_verification: 'bg-blue-100 text-blue-700',
   approved: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-red-100 text-red-700',
 };
+
+const STATUS_LABELS: Record<string, string> = {
+  awaiting_verification: 'Awaiting Verification',
+};
+
+/** Every other status already reads fine capitalized as-is; only this one needs a real label. */
+function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
 
 function digits(raw: string): string {
   return raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
@@ -101,7 +112,11 @@ function PreviewBody({
   onClose: () => void;
 }) {
   const readOnly = order.status !== 'pending';
-  const frozen = order.status === 'approved';
+  // Item balance fields (previousBalanceQty/totalRequiredQty/approvedQty) are
+  // frozen onto the row by review_production_order the moment the order leaves
+  // 'pending' — true for 'awaiting_verification' exactly as it was for the old
+  // direct-to-'approved' outcome, so both read the frozen values, not live balances.
+  const frozen = order.status === 'awaiting_verification' || order.status === 'approved';
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
@@ -109,12 +124,16 @@ function PreviewBody({
   // 'slip' = the Customer/Company Copy challan; 'check' = the simplified
   // Production Check sheet (branch, product, qty, amount only).
   const [printMode, setPrintMode] = useState<'slip' | 'check'>('slip');
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [addProductId, setAddProductId] = useState('');
+  const [addQty, setAddQty] = useState('');
 
   const balancesQ = useProductionBalances(token, { branchId: order.branchId, enabled: order.status === 'pending' });
   const liveBalances = balancesQ.data ?? {};
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
   const returnsQ = useProductionReturns(token);
+  const addItemMut = useAddProductionOrderItem(token);
 
   const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
   const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
@@ -186,13 +205,30 @@ function PreviewBody({
   const collectionAmount = prevBalanceAmount - returnsAmount;
   const hasPrevBalance = prevBalanceQty > 0;
 
-  async function approve() {
+  // Stock still transfers to the branch here, same as the old direct-to-'approved'
+  // outcome — only the label changes. The order becomes 'approved' once the
+  // branch checks what physically arrived and verifies it (BranchOrderDetail).
+  async function submitForVerification() {
     try {
-      await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
-      toast.success('Order approved — stock transferred to branch');
+      await review({ id: order.id, status: 'awaiting_verification', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
+      toast.success('Sent to branch for verification — stock transferred');
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to approve order');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit order');
+    }
+  }
+
+  async function addProduct() {
+    const qty = parseInt(addQty, 10);
+    if (!addProductId || !qty || qty <= 0) return;
+    try {
+      await addItemMut.mutateAsync({ id: order.id, productId: addProductId, qty });
+      toast.success('Product added to the demand');
+      setAddingProduct(false);
+      setAddProductId('');
+      setAddQty('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add product');
     }
   }
 
@@ -223,9 +259,10 @@ function PreviewBody({
     window.print();
   }
 
-  // Print only prints — it no longer approves a pending demand as a side effect.
-  // Approval is a deliberate action via the Approve button; Print previews/prints
-  // whatever is currently on screen (requested quantities while still pending).
+  // Print only prints — it no longer submits a pending demand as a side effect.
+  // Submission is a deliberate action via the Submit for Verification button;
+  // Print previews/prints whatever is currently on screen (requested quantities
+  // while still pending).
   function print() {
     setEditing(false);
     setPrintMode('slip');
@@ -256,6 +293,46 @@ function PreviewBody({
         <div className="no-print mx-auto max-w-[880px] bg-white p-5 text-black shadow-sm sm:p-7">
           <SlipHeader logo={logo} companyName={companyName} status={order.status} branch={branch} />
           <OrderMeta order={order} />
+
+          {/* Add a product not on the original demand — before submission only;
+              once submitted the branch's own verify step is where extra items
+              that arrived unrequested get added. */}
+          {addingProduct && !readOnly && (
+            <div className="mt-4 flex flex-col gap-2 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1 space-y-1">
+                <label className="text-xs font-medium text-neutral-600">Product</label>
+                <Select value={addProductId} onValueChange={(v) => v && setAddProductId(v)}>
+                  <SelectTrigger className="h-9 w-full bg-white">
+                    <SelectValue placeholder={productsQ.isLoading ? 'Loading…' : 'Select a product'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(productsQ.data ?? [])
+                      .filter((p) => !order.items.some((it) => it.productId === p.id))
+                      .map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 sm:w-28">
+                <label className="text-xs font-medium text-neutral-600">Qty</label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={addQty}
+                  onChange={(e) => setAddQty(digits(e.target.value))}
+                  className="h-9 bg-white"
+                />
+              </div>
+              <Button
+                className="h-9"
+                disabled={!addProductId || !addQty || addItemMut.isPending}
+                onClick={addProduct}
+              >
+                {addItemMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null} Add
+              </Button>
+            </div>
+          )}
 
           {/* Review table — desktop */}
           <div className="mt-3 overflow-x-auto">
@@ -505,14 +582,17 @@ function PreviewBody({
         <Button variant="outline" onClick={onClose} disabled={reviewing}>Close</Button>
         {!readOnly && (
           <>
+            <Button variant="outline" onClick={() => setAddingProduct((a) => !a)} disabled={reviewing}>
+              <Plus className="mr-1.5 h-4 w-4" /> Add Product
+            </Button>
             <Button variant="outline" onClick={() => setEditing((e) => !e)} disabled={reviewing}>
               <Pencil className="mr-1.5 h-4 w-4" /> {editing ? 'Done' : 'Change Quantity'}
             </Button>
             <Button variant="outline" className="text-red-600" onClick={reject} disabled={reviewing}>
               <XCircle className="mr-1.5 h-4 w-4" /> Reject
             </Button>
-            <Button onClick={approve} disabled={reviewing}>
-              {reviewing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />} Approve
+            <Button onClick={submitForVerification} disabled={reviewing}>
+              {reviewing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />} Submit for Verification
             </Button>
           </>
         )}
@@ -555,7 +635,7 @@ function SlipHeader({ logo, companyName, status, branch, copyLabel }: { logo?: s
           {branch?.phone && <p className="text-[11px] text-neutral-600">Phone: {branch.phone}</p>}
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_STYLES[status] ?? 'bg-neutral-200 text-neutral-700'}`}>
-          {status}
+          {statusLabel(status)}
         </span>
       </div>
     </div>
@@ -570,7 +650,7 @@ function OrderMeta({ order }: { order: BranchProductionOrder }) {
       <MetaKV k="Time" v={order.time} />
       <MetaKV k="Branch" v={order.branchName} />
       <MetaKV k="Requested By" v={order.createdByName} />
-      <MetaKV k="Status" v={order.status} />
+      <MetaKV k="Status" v={statusLabel(order.status)} />
     </div>
   );
 }
@@ -660,7 +740,7 @@ function PrintCopy({
           <MetaKV k="Print Time" v={printTime} />
           <div className="min-w-0">
             <span className="text-neutral-500">Status: </span>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>{order.status}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>{statusLabel(order.status)}</span>
           </div>
         </div>
       </div>

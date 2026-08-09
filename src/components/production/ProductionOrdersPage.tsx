@@ -13,8 +13,13 @@ import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+  awaiting_verification: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  awaiting_verification: 'Awaiting Verification',
 };
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
@@ -27,11 +32,16 @@ export function ProductionOrdersPage() {
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);
 
-  const [selected, setSelected] = useState<BranchProductionOrder | null>(null);
+  // Track just the id and derive `selected` from the live query, rather than
+  // storing a snapshot — that way, once Production adds a product to an open
+  // order, the invalidated refetch is reflected immediately instead of leaving
+  // the dialog showing what View originally captured.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
   const pending = useMemo(() => orders.filter((o) => o.status === 'pending'), [orders]);
+  const selected = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
 
   // Demand summary pivots: Product × Branch and Packing Material × Branch, both
   // from pending demands only.
@@ -76,7 +86,7 @@ export function ProductionOrdersPage() {
   }, [pending]);
 
   function openOrder(order: BranchProductionOrder) {
-    setSelected(order);
+    setSelectedId(order.id);
     setModalOpen(true);
   }
 
@@ -92,7 +102,7 @@ export function ProductionOrdersPage() {
       meta: { mobile: 'badge' },
       cell: (i) => (
         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[i.getValue()] ?? 'bg-muted text-muted-foreground'}`}>
-          {i.getValue()}
+          {STATUS_LABELS[i.getValue()] ?? i.getValue()}
         </span>
       ),
     }),
