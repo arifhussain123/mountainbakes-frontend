@@ -1,0 +1,96 @@
+[debug] [2026-08-02T11:41:03.906Z] ----------------------------------------------------------------------
+[debug] [2026-08-02T11:41:03.908Z] Command:       /home/murtaza/.nvm/versions/node/v24.18.0/bin/node /home/murtaza/.nvm/versions/node/v24.18.0/bin/firebase init
+[debug] [2026-08-02T11:41:03.909Z] CLI Version:   15.24.0
+[debug] [2026-08-02T11:41:03.909Z] Platform:      linux
+[debug] [2026-08-02T11:41:03.909Z] Node Version:  v24.18.0
+[debug] [2026-08-02T11:41:03.909Z] Detected Agent: unknown
+[debug] [2026-08-02T11:41:03.909Z] Time:          Sun Aug 02 2026 16:41:03 GMT+0500 (Pakistan Standard Time)
+[debug] [2026-08-02T11:41:03.909Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /home/murtaza/Documents/GitHub/mountainbakes/mountainbakes-frontend
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-08-02T11:41:20.182Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-02T11:41:20.183Z] > authorizing via signed-in user (arifsiksavi@gmail.com)
+[debug] [2026-08-02T11:41:20.229Z] Checked if tokens are valid: false, expires at: 1785657178641
+[debug] [2026-08-02T11:41:20.229Z] Checked if tokens are valid: false, expires at: 1785657178641
+[debug] [2026-08-02T11:41:20.230Z] > refreshing access token with scopes: []
+[debug] [2026-08-02T11:41:20.236Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-08-02T11:41:20.236Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-02T11:41:20.627Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-08-02T11:41:20.627Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-02T11:41:20.640Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/addtask-9bdd1 [none]
+[debug] [2026-08-02T11:41:21.177Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/addtask-9bdd1 200
+[debug] [2026-08-02T11:41:21.178Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/addtask-9bdd1 {"projectId":"addtask-9bdd1","projectNumber":"772022782534","displayName":"addtask","name":"projects/addtask-9bdd1","resources":{"hostingSite":"addtask-9bdd1","realtimeDatabaseInstance":"addtask-9bdd1","locationId":"us-central"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_1ae1a64a-3d2d-4700-bd71-35ea349e4ae4"}
+[info] i  Using project addtask-9bdd1 (addtask) . 
+[info] 
+=== Hosting Setup
+[info] 
+[debug] [2026-08-02T11:43:48.489Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (/home/murtaza/.nvm/versions/node/v24.18.0/lib/node_modules/firebase-tools/node_modules/@inquirer/core/dist/commonjs/lib/create-prompt.js:101:37)
+    at Interface.emit (node:events:509:28)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1327:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:284:20)
+    at ReadStream.emit (node:events:521:24)
+    at emitKeys (node:internal/readline/utils:371:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+    at ReadStream.emit (node:events:509:28)
+    at addChunk (node:internal/streams/readable:563:12)
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-08-02T11:43:57.653Z] ----------------------------------------------------------------------
+[debug] [2026-08-02T11:43:57.655Z] Command:       /home/murtaza/.nvm/versions/node/v24.18.0/bin/node /home/murtaza/.nvm/versions/node/v24.18.0/bin/firebase init
+[debug] [2026-08-02T11:43:57.655Z] CLI Version:   15.24.0
+[debug] [2026-08-02T11:43:57.655Z] Platform:      linux
+[debug] [2026-08-02T11:43:57.656Z] Node Version:  v24.18.0
+[debug] [2026-08-02T11:43:57.656Z] Detected Agent: unknown
+[debug] [2026-08-02T11:43:57.656Z] Time:          Sun Aug 02 2026 16:43:57 GMT+0500 (Pakistan Standard Time)
+[debug] [2026-08-02T11:43:57.656Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /home/murtaza/Documents/GitHub/mountainbakes/mountainbakes-frontend
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+
+[debug] [2026-08-02T11:44:21.021Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (/home/murtaza/.nvm/versions/node/v24.18.0/lib/node_modules/firebase-tools/node_modules/@inquirer/core/dist/commonjs/lib/create-prompt.js:101:37)
+    at Interface.emit (node:events:509:28)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1327:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:284:20)
+    at ReadStream.emit (node:events:521:24)
+    at emitKeys (node:internal/readline/utils:371:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+    at ReadStream.emit (node:events:509:28)
+    at addChunk (node:internal/streams/readable:563:12)
+[error] 
+[error] Error: An unexpected error has occurred.

@@ -4,6 +4,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { RealtimeBridge } from '@/components/layout/RealtimeBridge';
 import { PushNotifications } from '@/components/pwa/PushNotifications';
 import { RealtimeProvider } from '@/providers/RealtimeProvider';
+import { GeofenceProvider } from '@/providers/GeofenceProvider';
 
 /**
  * Chrome for every signed-in screen.
@@ -16,20 +17,26 @@ import { RealtimeProvider } from '@/providers/RealtimeProvider';
  * `pb-20 md:pb-0` on <main> reserves room for the mobile bottom nav, which is
  * fixed and would otherwise cover the last rows of a table or a form's submit
  * button.
+ *
+ * GeofenceProvider sits alongside RealtimeProvider for the same reason it does:
+ * one location watcher for the session. Mounted per page it would restart the GPS
+ * ticker — and re-prompt for permission — on every navigation.
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <RealtimeProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
-        <RealtimeBridge />
-        <PushNotifications />
-        <Sidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <main className="flex-1 overflow-y-auto pb-20 md:pb-0">{children}</main>
+      <GeofenceProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
+          <RealtimeBridge />
+          <PushNotifications />
+          <Sidebar />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <Topbar />
+            <main className="flex-1 overflow-y-auto pb-20 md:pb-0">{children}</main>
+          </div>
+          <BottomNav />
         </div>
-        <BottomNav />
-      </div>
+      </GeofenceProvider>
     </RealtimeProvider>
   );
 }

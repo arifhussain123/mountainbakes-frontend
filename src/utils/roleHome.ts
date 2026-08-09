@@ -1,8 +1,19 @@
 import { ROUTES } from './routes';
-import type { UserRole } from '@mb/shared';
+import { canAccessFinance, isFinanceRole, USER_ROLES, type UserRole } from '@mb/shared';
 
-/** The three roles the app recognises. Anything else is not a valid session. */
-export const VALID_ROLES = new Set<string>(['super_admin', 'branch_manager', 'production_user']);
+/**
+ * Every role the app recognises. Anything else is not a valid session.
+ *
+ * Built from the shared USER_ROLES list rather than a literal, so the four
+ * Finance Ledger roles could not be added to the union without also becoming
+ * valid here. The literal version fails CLOSED but silently — a correctly
+ * provisioned finance account would be signed straight back out with "no role
+ * assigned", and nothing would point at this line.
+ */
+export const VALID_ROLES = new Set<string>(USER_ROLES);
+
+/** Re-exported so screens can gate finance UI without reaching into @mb/shared. */
+export { canAccessFinance, isFinanceRole };
 
 export function isValidRole(role: unknown): role is UserRole {
   return typeof role === 'string' && VALID_ROLES.has(role);
@@ -25,6 +36,14 @@ export function getRoleHome(role: string): string {
       return ROUTES.BRANCH_DASHBOARD;
     case 'production_user':
       return ROUTES.PRODUCTION_DASHBOARD;
+    // All four finance roles share one home. They differ in what they may DO on
+    // each screen (financeCan), not in which screens exist — a Read Only Auditor
+    // sees the same dashboard as a Finance Admin, with the action buttons gone.
+    case 'finance_admin':
+    case 'finance_manager':
+    case 'accountant':
+    case 'finance_auditor':
+      return ROUTES.FINANCE_DASHBOARD;
     default:
       return ROUTES.LOGIN;
   }

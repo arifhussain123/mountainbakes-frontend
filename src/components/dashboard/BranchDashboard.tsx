@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import dynamic from 'next/dynamic';
 import { RecentOrdersTable } from './RecentOrdersTable';
+import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
 import { ShoppingCart, DollarSign, Receipt, TrendingUp } from 'lucide-react';
 
 const PERIODS = [
@@ -59,6 +60,10 @@ export function BranchDashboard() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Renders nothing unless geofencing applies to this user, so the dashboard
+          is unchanged for everyone else. */}
+      <GeofenceStatusCard />
 
       {/* Primary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

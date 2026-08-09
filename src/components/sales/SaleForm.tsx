@@ -23,7 +23,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, Plus, Printer, Save } from 'lucide-react';
+import { usePrintCapability } from '@/hooks/usePrintCapability';
+import { Trash2, Plus, Printer, Download, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, UNPAID_PAYMENT_METHOD } from '@/utils/constants';
 import { cn } from '@/lib/utils';
@@ -129,6 +130,9 @@ export function SaleForm({
   const { token } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const printRef = useRef(false);
+  // Names the second submit after the device: no printer set up here means the
+  // same click ends at "Save as PDF" in the browser dialog, so say so.
+  const { canPrint } = usePrintCapability();
   // Raw discount text per line (keyed by the field id) so a "%" entry survives qty edits.
   const [discountRaw, setDiscountRaw] = useState<Record<string, string>>({});
 
@@ -639,7 +643,8 @@ export function SaleForm({
             <Save className="h-4 w-4 mr-1.5" /> {submitting ? 'Saving…' : 'Save Sale'}
           </Button>
           <Button type="submit" size="lg" disabled={submitting || stockBlocked || cashShort} onClick={() => { printRef.current = true; }}>
-            <Printer className="h-4 w-4 mr-1.5" /> Save & Print
+            {canPrint ? <Printer className="h-4 w-4 mr-1.5" /> : <Download className="h-4 w-4 mr-1.5" />}
+            {canPrint ? 'Save & Print' : 'Save & PDF'}
           </Button>
         </div>
       </div>

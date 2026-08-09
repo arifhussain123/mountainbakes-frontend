@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { getRoleHome } from '@/utils/roleHome';
+import { canAccessFinance, getRoleHome } from '@/utils/roleHome';
 import { normalizePath } from '@/utils/routes';
 
 /**
@@ -26,6 +26,10 @@ import { normalizePath } from '@/utils/routes';
 /** Paths reachable without a session. Matched by prefix, exactly as the proxy did. */
 const PUBLIC_PATHS = [
   '/login',
+  // The Finance Ledger's own sign-in. A separate screen because it asks for a
+  // Finance User ID rather than an email and refuses any non-finance account —
+  // see FinanceLoginPage. It must be public for the same reason /login is.
+  '/finance-login',
   // Supabase password-recovery landing page. Must be public: the recovery token
   // arrives in the URL hash and the client exchanges it for a short-lived session,
   // so the visitor is legitimately signed out when they arrive.
@@ -56,6 +60,10 @@ const ADMIN_PREFIXES = [
   '/settings',
   '/price-list',
   '/price-history',
+  // Admin → Branch Locations. Named '/geofencing' rather than '/branch-locations'
+  // precisely so it does not collide with the '/branch-' rule below, which would
+  // have bounced super admins off their own screen. See ROUTES.BRANCH_LOCATIONS.
+  '/geofencing',
 ];
 
 function isPublic(pathname: string): boolean {
@@ -85,8 +93,11 @@ function redirectFor(
   // Not required → keep users out of the change-password screen.
   if (pathname === '/change-password') return home;
 
-  // Signed in: '/' and '/login' both land on the role's home.
-  if (pathname === '/' || pathname === '/login') return home;
+  // Signed in: '/', '/login' and '/finance-login' all land on the role's home.
+  // Bouncing an already-signed-in finance user off their own login screen is the
+  // same courtesy /login gets, and it stops the "sign in, hit back, see the form
+  // again" loop.
+  if (pathname === '/' || pathname === '/login' || pathname === '/finance-login') return home;
 
   // /reset-password stays reachable while signed in: recovery establishes a real
   // session, so bouncing it to the role home would break the reset flow.
@@ -95,7 +106,13 @@ function redirectFor(
   const wrongRole =
     (ADMIN_PREFIXES.some((p) => pathname.startsWith(p)) && user.role !== 'super_admin') ||
     (pathname.startsWith('/branch-') && user.role !== 'branch_manager') ||
-    (pathname.startsWith('/production-') && user.role !== 'production_user');
+    (pathname.startsWith('/production-') && user.role !== 'production_user') ||
+    // Finance Ledger. The only prefix rule that admits MORE than one role: all
+    // four finance roles plus Super Admin, who the brief grants report access.
+    // What each may actually do on those screens is decided per action by
+    // financeCan(), and independently re-decided by the API — the difference
+    // between a Read Only Auditor and a Finance Admin is not a routing concern.
+    (pathname.startsWith('/finance-') && !canAccessFinance(user.role));
 
   return wrongRole ? home : null;
 }

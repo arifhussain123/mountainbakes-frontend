@@ -12,6 +12,14 @@ export const ROUTES = {
   PRICE_HISTORY: '/price-history',
   CUSTOMERS: '/customers',
   BRANCHES: '/branches',
+  /**
+   * Admin → Branch Locations. The path is '/geofencing', NOT '/branch-locations':
+   * RouteGuard maps every '/branch-*' prefix to the branch_manager role, so an
+   * admin route under that prefix would bounce a super admin to their own home
+   * page — silently, and only once deployed. The API path is still
+   * /api/branch-locations; only this app's own URL had to move.
+   */
+  BRANCH_LOCATIONS: '/geofencing',
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',
@@ -43,6 +51,28 @@ export const ROUTES = {
   BRANCH_REPORTS: '/branch-reports',
   BRANCH_HELP_DESK: '/branch-help-desk',
   BRANCH_EVENTS: '/branch-events',
+
+  /**
+   * Finance Ledger.
+   *
+   * Every path is under the '/finance-' prefix, which RouteGuard maps to the
+   * finance roles the same way '/branch-' and '/production-' work. That is the
+   * reason there is no '/ledger' or '/salaries' here: an unprefixed finance
+   * route would fall through to the admin allowlist and be unguarded, exactly
+   * the trap ROUTES.BRANCH_LOCATIONS documents from the other direction.
+   */
+  FINANCE_LOGIN: '/finance-login',
+  FINANCE_DASHBOARD: '/finance-dashboard',
+  FINANCE_LEDGER: '/finance-ledger',
+  FINANCE_INCOME: '/finance-income',
+  FINANCE_ENTRIES: '/finance-entries',
+  FINANCE_SALARIES: '/finance-salaries',
+  FINANCE_PARTNER_EXPENSES: '/finance-partner-expenses',
+  FINANCE_HEADS: '/finance-heads',
+  FINANCE_CLOSING: '/finance-closing',
+  FINANCE_REPORTS: '/finance-reports',
+  FINANCE_AUDIT: '/finance-audit',
+  FINANCE_SETTINGS: '/finance-settings',
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];

@@ -22,6 +22,12 @@
  * because this module is still imported during the static prerender, which never
  * issues a request.
  */
+import { encodeGeoPosition, GEO_POSITION_HEADER } from '@mb/shared';
+// Safe to import statically: the module has no import-time side effects and guards
+// every `navigator` access behind a typeof check, so it survives the static
+// prerender where this file is also evaluated.
+import { getLastPosition } from '@/lib/geo/position';
+
 const EXPLICIT_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
 
 const API_URL =
@@ -152,6 +158,29 @@ function endDeadSession(): void {
   })();
 }
 
+/**
+ * Attach the freshest known device position, when there is one.
+ *
+ * A header set in ONE place rather than a `geo` field threaded through every
+ * mutation schema — the alternative is that each new guarded endpoint has to
+ * remember to carry it, and the one that forgets fails open.
+ *
+ * Read synchronously from the module-level cache in lib/geo/position, never
+ * awaited: a GPS fix can take twenty seconds and this runs in front of every
+ * request in the app. GeofenceProvider is what keeps that cache warm.
+ *
+ * Sent on reads as well as writes, which is deliberate — /branch-locations/me
+ * returns the caller's live status, and the periodic verify beat is a POST that
+ * carries nothing else. Requests made before the first fix simply omit it; the
+ * server treats an absent header as "no position", and only the guarded endpoints
+ * care.
+ */
+function geoPositionHeader(): Record<string, string> {
+  const position = getLastPosition();
+  if (!position) return {};
+  return { [GEO_POSITION_HEADER]: encodeGeoPosition(position) };
+}
+
 export async function apiCall<T = unknown>(
   endpoint: string,
   options: RequestInit = {},
@@ -174,6 +203,7 @@ async function request<T>(
   const headers: Record<string, string> = {
     ...(!(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
     ...(token && { Authorization: `Bearer ${token}` }),
+    ...geoPositionHeader(),
     ...(options.headers as Record<string, string>),
   };
 

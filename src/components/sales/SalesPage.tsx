@@ -21,10 +21,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import { Fab } from '@/components/shared/Fab';
+import { PrintButton } from '@/components/shared/PrintButton';
 import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
+import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { InvoiceView, type InvoiceData } from './InvoiceView';
-import { Eye, Plus, Printer } from 'lucide-react';
+import { Eye, Plus } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   PAYMENT_METHODS,
@@ -384,7 +386,11 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12 sm:px-5">
             <DialogTitle>New Sale</DialogTitle>
           </DialogHeader>
+          {/* Wraps only the FORM, never the page: the sales list, invoice reprints
+              and the dashboard behind it stay readable from anywhere. Being out of
+              area stops new transactions, not access to history. */}
           {canSell ? (
+            <GeofenceGate action="Sales">
             <SaleForm
               products={products}
               settings={settings}
@@ -400,6 +406,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               paymentMethods={methods}
               schema={isProduction ? CreateProductionSaleSchema : undefined}
             />
+            </GeofenceGate>
           ) : (
             <p className="px-4 py-4 text-sm text-destructive">No branch assigned to your account.</p>
           )}
@@ -415,9 +422,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
             <DialogTitle className="no-print">Invoice</DialogTitle>
           </DialogHeader>
           {invoice && <InvoiceView invoice={invoice} settings={settings} branch={branch} />}
-          <Button className="no-print w-full" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-1.5" /> Print
-          </Button>
+          <PrintButton className="w-full" />
         </DialogContent>
       </Dialog>
 
@@ -507,9 +512,14 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
               <div className="grid grid-cols-2 gap-3">
                 <Button variant="outline" onClick={() => setViewOrder(null)}>Close</Button>
-                <Button onClick={() => { const o = viewOrder; setViewOrder(null); handleReprint(o); }}>
-                  <Printer className="h-4 w-4 mr-1.5" /> Print Invoice
-                </Button>
+                {/* No menu here — the invoice preview this opens carries one. */}
+                <PrintButton
+                  className="w-full"
+                  showMenu={false}
+                  printLabel="Print Invoice"
+                  saveLabel="Save Invoice PDF"
+                  onPrint={() => { const o = viewOrder; setViewOrder(null); handleReprint(o); }}
+                />
               </div>
             </div>
           )}

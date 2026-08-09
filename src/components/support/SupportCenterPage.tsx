@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, Product, PaymentMethod, StockFigures } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, Product, PaymentMethod, StockFigures, ProductionStockFigures } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
@@ -58,6 +58,99 @@ function ReferenceDetail({ reference }: { reference: SupportReference }) {
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+/**
+ * Is this stock ticket about the central production pool rather than a branch?
+ *
+ * The snapshot's own flag when it has one; otherwise the raiser's role, which is
+ * equally decisive — a production user's stock lookup has only ever resolved to the
+ * pool. The fallback is what makes tickets raised BEFORE the pool became correctable
+ * (they carry `readOnly: true` and no flag) correctable now. Mirrors the same test
+ * on the server, which is the one that actually authorises the write.
+ */
+function isPoolStockTicket(ticket: SupportTicket): boolean {
+  if (ticket.referenceType !== 'stock') return false;
+  return ticket.referenceSnapshot?.isProductionPool === true || ticket.raisedByRole === 'production_user';
+}
+
+/**
+ * The reference as it reads NOW.
+ *
+ * `referenceSnapshot` is frozen onto the ticket when the query is RAISED. That is
+ * deliberate — it is what the raiser saw — but it means an older ticket keeps the
+ * shorter field list its snapshot was written with, and never shows a correction
+ * applied in between. So every dialog that displays a reference re-reads it, and
+ * falls back to the snapshot if the read fails.
+ *
+ * Read-only references are not re-read — a demand or a counter sale has nothing to
+ * correct, and re-reading buys nothing. A POOL ticket is re-read even when its
+ * (legacy) snapshot says read-only, because that flag is now out of date.
+ */
+function useLiveReference(ticket: SupportTicket) {
+  const { token } = useAuth();
+  const snapshot = ticket.referenceSnapshot;
+  const isPool = isPoolStockTicket(ticket);
+  const canRefresh = Boolean(snapshot) && (snapshot?.readOnly !== true || isPool);
+  const [reference, setReference] = useState<SupportReference | null>(snapshot);
+  const [loading, setLoading] = useState(canRefresh);
+
+  const branchId = ticket.branchId;
+  const referenceId = ticket.referenceId;
+
+  useEffect(() => {
+    if (!token || !canRefresh) return;
+    // A stock lookup has to be told WHICH ledger: `pool=1` for the production pool,
+    // `branchId` for the raiser's branch. With neither, an admin's stock lookup
+    // resolves to an all-branches total, which is not a ledger anything can be
+    // applied to. The pool wins — a pool ticket has no branch to fall back on, even
+    // when the production account that raised it happens to carry one.
+    const scope = isPool ? '&pool=1' : branchId ? `&branchId=${branchId}` : '';
+    const url = `/api/support/lookup?ref=${encodeURIComponent(referenceId)}${scope}`;
+    let cancelled = false;
+    apiCall<{ reference: SupportReference }>(url, {}, token)
+      .then((r) => { if (!cancelled) setReference(r.reference); })
+      .catch(() => { /* keep the snapshot — it is still a truthful record of the query */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [token, canRefresh, referenceId, branchId, isPool]);
+
+  return { reference, loading };
+}
+
+/**
+ * A sale's lines, read-only — the same five columns the branch's Sale view shows
+ * (product, qty, rate, discount, amount), so View answers "what was actually rung
+ * up" without opening the editor. Scrolls inside itself on a narrow screen rather
+ * than widening the dialog.
+ */
+function SaleItemsTable({ items }: { items: SupportSaleItem[] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th className="p-2 font-semibold">Product</th>
+            <th className="p-2 text-center font-semibold">Qty</th>
+            <th className="p-2 text-right font-semibold">Rate</th>
+            <th className="p-2 text-right font-semibold">Discount</th>
+            <th className="p-2 text-right font-semibold">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, idx) => (
+            <tr key={idx} className="border-t">
+              <td className="p-2">{it.productName}</td>
+              <td className="p-2 text-center tabular-nums">{it.qty}</td>
+              <td className="p-2 text-right tabular-nums">{money(it.unitPrice)}</td>
+              <td className="p-2 text-right tabular-nums">{it.discount ? `-${money(it.discount)}` : '—'}</td>
+              <td className="p-2 text-right font-medium tabular-nums">{money(it.unitPrice * it.qty - it.discount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -156,9 +249,13 @@ export function SupportCenterPage() {
         // sales legitimately carry an empty editableFields (they are corrected
         // through saleItems), and legacy stock tickets with an empty one are still
         // routed by type into StockFiguresDialog, which re-reads live figures.
-        // A length test would strand both. No stored snapshot has `readOnly`, so
-        // this cannot regress an existing ticket.
-        const canChange = Boolean(t.referenceSnapshot) && t.referenceSnapshot?.readOnly !== true;
+        // A length test would strand both.
+        //
+        // A POOL ticket overrides the flag: production stock became correctable
+        // (migration 50) after those snapshots were frozen with `readOnly: true`,
+        // and the dialog re-reads the pool live before writing anything.
+        const canChange =
+          Boolean(t.referenceSnapshot) && (t.referenceSnapshot?.readOnly !== true || isPoolStockTicket(t));
         const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
         return (
           <>
@@ -235,6 +332,10 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
   const { token } = useAuth();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // Live, so a sale query shows the full sale — customer, mobile, time, every
+  // line's rate and discount, the money row — rather than the shorter snapshot an
+  // older ticket was raised with.
+  const { reference, loading } = useLiveReference(ticket);
 
   async function resolve() {
     setBusy(true);
@@ -249,7 +350,10 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="md:max-w-lg">
+      {/* Wider than the other dialogs, and the body scrolls inside itself: a sale
+          reference is a five-column item table under a dozen detail rows, which
+          would otherwise push the footer buttons off the bottom of the popup. */}
+      <DialogContent className="md:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {ticket.ticketNumber}
@@ -260,8 +364,13 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          {ticket.referenceSnapshot && <ReferenceDetail reference={ticket.referenceSnapshot} />}
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+          {reference && <ReferenceDetail reference={reference} />}
+          {/* A sale's lines, exactly as the branch's Sale view prints them. */}
+          {reference?.saleItems && reference.saleItems.length > 0 && (
+            <SaleItemsTable items={reference.saleItems} />
+          )}
+          {loading && <p className="text-xs text-muted-foreground">Re-reading the live record…</p>}
           <div>
             <Label className="text-xs text-muted-foreground">Issue</Label>
             <p className="text-sm">{ticket.message}</p>
@@ -341,7 +450,45 @@ function EditDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
 type EditRow = SupportSaleItem & { key: string };
 
 const money = (n: number) => `Rs.${(Number.isFinite(n) ? n : 0).toLocaleString('en-PK')}`;
-const lineTotal = (r: EditRow) => Math.max(0, r.unitPrice * r.qty - r.discount);
+/**
+ * Exactly as the server computes it (migration 26): rate × qty − line discount,
+ * unclamped. A discount above the gross would make the line — and the sale —
+ * negative, so it is rejected in `valid` below rather than hidden by a clamp that
+ * would let the preview disagree with what gets written.
+ */
+const lineTotal = (r: EditRow) => r.unitPrice * r.qty - r.discount;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The sale's money row as the edits leave it — mirrors edit_sale_items. */
+function previewTotals(rows: EditRow[], totals: SupportSaleTotals | undefined) {
+  // Rounded at every step, as the numeric(14,2) columns behind these are — without
+  // it a float artefact makes "Was …" claim a change of Rs.0.
+  const gross = round2(rows.reduce((s, r) => s + r.unitPrice * r.qty, 0));
+  const discountTotal = round2(rows.reduce((s, r) => s + r.discount, 0));
+  const subtotal = round2(gross - discountTotal);
+  const delivery = totals?.deliveryCharges ?? 0;
+  const taxAmount = round2(subtotal * (totals?.taxRate ?? 0));
+  return { gross, discountTotal, subtotal, delivery, taxAmount, grandTotal: round2(subtotal + delivery + taxAmount) };
+}
+
+/** One line-item input, self-labelling below `sm` where the header row is hidden. */
+function LineField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground sm:hidden">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function TotalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  );
+}
 
 /** Search a product by SKU or name, case-insensitively (mirrors the POS form). */
 function productMatchesQuery(p: Product | null, query: string): boolean {
@@ -351,7 +498,7 @@ function productMatchesQuery(p: Product | null, query: string): boolean {
   return `${p.sku} ${p.name}`.toLowerCase().includes(q);
 }
 
-function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
+function SaleItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
   ticket: SupportTicket;
   reference: SupportReference;
   onClose: () => void;
@@ -359,13 +506,19 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
 }) {
   const { token } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  // The ticket's snapshot is from when the query was RAISED — the sale may have
+  // been corrected since, and a snapshot written before totals were carried has
+  // no money row at all. So the live sale is re-read on open and the snapshot only
+  // seeds the form until it lands.
+  const { reference: live, loading } = useLiveReference(ticket);
+  const reference = live ?? snapshot;
   const [rows, setRows] = useState<EditRow[]>(
-    () => (reference.saleItems ?? []).map((it, i) => ({ ...it, key: `orig-${i}` })),
+    () => (snapshot.saleItems ?? []).map((it, i) => ({ ...it, key: `orig-${i}` })),
   );
   // Undefined when the snapshot predates payment editing, or when the sale carries
   // a legacy tender ('card' / 'online') that is no longer on offer — either way no
   // button is preselected and picking one is what sends the change.
-  const [payment, setPayment] = useState<PaymentMethod | undefined>(reference.paymentMethod);
+  const [payment, setPayment] = useState<PaymentMethod | undefined>(snapshot.paymentMethod);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   // A monotonic id so newly-added rows get stable React keys without Math.random.
@@ -378,21 +531,35 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
       .catch(() => toast.error('Could not load products'));
   }, [token]);
 
-  const subtotal = useMemo(() => rows.reduce((s, r) => s + lineTotal(r), 0), [rows]);
+  // Reseed the form the moment the live sale lands — React's "adjust state when a
+  // value changes" pattern, during render rather than in an effect, so there is no
+  // extra commit showing the snapshot's lines. `seededFrom` makes it run exactly
+  // once per reference, never over an admin's half-finished edit.
+  const [seededFrom, setSeededFrom] = useState<SupportReference | null>(snapshot);
+  if (live && live !== seededFrom) {
+    setSeededFrom(live);
+    if (live.saleItems) setRows(live.saleItems.map((it, i) => ({ ...it, key: `live-${i}` })));
+    setPayment(live.paymentMethod);
+  }
+
+  const totals = useMemo(() => previewTotals(rows, reference.saleTotals), [rows, reference.saleTotals]);
 
   function patchRow(key: string, patch: Partial<EditRow>) {
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
   function pickProduct(key: string, p: Product | null) {
     if (!p) return;
-    // Swapping the product resets the unit price to that product's current price;
-    // the admin can still override the amount afterward.
+    // Swapping the product resets the rate to that product's current price and
+    // clears the discount — the old one was struck against a different item's
+    // price, and silently carrying it over could exceed the new line's gross. The
+    // admin can still set both afterward.
     patchRow(key, {
       productId: p.id,
       productName: p.name,
       categoryId: p.categoryId || null,
       categoryName: p.categoryName || null,
       unitPrice: Number(p.price ?? 0),
+      discount: 0,
     });
   }
   function addRow() {
@@ -404,10 +571,14 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
     setRows((rs) => rs.filter((r) => r.key !== key));
   }
 
-  const valid = rows.length > 0 && rows.every((r) => r.productId && r.qty > 0 && r.unitPrice >= 0);
+  // A discount above the line's gross would write a negative line total and drag
+  // the sale below zero, so it is rejected here rather than clamped.
+  const rowValid = (r: EditRow) =>
+    Boolean(r.productId) && r.qty > 0 && r.unitPrice >= 0 && r.discount >= 0 && r.discount <= r.unitPrice * r.qty;
+  const valid = rows.length > 0 && rows.every(rowValid);
 
   async function submit() {
-    if (!valid) { toast.error('Every line needs a product, a quantity above 0, and an amount'); return; }
+    if (!valid) { toast.error('Every line needs a product, a quantity above 0, an amount, and a discount no bigger than the line'); return; }
     setBusy(true);
     try {
       const items = rows.map((r) => ({
@@ -433,22 +604,30 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
         <DialogHeader>
           <DialogTitle>Edit sale — {ticket.referenceId}</DialogTitle>
           <DialogDescription>
-            Change a line’s product, quantity, or amount (unit price), and the payment
-            method. Edits apply to the order and stock is reconciled automatically. The
-            query is then resolved.
+            The sale exactly as the branch sees it. Change a line’s product, quantity,
+            rate, or discount, and the payment method. Edits apply to the order, its
+            totals are recomputed and stock is reconciled automatically. The query is
+            then resolved.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
-          <div className="hidden sm:grid grid-cols-[1fr_5rem_7rem_6rem_2rem] gap-2 px-1 text-xs text-muted-foreground">
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+          {/* The branch's own sale detail — customer, mobile, date & time, money row,
+              tender, status, who sold it — so both sides read one document. */}
+          <ReferenceDetail reference={reference} />
+          {loading && <p className="text-xs text-muted-foreground">Re-reading the live sale…</p>}
+
+          <div className="hidden sm:grid grid-cols-[1fr_4.5rem_6rem_6rem_6rem_2rem] gap-2 px-1 pt-1 text-xs text-muted-foreground">
             <span>Product</span><span className="text-right">Qty</span>
-            <span className="text-right">Amount (each)</span><span className="text-right">Line total</span><span />
+            <span className="text-right">Rate (each)</span><span className="text-right">Discount</span>
+            <span className="text-right">Amount</span><span />
           </div>
 
           {rows.map((r) => {
             const selected = products.find((p) => p.id === r.productId) ?? null;
+            const discountTooBig = r.discount > r.unitPrice * r.qty || r.discount < 0;
             return (
-              <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_5rem_7rem_6rem_2rem] gap-2 items-center">
+              <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_4.5rem_6rem_6rem_6rem_2rem] gap-2 items-center">
                 <Combobox
                   items={products}
                   filter={productMatchesQuery}
@@ -474,19 +653,36 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
                   </ComboboxContent>
                 </Combobox>
 
-                <Input
-                  type="number" min="0" step="0.001" inputMode="decimal"
-                  className="text-right"
-                  value={r.qty}
-                  onChange={(e) => patchRow(r.key, { qty: Number(e.target.value) })}
-                />
-                <Input
-                  type="number" min="0" step="0.01" inputMode="decimal"
-                  className="text-right"
-                  value={r.unitPrice}
-                  onChange={(e) => patchRow(r.key, { unitPrice: Number(e.target.value) })}
-                />
-                <span className="text-right text-sm tabular-nums">{money(lineTotal(r))}</span>
+                {/* The column headers only exist from `sm` up, so each field states
+                    itself on a phone rather than being three anonymous number boxes. */}
+                <LineField label="Qty">
+                  <Input
+                    type="number" min="0" step="0.001" inputMode="decimal"
+                    className="text-right"
+                    value={r.qty}
+                    onChange={(e) => patchRow(r.key, { qty: Number(e.target.value) })}
+                  />
+                </LineField>
+                <LineField label="Rate (each)">
+                  <Input
+                    type="number" min="0" step="0.01" inputMode="decimal"
+                    className="text-right"
+                    value={r.unitPrice}
+                    onChange={(e) => patchRow(r.key, { unitPrice: Number(e.target.value) })}
+                  />
+                </LineField>
+                <LineField label="Discount">
+                  <Input
+                    type="number" min="0" step="0.01" inputMode="decimal"
+                    className={cn('text-right', discountTooBig && 'border-destructive')}
+                    value={r.discount}
+                    onChange={(e) => patchRow(r.key, { discount: Number(e.target.value) })}
+                  />
+                </LineField>
+                <span className="text-right text-sm tabular-nums">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-2">Amount</span>
+                  {money(lineTotal(r))}
+                </span>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"
                   title="Remove line" onClick={() => removeRow(r.key)} disabled={rows.length <= 1}>
                   <X className="h-4 w-4" />
@@ -499,9 +695,29 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
             <Plus className="h-4 w-4 mr-1" /> Add item
           </Button>
 
-          <div className="flex justify-end pt-1 text-sm font-medium">
-            <span className="text-muted-foreground mr-2">New subtotal:</span>
-            <span className="tabular-nums">{money(subtotal)}</span>
+          {rows.some((r) => r.discount > r.unitPrice * r.qty || r.discount < 0) && (
+            <p className="text-xs text-destructive">
+              A line’s discount cannot be more than its qty × rate.
+            </p>
+          )}
+
+          {/* The same money row the branch's Sale view prints, recomputed from the
+              edits — tax rate and delivery come from the order, so this is what
+              edit_sale_items will write. */}
+          <div className="ml-auto w-full max-w-xs space-y-1.5 pt-1 text-sm">
+            <TotalRow label="Subtotal" value={money(totals.gross)} />
+            <TotalRow label="Discount" value={`-${money(totals.discountTotal)}`} />
+            {totals.delivery > 0 && <TotalRow label="Delivery" value={money(totals.delivery)} />}
+            <TotalRow label="Government Tax" value={money(totals.taxAmount)} />
+            <div className="flex justify-between border-t pt-1.5 text-base font-bold">
+              <span>Grand Total</span>
+              <span className="text-primary tabular-nums">{money(totals.grandTotal)}</span>
+            </div>
+            {reference.saleTotals && totals.grandTotal !== reference.saleTotals.grandTotal && (
+              <p className="text-right text-xs text-muted-foreground">
+                Was {money(reference.saleTotals.grandTotal)}.
+              </p>
+            )}
           </div>
 
           {/* Payment method — same radio-button group as the POS sale form. */}
@@ -550,6 +766,11 @@ function SaleItemsDialog({ ticket, reference, onClose, onDone }: {
 function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const ref = ticket.referenceSnapshot;
 
+  // The production pool, checked BEFORE the read-only gate: a legacy pool snapshot
+  // still says read-only, and the pool editor re-reads it live anyway.
+  if (ref && isPoolStockTicket(ticket)) {
+    return <ProductionStockFiguresDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
+  }
   // Belt and braces behind the disabled button above — a stale client could still
   // reach here. Without this, FieldEditDialog's no-editable-fields fallback would
   // render the reference's DISPLAY fields as editable inputs and resolve the ticket
@@ -821,6 +1042,230 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
               day’s takings or payment method. For a sale recorded wrongly, raise the
               query against its sale ID (MB-…) instead, which corrects the order, its
               total and its tender along with the stock.
+            </p>
+
+            <div className="space-y-1">
+              <Label>Note (optional)</Label>
+              <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Reason for the correction" />
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || loading || !figures || invalid || !changed}>
+            {busy ? 'Applying…' : 'Apply & Resolve'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** What /figures reports back when it corrected the production pool. */
+interface ProductionCorrectionResult {
+  applied: boolean;
+  productName: string;
+  before: ProductionStockFigures;
+  after: ProductionStockFigures;
+  movements: { type: string; delta: number }[];
+}
+
+const PRODUCTION_FIELDS = [
+  { key: 'preparedToday', label: 'Prepared Today', hint: 'units made today' },
+  { key: 'approvedQty', label: 'Approved Qty', hint: 'units sent out on demands' },
+  { key: 'soldToday', label: 'Sold', hint: 'units sold at the counter' },
+  { key: 'returned', label: 'Returned', hint: 'units taken back from branches' },
+] as const;
+
+/**
+ * Production-pool correction — the pool's counterpart of StockFiguresDialog.
+ *
+ * Same shape and same rules: the LIVE row is re-read (the ticket's snapshot is from
+ * when the query was raised), each figure is set to what it should read, and the
+ * server sizes one compensating movement per figure.
+ *
+ * Two differences from the branch editor, both following the pool's own model:
+ *   · There is no Opening. The pool carries one running balance and no per-day
+ *     open/close, so the four movement figures plus Balance are the whole row.
+ *   · A negative Balance is ALLOWED — the pool is flagged when negative, never
+ *     blocked, and a product already negative has to stay correctable. It is warned
+ *     about rather than refused.
+ *
+ * Total Stock is shown but not editable: it is balance + approved + sold, so it
+ * follows the figures above it and has no movement of its own to correct.
+ */
+function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
+  const { token } = useAuth();
+  const { reference, loading } = useLiveReference(ticket);
+  const figures = reference?.productionFigures ?? null;
+  // Only what the admin actually typed. Everything else is DERIVED from the live
+  // figures below, so the inputs need no seeding effect and cannot show a stale
+  // value if the lookup resolves late.
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const productName = reference?.fields.find((f) => f.label === 'Product')?.value ?? ticket.referenceId;
+
+  const num = (v: string | undefined) => Number(v ?? 0);
+  const t: Record<string, string> = {
+    ...(figures
+      ? {
+          preparedToday: String(figures.preparedToday),
+          approvedQty: String(figures.approvedQty),
+          soldToday: String(figures.soldToday),
+          returned: String(figures.returned),
+        }
+      : {}),
+    ...edited,
+  };
+  // Until the admin edits Balance themselves, it tracks the four figures above it.
+  const balanceTouched = edited['balance'] !== undefined;
+
+  /**
+   * Balance implied by the figures as typed. Prepared and returned add to the pool;
+   * approved and sold take from it — the same arithmetic the server applies, so the
+   * preview and the write agree.
+   */
+  const implied = figures
+    ? figures.balance +
+      (num(t['preparedToday']) - figures.preparedToday) -
+      (num(t['approvedQty']) - figures.approvedQty) +
+      (num(t['returned']) - figures.returned) -
+      (num(t['soldToday']) - figures.soldToday)
+    : 0;
+
+  const extraAdjustment = balanceTouched ? num(t['balance']) - implied : 0;
+  const finalBalance = balanceTouched ? num(t['balance']) : implied;
+
+  function setFigure(key: string, value: string) {
+    setEdited((prev) => ({ ...prev, [key]: value }));
+  }
+
+  const shownBalance = balanceTouched ? (t['balance'] ?? '') : String(implied);
+
+  const invalid =
+    !figures ||
+    PRODUCTION_FIELDS.some((f) => {
+      const v = num(t[f.key]);
+      return t[f.key] === '' || !Number.isFinite(v) || v < 0;
+    }) ||
+    // A cleared Balance is not "zero" — it is no figure at all.
+    (balanceTouched && (t['balance'] === '' || !Number.isFinite(num(t['balance']))));
+
+  /**
+   * Only the figures the admin actually moved. An untouched figure is omitted so a
+   * movement recorded while the dialog was open is not reverted by a stale absolute
+   * target — the same reason the branch editor sends a partial set.
+   */
+  const edits: Record<string, number> = {};
+  if (figures) {
+    for (const f of PRODUCTION_FIELDS) {
+      if (num(t[f.key]) !== figures[f.key]) edits[f.key] = num(t[f.key]);
+    }
+    if (balanceTouched && num(t['balance']) !== implied) edits['balance'] = num(t['balance']);
+  }
+
+  const changed = Object.keys(edits).length > 0;
+
+  async function submit() {
+    if (invalid) { toast.error('Prepared, Approved, Sold and Returned must each be 0 or more'); return; }
+    if (!changed) { toast.error('Change at least one figure'); return; }
+    setBusy(true);
+    try {
+      const res = await apiCall<{ applied: boolean; productionStock: ProductionCorrectionResult | null }>(
+        `/api/support/${ticket.id}/figures`,
+        { method: 'PATCH', body: JSON.stringify({ edits, note }) },
+        token,
+      );
+      toast.success(
+        res.productionStock?.applied
+          ? `Production stock corrected — balance ${res.productionStock.before.balance} → ${res.productionStock.after.balance}`
+          : 'Production stock already matched — query resolved',
+      );
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to correct the production stock');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="md:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Correct production stock — {ticket.referenceId}</DialogTitle>
+          <DialogDescription>
+            {productName} · central production pool — set each figure to what it should
+            read. The pool is adjusted to match and the query is resolved.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && !figures ? (
+          <p className="text-sm text-muted-foreground">Loading current pool figures…</p>
+        ) : !figures ? (
+          <p className="text-sm text-muted-foreground">Current pool figures are unavailable.</p>
+        ) : (
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+              <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="balance + what left today" />
+              {figures.adjustment !== 0 && (
+                <FigureRow
+                  label="Adjustment so far"
+                  value={figures.adjustment > 0 ? `+${figures.adjustment}` : String(figures.adjustment)}
+                  hint="earlier corrections today"
+                />
+              )}
+            </div>
+
+            {PRODUCTION_FIELDS.map((f) => (
+              <div key={f.key} className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>{f.label}</Label>
+                  <span className="text-xs text-muted-foreground">
+                    now {figures[f.key]} · {f.hint}
+                  </span>
+                </div>
+                <Input
+                  type="number" min="0" step="0.001" inputMode="decimal"
+                  className="text-right"
+                  value={t[f.key] ?? ''}
+                  onChange={(e) => setFigure(f.key, e.target.value)}
+                />
+              </div>
+            ))}
+
+            <div className="space-y-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <Label>Balance</Label>
+                <span className="text-xs text-muted-foreground">
+                  now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
+                </span>
+              </div>
+              <Input
+                type="number" step="0.001" inputMode="decimal"
+                className={cn('text-right', finalBalance < 0 && 'border-amber-500')}
+                value={shownBalance}
+                onChange={(e) => setFigure('balance', e.target.value)}
+              />
+              {extraAdjustment !== 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Booked as an adjustment of {extraAdjustment > 0 ? `+${extraAdjustment}` : extraAdjustment}.
+                </p>
+              )}
+              {finalBalance < 0 && (
+                <p className="text-xs text-amber-600">
+                  This leaves the pool negative. Allowed — the Production Stock page flags
+                  it in red — but check it is really what the shelf says.
+                </p>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Correcting <strong>Sold</strong> moves pool stock only — it does not change
+              the counter sale, its total or its tender. Production counter sales are not
+              editable from here, so answer the sale query in words and correct its stock
+              effect above.
             </p>
 
             <div className="space-y-1">

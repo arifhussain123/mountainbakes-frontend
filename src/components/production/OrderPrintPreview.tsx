@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { CheckCircle2, XCircle, Printer, Loader2, Pencil } from 'lucide-react';
+import { PrintButton } from '@/components/shared/PrintButton';
+import { CheckCircle2, XCircle, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
 import { formatDate, formatTime } from '@/utils/date';
@@ -413,9 +414,8 @@ function PreviewBody({
             </Button>
           </>
         )}
-        <Button variant="secondary" onClick={print} disabled={reviewing}>
-          <Printer className="mr-1.5 h-4 w-4" /> Print
-        </Button>
+        {/* Says "Print" or "Save as PDF" depending on the device — same action either way. */}
+        <PrintButton variant="secondary" onPrint={print} disabled={reviewing} />
       </div>
     </>
   );

@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import dynamic from 'next/dynamic';
 import { StatCard } from '@/components/shared/StatCard';
 import { PackingUsageReport } from './PackingUsageReport';
-import { ShoppingCart, DollarSign, TrendingDown, TrendingUp, BarChart3, Receipt, Printer } from 'lucide-react';
+import { PrintButton } from '@/components/shared/PrintButton';
+import { ShoppingCart, DollarSign, TrendingDown, TrendingUp, BarChart3, Receipt } from 'lucide-react';
 import type { ReportSummary } from '@mb/shared';
 import { toast } from 'sonner';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
@@ -77,9 +78,7 @@ export function ReportsPage() {
           <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('pdf')}>PDF</Button>
           <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('excel')}>Excel</Button>
           <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('csv')}>CSV</Button>
-          <Button variant="outline" size="sm" className="h-9" onClick={() => window.print()}>
-            <Printer className="h-3.5 w-3.5 mr-1.5" /> Print
-          </Button>
+          <PrintButton variant="outline" size="sm" buttonClassName="h-9" />
         </div>
       </div>
 

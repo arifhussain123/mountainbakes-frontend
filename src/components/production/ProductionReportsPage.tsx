@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ResponsiveMatrix } from '@/components/shared/ResponsiveMatrix';
-import { Printer } from 'lucide-react';
+import { PrintButton } from '@/components/shared/PrintButton';
 import { toast } from 'sonner';
 import { businessDateStr, type ProductionStockRow } from '@mb/shared';
 import { formatDate } from '@/utils/date';
@@ -147,9 +147,7 @@ export function ProductionReportsPage() {
               <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('csv')}>CSV</Button>
             </>
           )}
-          <Button variant="outline" size="sm" className="h-9" onClick={() => window.print()}>
-            <Printer className="mr-1.5 h-3.5 w-3.5" /> Print
-          </Button>
+          <PrintButton variant="outline" size="sm" buttonClassName="h-9" />
         </div>
       </div>
 
