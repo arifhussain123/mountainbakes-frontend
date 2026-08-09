@@ -36,5 +36,21 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     });
   }, [queryClient]);
 
+  // Fallback freshness net on top of notification-driven invalidation: every 2
+  // minutes, silently refetch whatever's currently on screen (no page reload,
+  // no visible flash — React Query just swaps data in place). Skipped whenever
+  // a Dialog is open (New Sale, New Order, print preview, any edit form) so an
+  // in-flight refetch never reshuffles props out from under someone mid-entry —
+  // `[data-slot="dialog-content"]` is only in the DOM while a Dialog is open
+  // (see `components/ui/dialog.tsx`), so this needs no per-dialog wiring.
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+    const id = setInterval(() => {
+      if (document.querySelector('[data-slot="dialog-content"]')) return;
+      queryClient.refetchQueries({ type: 'active' });
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [queryClient]);
+
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
