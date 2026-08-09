@@ -433,6 +433,32 @@ export function useProductionBalances(token: string, opts?: { branchId?: string 
   });
 }
 
+export interface PreviousOrderBalance {
+  previous: { demandNumber: string; date: string } | null;
+  deliveredValue: number;
+  companySharePct: number;
+  companyShareValue: number;
+  returnsValue: number;
+  amountToCollect: number;
+}
+
+/**
+ * What the branch owes for its PREVIOUS delivery, for this order's company copy.
+ *
+ * Server-computed: company_share_pct lives in finance_settings, which production
+ * users cannot read at any layer. Not related to `useProductionBalances` — that
+ * one is unmet demand (goods owed TO the branch), not a receivable.
+ */
+export function usePreviousOrderBalance(token: string, orderId: string | null, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.previousOrderBalance(orderId ?? ''),
+    queryFn: () =>
+      apiCall<PreviousOrderBalance>(`/api/production-orders/${orderId}/previous-balance`, {}, token),
+    enabled: !!token && !!orderId && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
 /** Mark a production slip printed. Idempotent server-side; never mutates stock. */
 export function useMarkPrinted(token: string) {
   const qc = useQueryClient();

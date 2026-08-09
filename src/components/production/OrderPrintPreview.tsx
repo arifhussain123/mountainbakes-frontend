@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances, useProducts, useBranches, useProductionReturns, useAddProductionOrderItem } from '@/lib/queries';
+import { useProductionBalances, useProducts, useBranches, useProductionReturns, useAddProductionOrderItem, usePreviousOrderBalance } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -134,6 +134,7 @@ function PreviewBody({
   const branchesQ = useBranches(token);
   const returnsQ = useProductionReturns(token);
   const addItemMut = useAddProductionOrderItem(token);
+  const prevBalanceQ = usePreviousOrderBalance(token, order.id);
 
   const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
   const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
@@ -182,28 +183,31 @@ function PreviewBody({
     { demand: 0, approved: 0, amount: 0 },
   );
 
-  // Print stamp (when the slip is generated) and the aggregate carried-forward
-  // balance. Amount is derived (qty × unit price) since only a quantity balance
-  // is tracked — there is no stored monetary balance or previous-order reference.
   const now = new Date();
   const printDate = formatDate(now);
   const printTime = formatTime(now);
-  const prevBalanceQty = printRows.reduce((a, r) => a + r.previousBalance, 0);
-  const prevBalanceAmount = printRows.reduce((a, r) => a + r.previousBalance * r.unitPrice, 0);
 
   // Items this branch returned the day before this demand, accepted back into the
-  // production pool. Valued at today's price — same caveat as prevBalanceAmount:
-  // no historical price is stored against either the balance or the return.
+  // production pool. Valued at today's price — no historical price is stored
+  // against a return, so a repricing moves this retroactively.
   const prevDate = previousDate(order.date);
   const returnRows = (returnsQ.data ?? [])
     .filter((r) => r.branchId === order.branchId && r.status === 'accepted' && r.date === prevDate)
     .map((r) => ({ productName: r.productName, qty: r.qty, amount: r.qty * (priceById.get(r.productId) ?? 0) }));
   const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
-  const returnsAmount = returnRows.reduce((a, r) => a + r.amount, 0);
-  // What the shop actually owes for the carried-forward balance, net of what it
-  // already returned — the figure the rider collects against the previous demand.
-  const collectionAmount = prevBalanceAmount - returnsAmount;
-  const hasPrevBalance = prevBalanceQty > 0;
+
+  // The receivable for the PREVIOUS delivery — server-computed, because
+  // company_share_pct lives in finance_settings and production users cannot read
+  // it. This is NOT `production_balances`: that is unmet demand (goods owed TO
+  // the branch), which is the opposite direction from money to collect.
+  const prevBal = prevBalanceQ.data;
+  const deliveredValue = prevBal?.deliveredValue ?? 0;
+  const companySharePct = prevBal?.companySharePct ?? 0;
+  const companyShareValue = prevBal?.companyShareValue ?? 0;
+  const returnsAmount = prevBal?.returnsValue ?? 0;
+  const collectionAmount = prevBal?.amountToCollect ?? 0;
+  const previousRef = prevBal?.previous ?? null;
+  const hasPrevBalance = !!previousRef;
 
   // Stock still transfers to the branch here, same as the old direct-to-'approved'
   // outcome — only the label changes. The order becomes 'approved' once the
@@ -502,15 +506,22 @@ function PreviewBody({
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-600">
               Previous Order Balance
             </h3>
-            {hasPrevBalance ? (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-4">
-                <Field label="Previous Pending Qty" value={fmt(prevBalanceQty)} />
-                <Field label="Previous Pending Amount" value={money(prevBalanceAmount, sym)} />
-                <Field label="Returned (Prev. Day)" value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+            {prevBalanceQ.isLoading ? (
+              <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">Loading…</p>
+            ) : hasPrevBalance ? (
+              // Every step is shown, not just the total: this is collected in
+              // cash at the counter, so the figure has to be checkable by hand.
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-5">
+                <Field label="Previous Order" value={`${previousRef!.demandNumber} · ${previousRef!.date}`} />
+                <Field label="Delivered Value" value={money(deliveredValue, sym)} />
+                <Field label={`Company Share (${companySharePct}%)`} value={money(companyShareValue, sym)} />
+                <Field label="Less Returns" value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
                 <Field label="Amount to Collect" value={money(collectionAmount, sym)} strong />
               </div>
             ) : (
-              <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">No Previous Balance</p>
+              <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">
+                No previous delivery for this branch — nothing to collect.
+              </p>
             )}
 
             {returnRows.length > 0 && (
@@ -558,7 +569,8 @@ function PreviewBody({
                 copyLabel="Customer Copy"
                 logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
                 printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-                prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
+                previousRef={previousRef} deliveredValue={deliveredValue}
+                companySharePct={companySharePct} companyShareValue={companyShareValue}
                 returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
                 receiptFooter={settings?.receiptFooter ?? null}
               />
@@ -566,7 +578,8 @@ function PreviewBody({
                 copyLabel="Company Copy"
                 logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
                 printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-                prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
+                previousRef={previousRef} deliveredValue={deliveredValue}
+                companySharePct={companySharePct} companyShareValue={companyShareValue}
                 returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
                 receiptFooter={settings?.receiptFooter ?? null}
               />
@@ -684,7 +697,8 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
  */
 function PrintCopy({
   copyLabel, logo, companyName, sym, order, branch, printRows, packingPrintRows, printDate, printTime,
-  prevBalanceQty, prevBalanceAmount, returnRows, returnsQty, returnsAmount, collectionAmount, receiptFooter,
+  previousRef, deliveredValue, companySharePct, companyShareValue,
+  returnRows, returnsQty, returnsAmount, collectionAmount, receiptFooter,
 }: {
   copyLabel: string;
   logo?: string;
@@ -697,13 +711,18 @@ function PrintCopy({
   packingPrintRows: { materialName: string; qty: number }[];
   printDate: string;
   printTime: string;
-  prevBalanceQty: number;
-  prevBalanceAmount: number;
+  /** The preceding delivered order this slip bills for; null if there isn't one. */
+  previousRef: { demandNumber: string; date: string } | null;
+  /** That order's delivered goods value (approved qty × unit price). */
+  deliveredValue: number;
+  companySharePct: number;
+  /** deliveredValue × companySharePct. */
+  companyShareValue: number;
   /** Items this branch returned the previous business day, accepted into the pool. */
   returnRows: { productName: string; qty: number; amount: number }[];
   returnsQty: number;
   returnsAmount: number;
-  /** prevBalanceAmount net of returnsAmount — what the rider actually collects. */
+  /** companyShareValue less returnsAmount — what the rider actually collects. */
   collectionAmount: number;
   receiptFooter: string | null;
 }) {
@@ -713,7 +732,7 @@ function PrintCopy({
   const packingItems = packingPrintRows.filter((p) => p.qty > 0);
   const totalQty = items.reduce((a, r) => a + r.approved, 0);
   const grandTotal = items.reduce((a, r) => a + r.amount, 0);
-  const hasPrevBalance = prevBalanceQty > 0;
+  const hasPrevBalance = !!previousRef;
   const isCompanyCopy = copyLabel === 'Company Copy';
   // A long demand splits into 2-3 side-by-side columns so it still fits one
   // page instead of a long single-column list; the Totals recap below already
@@ -766,16 +785,20 @@ function PrintCopy({
           <div className="avoid-break mt-3 rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
             {hasPrevBalance ? (
-              <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-4">
-                <MetaKV k="Previous Pending Qty" v={fmt(prevBalanceQty)} />
-                <MetaKV k="Previous Pending Amount" v={money(prevBalanceAmount, sym)} />
-                <MetaKV k="Previous Order No" v="—" />
-                <MetaKV k="Previous Business Date" v="—" />
-                <MetaKV k="Returned (Prev. Day)" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+              // Full working shown, not just the total — this is counted out in
+              // cash at the counter and has to be verifiable line by line.
+              <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px] sm:grid-cols-3">
+                <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
+                <MetaKV k="Previous Business Date" v={previousRef!.date} />
+                <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
+                <MetaKV k={`Company Share (${companySharePct}%)`} v={money(companyShareValue, sym)} />
+                <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
                 <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
               </div>
             ) : (
-              <p className="mt-1 text-[11px] font-medium text-neutral-500">No Previous Balance</p>
+              <p className="mt-1 text-[11px] font-medium text-neutral-500">
+                No previous delivery for this branch — nothing to collect.
+              </p>
             )}
           </div>
 

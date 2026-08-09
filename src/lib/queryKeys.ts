@@ -29,6 +29,7 @@ export const qk = {
   stock: (branchId?: string | null) => ['stock', branchId ?? 'me'] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
+  previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   productionOverview: () => ['productionOverview'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   productionBranchStock: () => ['productionBranchStock'] as const,
