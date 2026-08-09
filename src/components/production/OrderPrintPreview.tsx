@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances, useProducts, useBranches } from '@/lib/queries';
+import { useProductionBalances, useProducts, useBranches, useProductionReturns } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,6 +32,13 @@ function digits(raw: string): string {
 const fmt = (n: number) => n.toLocaleString();
 const money = (n: number, sym: string) => `${sym}${Math.round(n).toLocaleString()}`;
 
+/** One calendar day before a 'YYYY-MM-DD' business-date string. */
+function previousDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y!, m! - 1, d! - 1));
+  return dt.toISOString().slice(0, 10);
+}
+
 export interface OrderPrintPreviewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -47,8 +54,9 @@ export interface OrderPrintPreviewProps {
  * Production Order print preview / delivery challan. The on-screen half is the
  * review surface (approve / adjust approved quantities — amounts recalc live).
  * Printing emits TWO copies in one action — Customer Copy + Company Copy — each a
- * professional challan with prices, totals, and sign-off blocks (the Company Copy
- * also carries the cash-payment acknowledgement).
+ * professional challan with prices, totals, the previous-day return items and the
+ * net amount to collect against the previous demand (the Company Copy also carries
+ * the cash-payment acknowledgement).
  */
 export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted }: OrderPrintPreviewProps) {
   return (
@@ -97,6 +105,7 @@ function PreviewBody({
   const liveBalances = balancesQ.data ?? {};
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
+  const returnsQ = useProductionReturns(token);
 
   const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
   const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
@@ -154,6 +163,19 @@ function PreviewBody({
   const prevBalanceQty = printRows.reduce((a, r) => a + r.previousBalance, 0);
   const prevBalanceAmount = printRows.reduce((a, r) => a + r.previousBalance * r.unitPrice, 0);
 
+  // Items this branch returned the day before this demand, accepted back into the
+  // production pool. Valued at today's price — same caveat as prevBalanceAmount:
+  // no historical price is stored against either the balance or the return.
+  const prevDate = previousDate(order.date);
+  const returnRows = (returnsQ.data ?? [])
+    .filter((r) => r.branchId === order.branchId && r.status === 'accepted' && r.date === prevDate)
+    .map((r) => ({ productName: r.productName, qty: r.qty, amount: r.qty * (priceById.get(r.productId) ?? 0) }));
+  const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
+  const returnsAmount = returnRows.reduce((a, r) => a + r.amount, 0);
+  // What the shop actually owes for the carried-forward balance, net of what it
+  // already returned — the figure the rider collects against the previous demand.
+  const collectionAmount = prevBalanceAmount - returnsAmount;
+
   async function approve() {
     try {
       await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
@@ -174,21 +196,16 @@ function PreviewBody({
     }
   }
 
-  async function print() {
-    try {
-      if (order.status === 'pending') {
-        await review({ id: order.id, status: 'approved', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
-        toast.success('Order approved');
-      }
-      setEditing(false);
-      markPrinted(order.id).catch(() => {});
-      setTimeout(() => {
-        window.print();
-        onClose();
-      }, 300);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to print slip');
-    }
+  // Print only prints — it no longer approves a pending demand as a side effect.
+  // Approval is a deliberate action via the Approve button; Print previews/prints
+  // whatever is currently on screen (requested quantities while still pending).
+  function print() {
+    setEditing(false);
+    markPrinted(order.id).catch(() => {});
+    setTimeout(() => {
+      window.print();
+      onClose();
+    }, 300);
   }
 
   const logo = settings?.logoUrl ?? undefined;
@@ -386,6 +403,7 @@ function PreviewBody({
             logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
             printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
             prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
+            returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
             receiptFooter={settings?.receiptFooter ?? null}
           />
           <PrintCopy
@@ -393,6 +411,7 @@ function PreviewBody({
             logo={logo} companyName={companyName} sym={sym} order={order} branch={branch}
             printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
             prevBalanceQty={prevBalanceQty} prevBalanceAmount={prevBalanceAmount}
+            returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
             receiptFooter={settings?.receiptFooter ?? null}
           />
         </div>
@@ -483,7 +502,8 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
  * product table lists approved products only, with derived amounts and grand total.
  */
 function PrintCopy({
-  copyLabel, logo, companyName, sym, order, branch, printRows, packingPrintRows, printDate, printTime, prevBalanceQty, prevBalanceAmount, receiptFooter,
+  copyLabel, logo, companyName, sym, order, branch, printRows, packingPrintRows, printDate, printTime,
+  prevBalanceQty, prevBalanceAmount, returnRows, returnsQty, returnsAmount, collectionAmount, receiptFooter,
 }: {
   copyLabel: string;
   logo?: string;
@@ -498,6 +518,12 @@ function PrintCopy({
   printTime: string;
   prevBalanceQty: number;
   prevBalanceAmount: number;
+  /** Items this branch returned the previous business day, accepted into the pool. */
+  returnRows: { productName: string; qty: number; amount: number }[];
+  returnsQty: number;
+  returnsAmount: number;
+  /** prevBalanceAmount net of returnsAmount — what the rider actually collects. */
+  collectionAmount: number;
   receiptFooter: string | null;
 }) {
   const items = printRows.filter((r) => r.approved > 0);
@@ -550,11 +576,46 @@ function PrintCopy({
             <MetaKV k="Previous Pending Amount" v={money(prevBalanceAmount, sym)} />
             <MetaKV k="Previous Order No" v="—" />
             <MetaKV k="Previous Business Date" v="—" />
+            <MetaKV k="Returned (Prev. Day)" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+            <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
           </div>
         ) : (
           <p className="mt-1 text-[11px] font-medium text-neutral-500">No Previous Balance</p>
         )}
       </div>
+
+      {/* Return items — accepted the previous business day. Rendered only when the
+          branch actually returned something, so an ordinary slip is unchanged. */}
+      {returnRows.length > 0 && (
+        <div className="avoid-break mt-3">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Return Items (Previous Day)</p>
+          <table className="mt-1 w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="border-y border-neutral-400 text-left">
+                <th className="py-1 pr-1 font-semibold">Product</th>
+                <th className="px-1 py-1 text-right font-semibold">Qty</th>
+                <th className="py-1 pl-1 text-right font-semibold">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {returnRows.map((r) => (
+                <tr key={r.productName} className="border-b border-neutral-200">
+                  <td className="py-1 pr-1 font-medium">{r.productName}</td>
+                  <td className="px-1 py-1 text-right tabular-nums">{fmt(r.qty)}</td>
+                  <td className="py-1 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-neutral-400 font-bold">
+                <td className="pt-1.5">Total</td>
+                <td className="px-1 pt-1.5 text-right tabular-nums">{fmt(returnsQty)}</td>
+                <td className="pt-1.5 pl-1 text-right tabular-nums">{money(returnsAmount, sym)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       {/* Approved products */}
       <table className="mt-3 w-full border-collapse text-[11px]">
@@ -636,24 +697,6 @@ function PrintCopy({
           <FillField label="Payment Status" />
           <FillField label="Received By (Rider)" />
           <FillField label="Signature" />
-        </div>
-      </div>
-
-      {/* Sign-off: shop (left) + rider (right) */}
-      <div className="mt-4 grid grid-cols-2 gap-6">
-        <div className="avoid-break">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-700">Collected By (Shop)</p>
-          <FillField label="Shop Name" value={order.branchName} />
-          <FillField label="Representative" />
-          <FillField label="Signature" />
-          <FillField label="Date" />
-        </div>
-        <div className="avoid-break">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-700">Delivered By (Rider)</p>
-          <FillField label="Rider Name" />
-          <FillField label="Mobile" />
-          <FillField label="Signature" />
-          <FillField label="Date" />
         </div>
       </div>
 
