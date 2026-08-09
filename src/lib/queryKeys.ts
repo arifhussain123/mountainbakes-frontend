@@ -69,8 +69,14 @@ export const qk = {
   financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
   financeEmployees: (includeInactive?: boolean) =>
     ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,
+  financeSalaryRevisions: (employeeId: string) => ['finance', 'salaryRevisions', employeeId] as const,
   financePartnerExpenses: (filters: Record<string, unknown>) =>
     ['finance', 'partnerExpenses', filters] as const,
+  financePartners: (includeInactive?: boolean) =>
+    ['finance', 'partners', { includeInactive: includeInactive ?? false }] as const,
+  financePartnerShareSummary: (from?: string, to?: string) =>
+    ['finance', 'partnerShareSummary', { from: from ?? null, to: to ?? null }] as const,
+  financeBranchShare: (filters: Record<string, unknown>) => ['finance', 'branchShare', filters] as const,
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,

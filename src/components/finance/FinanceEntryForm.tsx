@@ -75,6 +75,15 @@ export function FinanceEntryForm({
   const paymentMethod = form.watch('paymentMethod');
   const branchId = form.watch('branchId');
 
+  // Expense entries are only ever booked against Production or Other — never a
+  // retail branch, and never company-wide. Income keeps the full branch list
+  // (plus company-wide) untouched.
+  const EXPENSE_BRANCH_NAMES = ['production', 'other'];
+  const branches =
+    headType === 'expense'
+      ? (branchesQ.data ?? []).filter((b) => EXPENSE_BRANCH_NAMES.includes(b.name.trim().toLowerCase()))
+      : (branchesQ.data ?? []);
+
   async function save(data: CreateFinanceTransactionInput, asDraft: boolean) {
     try {
       if (entry) {
@@ -117,6 +126,7 @@ export function FinanceEntryForm({
               onClick={() => {
                 setHeadType(t);
                 form.setValue('ledgerHeadId', '');
+                form.setValue('branchId', null);
               }}
               className={cn(
                 'rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-colors disabled:opacity-50',
@@ -223,11 +233,11 @@ export function FinanceEntryForm({
           onValueChange={(v) => form.setValue('branchId', v === '__none__' ? null : ((v as string) ?? null))}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Company-wide" />
+            <SelectValue placeholder={headType === 'expense' ? 'Select a branch' : 'Company-wide'} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">Company-wide</SelectItem>
-            {(branchesQ.data ?? []).map((b) => (
+            {headType !== 'expense' && <SelectItem value="__none__">Company-wide</SelectItem>}
+            {branches.map((b) => (
               <SelectItem key={b.id} value={b.id}>
                 {b.name}
               </SelectItem>

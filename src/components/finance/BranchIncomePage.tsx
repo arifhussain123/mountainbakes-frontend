@@ -21,7 +21,7 @@ import {
 import { DataTable } from '@/components/shared/DataTable';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect, RejectDialog } from './finance-actions';
-import { ArrowDownToLine, BadgeCheck, Check, Info, X } from 'lucide-react';
+import { ArrowDownToLine, BadgeCheck, Check, Eye, Info, X } from 'lucide-react';
 
 /**
  * Branch Income — the pending list the brief's workflow ends at.
@@ -56,6 +56,7 @@ export function BranchIncomePage() {
   const [importing, setImporting] = useState(false);
   const [approving, setApproving] = useState<FinanceIncomeApproval | null>(null);
   const [rejecting, setRejecting] = useState<FinanceIncomeApproval | null>(null);
+  const [viewing, setViewing] = useState<FinanceIncomeApproval | null>(null);
 
   const branchesQ = useBranches(token ?? '');
   const { data: settings } = useFinanceSettings();
@@ -73,6 +74,13 @@ export function BranchIncomePage() {
   const pendingTotal = rows
     .filter((r) => r.status === 'pending_verification' || r.status === 'pending_approval')
     .reduce((sum, r) => sum + r.totalAmount, 0);
+
+  // A branch that collected nothing has nothing to approve or split — it only
+  // clutters the table with an all-zero row. Called out above it instead, so
+  // it's still visible (a branch with zero collection every day is worth
+  // noticing) without taking a table row.
+  const zeroRows = rows.filter((r) => r.totalAmount === 0);
+  const tableRows = rows.filter((r) => r.totalAmount !== 0);
 
   async function verify(approval: FinanceIncomeApproval) {
     try {
@@ -104,32 +112,10 @@ export function BranchIncomePage() {
       cell: (i) => <Money value={i.getValue()} blankZero className="text-muted-foreground" />,
     }),
     col.accessor('netAmount', { header: 'Net', cell: (i) => <Money value={i.getValue()} /> }),
-    col.accessor('companyShare', {
-      header: 'Company Share',
-      cell: (i) => (
-        <span className="whitespace-nowrap">
-          <Money value={i.getValue()} className="font-medium" />
-          <span className="ml-1 text-xs text-muted-foreground">{i.row.original.companySharePct}%</span>
-        </span>
-      ),
-    }),
-    col.accessor('branchShare', {
-      header: 'Branch Share',
-      cell: (i) => (
-        <span className="whitespace-nowrap">
-          <Money value={i.getValue()} />
-          <span className="ml-1 text-xs text-muted-foreground">{i.row.original.branchSharePct}%</span>
-        </span>
-      ),
-    }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
       cell: (i) => <StatusBadge status={i.getValue()} />,
-    }),
-    col.accessor('approvedByName', {
-      header: 'Approved By',
-      cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() ?? '—'}</span>,
     }),
     col.display({
       id: 'actions',
@@ -138,6 +124,9 @@ export function BranchIncomePage() {
         const row = i.row.original;
         return (
           <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(row)}>
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
             {row.status === 'pending_verification' && canVerify && (
               <Button variant="outline" size="sm" disabled={verifyMut.isPending} onClick={() => void verify(row)}>
                 <BadgeCheck className="h-3.5 w-3.5" />
@@ -201,12 +190,20 @@ export function BranchIncomePage() {
                   : 'Admin verification is off — imported income goes straight to Finance.'}
               </p>
             </div>
-            {pendingTotal > 0 && (
-              <div className="flex-shrink-0 text-right">
-                <p className="text-xs text-muted-foreground">Awaiting a decision</p>
-                <Money value={pendingTotal} className="text-lg font-bold" />
-              </div>
-            )}
+            <div className="flex flex-shrink-0 items-center gap-6">
+              {pendingTotal > 0 && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Awaiting a decision</p>
+                  <Money value={pendingTotal} className="text-lg font-bold" />
+                </div>
+              )}
+              {zeroRows.length > 0 && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Zero Collection</p>
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{zeroRows.length}</p>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -244,7 +241,7 @@ export function BranchIncomePage() {
 
       <DataTable
         columns={columns}
-        data={rows}
+        data={tableRows}
         loading={isLoading}
         searchPlaceholder="Search by branch or reference…"
       />
@@ -263,6 +260,74 @@ export function BranchIncomePage() {
           label={`${rejecting.branchName} · ${rejecting.businessDate}`}
         />
       )}
+
+      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
+        <DialogContent className="md:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{viewing?.branchName}</DialogTitle>
+          </DialogHeader>
+          {viewing && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <StatusBadge status={viewing.status} />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Business Date</p>
+                  <p className="font-medium">{viewing.businessDate}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Reference</p>
+                  <p className="font-mono font-medium">{viewing.referenceNo}</p>
+                </div>
+              </div>
+
+              <dl className="space-y-1.5">
+                <SplitRow label="Cash" value={viewing.cashAmount} />
+                <SplitRow label="Easypaisa" value={viewing.easypaisaAmount} />
+                <SplitRow label="Foodpanda" value={viewing.foodpandaAmount} />
+                <SplitRow label="Bank" value={viewing.bankAmount} />
+                <SplitRow label="Other" value={viewing.otherAmount} />
+                <div className="flex items-baseline justify-between border-t pt-1.5 font-semibold">
+                  <dt>Total collected</dt>
+                  <dd>
+                    <Money value={viewing.totalAmount} />
+                  </dd>
+                </div>
+                <SplitRow label="Branch expenses" value={viewing.branchExpenses} />
+                <div className="flex items-baseline justify-between font-medium">
+                  <dt>Net</dt>
+                  <dd>
+                    <Money value={viewing.netAmount} />
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground">Verified By</p>
+                  <p className="font-medium">{viewing.verifiedByName ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Approved By</p>
+                  <p className="font-medium">{viewing.approvedByName ?? '—'}</p>
+                </div>
+                {viewing.status === 'rejected' && viewing.rejectionReason && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Rejection Reason</p>
+                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.rejectionReason}</p>
+                  </div>
+                )}
+              </div>
+
+              <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
+                Close
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -284,7 +349,13 @@ function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
   const [date, setDate] = useState(today);
   const [branchId, setBranchId] = useState('');
   const [refresh, setRefresh] = useState(false);
-  const mut = useFinanceMutation<{ imported: number; refreshed: number; skipped: number }>();
+  // `skipped` is a list of { branchName, reason }, not a count — see
+  // ImportResult in the server's finance-income.service.ts.
+  const mut = useFinanceMutation<{
+    imported: number;
+    refreshed: number;
+    skipped: { branchName: string; reason: string }[];
+  }>();
 
   async function submit() {
     try {
@@ -299,7 +370,7 @@ function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
       const parts = [
         `${result.imported} imported`,
         result.refreshed > 0 ? `${result.refreshed} refreshed` : null,
-        result.skipped > 0 ? `${result.skipped} skipped` : null,
+        result.skipped.length > 0 ? `${result.skipped.length} skipped` : null,
       ].filter(Boolean);
       toast.success(parts.join(' · '));
       onOpenChange(false);
@@ -364,7 +435,7 @@ function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
   );
 }
 
-/** Approving posts three vouchers. The dialog shows all three before it happens. */
+/** Approving posts three vouchers (collection, company share, branch share) — the dialog shows the collection breakdown before it happens. */
 function ApproveIncomeDialog({
   approval,
   onClose,
@@ -424,20 +495,6 @@ function ApproveIncomeDialog({
                 </dd>
               </div>
             </dl>
-
-            <div className="space-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
-              <p className="text-xs font-medium uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
-                Will post as
-              </p>
-              <div className="flex items-baseline justify-between">
-                <span>Company share ({approval.companySharePct}%)</span>
-                <Money value={approval.companyShare} className="font-semibold" />
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span>Branch share ({approval.branchSharePct}%)</span>
-                <Money value={approval.branchShare} className="font-semibold" />
-              </div>
-            </div>
           </div>
         )}
 

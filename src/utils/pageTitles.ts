@@ -66,7 +66,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.FINANCE_INCOME]: 'Branch Income Approvals',
   [ROUTES.FINANCE_ENTRIES]: 'Income & Expense Entries',
   [ROUTES.FINANCE_SALARIES]: 'Salary Ledger',
-  [ROUTES.FINANCE_PARTNER_EXPENSES]: 'Partner Expenses',
+  [ROUTES.FINANCE_PARTNER_EXPENSES]: 'Company Transaction Details',
   [ROUTES.FINANCE_HEADS]: 'Ledger Heads',
   [ROUTES.FINANCE_CLOSING]: 'Daily Closing',
   [ROUTES.FINANCE_REPORTS]: 'Finance Reports',

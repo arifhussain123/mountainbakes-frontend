@@ -7,11 +7,13 @@ import {
   businessDateStr,
   CreateEmployeeSchema,
   CreateSalaryPaymentSchema,
+  CreateSalaryRevisionSchema,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   FINANCE_PAYMENT_METHODS,
   type CreateEmployeeInput,
   type CreateSalaryPaymentInput,
+  type CreateSalaryRevisionInput,
   type FinanceEmployee,
   type SalaryPayment,
 } from '@mb/shared';
@@ -306,7 +308,9 @@ export function EmployeeForm({
       await mut.mutateAsync({
         path: employee ? `/api/finance/payroll/employees/${employee.id}` : '/api/finance/payroll/employees',
         method: employee ? 'PUT' : 'POST',
-        body: data,
+        // Editing never carries baseSalary — a raise needs a reason and an
+        // effective date, which only the separate Revise Salary flow collects.
+        body: employee ? { ...data, baseSalary: undefined } : data,
       });
       toast.success(employee ? 'Employee updated' : 'Employee added');
       onSuccess?.();
@@ -339,18 +343,28 @@ export function EmployeeForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label>Base salary</Label>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0.00"
-            {...form.register('baseSalary', { valueAsNumber: true })}
-          />
-          {errors.baseSalary && <p className="text-xs text-destructive">{errors.baseSalary.message}</p>}
-        </div>
+        {employee ? (
+          <div className="space-y-1">
+            <Label>Current salary</Label>
+            <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3">
+              <Money value={employee.baseSalary} className="text-sm font-medium" />
+            </div>
+            <p className="text-xs text-muted-foreground">Use Revise Salary to change this.</p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <Label>Base salary</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              placeholder="0.00"
+              {...form.register('baseSalary', { valueAsNumber: true })}
+            />
+            {errors.baseSalary && <p className="text-xs text-destructive">{errors.baseSalary.message}</p>}
+          </div>
+        )}
         <div className="space-y-1">
           <Label>Joined on</Label>
           <Input type="date" {...form.register('joinedOn')} />
@@ -384,6 +398,88 @@ export function EmployeeForm({
 
       <Button type="submit" size="lg" className="w-full" disabled={mut.isPending}>
         {mut.isPending ? 'Saving…' : employee ? 'Save changes' : 'Add employee'}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Salary revision
+// ---------------------------------------------------------------------------
+
+/**
+ * Records a base-salary change with a reason and an effective date — the
+ * only way baseSalary can change once an employee exists. Today-or-earlier
+ * applies immediately; a future date is simply recorded now and resolved on
+ * read once it arrives. Either way, payslips already created are untouched:
+ * they snapshot their own gross salary and never re-read the employee master.
+ */
+export function SalaryRevisionForm({ employee, onSuccess }: { employee: FinanceEmployee; onSuccess?: () => void }) {
+  const mut = useFinanceMutation();
+
+  const form = useForm<CreateSalaryRevisionInput>({
+    resolver: zodResolver(CreateSalaryRevisionSchema),
+    defaultValues: {
+      newSalary: employee.baseSalary,
+      reason: '',
+      effectiveFrom: businessDateStr(),
+    },
+  });
+
+  async function save(data: CreateSalaryRevisionInput) {
+    try {
+      await mut.mutateAsync({
+        path: `/api/finance/payroll/employees/${employee.id}/salary-revisions`,
+        body: data,
+      });
+      toast.success(
+        data.effectiveFrom <= businessDateStr() ? 'Salary updated' : `Salary change scheduled for ${data.effectiveFrom}`,
+      );
+      onSuccess?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not record this salary change');
+    }
+  }
+
+  const errors = form.formState.errors;
+
+  return (
+    <form onSubmit={form.handleSubmit(save)} className="space-y-4">
+      <div className="rounded-lg border bg-muted/40 p-3">
+        <p className="text-xs text-muted-foreground">Current salary</p>
+        <Money value={employee.baseSalary} className="text-lg font-bold" />
+      </div>
+
+      <div className="space-y-1">
+        <Label>New salary</Label>
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          inputMode="decimal"
+          placeholder="0.00"
+          {...form.register('newSalary', { valueAsNumber: true })}
+        />
+        {errors.newSalary && <p className="text-xs text-destructive">{errors.newSalary.message}</p>}
+      </div>
+
+      <div className="space-y-1">
+        <Label>Effective from</Label>
+        <Input type="date" {...form.register('effectiveFrom')} />
+        <p className="text-xs text-muted-foreground">
+          Today or an earlier date applies right away. A future date is recorded now and takes effect on its own —
+          payslips already created are never affected.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <Label>Reason</Label>
+        <Textarea rows={2} placeholder="e.g. Annual increment" {...form.register('reason')} />
+        {errors.reason && <p className="text-xs text-destructive">{errors.reason.message}</p>}
+      </div>
+
+      <Button type="submit" size="lg" className="w-full" disabled={mut.isPending}>
+        {mut.isPending ? 'Saving…' : 'Save salary change'}
       </Button>
     </form>
   );

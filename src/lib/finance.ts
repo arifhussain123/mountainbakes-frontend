@@ -5,18 +5,22 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
+  BranchSharePayment,
   FinanceAuditLog,
   FinanceDashboard,
   FinanceDayClosing,
   FinanceEmployee,
   FinanceIncomeApproval,
+  FinancePartner,
   FinanceReport,
   FinanceSettings,
   FinanceTransaction,
   LedgerHead,
   LedgerPage,
   PartnerExpense,
+  PartnerShareSummary,
   SalaryPayment,
+  SalaryRevision,
 } from '@mb/shared';
 
 /**
@@ -202,6 +206,21 @@ export function useFinanceEmployees(includeInactive = false) {
   });
 }
 
+/** Only fetches once a dialog actually opens with an employee — no point warming this on every payroll page load. */
+export function useSalaryRevisions(employeeId: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeSalaryRevisions(employeeId ?? ''),
+    enabled: Boolean(token) && Boolean(employeeId),
+    queryFn: async () =>
+      (await apiCall<{ revisions: SalaryRevision[] }>(
+        `/api/finance/payroll/employees/${employeeId}/salary-revisions`,
+        {},
+        token,
+      )).revisions,
+  });
+}
+
 export function usePartnerExpenses(filters: Record<string, unknown>) {
   const token = useToken();
   return useQuery({
@@ -213,6 +232,49 @@ export function usePartnerExpenses(filters: Record<string, unknown>) {
         {},
         token,
       )).expenses,
+  });
+}
+
+export function useFinancePartners(includeInactive = false) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePartners(includeInactive),
+    enabled: Boolean(token),
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      (await apiCall<{ partners: FinancePartner[] }>(
+        `/api/finance/partner-expenses/partners${toQuery({ includeInactive: includeInactive || undefined })}`,
+        {},
+        token,
+      )).partners,
+  });
+}
+
+export function usePartnerShareSummary(from?: string, to?: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePartnerShareSummary(from, to),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ summary: PartnerShareSummary }>(
+        `/api/finance/partner-expenses/share-summary${toQuery({ from, to })}`,
+        {},
+        token,
+      )).summary,
+  });
+}
+
+export function useBranchSharePayments(filters: Record<string, unknown>) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeBranchShare(filters),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ payments: BranchSharePayment[] }>(
+        `/api/finance/branch-share${toQuery(filters)}`,
+        {},
+        token,
+      )).payments,
   });
 }
 

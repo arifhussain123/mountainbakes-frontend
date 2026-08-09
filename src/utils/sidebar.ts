@@ -76,7 +76,7 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Branch Income',    href: ROUTES.FINANCE_INCOME,            icon: Landmark },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
   { label: 'Salaries',         href: ROUTES.FINANCE_SALARIES,          icon: UserCog },
-  { label: 'Partner Expenses', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: HandCoins },
+  { label: 'Company Transaction Details', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: HandCoins },
   { label: 'Ledger Heads',     href: ROUTES.FINANCE_HEADS,             icon: ListTree },
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
