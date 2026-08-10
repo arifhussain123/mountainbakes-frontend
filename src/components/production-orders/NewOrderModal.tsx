@@ -400,8 +400,10 @@ export function NewOrderModal({
                             <p className="font-semibold tabular-nums">{stockText(p.id)}</p>
                           </div>
                         </div>
-                        <div className="mt-3">
-                          <label className="mb-1 block text-xs text-muted-foreground">Qty</label>
+                        {/* Label and box sit on one row — the box beside the "Qty"
+                            text rather than under it, keeping each card short. */}
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <label className="text-xs text-muted-foreground">Qty</label>
                           {/* inputMode="numeric" + pattern="[0-9]*" makes phones open the
                               digits-only keypad (no letters). text-base (16px) stops iOS
                               from zooming the page in on focus. */}
@@ -475,7 +477,10 @@ export function NewOrderModal({
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1">
+                        {/* Mobile: label left, box pushed right — same row shape as the
+                            product cards. From sm the label is hidden and the field
+                            rejoins the horizontal row. */}
+                        <div className="flex items-center justify-between gap-3 sm:block sm:space-y-1">
                           <label className="text-xs text-muted-foreground sm:hidden">Quantity</label>
                           <Input
                             type="text"
@@ -487,7 +492,7 @@ export function NewOrderModal({
                             value={row.qty}
                             onChange={(e) => setPackingQty(i, e.target.value)}
                             onFocus={(e) => e.currentTarget.select()}
-                            className="h-11 w-full text-center text-base tabular-nums sm:h-10 sm:w-28"
+                            className="h-11 w-28 text-center text-base tabular-nums sm:h-10"
                           />
                         </div>
                         <Button
