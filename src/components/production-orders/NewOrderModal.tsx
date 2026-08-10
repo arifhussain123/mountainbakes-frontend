@@ -384,42 +384,40 @@ export function NewOrderModal({
                   </Table>
                 </div>
 
-                {/* Mobile cards */}
-                <div className="space-y-3 md:hidden">
+                {/* Mobile cards — name, current stock and the qty box all on one
+                    row, so a card is a single line and the whole list scrolls in a
+                    fraction of the screens it used to. The name truncates (full text
+                    in `title`) rather than wrapping, which is what keeps the row to
+                    one line; the category sub-line has no room and is dropped. */}
+                <div className="space-y-2 md:hidden">
                   {orderedProducts.map((p) => {
                     const active = parseQty(qtyById[p.id]) > 0;
                     return (
-                      <div key={p.id} className={`rounded-lg border bg-card p-3 ${active ? 'ring-2 ring-primary/40' : ''}`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-medium leading-tight">{p.name}</p>
-                            {p.categoryName && <p className="text-xs text-muted-foreground">{p.categoryName}</p>}
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Stock</p>
-                            <p className="font-semibold tabular-nums">{stockText(p.id)}</p>
-                          </div>
-                        </div>
-                        {/* Label and box sit on one row — the box beside the "Qty"
-                            text rather than under it, keeping each card short. */}
-                        <div className="mt-3 flex items-center justify-between gap-3">
-                          <label className="text-xs text-muted-foreground">Qty</label>
-                          {/* inputMode="numeric" + pattern="[0-9]*" makes phones open the
-                              digits-only keypad (no letters). text-base (16px) stops iOS
-                              from zooming the page in on focus. */}
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            autoComplete="off"
-                            placeholder="0"
-                            aria-label={`Quantity for ${p.name}`}
-                            value={qtyById[p.id] ?? ''}
-                            onChange={(e) => setQty(p.id, e.target.value)}
-                            onFocus={(e) => e.currentTarget.select()}
-                            className="h-11 w-28 text-center text-base tabular-nums"
-                          />
-                        </div>
+                      <div
+                        key={p.id}
+                        className={`flex items-center gap-2 rounded-lg border bg-card p-2 ${active ? 'ring-2 ring-primary/40' : ''}`}
+                      >
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium leading-tight" title={p.name}>
+                          {p.name}
+                        </p>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          Stock <span className="font-semibold tabular-nums text-foreground">{stockText(p.id)}</span>
+                        </span>
+                        {/* inputMode="numeric" + pattern="[0-9]*" makes phones open the
+                            digits-only keypad (no letters). text-base (16px) stops iOS
+                            from zooming the page in on focus. */}
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
+                          placeholder="0"
+                          aria-label={`Quantity for ${p.name}`}
+                          value={qtyById[p.id] ?? ''}
+                          onChange={(e) => setQty(p.id, e.target.value)}
+                          onFocus={(e) => e.currentTarget.select()}
+                          className="h-11 w-20 shrink-0 px-1 text-center text-base tabular-nums"
+                        />
                       </div>
                     );
                   })}
