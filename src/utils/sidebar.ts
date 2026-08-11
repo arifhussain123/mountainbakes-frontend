@@ -81,6 +81,7 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
   { label: 'Audit Trail',      href: ROUTES.FINANCE_AUDIT,             icon: ShieldCheck },
+  { label: 'Help Desk',        href: ROUTES.FINANCE_HELP_DESK,         icon: Headset },
   { label: 'Settings',         href: ROUTES.FINANCE_SETTINGS,          icon: Settings },
 ];
 

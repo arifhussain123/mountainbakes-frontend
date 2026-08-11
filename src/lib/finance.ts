@@ -14,6 +14,8 @@ import type {
   FinancePartner,
   FinanceReport,
   FinanceSettings,
+  FinanceTicket,
+  FinanceTicketReferenceLookup,
   FinanceTransaction,
   LedgerHead,
   LedgerPage,
@@ -377,6 +379,52 @@ export function useFinanceMutation<TResult = unknown, TBody = unknown>() {
       void queryClient.invalidateQueries({ queryKey: FINANCE_QK_ROOT });
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Help Desk
+// ---------------------------------------------------------------------------
+
+/**
+ * The query queue.
+ *
+ * What comes back is decided by the API from the JWT role, not by anything sent
+ * from here: a Finance Admin or Auditor gets the whole queue, everyone else gets
+ * only the queries they raised. The filters below narrow that set; they cannot
+ * widen it.
+ */
+export function useFinanceTickets(filters: Record<string, unknown> = {}) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTickets(filters),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ tickets: FinanceTicket[] }>(
+        `/api/finance/tickets${toQuery(filters)}`,
+        {},
+        token,
+      )).tickets,
+  });
+}
+
+/**
+ * Resolve a reference number to the finance record it names.
+ *
+ * A plain function rather than a hook: the lookup fires when someone presses
+ * Find, and a `useQuery` with `enabled` would either fire on every keystroke or
+ * need a second piece of state to hold "have they pressed it yet". The result is
+ * short-lived — it is shown once and then embedded in the ticket as a snapshot.
+ */
+export async function lookupFinanceReference(
+  referenceNo: string,
+  token: string | null | undefined,
+): Promise<FinanceTicketReferenceLookup> {
+  const { reference } = await apiCall<{ reference: FinanceTicketReferenceLookup }>(
+    `/api/finance/tickets/lookup?ref=${encodeURIComponent(referenceNo.trim())}`,
+    {},
+    token ?? undefined,
+  );
+  return reference;
 }
 
 // ---------------------------------------------------------------------------

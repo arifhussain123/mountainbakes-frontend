@@ -71,6 +71,7 @@ export const ROUTES = {
   FINANCE_CLOSING: '/finance-closing',
   FINANCE_REPORTS: '/finance-reports',
   FINANCE_AUDIT: '/finance-audit',
+  FINANCE_HELP_DESK: '/finance-help-desk',
   FINANCE_SETTINGS: '/finance-settings',
 } as const;
 

@@ -70,6 +70,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.FINANCE_CLOSING]: 'Daily Closing',
   [ROUTES.FINANCE_REPORTS]: 'Finance Reports',
   [ROUTES.FINANCE_AUDIT]: 'Audit Trail',
+  [ROUTES.FINANCE_HELP_DESK]: 'Finance Help Desk',
   [ROUTES.FINANCE_SETTINGS]: 'Finance Settings',
 };
 

@@ -82,6 +82,11 @@ export const qk = {
   financeSettings: () => ['finance', 'settings'] as const,
   financeAudit: (filters: Record<string, unknown>) => ['finance', 'audit', filters] as const,
   financeReport: (query: Record<string, unknown>) => ['finance', 'report', query] as const,
+  // Help Desk. The queue key carries its filters for the same reason the ledger's
+  // does; the lookup is keyed by the reference number so typing a second one does
+  // not serve the first one's figures under the new heading.
+  financeTickets: (filters: Record<string, unknown>) => ['finance', 'tickets', filters] as const,
+  financeTicketLookup: (referenceNo: string) => ['finance', 'ticketLookup', referenceNo] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */
