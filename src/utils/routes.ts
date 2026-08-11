@@ -33,7 +33,6 @@ export const ROUTES = {
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',
-  PRODUCTION_EXPENSES: '/production-expenses',
   PRODUCTION_REPORTS: '/production-reports',
   PRODUCTION_HELP_DESK: '/production-help-desk',
   PRODUCTION_EVENTS: '/production-events',

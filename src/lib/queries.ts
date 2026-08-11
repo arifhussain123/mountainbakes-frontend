@@ -27,7 +27,6 @@ import type {
   Category,
   Product,
   ProductionBalanceDoc,
-  ProductionExpense,
   ProductionReturn,
   ProductionStockRow,
   PriceHistoryDoc,
@@ -524,14 +523,6 @@ export interface BranchStockMatrix {
   rows: { productId: string; productName: string; byBranch: Record<string, number> }[];
 }
 
-export interface ProductionExpenseSummary {
-  today: number;
-  weekly: number;
-  monthly: number;
-  yearly: number;
-  byCategory: { category: string; total: number }[];
-  trend: { date: string; amount: number }[];
-}
 
 /** Dashboard cards + chart series. Always revalidates (live demand). */
 export function useProductionOverview(token: string) {
@@ -697,35 +688,6 @@ export function useReviewReturn(token: string) {
       qc.invalidateQueries({ queryKey: ['productionStock'] });
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
-    },
-  });
-}
-
-export function useProductionExpenses(token: string) {
-  return useQuery({
-    queryKey: qk.productionExpenses(),
-    queryFn: () => apiCall<{ expenses: ProductionExpense[] }>('/api/production-expenses', {}, token),
-    select: (r) => r.expenses ?? [],
-    enabled: !!token,
-  });
-}
-
-export function useProductionExpenseSummary(token: string) {
-  return useQuery({
-    queryKey: qk.productionExpenseSummary(),
-    queryFn: () => apiCall<ProductionExpenseSummary>('/api/production-expenses/summary', {}, token),
-    enabled: !!token,
-  });
-}
-
-export function useCreateProductionExpense(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      apiCall('/api/production-expenses', { method: 'POST', body: JSON.stringify(body) }, token),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['productionExpenses'] });
-      qc.invalidateQueries({ queryKey: ['productionExpenseSummary'] });
     },
   });
 }

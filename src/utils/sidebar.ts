@@ -102,7 +102,6 @@ export const PRODUCTION_NAV: NavItem[] = [
   { label: 'Production Stock',  href: ROUTES.PRODUCTION_STOCK,         icon: Factory },
   { label: 'Branch Stock',      href: ROUTES.PRODUCTION_BRANCH_STOCK,  icon: Boxes },
   { label: 'Returns',           href: ROUTES.PRODUCTION_RETURNS,       icon: Undo2 },
-  { label: 'Expenses',          href: ROUTES.PRODUCTION_EXPENSES,      icon: Receipt },
   { label: 'Events',            href: ROUTES.PRODUCTION_EVENTS,        icon: CalendarDays },
   { label: 'Reports',           href: ROUTES.PRODUCTION_REPORTS,       icon: BarChart3 },
   { label: 'Help Desk',         href: ROUTES.PRODUCTION_HELP_DESK,     icon: Headset },

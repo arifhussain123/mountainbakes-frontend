@@ -27,7 +27,6 @@ const REPORTS = [
   { value: 'returned-products', label: 'Returned Products' },
   { value: 'production-stock', label: 'Production Stock' },
   { value: 'branch-stock', label: 'Branch Stock' },
-  { value: 'production-expenses', label: 'Production Expenses' },
 ];
 
 const PERIODS = [

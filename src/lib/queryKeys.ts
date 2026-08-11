@@ -34,8 +34,6 @@ export const qk = {
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   productionBranchStock: () => ['productionBranchStock'] as const,
   productionReturns: () => ['productionReturns'] as const,
-  productionExpenses: () => ['productionExpenses'] as const,
-  productionExpenseSummary: () => ['productionExpenseSummary'] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.

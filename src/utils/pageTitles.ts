@@ -52,7 +52,6 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRODUCTION_STOCK]: 'Production Stock',
   [ROUTES.PRODUCTION_BRANCH_STOCK]: 'Branch Stock',
   [ROUTES.PRODUCTION_RETURNS]: 'Product Returns',
-  [ROUTES.PRODUCTION_EXPENSES]: 'Production Expenses',
   [ROUTES.PRODUCTION_REPORTS]: 'Production Reports',
   [ROUTES.PRODUCTION_HELP_DESK]: 'Help Desk',
   [ROUTES.PRODUCTION_EVENTS]: 'Special Events',

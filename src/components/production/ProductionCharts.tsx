@@ -116,38 +116,3 @@ export function TopRequestedChart({ data, loading }: { data: { productName: stri
     </ChartShell>
   );
 }
-
-/** Expense-by-category donut-style bars + trend line (used by the Expenses page). */
-export function ExpenseCategoryChart({ data, loading, currency }: { data: { category: string; total: number }[]; loading?: boolean; currency: string }) {
-  const chartData = data.slice(0, 10).map((c) => ({ name: c.category, total: c.total }));
-  return (
-    <ChartShell title="Expenses by Category" loading={loading} empty={chartData.length === 0}>
-      <BarChart layout="vertical" data={chartData} margin={{ top: 5, right: 16, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-        <XAxis type="number" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-        <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [`${currency}${v.toLocaleString()}`, 'Total']} />
-        <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-          {chartData.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ChartShell>
-  );
-}
-
-export function ExpenseTrendChart({ data, loading, currency }: { data: { date: string; amount: number }[]; loading?: boolean; currency: string }) {
-  const chartData = data.map((d) => ({ label: d.date.slice(5), amount: d.amount }));
-  return (
-    <ChartShell title="Expense Trend" loading={loading} empty={chartData.length === 0}>
-      <LineChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [`${currency}${v.toLocaleString()}`, 'Amount']} />
-        <Line type="monotone" dataKey="amount" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-      </LineChart>
-    </ChartShell>
-  );
-}
