@@ -217,48 +217,65 @@ export function StockCheckModal({
               const diff = counted === null ? null : counted - row.balance;
 
               return (
+                // Name, balance and count box all on one line — same shape as the
+                // demand entry list, and for the same reason: a counter walking the
+                // shelf wants the whole product list in as few screens as possible.
+                // The name truncates (full text in `title`) rather than wrapping,
+                // which is what holds the row to one line, and the stock code goes
+                // with it — there is no room, and nobody counts by code.
                 <div
                   key={row.productId}
                   className={cn(
-                    'rounded-lg border bg-card p-3 sm:flex sm:items-center sm:gap-3 sm:border-0 sm:bg-transparent sm:p-1',
-                    diff !== null && diff > 0 && 'sm:bg-emerald-500/5',
-                    diff !== null && diff < 0 && 'sm:bg-red-500/5',
+                    'flex items-center gap-2 rounded-lg border bg-card p-2 sm:gap-3 sm:border-0 sm:bg-transparent sm:p-1',
+                    // A ring rather than a background tint: it reads on the mobile
+                    // card and the desktop row alike, and does not fight `bg-card`.
+                    diff !== null && diff > 0 && 'ring-2 ring-emerald-500/40',
+                    diff !== null && diff < 0 && 'ring-2 ring-red-500/40',
                   )}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{row.productName}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{row.stockCode}</p>
+                    <p className="truncate text-sm font-medium leading-tight sm:text-base" title={row.productName}>
+                      {row.productName}
+                    </p>
+                    <p className="hidden font-mono text-xs text-muted-foreground sm:block">{row.stockCode}</p>
                   </div>
 
-                  <div className="mt-2 flex items-center gap-3 sm:mt-0 sm:contents">
-                    <div className="flex-1 sm:w-24 sm:flex-none">
-                      <span className="mb-1 block text-xs text-muted-foreground sm:hidden">Balance</span>
-                      <div
-                        className={cn(
-                          'flex h-9 items-center justify-center rounded-md border bg-muted/40 text-sm font-semibold tabular-nums',
-                          row.balance < 0 && 'text-destructive',
-                        )}
-                      >
-                        {row.balance}
-                      </div>
-                    </div>
-
-                    <div className="flex-1 sm:w-28 sm:flex-none">
-                      <span className="mb-1 block text-xs text-muted-foreground sm:hidden">Stock Check</span>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        autoComplete="off"
-                        placeholder="—"
-                        aria-label={`Counted quantity for ${row.productName}`}
-                        value={raw}
-                        onChange={(e) => setCount(row.productId, e.target.value)}
-                        onFocus={(e) => e.currentTarget.select()}
-                        className="h-9 text-center text-base tabular-nums sm:text-sm"
-                      />
-                    </div>
+                  {/* Balance reads as inline text on mobile and as the bordered box
+                      on desktop, where it has a column header to line up under. */}
+                  <span className="shrink-0 text-[11px] text-muted-foreground sm:hidden">
+                    Bal{' '}
+                    <span
+                      className={cn(
+                        'font-semibold tabular-nums text-foreground',
+                        row.balance < 0 && 'text-destructive',
+                      )}
+                    >
+                      {row.balance}
+                    </span>
+                  </span>
+                  <div
+                    className={cn(
+                      'hidden h-9 w-24 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-sm font-semibold tabular-nums sm:flex',
+                      row.balance < 0 && 'text-destructive',
+                    )}
+                  >
+                    {row.balance}
                   </div>
+
+                  {/* inputMode="numeric" + pattern="[0-9]*" opens the digits-only
+                      keypad; text-base (16px) stops iOS zooming the page on focus. */}
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    placeholder="—"
+                    aria-label={`Counted quantity for ${row.productName}`}
+                    value={raw}
+                    onChange={(e) => setCount(row.productId, e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="h-10 w-20 shrink-0 text-center text-base tabular-nums sm:h-9 sm:w-28 sm:text-sm"
+                  />
                 </div>
               );
             })}
