@@ -23,6 +23,7 @@ import {
   Wallet,
   Landmark,
   UserCog,
+  UserPlus,
   HandCoins,
   ListTree,
   CalendarCheck,
@@ -54,6 +55,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
   { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
+  { label: 'Account Requests', href: ROUTES.USER_REQUESTS,   icon: UserPlus },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
 ];
 
@@ -92,8 +94,33 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Stock',         href: ROUTES.BRANCH_STOCK,       icon: Boxes },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
+  { label: 'Branch Closing',href: ROUTES.BRANCH_CLOSING,     icon: CalendarCheck },
+  { label: 'Shift Accounts',href: ROUTES.BRANCH_USERS,       icon: UserCog },
   { label: 'Reports',       href: ROUTES.BRANCH_REPORTS,     icon: BarChart3 },
   { label: 'Help Desk',     href: ROUTES.BRANCH_HELP_DESK,   icon: Headset },
+];
+
+/**
+ * A shift account's nav — the six screens the brief names, and nothing else.
+ *
+ * It is a strict SUBSET of BRANCH_NAV pointing at the very same routes, because
+ * a branch_user carries the same `branchId` as the manager who requested it and
+ * so reads the same branch's data. What is missing is the point: no Dashboard,
+ * no Reports, no Help Desk, and no way back into this queue to request further
+ * accounts.
+ *
+ * This list is presentation only. RouteGuard enforces the same subset on
+ * navigation, and the API re-decides every request against the JWT — a shift
+ * account that types /branch-reports gets bounced by the guard and would get a
+ * 403 from the reports router regardless.
+ */
+export const BRANCH_USER_NAV: NavItem[] = [
+  { label: 'New Orders',     href: ROUTES.BRANCH_NEW_ORDERS, icon: ClipboardList },
+  { label: 'Sales',          href: ROUTES.BRANCH_SALES,      icon: ShoppingCart },
+  { label: 'Stock',          href: ROUTES.BRANCH_STOCK,      icon: Boxes },
+  { label: 'Shop Expenses',  href: ROUTES.BRANCH_EXPENSES,   icon: Receipt },
+  { label: 'Events',         href: ROUTES.BRANCH_EVENTS,     icon: CalendarDays },
+  { label: 'Branch Closing', href: ROUTES.BRANCH_CLOSING,    icon: CalendarCheck },
 ];
 
 export const PRODUCTION_NAV: NavItem[] = [
@@ -111,6 +138,7 @@ export const PRODUCTION_NAV: NavItem[] = [
 export const NAV_MAP: Record<UserRole, NavItem[]> = {
   super_admin:     ADMIN_NAV,
   branch_manager:  BRANCH_NAV,
+  branch_user:     BRANCH_USER_NAV,
   production_user: PRODUCTION_NAV,
   finance_admin:   FINANCE_NAV,
   finance_manager: FINANCE_NAV,
@@ -148,6 +176,14 @@ export const PRIMARY_NAV: Record<UserRole, string[]> = {
     ROUTES.BRANCH_SALES,
     ROUTES.BRANCH_NEW_ORDERS,
     ROUTES.BRANCH_STOCK,
+  ],
+  // No dashboard to lead with, so the four are the shift's actual work: take an
+  // order, ring a sale, check the shelf, close the day.
+  branch_user: [
+    ROUTES.BRANCH_SALES,
+    ROUTES.BRANCH_NEW_ORDERS,
+    ROUTES.BRANCH_STOCK,
+    ROUTES.BRANCH_CLOSING,
   ],
   production_user: [
     ROUTES.PRODUCTION_DASHBOARD,

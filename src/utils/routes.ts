@@ -50,6 +50,14 @@ export const ROUTES = {
   BRANCH_REPORTS: '/branch-reports',
   BRANCH_HELP_DESK: '/branch-help-desk',
   BRANCH_EVENTS: '/branch-events',
+  // Read-only end-of-day summary for the branch. Composed on the client from the
+  // sales / expenses / stock a branch account can already read — it is a view of
+  // the day, not the business-day *closure*, which stays admin-only.
+  BRANCH_CLOSING: '/branch-closing',
+  // Where a manager asks Admin for a shift account, and watches the outcome.
+  BRANCH_USERS: '/branch-users',
+  // The admin side of that same queue.
+  USER_REQUESTS: '/user-requests',
 
   /**
    * Finance Ledger.

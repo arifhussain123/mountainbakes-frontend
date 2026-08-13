@@ -21,9 +21,18 @@ import {
   type SaveImportInput,
   type UpdatePriceInput,
 } from '@/utils/productPrice';
+// businessDayBounds is a VALUE, not a type — Branch Closing turns a business
+// date into the UTC instants /api/orders filters created_at on.
+import { businessDayBounds } from '@mb/shared';
 import type {
+  ApproveBranchUserRequestInput,
   Branch,
   BranchProductionOrder,
+  BranchUserRequest,
+  CreateBranchUserRequestInput,
+  Expense,
+  Order,
+  RejectBranchUserRequestInput,
   Category,
   Product,
   ProductionBalanceDoc,
@@ -1014,5 +1023,125 @@ export function useRollForwardEvents(token: string) {
         token,
       ),
     onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Shift-account requests
+//
+// The manager's Shift Accounts page and the admin's Account Requests queue are
+// two views of ONE endpoint, which scopes itself from the JWT: a manager gets
+// their own branch's rows, an admin gets every branch. So one read hook serves
+// both pages, and the mutations differ only in who is allowed to call them.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchUserRequests(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.branchUserRequests(),
+    queryFn: () =>
+      apiCall<{ requests: BranchUserRequest[] }>('/api/branch-user-requests', {}, token),
+    select: (r) => r.requests ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/** Manager → Admin. The branch is taken from the JWT, so it is not sent. */
+export function useCreateBranchUserRequest(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateBranchUserRequestInput) =>
+      apiCall<{ request: BranchUserRequest }>(
+        '/api/branch-user-requests',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+    },
+  });
+}
+
+/**
+ * Admin approval — this is what actually mints the account, on the requesting
+ * manager's branch. It also invalidates the Users list, which now has a row in
+ * it that was not there a moment ago.
+ */
+export function useApproveBranchUserRequest(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: ApproveBranchUserRequestInput & { id: string }) =>
+      apiCall<{ request: BranchUserRequest; userId: string }>(
+        `/api/branch-user-requests/${id}/approve`,
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useRejectBranchUserRequest(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: RejectBranchUserRequestInput & { id: string }) =>
+      apiCall<{ request: BranchUserRequest }>(
+        `/api/branch-user-requests/${id}/reject`,
+        { method: 'POST', body: JSON.stringify({ reason }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+    },
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Branch Closing
+//
+// The end-of-day sheet is COMPOSED, not fetched: there is no closing endpoint a
+// branch account may call. /api/business-day/close is the admin's once-a-day
+// lock and /api/reports/summary is manager-and-above, so both are out of reach
+// of a shift account by design.
+//
+// What is in reach is the day's own records — orders, expenses and stock, each
+// already branch-scoped server-side from the JWT. Reading the three together
+// under one key keeps them on one business date; see qk.branchClosing.
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface BranchClosingData {
+  orders: Order[];
+  expenses: Expense[];
+  stock: StockRow[];
+}
+
+export function useBranchClosing(token: string, businessDate: string) {
+  return useQuery({
+    queryKey: qk.branchClosing(businessDate),
+    queryFn: async (): Promise<BranchClosingData> => {
+      const { fromISO, toISO } = businessDayBounds(businessDate);
+      const [orders, expenses, stock] = await Promise.all([
+        apiCall<{ orders: Order[] }>(
+          `/api/orders?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
+          {},
+          token,
+        ),
+        // The expenses endpoint always returns the last 7 business days and takes
+        // no date parameter, so the day is picked out here. A date older than
+        // that window comes back empty — the page says so rather than showing a
+        // confident zero.
+        apiCall<{ expenses: Expense[] }>('/api/expenses', {}, token),
+        apiCall<{ rows: StockRow[] }>(`/api/stock?date=${businessDate}`, {}, token),
+      ]);
+      return {
+        orders: orders.orders ?? [],
+        expenses: (expenses.expenses ?? []).filter((e) => e.date === businessDate),
+        stock: stock.rows ?? [],
+      };
+    },
+    enabled: !!token && !!businessDate,
+    staleTime: LIVE_STALE_TIME,
   });
 }

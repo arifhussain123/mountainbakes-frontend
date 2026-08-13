@@ -49,6 +49,18 @@ export const qk = {
   eventNotifications: (eventId?: string | null, status?: string | null) =>
     ['eventNotifications', eventId ?? 'all', status ?? null] as const,
 
+  // Shift-account requests (branch_manager → Admin). One key for both sides of
+  // the queue: the endpoint scopes itself from the JWT, so a manager and an
+  // admin asking for the same key are asking for different rows and never share
+  // a cache entry — the token they read with differs, and signing out clears it.
+  branchUserRequests: () => ['branchUserRequests'] as const,
+
+  // Branch Closing. One key for the whole sheet rather than three: the orders,
+  // expenses and stock behind it are read together, for one business date, and
+  // are only meaningful together — a cache that could serve one date's sales
+  // beside another's stock is a reconciliation bug waiting to be filed.
+  branchClosing: (businessDate: string) => ['branchClosing', businessDate] as const,
+
   // ── Finance Ledger ──
   // Every finance key starts with the literal 'finance' so a sign-out or a
   // settings change can drop the whole module with one
