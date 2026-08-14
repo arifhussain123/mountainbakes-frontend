@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
+  BranchShareBalance,
   BranchSharePayment,
   FinanceAuditLog,
   FinanceDashboard,
@@ -277,6 +278,28 @@ export function useBranchSharePayments(filters: Record<string, unknown>) {
         {},
         token,
       )).payments,
+  });
+}
+
+/**
+ * What each branch is still owed — recorded share minus what has been paid out,
+ * plus the split the branch is currently on.
+ *
+ * Read by the payout form so the amount is not keyed from memory. Since each
+ * branch may sit on its own percentage, "what do we owe Gilgit" stopped being a
+ * number anyone can hold in their head.
+ */
+export function useBranchShareBalances(branchId?: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeBranchShareBalances(branchId),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ balances: BranchShareBalance[] }>(
+        `/api/finance/branch-share/balances${toQuery({ branchId })}`,
+        {},
+        token,
+      )).balances,
   });
 }
 

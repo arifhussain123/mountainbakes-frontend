@@ -88,6 +88,9 @@ export const qk = {
   financePartnerShareSummary: (from?: string, to?: string) =>
     ['finance', 'partnerShareSummary', { from: from ?? null, to: to ?? null }] as const,
   financeBranchShare: (filters: Record<string, unknown>) => ['finance', 'branchShare', filters] as const,
+  /** What each branch is still owed, derived from the ledger rather than stored. */
+  financeBranchShareBalances: (branchId?: string) =>
+    ['finance', 'branchShareBalances', branchId ?? 'all'] as const,
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,

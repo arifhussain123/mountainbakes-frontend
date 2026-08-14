@@ -126,6 +126,23 @@ export function BranchIncomePage() {
       cell: (i) => <Money value={i.getValue()} blankZero className="text-muted-foreground" />,
     }),
     col.accessor('netAmount', { header: 'Net', cell: (i) => <Money value={i.getValue()} /> }),
+    col.display({
+      id: 'split',
+      header: 'Split',
+      // The row's OWN snapshot, not today's setting — an approved day must not
+      // restate itself, and a branch on its own rate never matched the global
+      // one to begin with. Flagged when it differs from the current default so
+      // an approver can see at a glance which rows are on special terms.
+      cell: (i) => {
+        const row = i.row.original;
+        const differs = settings ? row.companySharePct !== settings.companySharePct : false;
+        return (
+          <span className={differs ? 'whitespace-nowrap font-medium' : 'whitespace-nowrap text-muted-foreground'}>
+            {row.companySharePct}% / {row.branchSharePct}%
+          </span>
+        );
+      },
+    }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
@@ -193,12 +210,14 @@ export function BranchIncomePage() {
             <div className="flex items-start gap-2.5">
               <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
               <p className="text-muted-foreground">
-                Current split: <span className="font-medium text-foreground">{settings.companySharePct}% company</span>{' '}
-                / <span className="font-medium text-foreground">{settings.branchSharePct}% branch</span>, struck on{' '}
+                Default split:{' '}
+                <span className="font-medium text-foreground">{settings.companySharePct}% company</span> /{' '}
+                <span className="font-medium text-foreground">{settings.branchSharePct}% branch</span>, struck on{' '}
                 <span className="font-medium text-foreground">
                   {settings.shareBasis === 'gross' ? 'gross collection' : 'net of branch expenses'}
                 </span>
-                .{' '}
+                . A branch put on its own rate in Admin → Branches uses that instead — the Split column shows what
+                each row was actually struck at.{' '}
                 {settings.requireAdminVerification
                   ? 'Admin verification is required before Finance can approve.'
                   : 'Admin verification is off — imported income goes straight to Finance.'}

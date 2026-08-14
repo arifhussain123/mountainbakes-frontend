@@ -23,7 +23,7 @@ import {
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
-import { useFinanceMutation, useFinancePartners } from '@/lib/finance';
+import { useBranchShareBalances, useFinanceMutation, useFinancePartners } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
+import { Money } from './finance-ui';
 import { cn } from '@/lib/utils';
 
 /**
@@ -290,6 +291,12 @@ export function BranchShareForm({
   const account = form.watch('account');
   const paymentMethod = form.watch('paymentMethod');
 
+  // The selected branch's split and what it is still owed. Fetched for all
+  // branches in one call rather than per selection, so switching the dropdown
+  // does not fire a request each time — there are a handful of branches.
+  const balancesQ = useBranchShareBalances();
+  const balance = (balancesQ.data ?? []).find((b) => b.branchId === branchId);
+
   async function save(data: CreateBranchSharePaymentInput, asDraft: boolean) {
     try {
       if (payment) {
@@ -340,6 +347,43 @@ export function BranchShareForm({
         </Select>
         {errors.branchId && <p className="text-xs text-destructive">{errors.branchId.message}</p>}
       </div>
+
+      {/* What this branch is on and what it is still owed.
+          Shown only once a branch is picked, and only when creating: editing an
+          existing payout against a live balance that has already moved on would
+          invite "correcting" a figure that was right when it was raised. */}
+      {!payment && branchId && balance && (
+        <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Still owed to this branch</span>
+            <span className="text-xs text-muted-foreground">
+              on {balance.companySharePct}% / {balance.branchSharePct}%
+              {balance.isOverride ? ' (branch rate)' : ' (global default)'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+            <Money value={balance.outstanding} className="text-lg font-bold" />
+            <span className="text-xs text-muted-foreground">
+              recorded <Money value={balance.recorded} /> − paid <Money value={balance.paidOut} />
+            </span>
+          </div>
+          {balance.outstanding > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => form.setValue('amount', balance.outstanding, { shouldValidate: true })}
+            >
+              Pay the full balance
+            </Button>
+          )}
+          {balance.outstanding < 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              This branch has been paid more than has been recorded as its share.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
