@@ -43,6 +43,9 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.BRANCH_CUSTOMERS]: 'Customers',
   [ROUTES.BRANCH_REPORTS]: 'Branch Reports',
   [ROUTES.BRANCH_HELP_DESK]: 'Help Desk',
+  [ROUTES.BRANCH_CLOSING]: 'Branch Closing',
+  [ROUTES.BRANCH_USERS]: 'Shift Accounts',
+  [ROUTES.USER_REQUESTS]: 'Account Requests',
   [ROUTES.BRANCH_EVENTS]: 'Special Events',
 
   // Production
@@ -52,7 +55,6 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRODUCTION_STOCK]: 'Production Stock',
   [ROUTES.PRODUCTION_BRANCH_STOCK]: 'Branch Stock',
   [ROUTES.PRODUCTION_RETURNS]: 'Product Returns',
-  [ROUTES.PRODUCTION_EXPENSES]: 'Production Expenses',
   [ROUTES.PRODUCTION_REPORTS]: 'Production Reports',
   [ROUTES.PRODUCTION_HELP_DESK]: 'Help Desk',
   [ROUTES.PRODUCTION_EVENTS]: 'Special Events',
@@ -66,11 +68,12 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.FINANCE_INCOME]: 'Branch Income Approvals',
   [ROUTES.FINANCE_ENTRIES]: 'Income & Expense Entries',
   [ROUTES.FINANCE_SALARIES]: 'Salary Ledger',
-  [ROUTES.FINANCE_PARTNER_EXPENSES]: 'Partner Expenses',
+  [ROUTES.FINANCE_PARTNER_EXPENSES]: 'Company Transaction Details',
   [ROUTES.FINANCE_HEADS]: 'Ledger Heads',
   [ROUTES.FINANCE_CLOSING]: 'Daily Closing',
   [ROUTES.FINANCE_REPORTS]: 'Finance Reports',
   [ROUTES.FINANCE_AUDIT]: 'Audit Trail',
+  [ROUTES.FINANCE_HELP_DESK]: 'Finance Help Desk',
   [ROUTES.FINANCE_SETTINGS]: 'Finance Settings',
 };
 

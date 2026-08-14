@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import dynamic from 'next/dynamic';
 import { RecentOrdersTable } from './RecentOrdersTable';
 import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
-import { ShoppingCart, DollarSign, Receipt, TrendingUp } from 'lucide-react';
+import { ShoppingCart, DollarSign, Receipt, TrendingUp, Percent } from 'lucide-react';
 
 const PERIODS = [
   { value: 'daily', label: 'Today', budgetKey: 'daily' as const },
@@ -66,11 +66,14 @@ export function BranchDashboard() {
       <GeofenceStatusCard />
 
       {/* Primary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard title="Sales" value={loading ? '…' : money(summary?.totalRevenue ?? 0)} icon={DollarSign} color="green" loading={loading} />
         <StatCard title="Expenses" value={loading ? '…' : money(summary?.totalExpenses ?? 0)} icon={Receipt} color="red" loading={loading} />
         <StatCard title="Net Amount" value={loading ? '…' : money(summary?.totalProfit ?? 0)} icon={TrendingUp} color="orange" loading={loading} />
         <StatCard title="Orders" value={loading ? '…' : (summary?.totalOrders ?? 0).toLocaleString()} icon={ShoppingCart} color="blue" loading={loading} />
+        {/* Discount already deducted from Sales — shown so a branch can see what it
+            gave away, without it being double-counted anywhere. */}
+        <StatCard title="Discounts" value={loading ? '…' : money(summary?.totalDiscount ?? 0)} icon={Percent} color="brown" loading={loading} />
       </div>
 
       {/* Budget vs actual + Orders breakdown */}

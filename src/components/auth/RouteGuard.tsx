@@ -6,6 +6,8 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { canAccessFinance, getRoleHome } from '@/utils/roleHome';
 import { normalizePath } from '@/utils/routes';
+import { BRANCH_USER_NAV } from '@/utils/sidebar';
+import { isBranchRole } from '@mb/shared';
 
 /**
  * Client-side replacement for the old `src/proxy.ts` middleware.
@@ -48,6 +50,11 @@ const PUBLIC_PATHS = [
 const ADMIN_PREFIXES = [
   '/dashboard',
   '/users',
+  // The admin side of the shift-account queue. Listed separately because
+  // '/user-requests' does NOT start with '/users' — without this line the
+  // allowlist would leave it open to every role, which is exactly the failure
+  // mode the file header warns about.
+  '/user-requests',
   '/branches',
   '/products',
   '/categories',
@@ -105,7 +112,19 @@ function redirectFor(
 
   const wrongRole =
     (ADMIN_PREFIXES.some((p) => pathname.startsWith(p)) && user.role !== 'super_admin') ||
-    (pathname.startsWith('/branch-') && user.role !== 'branch_manager') ||
+    // '/branch-' admits both shop-floor roles, but NOT equally: a branch_user
+    // reaches only the six screens in BRANCH_USER_NAV. The prefix alone would
+    // hand it the manager's Dashboard, Reports, Help Desk and the shift-account
+    // queue, so the subset is checked explicitly here.
+    //
+    // Deriving the allowlist from the nav rather than repeating the six paths is
+    // deliberate: the two cannot drift into disagreeing, and adding a screen to
+    // a shift account is one edit, not two. The guard is still only navigation
+    // UX — every one of those endpoints re-decides against the JWT server-side.
+    (pathname.startsWith('/branch-') && !isBranchRole(user.role)) ||
+    (pathname.startsWith('/branch-') &&
+      user.role === 'branch_user' &&
+      !BRANCH_USER_NAV.some((item) => pathname.startsWith(item.href))) ||
     (pathname.startsWith('/production-') && user.role !== 'production_user') ||
     // Finance Ledger. The only prefix rule that admits MORE than one role: all
     // four finance roles plus Super Admin, who the brief grants report access.

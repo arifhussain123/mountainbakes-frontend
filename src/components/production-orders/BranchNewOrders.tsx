@@ -2,25 +2,18 @@
 
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useProducts, useProductionOrders, useStock, useSubmitProductionOrder } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/shared/DataTable';
-import { Plus } from 'lucide-react';
+import { Eye, Plus } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
+import { BranchOrderDetail } from './BranchOrderDetail';
 
-type HistoryRow = { date: string; time: string; productName: string; qty: number; approvedQty?: number; pendingBalance?: number; status: string };
-const col = createColumnHelper<HistoryRow>();
-
-/**
- * Packing lines from the same demands. No `pendingBalance` field: products carry
- * unmet demand forward through production_balances, packing materials deliberately
- * do not — an unfilled shopper request simply ends, and the branch re-requests.
- */
-type PackingHistoryRow = { date: string; time: string; materialName: string; qty: number; approvedQty?: number; status: string };
-const packCol = createColumnHelper<PackingHistoryRow>();
+const col = createColumnHelper<BranchProductionOrder>();
 
 /** Branch model has no `code` field — derive a short code from the branch name initials. */
 function deriveBranchCode(name: string | null, branchId: string | null): string {
@@ -31,10 +24,13 @@ function deriveBranchCode(name: string | null, branchId: string | null): string 
   return (branchId ?? '').slice(0, 6).toUpperCase() || '—';
 }
 
-// Production-order statuses are pending/approved/rejected today; the extra labels are
-// supported so the pill still renders correctly if the lifecycle is extended later.
+// Production-order statuses are pending/awaiting_verification/approved/rejected
+// today; the extra labels are supported so the pill still renders correctly if
+// the lifecycle is extended later.
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+  awaiting_verification: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  verified: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   preparing: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   ready: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
@@ -42,10 +38,15 @@ const STATUS_STYLES: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  awaiting_verification: 'Awaiting Verification',
+  verified: 'Verified — Awaiting Approval',
+};
+
 function StatusPill({ status }: { status: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[status] ?? 'bg-muted text-muted-foreground'}`}>
-      {status}
+      {STATUS_LABELS[status] ?? status}
     </span>
   );
 }
@@ -61,6 +62,8 @@ export function BranchNewOrders() {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [openedOnce, setOpenedOnce] = useState(false);
+  const [viewOrder, setViewOrder] = useState<BranchProductionOrder | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
 
   // Products/stock load lazily on first open; both are cached across reopens.
   const productsQ = useProducts(token, { isActive: true, enabled: openedOnce });
@@ -75,91 +78,44 @@ export function BranchNewOrders() {
     qc.invalidateQueries({ queryKey: ['stock'] });
   }
 
-  const historyRows = useMemo<HistoryRow[]>(
-    () =>
-      (ordersQ.data ?? []).flatMap((o) =>
-        o.items.map((it) => ({
-          date: o.date,
-          time: o.time,
-          productName: it.productName,
-          qty: it.qty,
-          approvedQty: it.approvedQty,
-          pendingBalance: it.remainingBalanceQty,
-          status: o.status,
-        })),
-      ),
-    [ordersQ.data],
-  );
+  const historyRows = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
 
-  // `?? []` matters: packingItems is optional and absent on every demand created
-  // before the packing-material module existed.
-  const packingHistoryRows = useMemo<PackingHistoryRow[]>(
-    () =>
-      (ordersQ.data ?? []).flatMap((o) =>
-        (o.packingItems ?? []).map((it) => ({
-          date: o.date,
-          time: o.time,
-          materialName: it.materialName,
-          qty: it.qty,
-          approvedQty: it.approvedQty,
-          status: o.status,
-        })),
-      ),
-    [ordersQ.data],
-  );
+  function openView(order: BranchProductionOrder) {
+    setViewOrder(order);
+    setViewOpen(true);
+  }
 
+  // One row per demand submission (matching how Production sees the same list) —
+  // items are shown via the View dialog, not flattened into extra rows. Once a
+  // demand is approved its items are locked (Production owns quantity edits), so
+  // there is nothing here for the branch to change, only to inspect.
   const columns = [
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    col.accessor('qty', {
-      header: 'Qty',
-      cell: (i) => {
-        const approved = i.row.original.approvedQty;
-        const requested = i.getValue();
-        return (
-          <span className="font-semibold tabular-nums">
-            {requested}
-            {approved != null && approved !== requested && (
-              <span className="ml-1 font-medium text-emerald-600">→ {approved}</span>
-            )}
-          </span>
-        );
-      },
+    col.accessor('demandNumber', {
+      header: 'Demand #',
+      meta: { mobile: 'title' },
+      cell: (i) => <span className="font-mono font-medium">{i.getValue()}</span>,
     }),
-    col.accessor('pendingBalance', {
-      header: 'Pending',
+    col.display({
+      id: 'items',
+      header: 'Items',
       cell: (i) => {
-        const v = i.getValue();
-        return v != null && v > 0
-          ? <span className="font-semibold tabular-nums text-amber-600">{v}</span>
-          : <span className="text-muted-foreground">—</span>;
+        const o = i.row.original;
+        const count = o.items.length + (o.packingItems?.length ?? 0);
+        return <span className="text-sm text-muted-foreground">{count} item{count === 1 ? '' : 's'}</span>;
       },
     }),
     col.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
-  ];
-
-  // Same shape as the product columns minus Pending — see PackingHistoryRow.
-  const packingColumns = [
-    packCol.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    packCol.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    packCol.accessor('materialName', { header: 'Packing Material', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    packCol.accessor('qty', {
-      header: 'Qty',
-      cell: (i) => {
-        const approved = i.row.original.approvedQty;
-        const requested = i.getValue();
-        return (
-          <span className="font-semibold tabular-nums">
-            {requested}
-            {approved != null && approved !== requested && (
-              <span className="ml-1 font-medium text-emerald-600">→ {approved}</span>
-            )}
-          </span>
-        );
-      },
+    col.display({
+      id: 'actions',
+      header: '',
+      cell: (i) => (
+        <Button variant="ghost" size="sm" onClick={() => openView(i.row.original)}>
+          <Eye className="mr-1.5 h-4 w-4" /> View
+        </Button>
+      ),
     }),
-    packCol.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
   ];
 
   const branchCode = deriveBranchCode(user?.branchName ?? null, user?.branchId ?? null);
@@ -179,27 +135,12 @@ export function BranchNewOrders() {
         </div>
       </div>
 
-      {/* Order history */}
-      {packingHistoryRows.length > 0 && (
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Products</h4>
-      )}
+      {/* Order history — one row per demand submission; open View for line items. */}
       <DataTable columns={columns} data={historyRows} loading={ordersQ.isLoading} searchPlaceholder="Search order history…" />
 
-      {/* Packing materials requested with these demands. Rendered only when there
-          are any, so a branch that never requests them sees the page unchanged.
-          Shows every request with its status; the approved quantity appears as
-          "30 → 25" once Production reviews it, matching the product rows above. */}
-      {packingHistoryRows.length > 0 && (
-        <>
-          <h4 className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packing Materials</h4>
-          <DataTable
-            columns={packingColumns}
-            data={packingHistoryRows}
-            loading={ordersQ.isLoading}
-            searchPlaceholder="Search packing materials…"
-          />
-        </>
-      )}
+      {/* Demand detail — read-only, except an 'awaiting_verification' order,
+          where the branch checks physical items and verifies. */}
+      <BranchOrderDetail open={viewOpen} onOpenChange={setViewOpen} order={viewOrder} token={token} />
 
       {/* Order-entry popup */}
       <NewOrderModal

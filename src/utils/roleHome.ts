@@ -34,6 +34,11 @@ export function getRoleHome(role: string): string {
       return ROUTES.DASHBOARD;
     case 'branch_manager':
       return ROUTES.BRANCH_DASHBOARD;
+    // A shift account has no dashboard — the branch dashboard is the manager's
+    // overview screen and is not one of the six things a branch_user may open.
+    // So it lands on the first item of its own nav instead.
+    case 'branch_user':
+      return ROUTES.BRANCH_NEW_ORDERS;
     case 'production_user':
       return ROUTES.PRODUCTION_DASHBOARD;
     // All four finance roles share one home. They differ in what they may DO on

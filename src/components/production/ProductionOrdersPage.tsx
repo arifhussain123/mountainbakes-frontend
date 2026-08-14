@@ -5,7 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
-import { useProductionOrders, useReviewProductionOrder, useMarkPrinted } from '@/lib/queries';import { Button } from '@/components/ui/button';
+import { useProductionOrders, useReviewProductionOrder, useMarkPrinted, useFinalApproveProductionOrder } from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { Eye } from 'lucide-react';
@@ -13,8 +13,15 @@ import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+  awaiting_verification: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  verified: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  awaiting_verification: 'Awaiting Verification',
+  verified: 'Verified — Awaiting Approval',
 };
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
@@ -26,12 +33,18 @@ export function ProductionOrdersPage() {
   const ordersQ = useProductionOrders(token);
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);
+  const finalApproveMut = useFinalApproveProductionOrder(token);
 
-  const [selected, setSelected] = useState<BranchProductionOrder | null>(null);
+  // Track just the id and derive `selected` from the live query, rather than
+  // storing a snapshot — that way, once Production adds a product to an open
+  // order, the invalidated refetch is reflected immediately instead of leaving
+  // the dialog showing what View originally captured.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
   const pending = useMemo(() => orders.filter((o) => o.status === 'pending'), [orders]);
+  const selected = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
 
   // Demand summary pivots: Product × Branch and Packing Material × Branch, both
   // from pending demands only.
@@ -76,7 +89,7 @@ export function ProductionOrdersPage() {
   }, [pending]);
 
   function openOrder(order: BranchProductionOrder) {
-    setSelected(order);
+    setSelectedId(order.id);
     setModalOpen(true);
   }
 
@@ -86,13 +99,12 @@ export function ProductionOrdersPage() {
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
-    col.accessor('createdByName', { header: 'Requested By', cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
       cell: (i) => (
         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[i.getValue()] ?? 'bg-muted text-muted-foreground'}`}>
-          {i.getValue()}
+          {STATUS_LABELS[i.getValue()] ?? i.getValue()}
         </span>
       ),
     }),
@@ -251,6 +263,8 @@ export function ProductionOrdersPage() {
         review={reviewMut.mutateAsync}
         reviewing={reviewMut.isPending}
         markPrinted={printedMut.mutateAsync}
+        finalApprove={finalApproveMut.mutateAsync}
+        finalApproving={finalApproveMut.isPending}
       />
     </div>
   );

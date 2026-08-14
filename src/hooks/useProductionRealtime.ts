@@ -41,7 +41,7 @@ export function useProductionRealtime() {
     for (const n of fresh) {
       if (n.type === 'production_demand') {
         refreshOrders = true;
-        toast('🔔 New Production Demand Received', { description: n.message });
+        toast('🔔 New Production Demand Received');
         try {
           navigator.vibrate?.(200);
         } catch {
@@ -53,9 +53,7 @@ export function useProductionRealtime() {
         refreshOrders = true;
         refreshStock = true;
         const approved = n.title.includes('Approved');
-        toast(approved ? '✅ Production Order Approved' : '❌ Production Order Rejected', {
-          description: n.message,
-        });
+        toast(approved ? '✅ Production Order Approved' : '❌ Production Order Rejected');
       } else if (n.type === 'production_return') {
         refreshStock = true;
       }

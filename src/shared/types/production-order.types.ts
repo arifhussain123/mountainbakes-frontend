@@ -1,9 +1,25 @@
 import type { BranchProductionOrderPackingItem } from './packing-material.types';
+import type { Attachment } from './attachment.types';
 
 // Named "Branch…" to avoid colliding with production.types.ts `ProductionOrder`
 // (the production-queue view of a customer order). This is the branch's daily
 // production *request* (collection `production_orders`).
-export type BranchProductionOrderStatus = 'pending' | 'approved' | 'rejected';
+//
+// Four live states, in order:
+//   pending               branch submitted, Production has not reviewed
+//   awaiting_verification Production sent it out — NO stock has moved yet
+//   verified              branch counted what arrived — STOCK MOVES AT THIS STEP
+//   approved              Production's final sign-off; status only
+//
+// Stock deliberately moves on verification rather than on Production's step, so
+// the pool is debited once for the quantity actually counted and branch stock
+// never claims goods nobody has confirmed receiving.
+export type BranchProductionOrderStatus =
+  | 'pending'
+  | 'awaiting_verification'
+  | 'verified'
+  | 'approved'
+  | 'rejected';
 
 export interface BranchProductionOrderItem {
   productId: string;
@@ -53,6 +69,21 @@ export interface BranchProductionOrder {
   /** Set once the production slip has been printed. Idempotent — printing never mutates stock. */
   printed?: boolean;
   printedAt?: string | null; // ISO UTC
+  /** Set when the branch verifies a demand that's 'awaiting_verification', moving it to 'approved'. */
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  /**
+   * Photos the branch captured when RAISING the demand — what it is asking for
+   * and why. Absent on demands created before this feature; read as `?? []`.
+   */
+  demandPhotos?: Attachment[];
+  /**
+   * Photos the branch captured when VERIFYING what arrived. This is the set
+   * Production reviews before final approval, and the only independent record of
+   * a delivery that has already been unpacked. Empty until verification.
+   */
+  verificationPhotos?: Attachment[];
 }
 
 /**

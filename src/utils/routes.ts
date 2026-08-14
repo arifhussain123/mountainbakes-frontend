@@ -33,7 +33,6 @@ export const ROUTES = {
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',
-  PRODUCTION_EXPENSES: '/production-expenses',
   PRODUCTION_REPORTS: '/production-reports',
   PRODUCTION_HELP_DESK: '/production-help-desk',
   PRODUCTION_EVENTS: '/production-events',
@@ -51,6 +50,14 @@ export const ROUTES = {
   BRANCH_REPORTS: '/branch-reports',
   BRANCH_HELP_DESK: '/branch-help-desk',
   BRANCH_EVENTS: '/branch-events',
+  // Read-only end-of-day summary for the branch. Composed on the client from the
+  // sales / expenses / stock a branch account can already read — it is a view of
+  // the day, not the business-day *closure*, which stays admin-only.
+  BRANCH_CLOSING: '/branch-closing',
+  // Where a manager asks Admin for a shift account, and watches the outcome.
+  BRANCH_USERS: '/branch-users',
+  // The admin side of that same queue.
+  USER_REQUESTS: '/user-requests',
 
   /**
    * Finance Ledger.
@@ -72,6 +79,7 @@ export const ROUTES = {
   FINANCE_CLOSING: '/finance-closing',
   FINANCE_REPORTS: '/finance-reports',
   FINANCE_AUDIT: '/finance-audit',
+  FINANCE_HELP_DESK: '/finance-help-desk',
   FINANCE_SETTINGS: '/finance-settings',
 } as const;
 

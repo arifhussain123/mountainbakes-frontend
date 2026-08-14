@@ -7,16 +7,18 @@ import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { type StockRow, businessDateStr } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
-import { RotateCcw } from 'lucide-react';
+import { ClipboardCheck, RotateCcw } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import { ReturnItemsModal } from './ReturnItemsModal';
+import { StockCheckModal } from './StockCheckModal';
 
 const col = createColumnHelper<StockRow>();
 
 export function StockPage() {
   const { token, user } = useAuth();
   const [returnOpen, setReturnOpen] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
 
   // On TanStack Query (per the project convention) rather than a one-shot fetch,
   // so an invalidation can reach it — that is what makes the page pick up stock
@@ -54,9 +56,17 @@ export function StockPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <Button onClick={() => setReturnOpen(true)} className="order-2 sm:order-1">
-          <RotateCcw className="h-4 w-4 mr-1.5" /> Return Items
-        </Button>
+        <div className="order-2 flex flex-wrap gap-2 sm:order-1">
+          <Button onClick={() => setReturnOpen(true)}>
+            <RotateCcw className="h-4 w-4 mr-1.5" /> Return Items
+          </Button>
+          {/* Read-only counterpart to Return Items: opens the same product list
+              with a count box per row and diffs it against Balance. It writes
+              nothing, so it needs no geofence gate and no refetch on close. */}
+          <Button onClick={() => setCheckOpen(true)}>
+            <ClipboardCheck className="h-4 w-4 mr-1.5" /> Stock Check
+          </Button>
+        </div>
         <div className="order-1 sm:order-2 sm:text-right">
           <h2 className="text-lg font-semibold">Stock</h2>
           <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections</p>
@@ -71,6 +81,13 @@ export function StockPage() {
         rows={rows}
         branchName={user?.branchName ?? ''}
         onSaved={refetch}
+      />
+
+      <StockCheckModal
+        open={checkOpen}
+        onOpenChange={setCheckOpen}
+        rows={rows}
+        branchName={user?.branchName ?? ''}
       />
     </div>
   );

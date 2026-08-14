@@ -10,10 +10,12 @@ export const dynamic = 'force-static';
 /**
  * Web App Manifest — emitted at `/manifest.webmanifest`.
  *
- * Note on orientation: the brief's example manifest locked `portrait`, but
- * requirements #3 and #6 explicitly ask the app to work in BOTH portrait and
- * landscape. `any` honours that (the OS follows device rotation) instead of
- * forcing a single orientation.
+ * Note on orientation: this was `any` (both portrait and landscape) per an
+ * earlier brief. That was reversed — rotating to landscape was causing UI
+ * glitches on mobile, so the installed app is now locked to `portrait`. See
+ * `OrientationLock` (mounted in the root layout) for the runtime lock this
+ * manifest hint can't provide by itself (e.g. before install, or on browsers
+ * that ignore the manifest orientation field).
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -25,7 +27,7 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/',
     display: 'standalone',
     display_override: ['standalone', 'minimal-ui'],
-    orientation: 'any',
+    orientation: 'portrait',
     background_color: '#ffffff',
     theme_color: '#D97706',
     lang: 'en',

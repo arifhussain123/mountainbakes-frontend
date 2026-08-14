@@ -139,7 +139,6 @@ export function Topbar({ title }: { title?: string }) {
                     onClick={() => markAsRead(n.id)}
                   >
                     <p className={`text-sm ${!n.isRead ? 'font-medium' : ''}`}>{n.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{n.message}</p>
                     <p className="text-[10px] text-muted-foreground mt-1">
                       {n.createdAt ? formatDistanceToNow(new Date(n.createdAt), { addSuffix: true }) : ''}
                     </p>

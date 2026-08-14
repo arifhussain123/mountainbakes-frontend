@@ -29,12 +29,11 @@ export const qk = {
   stock: (branchId?: string | null) => ['stock', branchId ?? 'me'] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
+  previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   productionOverview: () => ['productionOverview'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   productionBranchStock: () => ['productionBranchStock'] as const,
   productionReturns: () => ['productionReturns'] as const,
-  productionExpenses: () => ['productionExpenses'] as const,
-  productionExpenseSummary: () => ['productionExpenseSummary'] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
@@ -49,6 +48,18 @@ export const qk = {
   eventProductionStatus: (eventId: string) => ['eventProductionStatus', eventId] as const,
   eventNotifications: (eventId?: string | null, status?: string | null) =>
     ['eventNotifications', eventId ?? 'all', status ?? null] as const,
+
+  // Shift-account requests (branch_manager → Admin). One key for both sides of
+  // the queue: the endpoint scopes itself from the JWT, so a manager and an
+  // admin asking for the same key are asking for different rows and never share
+  // a cache entry — the token they read with differs, and signing out clears it.
+  branchUserRequests: () => ['branchUserRequests'] as const,
+
+  // Branch Closing. One key for the whole sheet rather than three: the orders,
+  // expenses and stock behind it are read together, for one business date, and
+  // are only meaningful together — a cache that could serve one date's sales
+  // beside another's stock is a reconciliation bug waiting to be filed.
+  branchClosing: (businessDate: string) => ['branchClosing', businessDate] as const,
 
   // ── Finance Ledger ──
   // Every finance key starts with the literal 'finance' so a sign-out or a
@@ -69,14 +80,28 @@ export const qk = {
   financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
   financeEmployees: (includeInactive?: boolean) =>
     ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,
+  financeSalaryRevisions: (employeeId: string) => ['finance', 'salaryRevisions', employeeId] as const,
   financePartnerExpenses: (filters: Record<string, unknown>) =>
     ['finance', 'partnerExpenses', filters] as const,
+  financePartners: (includeInactive?: boolean) =>
+    ['finance', 'partners', { includeInactive: includeInactive ?? false }] as const,
+  financePartnerShareSummary: (from?: string, to?: string) =>
+    ['finance', 'partnerShareSummary', { from: from ?? null, to: to ?? null }] as const,
+  financeBranchShare: (filters: Record<string, unknown>) => ['finance', 'branchShare', filters] as const,
+  /** What each branch is still owed, derived from the ledger rather than stored. */
+  financeBranchShareBalances: (branchId?: string) =>
+    ['finance', 'branchShareBalances', branchId ?? 'all'] as const,
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,
   financeSettings: () => ['finance', 'settings'] as const,
   financeAudit: (filters: Record<string, unknown>) => ['finance', 'audit', filters] as const,
   financeReport: (query: Record<string, unknown>) => ['finance', 'report', query] as const,
+  // Help Desk. The queue key carries its filters for the same reason the ledger's
+  // does; the lookup is keyed by the reference number so typing a second one does
+  // not serve the first one's figures under the new heading.
+  financeTickets: (filters: Record<string, unknown>) => ['finance', 'tickets', filters] as const,
+  financeTicketLookup: (referenceNo: string) => ['finance', 'ticketLookup', referenceNo] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

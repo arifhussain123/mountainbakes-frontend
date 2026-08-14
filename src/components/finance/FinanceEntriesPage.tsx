@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   EDITABLE_DOC_STATUSES,
+  FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type FinanceTransaction,
 } from '@mb/shared';
@@ -13,10 +14,11 @@ import { useFinanceEntries, useLedgerHeads } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
 import { FinanceEntryForm } from './FinanceEntryForm';
-import { Pencil, Plus } from 'lucide-react';
+import { Eye, Pencil, Plus } from 'lucide-react';
 
 /**
  * Manual income and expense entries — everything that does not arrive from a
@@ -43,6 +45,7 @@ export function FinanceEntriesPage() {
   const [to, setTo] = useState('');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
+  const [viewing, setViewing] = useState<FinanceTransaction | null>(null);
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -87,6 +90,10 @@ export function FinanceEntriesPage() {
       header: 'Branch',
       cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() ?? 'Company-wide'}</span>,
     }),
+    col.accessor('notes', {
+      header: 'Notes',
+      cell: (i) => (i.getValue() ? <span className="text-sm text-muted-foreground">{i.getValue()}</span> : null),
+    }),
     col.accessor('amount', {
       header: 'Amount',
       cell: (i) => (
@@ -109,10 +116,6 @@ export function FinanceEntriesPage() {
       meta: { mobile: 'badge' },
       cell: (i) => <StatusBadge status={i.getValue()} />,
     }),
-    col.accessor('approvedByName', {
-      header: 'Approved By',
-      cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() ?? '—'}</span>,
-    }),
     col.display({
       id: 'actions',
       header: '',
@@ -120,6 +123,9 @@ export function FinanceEntriesPage() {
         const row = i.row.original;
         return (
           <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(row)}>
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
             {EDITABLE_DOC_STATUSES.includes(row.status) && abilities.create && (
               <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => setEditing(row)}>
                 <Pencil className="h-3.5 w-3.5" />
@@ -221,6 +227,102 @@ export function FinanceEntriesPage() {
             <DialogTitle>Edit {editing?.txnNo}</DialogTitle>
           </DialogHeader>
           {editing && <FinanceEntryForm entry={editing} onSuccess={() => setEditing(null)} />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{viewing?.txnNo}</DialogTitle>
+          </DialogHeader>
+          {viewing && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <StatusBadge status={viewing.status} />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Date</p>
+                  <p className="font-medium">{viewing.businessDate}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Type</p>
+                  <p className="font-medium capitalize">{viewing.txnType}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Ledger Head</p>
+                  <p className="font-medium">{viewing.ledgerHeadName}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Description</p>
+                  <p className="font-medium">{viewing.description}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Amount</p>
+                  <Money
+                    value={viewing.amount}
+                    className={
+                      viewing.txnType === 'income'
+                        ? 'font-semibold text-emerald-600 dark:text-emerald-400'
+                        : 'font-semibold text-red-600 dark:text-red-400'
+                    }
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Payment Method</p>
+                  <p className="font-medium">{FINANCE_PAYMENT_METHOD_LABELS[viewing.paymentMethod] ?? viewing.paymentMethod}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Account</p>
+                  <p className="font-medium">{FINANCE_ACCOUNT_LABELS[viewing.account]}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Branch</p>
+                  <p className="font-medium">{viewing.branchName ?? 'Company-wide'}</p>
+                </div>
+                {viewing.referenceNo && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Reference</p>
+                    <p className="font-medium">{viewing.referenceNo}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground">Created By</p>
+                  <p className="font-medium">{viewing.createdByName ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Approved By</p>
+                  <p className="font-medium">{viewing.approvedByName ?? '—'}</p>
+                </div>
+                {viewing.status === 'rejected' && viewing.rejectionReason && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Rejection Reason</p>
+                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.rejectionReason}</p>
+                  </div>
+                )}
+                {viewing.notes?.trim() && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Notes</p>
+                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.notes.trim()}</p>
+                  </div>
+                )}
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Photo</p>
+                  <AttachmentGallery
+                    attachments={viewing.attachments}
+                    title={`${viewing.txnNo} receipt`}
+                    emptyText="No photo — this entry predates the requirement."
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
+                Close
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

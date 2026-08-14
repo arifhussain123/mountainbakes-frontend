@@ -21,9 +21,16 @@ export type NotificationType =
   | 'production_demand' // branch submitted a new production demand → Production
   | 'production_reviewed' // Production approved/rejected a demand → branch
   | 'production_return' // a product return was recorded/accepted
+  | 'production_order_verified' // branch verified physical receipt of a demand → Production
   // Help Desk → Support Center queries (migration 25)
   | 'support_query' // a branch/production user raised a query → Admin
   | 'support_resolved' // Admin resolved/rejected or corrected the figures → raiser
+  // Finance Help Desk queries (migration 60) — a separate queue from the two above
+  | 'finance_query' // an Accountant/Finance Manager raised a query → Finance Admin
+  | 'finance_query_resolved' // Finance Admin resolved/rejected it → raiser
+  // Branch shift accounts (migration 65) — branch_manager asks, Admin decides
+  | 'branch_user_requested' // a manager forwarded a request for a shift account → Admin
+  | 'branch_user_reviewed' // Admin approved or rejected it → the requesting manager
   // Special Events (migration 42)
   | 'event_created' // a new event was published → branches + Production
   | 'event_reminder' // a scheduled countdown reminder fired → branch or Production

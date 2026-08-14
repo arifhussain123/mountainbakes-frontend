@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { businessDateStr, FINANCE_ACCOUNT_LABELS, type LedgerEntry } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
-import { useFinanceMutation, useLedger, useLedgerHeads, type LedgerFilters } from '@/lib/finance';
+import { downloadFinanceReport, useFinanceMutation, useLedger, useLedgerHeads, type LedgerFilters } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,10 +21,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
-import { BookOpen, ChevronLeft, ChevronRight, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateCcw, Search, Undo2 } from 'lucide-react';
 
 /**
  * The Daily Ledger — the cash book.
@@ -47,6 +48,89 @@ import { BookOpen, ChevronLeft, ChevronRight, RotateCcw, Search, Undo2 } from 'l
  */
 
 const PAGE_SIZE = 50;
+
+/** A row as rendered — either a real ledger entry, or two of them merged into one. */
+type DisplayEntry = LedgerEntry & { merged?: boolean };
+
+const BRANCH_INCOME_SOURCE_TYPES = new Set(['branch_income', 'company_share', 'branch_share']);
+
+/**
+ * If someone manually re-keys money as an Income & Expense entry that was
+ * ALREADY posted from a branch's daily closing — same ledger head, same
+ * amount, same date — the business gets counted twice. Fixing that at the
+ * source (blocking the duplicate at entry time) is the real fix and isn't
+ * done here; this only hides the manual duplicate from the cash book so it
+ * isn't double-visible. It does NOT remove the double-count from the
+ * totals/closing balance in the footer — both entries are still real, posted
+ * rows, so the footer's totalDebit/closingBalance still include the hidden
+ * one. This is purely "don't show it twice on screen", not an accounting fix.
+ */
+function hideDuplicateManualEntries(entries: LedgerEntry[]): LedgerEntry[] {
+  const key = (e: LedgerEntry) => `${e.ledgerHeadId}|${e.entryDate}|${e.debit || e.credit}`;
+  const branchIncomeKeys = new Set(
+    entries.filter((e) => BRANCH_INCOME_SOURCE_TYPES.has(e.sourceType)).map(key),
+  );
+  if (branchIncomeKeys.size === 0) return entries;
+
+  return entries.filter((e) => e.sourceType !== 'manual' || !branchIncomeKeys.has(key(e)));
+}
+
+/**
+ * Branch income approval posts a company-share entry and a branch-share
+ * entry as two SEPARATE, real ledger rows (same sourceId, sourceType
+ * 'company_share' / 'branch_share' — see finance-income.service.ts). This
+ * merges an adjacent pair into one display row carrying the whole amount
+ * collected, so the cash book reads as one economic event rather than a
+ * 75/25 split. Purely cosmetic: nothing about the stored entries changes,
+ * which is why a merged row cannot be adjusted (see LedgerRow/LedgerCard).
+ *
+ * Pairs are matched within THIS page's entries only — the two postings share
+ * consecutive `seq` values, so a pair split across a page boundary is not
+ * merged and simply shows as two rows, same as before this existed.
+ */
+function mergeBranchIncomePairs(entries: LedgerEntry[]): DisplayEntry[] {
+  const consumed = new Set<string>();
+  const merged: DisplayEntry[] = [];
+
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (consumed.has(e.id)) continue;
+
+    const isShareLeg = e.sourceType === 'company_share' || e.sourceType === 'branch_share';
+    const pair = isShareLeg
+      ? entries.find(
+          (o) =>
+            o.id !== e.id &&
+            !consumed.has(o.id) &&
+            o.sourceId === e.sourceId &&
+            (o.sourceType === 'company_share' || o.sourceType === 'branch_share') &&
+            o.sourceType !== e.sourceType,
+        )
+      : undefined;
+
+    if (pair) {
+      consumed.add(e.id);
+      consumed.add(pair.id);
+      // The later-posted leg (branch share, always second) carries the
+      // running balance that already reflects both movements.
+      const [first, second] = e.seq < pair.seq ? [e, pair] : [pair, e];
+      merged.push({
+        ...second,
+        id: `${first.id}+${second.id}`,
+        voucherNo: `${first.voucherNo} / ${second.voucherNo}`,
+        ledgerHeadName: 'Branch Income',
+        description: `Branch income collected — ${first.branchName ?? 'branch'}`,
+        debit: Math.round((first.debit + second.debit) * 100) / 100,
+        credit: 0,
+        merged: true,
+      });
+    } else {
+      merged.push(e);
+    }
+  }
+
+  return merged;
+}
 
 /** The filter set, minus paging — kept separate so changing a filter resets the page. */
 interface LedgerFilterState {
@@ -81,6 +165,7 @@ export function DailyLedgerPage() {
   });
   const [page, setPage] = useState(0);
   const [adjusting, setAdjusting] = useState<LedgerEntry | null>(null);
+  const [downloading, setDownloading] = useState<'pdf' | 'excel' | null>(null);
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -120,11 +205,37 @@ export function DailyLedgerPage() {
     setPage(0);
   }
 
-  const entries = data?.entries ?? [];
+  // Branch income posts as two real ledger entries (company share + branch
+  // share — see finance-income.service.ts), each under its own head so the
+  // split is reportable. Merged here into one row showing the whole amount
+  // collected: to anyone reading the cash book "what did the branch bring in
+  // today" is one number, not a 75/25 split. Display-only — the two postings
+  // underneath are untouched, which is why Adjust is disabled on a merged row
+  // (see the `merged` flag on DisplayEntry).
+  const entries = useMemo(
+    () => mergeBranchIncomePairs(hideDuplicateManualEntries(data?.entries ?? [])),
+    [data?.entries],
+  );
   const total = data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rangeFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;
   const rangeTo = Math.min(total, (page + 1) * PAGE_SIZE);
+
+  async function download(format: 'pdf' | 'excel') {
+    if (!token) return;
+    setDownloading(format);
+    try {
+      await downloadFinanceReport(
+        { type: 'daily_cash_book', from: filters.from, to: filters.to, branchId: filters.branchId || undefined },
+        format,
+        token,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not export the ledger');
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -132,10 +243,20 @@ export function DailyLedgerPage() {
         title="Daily Ledger"
         description="Every posted voucher, in posting order. Balances run down the page as a cash book does."
         actions={
-          <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            <RotateCcw className="h-3.5 w-3.5" />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              <RotateCcw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" disabled={downloading !== null} onClick={() => void download('pdf')}>
+              <FileText className="h-3.5 w-3.5" />
+              {downloading === 'pdf' ? 'Preparing…' : 'PDF'}
+            </Button>
+            <Button variant="outline" size="sm" disabled={downloading !== null} onClick={() => void download('excel')}>
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              {downloading === 'excel' ? 'Preparing…' : 'Excel'}
+            </Button>
+          </div>
         }
       />
 
@@ -252,8 +373,8 @@ export function DailyLedgerPage() {
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
                   {[
-                    'Date', 'Voucher No', 'Ledger Head', 'Description', 'Branch',
-                    'Debit', 'Credit', 'Balance', 'Status', 'Approved By',
+                    'Date', 'Voucher No', 'Ledger Head', 'Description', 'Photo', 'Branch',
+                    'Debit', 'Credit', 'Balance', 'Status',
                   ].map((h) => (
                     <TableHead
                       key={h}
@@ -274,13 +395,14 @@ export function DailyLedgerPage() {
                     voucher. Without it the Balance column starts at a number the
                     reader cannot account for. */}
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableCell colSpan={7} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {/* Spans Date → Credit, so the figure below lands under Balance. */}
+                  <TableCell colSpan={8} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Opening balance brought forward
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     <Money value={data?.openingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 3 : 2} />
+                  <TableCell colSpan={abilities.adjust ? 2 : 1} />
                 </TableRow>
 
                 {isLoading ? (
@@ -314,7 +436,9 @@ export function DailyLedgerPage() {
                   sits directly under the last voucher at any page length. */}
               <TableBody>
                 <TableRow className="border-t-2 bg-muted/40 font-semibold hover:bg-muted/40">
-                  <TableCell colSpan={5} className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {/* Spans Date → Branch, so the three money cells below line up
+                      with Debit / Credit / Balance. */}
+                  <TableCell colSpan={6} className="text-xs uppercase tracking-wide text-muted-foreground">
                     Totals · {total} {total === 1 ? 'voucher' : 'vouchers'} matching the filters
                   </TableCell>
                   <TableCell className="text-right">
@@ -326,7 +450,7 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right">
                     <Money value={data?.closingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 3 : 2} className="text-xs font-normal text-muted-foreground">
+                  <TableCell colSpan={abilities.adjust ? 2 : 1} className="text-xs font-normal text-muted-foreground">
                     Carried forward
                   </TableCell>
                 </TableRow>
@@ -414,7 +538,7 @@ function LedgerRow({
   canAdjust,
   onAdjust,
 }: {
-  entry: LedgerEntry;
+  entry: DisplayEntry;
   canAdjust: boolean;
   onAdjust: (entry: LedgerEntry) => void;
 }) {
@@ -426,6 +550,16 @@ function LedgerRow({
       <TableCell className="whitespace-nowrap font-mono text-xs">{entry.voucherNo}</TableCell>
       <TableCell className="text-sm font-medium">{entry.ledgerHeadName}</TableCell>
       <TableCell className="max-w-[22rem] text-sm">{entry.description}</TableCell>
+      {/* The receipt behind the voucher, resolved server-side from
+          (sourceType, sourceId) — see LedgerEntry.attachments. Empty for
+          opening balances, reversals and anything not keyed in by hand. */}
+      <TableCell>
+        <AttachmentGallery
+          attachments={entry.attachments}
+          size="xs"
+          title={`${entry.voucherNo} photo`}
+        />
+      </TableCell>
       <TableCell className="text-sm text-muted-foreground">{entry.branchName ?? '—'}</TableCell>
       <TableCell className="text-right">
         <Money value={entry.debit} blankZero className="text-emerald-600 dark:text-emerald-400" />
@@ -439,13 +573,13 @@ function LedgerRow({
       <TableCell>
         <StatusBadge status={entry.status} />
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">{entry.approvedByName ?? '—'}</TableCell>
       {canAdjust && (
         <TableCell>
           {/* A reversing entry cannot itself be reversed, and neither can one
               already reversed — the SQL refuses both, so the button is not
-              offered. */}
-          {!reversed && entry.reversesEntryId === null && (
+              offered. A merged branch-income row is two real entries at once,
+              so it has no single id to adjust — see mergeBranchIncomePairs. */}
+          {!reversed && entry.reversesEntryId === null && !entry.merged && (
             <Button variant="ghost" size="icon-sm" aria-label="Adjust or reverse" onClick={() => onAdjust(entry)}>
               <Undo2 className="h-3.5 w-3.5" />
             </Button>
@@ -461,7 +595,7 @@ function LedgerCard({
   canAdjust,
   onAdjust,
 }: {
-  entry: LedgerEntry;
+  entry: DisplayEntry;
   canAdjust: boolean;
   onAdjust: (entry: LedgerEntry) => void;
 }) {
@@ -502,13 +636,16 @@ function LedgerCard({
           <dt className="text-muted-foreground">Branch</dt>
           <dd className="truncate font-medium">{entry.branchName ?? '—'}</dd>
         </div>
-        <div className="flex items-baseline justify-between gap-2">
-          <dt className="text-muted-foreground">Approved by</dt>
-          <dd className="truncate font-medium">{entry.approvedByName ?? '—'}</dd>
-        </div>
       </dl>
 
-      {canAdjust && !reversed && entry.reversesEntryId === null && (
+      <AttachmentGallery
+        attachments={entry.attachments}
+        size="xs"
+        title={`${entry.voucherNo} photo`}
+        className="mt-2.5"
+      />
+
+      {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
         <div className="mt-3 border-t pt-2.5">
           <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onAdjust(entry)}>
             <Undo2 className="h-3.5 w-3.5" />

@@ -10,6 +10,7 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   FINANCE_PAYMENT_METHODS,
+  type Attachment,
   type CreateFinanceTransactionInput,
   type FinanceTransaction,
   type LedgerHeadType,
@@ -17,12 +18,16 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useLedgerHeads } from '@/lib/finance';
+import { ApiError } from '@/utils/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { cn } from '@/lib/utils';
+import { TriangleAlert } from 'lucide-react';
 
 /**
  * Raise a manual income or expense document.
@@ -38,6 +43,25 @@ import { cn } from '@/lib/utils';
  * back to it, and that is a decision made at the moment of pressing, not while
  * reading the form.
  */
+
+interface DuplicateIncomeMatch {
+  voucherNo: string;
+  entryDate: string;
+  amount: number;
+  ledgerHeadName: string;
+}
+
+/** Narrows ApiError.details (unknown) to the shape assertNotDuplicateIncome attaches. */
+function isDuplicateIncomeDetails(
+  details: unknown,
+): details is { code: 'duplicate_income'; existing: DuplicateIncomeMatch } {
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    (details as { code?: unknown }).code === 'duplicate_income' &&
+    typeof (details as { existing?: unknown }).existing === 'object'
+  );
+}
 export function FinanceEntryForm({
   entry,
   onSuccess,
@@ -52,6 +76,20 @@ export function FinanceEntryForm({
   const mut = useFinanceMutation();
 
   const [headType, setHeadType] = useState<LedgerHeadType>(entry?.txnType ?? 'expense');
+  /**
+   * Photos are uploaded the moment they are captured, so this holds the STORED
+   * attachments — not pending files. The form field carries only their ids.
+   *
+   * On an existing entry they are already bound and cannot be changed (the
+   * update endpoint has no attachmentIds field, by design), so the form shows
+   * them read-only rather than offering the camera again.
+   */
+  const [photos, setPhotos] = useState<Attachment[]>(entry?.attachments ?? []);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    match: DuplicateIncomeMatch;
+    data: CreateFinanceTransactionInput;
+    asDraft: boolean;
+  } | null>(null);
 
   const form = useForm<CreateFinanceTransactionInput>({
     resolver: zodResolver(CreateFinanceTransactionSchema),
@@ -66,8 +104,19 @@ export function FinanceEntryForm({
       referenceNo: entry?.referenceNo ?? '',
       notes: entry?.notes ?? '',
       asDraft: false,
+      attachmentIds: (entry?.attachments ?? []).map((a) => a.id),
     },
   });
+
+  /** Keep the validated field in step with the gallery above it. */
+  function setPhotoField(next: Attachment[]) {
+    setPhotos(next);
+    form.setValue(
+      'attachmentIds',
+      next.map((a) => a.id),
+      { shouldValidate: true },
+    );
+  }
 
   const heads = (headsQ.data ?? []).filter((h) => h.type === headType);
   const ledgerHeadId = form.watch('ledgerHeadId');
@@ -75,15 +124,28 @@ export function FinanceEntryForm({
   const paymentMethod = form.watch('paymentMethod');
   const branchId = form.watch('branchId');
 
+  // Expense entries are only ever booked against Production or Other — never a
+  // retail branch, and never company-wide. Income keeps the full branch list
+  // (plus company-wide) untouched.
+  const EXPENSE_BRANCH_NAMES = ['production', 'other'];
+  const branches =
+    headType === 'expense'
+      ? (branchesQ.data ?? []).filter((b) => EXPENSE_BRANCH_NAMES.includes(b.name.trim().toLowerCase()))
+      : (branchesQ.data ?? []);
+
   async function save(data: CreateFinanceTransactionInput, asDraft: boolean) {
+    setDuplicateWarning(null);
     try {
       if (entry) {
         // Editing only ever touches a draft or a rejected document — a posted one
         // has no update path at all, by design.
+        // attachmentIds is stripped alongside asDraft: an edit revises the
+        // figures, and the photos bound at creation stay bound (see the note on
+        // UpdateFinanceTransactionSchema).
         await mut.mutateAsync({
           path: `/api/finance/income/entries/${entry.id}`,
           method: 'PUT',
-          body: { ...data, asDraft: undefined },
+          body: { ...data, asDraft: undefined, attachmentIds: undefined },
         });
         toast.success('Entry updated');
       } else {
@@ -95,8 +157,27 @@ export function FinanceEntryForm({
       }
       onSuccess?.();
     } catch (err) {
+      // The server rejects a NEW income entry that matches an already-posted
+      // Branch Income entry (same head/amount/date) rather than silently
+      // double-counting it — see assertNotDuplicateIncome. Offer to override
+      // instead of just failing, for the rare genuine coincidence.
+      const duplicate =
+        !entry && err instanceof ApiError && err.status === 409 && isDuplicateIncomeDetails(err.details)
+          ? err.details.existing
+          : null;
+      if (duplicate) {
+        setDuplicateWarning({ match: duplicate, data, asDraft });
+        return;
+      }
       toast.error(err instanceof Error ? err.message : 'Could not save this entry');
     }
+  }
+
+  async function createAnyway() {
+    if (!duplicateWarning) return;
+    const { data, asDraft } = duplicateWarning;
+    setDuplicateWarning(null);
+    await save({ ...data, confirmDuplicate: true }, asDraft);
   }
 
   const errors = form.formState.errors;
@@ -117,6 +198,7 @@ export function FinanceEntryForm({
               onClick={() => {
                 setHeadType(t);
                 form.setValue('ledgerHeadId', '');
+                form.setValue('branchId', null);
               }}
               className={cn(
                 'rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-colors disabled:opacity-50',
@@ -223,11 +305,11 @@ export function FinanceEntryForm({
           onValueChange={(v) => form.setValue('branchId', v === '__none__' ? null : ((v as string) ?? null))}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Company-wide" />
+            <SelectValue placeholder={headType === 'expense' ? 'Select a branch' : 'Company-wide'} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">Company-wide</SelectItem>
-            {(branchesQ.data ?? []).map((b) => (
+            {headType !== 'expense' && <SelectItem value="__none__">Company-wide</SelectItem>}
+            {branches.map((b) => (
               <SelectItem key={b.id} value={b.id}>
                 {b.name}
               </SelectItem>
@@ -245,6 +327,50 @@ export function FinanceEntryForm({
         <Label>Notes (optional)</Label>
         <Textarea rows={2} placeholder="Anything an approver should know" {...form.register('notes')} />
       </div>
+
+      {entry ? (
+        <div className="space-y-2">
+          <Label>Photo</Label>
+          <AttachmentGallery
+            attachments={photos}
+            title={`${entry.txnNo} receipt`}
+            emptyText="No photo was captured with this entry."
+          />
+        </div>
+      ) : (
+        <PhotoCapture
+          entity="finance_transaction"
+          value={photos}
+          onChange={setPhotoField}
+          label="Receipt photo"
+          required
+          disabled={mut.isPending}
+          hint="Photograph the receipt, bill or transfer slip that backs this entry."
+          error={errors.attachmentIds?.message}
+        />
+      )}
+
+      {duplicateWarning && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+          <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1 space-y-2">
+            <p className="text-amber-900 dark:text-amber-200">
+              This matches <span className="font-mono">{duplicateWarning.match.voucherNo}</span> —{' '}
+              {duplicateWarning.match.ledgerHeadName}, already posted from Branch Income for{' '}
+              {duplicateWarning.match.entryDate} at the same amount. If this is a genuinely separate
+              transaction that happens to coincide, create it anyway.
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setDuplicateWarning(null)}>
+                Cancel
+              </Button>
+              <Button type="button" size="sm" disabled={mut.isPending} onClick={() => void createAnyway()}>
+                {mut.isPending ? 'Creating…' : 'Create anyway'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row">
         {!entry && (

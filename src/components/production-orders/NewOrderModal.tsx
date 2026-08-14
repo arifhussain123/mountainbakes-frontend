@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ElementType } from 'react';
 import {
+  type Attachment,
   type Product,
   businessDateStr,
   karachiTimeStr,
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
@@ -59,6 +61,8 @@ export interface NewOrderModalProps {
   submit: (payload: {
     items: { productId: string; qty: number }[];
     packingItems: { packingMaterialId: string; qty: number }[];
+    /** Ids of the photos captured on the confirmation step. At least one — the API refuses a demand without. */
+    attachmentIds: string[];
   }) => Promise<unknown>;
   submitting: boolean;
 }
@@ -123,6 +127,16 @@ export function NewOrderModal({
   // start empty — a demand with none must behave exactly as it did before.
   const [packingOpen, setPackingOpen] = useState(false);
   const [packingRows, setPackingRows] = useState<PackingRow[]>([]);
+  /**
+   * Photos of what the demand is for, captured on the confirmation step rather
+   * than in the body of the form.
+   *
+   * Deliberately NOT part of the localStorage draft: an attachment id is a
+   * pointer to an uploaded file, and a draft restored days later would carry
+   * ids whose photos no longer describe today's demand. The quantities are
+   * worth keeping across a refresh; the photograph is not.
+   */
+  const [photos, setPhotos] = useState<Attachment[]>([]);
 
   const qtyRefs = useRef<(HTMLInputElement | null)[]>([]);
   const draftKey = branchId ? `mb:po-draft:${branchId}` : 'mb:po-draft';
@@ -277,10 +291,11 @@ export function NewOrderModal({
         packingMaterialId: r.packingMaterialId,
         qty: parseQty(r.qty),
       }));
-      await submit({ items, packingItems });
+      await submit({ items, packingItems, attachmentIds: photos.map((p) => p.id) });
       toast.success('Production Order Submitted Successfully');
       setQtyById({});
       setPackingRows([]);
+      setPhotos([]);
       setPackingOpen(false);
       try {
         localStorage.removeItem(draftKey);
@@ -384,40 +399,40 @@ export function NewOrderModal({
                   </Table>
                 </div>
 
-                {/* Mobile cards */}
-                <div className="space-y-3 md:hidden">
+                {/* Mobile cards — name, current stock and the qty box all on one
+                    row, so a card is a single line and the whole list scrolls in a
+                    fraction of the screens it used to. The name truncates (full text
+                    in `title`) rather than wrapping, which is what keeps the row to
+                    one line; the category sub-line has no room and is dropped. */}
+                <div className="space-y-2 md:hidden">
                   {orderedProducts.map((p) => {
                     const active = parseQty(qtyById[p.id]) > 0;
                     return (
-                      <div key={p.id} className={`rounded-lg border bg-card p-3 ${active ? 'ring-2 ring-primary/40' : ''}`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-medium leading-tight">{p.name}</p>
-                            {p.categoryName && <p className="text-xs text-muted-foreground">{p.categoryName}</p>}
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Stock</p>
-                            <p className="font-semibold tabular-nums">{stockText(p.id)}</p>
-                          </div>
-                        </div>
-                        <div className="mt-3">
-                          <label className="mb-1 block text-xs text-muted-foreground">Qty</label>
-                          {/* inputMode="numeric" + pattern="[0-9]*" makes phones open the
-                              digits-only keypad (no letters). text-base (16px) stops iOS
-                              from zooming the page in on focus. */}
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            autoComplete="off"
-                            placeholder="0"
-                            aria-label={`Quantity for ${p.name}`}
-                            value={qtyById[p.id] ?? ''}
-                            onChange={(e) => setQty(p.id, e.target.value)}
-                            onFocus={(e) => e.currentTarget.select()}
-                            className="h-11 w-28 text-center text-base tabular-nums"
-                          />
-                        </div>
+                      <div
+                        key={p.id}
+                        className={`flex items-center gap-2 rounded-lg border bg-card p-2 ${active ? 'ring-2 ring-primary/40' : ''}`}
+                      >
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium leading-tight" title={p.name}>
+                          {p.name}
+                        </p>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          Stock <span className="font-semibold tabular-nums text-foreground">{stockText(p.id)}</span>
+                        </span>
+                        {/* inputMode="numeric" + pattern="[0-9]*" makes phones open the
+                            digits-only keypad (no letters). text-base (16px) stops iOS
+                            from zooming the page in on focus. */}
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
+                          placeholder="0"
+                          aria-label={`Quantity for ${p.name}`}
+                          value={qtyById[p.id] ?? ''}
+                          onChange={(e) => setQty(p.id, e.target.value)}
+                          onFocus={(e) => e.currentTarget.select()}
+                          className="h-11 w-20 shrink-0 px-1 text-center text-base tabular-nums"
+                        />
                       </div>
                     );
                   })}
@@ -475,7 +490,10 @@ export function NewOrderModal({
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1">
+                        {/* Mobile: label left, box pushed right — same row shape as the
+                            product cards. From sm the label is hidden and the field
+                            rejoins the horizontal row. */}
+                        <div className="flex items-center justify-between gap-3 sm:block sm:space-y-1">
                           <label className="text-xs text-muted-foreground sm:hidden">Quantity</label>
                           <Input
                             type="text"
@@ -487,7 +505,7 @@ export function NewOrderModal({
                             value={row.qty}
                             onChange={(e) => setPackingQty(i, e.target.value)}
                             onFocus={(e) => e.currentTarget.select()}
-                            className="h-11 w-full text-center text-base tabular-nums sm:h-10 sm:w-28"
+                            className="h-11 w-28 text-center text-base tabular-nums sm:h-10"
                           />
                         </div>
                         <Button
@@ -590,11 +608,25 @@ export function NewOrderModal({
             )}
           </dl>
 
+          {/* The last thing before Confirm, and the reason the button stays
+              disabled — a demand without a photo is refused by the API, so
+              blocking here is the difference between a clear prompt and a 400
+              after the user has already committed. */}
+          <PhotoCapture
+            entity="production_order_demand"
+            value={photos}
+            onChange={setPhotos}
+            label="Demand photo"
+            required
+            disabled={submitting}
+            hint="Photograph the empty shelf or crate this demand is for."
+          />
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow}>
+            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow || photos.length === 0}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting…

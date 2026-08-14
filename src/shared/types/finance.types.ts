@@ -20,6 +20,7 @@
  */
 
 import type { UserRole } from './user.types';
+import type { Attachment } from './attachment.types';
 
 // ---------------------------------------------------------------------------
 // Roles & permissions
@@ -80,8 +81,8 @@ const FINANCE_ROLE_PERMISSIONS: Record<FinanceRole, readonly FinancePermission[]
  * able to move money in them are separate grants, and separation of duties is
  * the entire point of a finance module living outside admin operations.
  *
- * Every other role — branch_manager, production_user — gets nothing at all,
- * including `view`.
+ * Every other role — branch_manager, branch_user, production_user — gets nothing
+ * at all, including `view`.
  */
 export function financeCan(
   role: UserRole | string | null | undefined,
@@ -216,6 +217,8 @@ export const SYSTEM_LEDGER_HEAD_CODES = {
   PARTNER_WITHDRAWAL: 'EXP-PARTNER',
   OPENING_BALANCE: 'INC-OPENING',
   ADJUSTMENT: 'EXP-ADJUSTMENT',
+  BRANCH_SHARE_PAYOUT: 'EXP-BRANCH-SHARE-PAYOUT',
+  PRODUCTION_EXPENSE: 'EXP-PRODUCTION',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -235,7 +238,9 @@ export type LedgerSourceType =
   | 'branch_share'
   | 'salary'
   | 'partner_expense'
-  | 'adjustment';
+  | 'adjustment'
+  | 'branch_share_payout'
+  | 'branch_share_bonus';
 
 /**
  * `posted` is the normal state. `locked` is applied when the finance day closes.
@@ -284,6 +289,15 @@ export interface LedgerEntry {
   createdBy: string | null;
   createdByName: string | null;
   postedAt: string;
+  /**
+   * Photos of the SOURCE DOCUMENT this voucher was posted from, resolved on read
+   * via (sourceType, sourceId) — they are not stored on the ledger row, which is
+   * immutable by trigger. Absent on entries whose source carries no photo:
+   * opening balances, reversals, and anything imported rather than keyed in.
+   *
+   * The `url` on each is short-lived. See the note on `Attachment`.
+   */
+  attachments?: Attachment[];
 }
 
 export interface LedgerQuery {
@@ -372,6 +386,13 @@ export interface FinanceIncomeApproval {
   postedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Optional here, unlike every other finance document. These rows are IMPORTED
+   * from the branch closing rather than keyed into a form, so there is no moment
+   * of capture to require a photo at. A verifier may attach one; nothing forces
+   * it. See the note on `optionalAttachmentIds`.
+   */
+  attachments?: Attachment[];
 }
 
 // ---------------------------------------------------------------------------
@@ -404,6 +425,8 @@ export interface FinanceTransaction {
   ledgerEntryId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Photo of the receipt or voucher, captured when the entry was raised. */
+  attachments?: Attachment[];
 }
 
 // ---------------------------------------------------------------------------
@@ -423,12 +446,33 @@ export interface FinanceEmployee {
   designation: string;
   branchId: string | null;
   branchName: string | null;
+  /** The salary effective as of today — resolved from salary_revisions, not a raw column. */
   baseSalary: number;
+  /** An already-recorded revision whose effective date hasn't arrived yet, if any. */
+  pendingRevision: { newSalary: number; effectiveFrom: string; reason: string } | null;
   phone: string | null;
   joinedOn: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One recorded base-salary change. Append-only (salary_revisions table) — a
+ * correction is a new row, not an edit to this one. See the migration
+ * comment for why this can never restate a payslip that already exists.
+ */
+export interface SalaryRevision {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  previousSalary: number;
+  newSalary: number;
+  reason: string;
+  effectiveFrom: string;
+  changedBy: string | null;
+  changedByName: string;
+  createdAt: string;
 }
 
 export interface SalaryPayment {
@@ -460,16 +504,48 @@ export interface SalaryPayment {
   ledgerEntryId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Photo of the signed payslip or the cash handover. */
+  attachments?: Attachment[];
 }
 
 // ---------------------------------------------------------------------------
-// Partner expenses
+// Partners, partner advances/draws, branch share payouts
 // ---------------------------------------------------------------------------
 
+/** One of the four fixed owners. `sharePct` is informational here — the 25%
+ * split is enforced by the migration's check constraint, not read live from
+ * this row by every consumer, so a future ownership change is one row edit
+ * away rather than a re-derivation. */
+export interface FinancePartner {
+  id: string;
+  name: string;
+  fatherName: string | null;
+  dateOfBirth: string | null;
+  joinedOn: string | null;
+  partnerType: 'founder' | 'co_founder' | null;
+  address: string | null;
+  contactNumber: string | null;
+  emergencyNumber: string | null;
+  sharePct: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PartnerTxnKind = 'advance' | 'draw';
+
+/**
+ * An ADVANCE is money lent to a partner against their future share (deducted
+ * later); a DRAW is a partner withdrawing money they are already entitled to
+ * from the current grand total. Both post as an expense under EXP-PARTNER —
+ * `txnKind` is what the Partner Share Detail report groups by.
+ */
 export interface PartnerExpense {
   id: string;
   expenseNo: string;
+  partnerId: string | null;
   partnerName: string;
+  txnKind: PartnerTxnKind;
   ledgerHeadId: string;
   ledgerHeadName: string;
   description: string;
@@ -488,6 +564,91 @@ export interface PartnerExpense {
   ledgerEntryId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Photo of the cash handover or the transfer slip. */
+  attachments?: Attachment[];
+}
+
+/**
+ * Actually paying a branch its already-recorded share. Branch income
+ * approval posts the company/branch share split to the ledger immediately,
+ * but that only RECORDS the split — this is the payout. `bonus` is optional
+ * and posts separately to Production Expenses rather than the share-payout
+ * head, with a note naming the branch.
+ */
+export interface BranchSharePayment {
+  id: string;
+  paymentNo: string;
+  branchId: string;
+  branchName: string;
+  amount: number;
+  bonus: number;
+  businessDate: string;
+  paymentMethod: string;
+  account: FinanceAccount;
+  status: FinanceDocStatus;
+  notes: string | null;
+  requestedBy: string | null;
+  requestedByName: string;
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  ledgerEntryId: string | null;
+  bonusLedgerEntryId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Photo of the payout being handed over. */
+  attachments?: Attachment[];
+}
+
+/**
+ * What one branch is still owed — computed from the ledger, never stored.
+ *
+ * `recorded` is every posted Branch Share entry for the branch (what income
+ * approval booked as theirs); `paidOut` is every posted Branch Share Payout for
+ * it. The difference is what a payout should be for, which is the number the
+ * payout form previously asked someone to key from memory.
+ *
+ * Bonuses are excluded on purpose — a bonus posts to Production Expenses, not
+ * against the branch's share, so counting it here would make the branch look
+ * settled when its share is still outstanding.
+ */
+export interface BranchShareBalance {
+  branchId: string;
+  branchName: string;
+  /** The split this branch is currently on, and whether it is its own. */
+  companySharePct: number;
+  branchSharePct: number;
+  isOverride: boolean;
+  recorded: number;
+  paidOut: number;
+  /** recorded − paidOut. Negative means the branch has been overpaid. */
+  outstanding: number;
+}
+
+/** One row of the Partner Share Detail table — computed, not stored. */
+export interface PartnerShareRow {
+  id: string;
+  name: string;
+  sharePct: number;
+  /** grandTotal × sharePct / 100 */
+  sharePctAmount: number;
+  advancePaid: number;
+  drawPaid: number;
+  /** sharePctAmount − advancePaid − drawPaid */
+  balance: number;
+}
+
+export interface PartnerShareSummary {
+  from: string | null;
+  to: string | null;
+  /** Every posted expense except partner advances/draws — production, utilities, packaging, salaries, branch share payouts, etc. */
+  totalExpense: number;
+  /** Every posted entry under the Company Share head. */
+  totalCompanyShare: number;
+  /** totalCompanyShare − totalExpense */
+  grandTotal: number;
+  partners: PartnerShareRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -590,7 +751,10 @@ export type FinanceAuditAction =
   | 'adjusted'
   | 'locked'
   | 'imported'
-  | 'settings_updated';
+  | 'settings_updated'
+  | 'salary_revised'
+  | 'resolved'
+  | 'deleted';
 
 export type FinanceAuditEntity =
   | 'ledger_entry'
@@ -601,7 +765,10 @@ export type FinanceAuditEntity =
   | 'partner_expense'
   | 'employee'
   | 'day_closing'
-  | 'settings';
+  | 'settings'
+  | 'branch_share_payment'
+  | 'finance_partner'
+  | 'finance_ticket';
 
 export interface FinanceAuditLog {
   id: string;
@@ -700,3 +867,85 @@ export interface FinanceReportQuery {
 }
 
 export type FinanceExportFormat = 'pdf' | 'excel' | 'csv';
+
+// ---------------------------------------------------------------------------
+// Finance Help Desk
+//
+// A query an Accountant or Finance Manager raises against a finance record, and
+// the Finance Admin's resolution of it. Kept separate from the admin Support
+// Center (`support.types.ts`) on purpose — see migration 60 for why.
+// ---------------------------------------------------------------------------
+
+/**
+ * The finance records a query can be raised against, each keyed to the table it
+ * lives in and the column carrying its human reference number. The API resolves
+ * a typed reference number (FV-000001, SAL-000012, …) through this map, so the
+ * raiser never has to say which kind of record they mean.
+ */
+export const FINANCE_TICKET_REFERENCES = {
+  ledger_entry:         { prefix: 'FV',  table: 'ledger_entries',           refColumn: 'voucher_no',   label: 'Ledger Voucher' },
+  income_approval:      { prefix: 'INC', table: 'finance_income_approvals', refColumn: 'reference_no', label: 'Branch Income' },
+  finance_transaction:  { prefix: 'FTX', table: 'finance_transactions',     refColumn: 'txn_no',       label: 'Transaction' },
+  salary_payment:       { prefix: 'SAL', table: 'salary_payments',          refColumn: 'salary_no',    label: 'Salary Payment' },
+  partner_expense:      { prefix: 'PEX', table: 'partner_expenses',         refColumn: 'expense_no',   label: 'Partner Expense' },
+  branch_share_payment: { prefix: 'BSP', table: 'branch_share_payments',    refColumn: 'payment_no',   label: 'Branch Share' },
+} as const;
+
+export type FinanceTicketReferenceType = keyof typeof FINANCE_TICKET_REFERENCES;
+
+export const FINANCE_TICKET_REFERENCE_LABELS: Record<FinanceTicketReferenceType, string> = {
+  ledger_entry: 'Ledger Voucher',
+  income_approval: 'Branch Income',
+  finance_transaction: 'Transaction',
+  salary_payment: 'Salary Payment',
+  partner_expense: 'Partner Expense',
+  branch_share_payment: 'Branch Share',
+};
+
+/** Reference-number prefix → the record type it identifies. Derived, never hand-written. */
+export const FINANCE_TICKET_PREFIX_MAP: Record<string, FinanceTicketReferenceType> = Object.fromEntries(
+  (Object.keys(FINANCE_TICKET_REFERENCES) as FinanceTicketReferenceType[]).map((k) => [
+    FINANCE_TICKET_REFERENCES[k].prefix,
+    k,
+  ]),
+);
+
+export type FinanceTicketStatus = 'open' | 'resolved' | 'rejected';
+
+export const FINANCE_TICKET_STATUS_LABELS: Record<FinanceTicketStatus, string> = {
+  open: 'Open',
+  resolved: 'Resolved',
+  rejected: 'Rejected',
+};
+
+export interface FinanceTicket {
+  id: string;
+  ticketNo: string;
+  referenceType: FinanceTicketReferenceType;
+  /** Null when the referenced row has since been removed; the snapshot survives. */
+  referenceId: string | null;
+  referenceNo: string;
+  /** The record's figures as they stood when the query was raised. */
+  referenceSnapshot: Record<string, unknown> | null;
+  subject: string;
+  message: string;
+  status: FinanceTicketStatus;
+  resolutionNote: string | null;
+  raisedBy: string | null;
+  raisedByName: string;
+  raisedByRole: string | null;
+  resolvedBy: string | null;
+  resolvedByName: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What GET /api/finance/tickets/lookup returns for a reference number. */
+export interface FinanceTicketReferenceLookup {
+  referenceType: FinanceTicketReferenceType;
+  referenceId: string;
+  referenceNo: string;
+  label: string;
+  snapshot: Record<string, unknown>;
+}

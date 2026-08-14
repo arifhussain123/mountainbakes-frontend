@@ -21,13 +21,21 @@ import {
   type SaveImportInput,
   type UpdatePriceInput,
 } from '@/utils/productPrice';
+// businessDayBounds is a VALUE, not a type — Branch Closing turns a business
+// date into the UTC instants /api/orders filters created_at on.
+import { businessDayBounds } from '@mb/shared';
 import type {
+  ApproveBranchUserRequestInput,
   Branch,
   BranchProductionOrder,
+  BranchUserRequest,
+  CreateBranchUserRequestInput,
+  Expense,
+  Order,
+  RejectBranchUserRequestInput,
   Category,
   Product,
   ProductionBalanceDoc,
-  ProductionExpense,
   ProductionReturn,
   ProductionStockRow,
   PriceHistoryDoc,
@@ -433,6 +441,34 @@ export function useProductionBalances(token: string, opts?: { branchId?: string 
   });
 }
 
+export interface PreviousOrderBalance {
+  previous: { demandNumber: string; date: string } | null;
+  deliveredValue: number;
+  companySharePct: number;
+  companyShareValue: number;
+  returnsValue: number;
+  /** The exact accepted returns that returnsValue was built from. */
+  returnItems: { productName: string; qty: number; amount: number }[];
+  amountToCollect: number;
+}
+
+/**
+ * What the branch owes for its PREVIOUS delivery, for this order's company copy.
+ *
+ * Server-computed: company_share_pct lives in finance_settings, which production
+ * users cannot read at any layer. Not related to `useProductionBalances` — that
+ * one is unmet demand (goods owed TO the branch), not a receivable.
+ */
+export function usePreviousOrderBalance(token: string, orderId: string | null, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.previousOrderBalance(orderId ?? ''),
+    queryFn: () =>
+      apiCall<PreviousOrderBalance>(`/api/production-orders/${orderId}/previous-balance`, {}, token),
+    enabled: !!token && !!orderId && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
 /** Mark a production slip printed. Idempotent server-side; never mutates stock. */
 export function useMarkPrinted(token: string) {
   const qc = useQueryClient();
@@ -451,10 +487,22 @@ export function useSubmitProductionOrder(token: string) {
   return useMutation({
     // Packing items are optional; an omitted/empty array posts exactly the payload
     // this endpoint accepted before the packing-material module existed.
-    mutationFn: (v: { items: ProductionOrderItem[]; packingItems?: ProductionOrderPackingItem[] }) =>
+    mutationFn: (v: {
+      items: ProductionOrderItem[];
+      packingItems?: ProductionOrderPackingItem[];
+      /** Photos of what the demand is for. At least one — the API refuses a demand without. */
+      attachmentIds: string[];
+    }) =>
       apiCall(
         '/api/production-orders',
-        { method: 'POST', body: JSON.stringify({ items: v.items, packingItems: v.packingItems ?? [] }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            items: v.items,
+            packingItems: v.packingItems ?? [],
+            attachmentIds: v.attachmentIds,
+          }),
+        },
         token,
       ),
     onSuccess: () => {
@@ -496,14 +544,6 @@ export interface BranchStockMatrix {
   rows: { productId: string; productName: string; byBranch: Record<string, number> }[];
 }
 
-export interface ProductionExpenseSummary {
-  today: number;
-  weekly: number;
-  monthly: number;
-  yearly: number;
-  byCategory: { category: string; total: number }[];
-  trend: { date: string; amount: number }[];
-}
 
 /** Dashboard cards + chart series. Always revalidates (live demand). */
 export function useProductionOverview(token: string) {
@@ -551,14 +591,14 @@ export function usePrepareProducts(token: string) {
 
 export interface ReviewOrderPayload {
   id: string;
-  status: 'approved' | 'rejected';
+  status: 'awaiting_verification' | 'rejected';
   approvedItems?: { productId: string; approvedQty: number }[];
   /** Packing-material overrides. Omitted on an order with no packing lines. */
   approvedPackingItems?: { packingMaterialId: string; approvedQty: number }[];
   reason?: string;
 }
 
-/** Approve/reject a production demand (with optional qty overrides). */
+/** Submit a production demand for branch verification, or reject it (with optional qty overrides). */
 export function useReviewProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -567,6 +607,62 @@ export function useReviewProductionOrder(token: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['productionOrders'] });
       qc.invalidateQueries({ queryKey: ['productionBalances'] });
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
+/** Production adding an extra line to a still-'pending' order before submitting it. */
+export function useAddProductionOrderItem(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, productId, qty, remarks }: { id: string; productId: string; qty: number; remarks?: string }) =>
+      apiCall(
+        `/api/production-orders/${id}/items`,
+        { method: 'POST', body: JSON.stringify({ productId, qty, remarks: remarks ?? '' }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+    },
+  });
+}
+
+export interface VerifyOrderPayload {
+  id: string;
+  verifiedItems: { productId: string; verifiedQty: number }[];
+  newItems: { productId: string; qty: number }[];
+  /** Photos of what actually arrived. At least one — the API refuses a verification without. */
+  attachmentIds: string[];
+}
+
+/**
+ * Production's closing sign-off on a branch-verified demand ('verified' →
+ * 'approved'). Status only — stock moved at verification.
+ */
+export function useFinalApproveProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall(`/api/production-orders/${id}/final-approve`, { method: 'PUT' }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
+/** Branch confirms physical receipt of an 'awaiting_verification' demand — moves it to 'verified'. */
+export function useVerifyProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: VerifyOrderPayload) =>
+      apiCall(`/api/production-orders/${id}/verify`, { method: 'PUT', body: JSON.stringify(body) }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['productionStock'] });
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
@@ -615,35 +711,6 @@ export function useReviewReturn(token: string) {
       qc.invalidateQueries({ queryKey: ['productionStock'] });
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
-    },
-  });
-}
-
-export function useProductionExpenses(token: string) {
-  return useQuery({
-    queryKey: qk.productionExpenses(),
-    queryFn: () => apiCall<{ expenses: ProductionExpense[] }>('/api/production-expenses', {}, token),
-    select: (r) => r.expenses ?? [],
-    enabled: !!token,
-  });
-}
-
-export function useProductionExpenseSummary(token: string) {
-  return useQuery({
-    queryKey: qk.productionExpenseSummary(),
-    queryFn: () => apiCall<ProductionExpenseSummary>('/api/production-expenses/summary', {}, token),
-    enabled: !!token,
-  });
-}
-
-export function useCreateProductionExpense(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      apiCall('/api/production-expenses', { method: 'POST', body: JSON.stringify(body) }, token),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['productionExpenses'] });
-      qc.invalidateQueries({ queryKey: ['productionExpenseSummary'] });
     },
   });
 }
@@ -970,5 +1037,125 @@ export function useRollForwardEvents(token: string) {
         token,
       ),
     onSuccess: () => invalidateEvents(qc),
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Shift-account requests
+//
+// The manager's Shift Accounts page and the admin's Account Requests queue are
+// two views of ONE endpoint, which scopes itself from the JWT: a manager gets
+// their own branch's rows, an admin gets every branch. So one read hook serves
+// both pages, and the mutations differ only in who is allowed to call them.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchUserRequests(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.branchUserRequests(),
+    queryFn: () =>
+      apiCall<{ requests: BranchUserRequest[] }>('/api/branch-user-requests', {}, token),
+    select: (r) => r.requests ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/** Manager → Admin. The branch is taken from the JWT, so it is not sent. */
+export function useCreateBranchUserRequest(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateBranchUserRequestInput) =>
+      apiCall<{ request: BranchUserRequest }>(
+        '/api/branch-user-requests',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+    },
+  });
+}
+
+/**
+ * Admin approval — this is what actually mints the account, on the requesting
+ * manager's branch. It also invalidates the Users list, which now has a row in
+ * it that was not there a moment ago.
+ */
+export function useApproveBranchUserRequest(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: ApproveBranchUserRequestInput & { id: string }) =>
+      apiCall<{ request: BranchUserRequest; userId: string }>(
+        `/api/branch-user-requests/${id}/approve`,
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useRejectBranchUserRequest(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: RejectBranchUserRequestInput & { id: string }) =>
+      apiCall<{ request: BranchUserRequest }>(
+        `/api/branch-user-requests/${id}/reject`,
+        { method: 'POST', body: JSON.stringify({ reason }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+    },
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Branch Closing
+//
+// The end-of-day sheet is COMPOSED, not fetched: there is no closing endpoint a
+// branch account may call. /api/business-day/close is the admin's once-a-day
+// lock and /api/reports/summary is manager-and-above, so both are out of reach
+// of a shift account by design.
+//
+// What is in reach is the day's own records — orders, expenses and stock, each
+// already branch-scoped server-side from the JWT. Reading the three together
+// under one key keeps them on one business date; see qk.branchClosing.
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface BranchClosingData {
+  orders: Order[];
+  expenses: Expense[];
+  stock: StockRow[];
+}
+
+export function useBranchClosing(token: string, businessDate: string) {
+  return useQuery({
+    queryKey: qk.branchClosing(businessDate),
+    queryFn: async (): Promise<BranchClosingData> => {
+      const { fromISO, toISO } = businessDayBounds(businessDate);
+      const [orders, expenses, stock] = await Promise.all([
+        apiCall<{ orders: Order[] }>(
+          `/api/orders?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
+          {},
+          token,
+        ),
+        // The expenses endpoint always returns the last 7 business days and takes
+        // no date parameter, so the day is picked out here. A date older than
+        // that window comes back empty — the page says so rather than showing a
+        // confident zero.
+        apiCall<{ expenses: Expense[] }>('/api/expenses', {}, token),
+        apiCall<{ rows: StockRow[] }>(`/api/stock?date=${businessDate}`, {}, token),
+      ]);
+      return {
+        orders: orders.orders ?? [],
+        expenses: (expenses.expenses ?? []).filter((e) => e.date === businessDate),
+        stock: stock.rows ?? [],
+      };
+    },
+    enabled: !!token && !!businessDate,
+    staleTime: LIVE_STALE_TIME,
   });
 }

@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { FinanceSettings, ShareBasis } from '@mb/shared';
+import { resolveShareSplit, type FinanceSettings, type ShareBasis } from '@mb/shared';
+import { useAuth } from '@/hooks/useAuth';
+import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useFinanceSettings } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -67,6 +69,12 @@ export function FinanceSettingsPage() {
 
 function SettingsForm({ settings, canConfigure }: { settings: FinanceSettings; canConfigure: boolean }) {
   const mut = useFinanceMutation<{ settings: FinanceSettings; postedVouchers: string[] }>();
+  const { token } = useAuth();
+  const branchesQ = useBranches(token ?? '');
+  // A stored percentage means the branch is deliberately off the default, even
+  // when it happens to equal it today — so this filters on "has a value", not
+  // on "differs from the current setting".
+  const overrides = (branchesQ.data ?? []).filter((b) => b.companySharePct != null);
 
   const [companyPct, setCompanyPct] = useState(String(settings.companySharePct));
   const [shareBasis, setShareBasis] = useState<ShareBasis>(settings.shareBasis);
@@ -101,12 +109,41 @@ function SettingsForm({ settings, canConfigure }: { settings: FinanceSettings; c
       <Card>
         <CardContent className="space-y-4 p-5">
           <div>
-            <h3 className="font-semibold">Company &amp; branch share</h3>
+            <h3 className="font-semibold">Default company &amp; branch share</h3>
             <p className="text-sm text-muted-foreground">
-              Applied to every branch income approval from now on. Already-approved days keep the split they were
-              approved under.
+              Applied to every branch income approval from now on, except where a branch has been given its own rate.
+              Already-approved days keep the split they were approved under.
             </p>
           </div>
+
+          {overrides.length > 0 && (
+            /* Read-only on purpose: the per-branch rate is edited on Admin →
+               Branches (that screen owns the branch record and is Super Admin's,
+               not the finance permission model's). Listing them here anyway,
+               because the obvious reading of a global 75/25 is that it applies
+               to everyone — and a finance user changing it needs to know which
+               branches will not move. */
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {overrides.length} branch{overrides.length === 1 ? '' : 'es'} on its own rate — not affected by the
+                figure above
+              </p>
+              <ul className="mt-2 space-y-1">
+                {overrides.map((b) => {
+                  const split = resolveShareSplit(b.companySharePct, settings.companySharePct);
+                  return (
+                    <li key={b.id} className="flex items-baseline justify-between gap-4">
+                      <span>{b.name}</span>
+                      <span className="font-medium tabular-nums">
+                        {split.companySharePct}% / {split.branchSharePct}%
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">Change these in Admin → Branches.</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">

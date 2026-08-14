@@ -5,18 +5,25 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
+  BranchShareBalance,
+  BranchSharePayment,
   FinanceAuditLog,
   FinanceDashboard,
   FinanceDayClosing,
   FinanceEmployee,
   FinanceIncomeApproval,
+  FinancePartner,
   FinanceReport,
   FinanceSettings,
+  FinanceTicket,
+  FinanceTicketReferenceLookup,
   FinanceTransaction,
   LedgerHead,
   LedgerPage,
   PartnerExpense,
+  PartnerShareSummary,
   SalaryPayment,
+  SalaryRevision,
 } from '@mb/shared';
 
 /**
@@ -202,6 +209,21 @@ export function useFinanceEmployees(includeInactive = false) {
   });
 }
 
+/** Only fetches once a dialog actually opens with an employee — no point warming this on every payroll page load. */
+export function useSalaryRevisions(employeeId: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeSalaryRevisions(employeeId ?? ''),
+    enabled: Boolean(token) && Boolean(employeeId),
+    queryFn: async () =>
+      (await apiCall<{ revisions: SalaryRevision[] }>(
+        `/api/finance/payroll/employees/${employeeId}/salary-revisions`,
+        {},
+        token,
+      )).revisions,
+  });
+}
+
 export function usePartnerExpenses(filters: Record<string, unknown>) {
   const token = useToken();
   return useQuery({
@@ -213,6 +235,71 @@ export function usePartnerExpenses(filters: Record<string, unknown>) {
         {},
         token,
       )).expenses,
+  });
+}
+
+export function useFinancePartners(includeInactive = false) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePartners(includeInactive),
+    enabled: Boolean(token),
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      (await apiCall<{ partners: FinancePartner[] }>(
+        `/api/finance/partner-expenses/partners${toQuery({ includeInactive: includeInactive || undefined })}`,
+        {},
+        token,
+      )).partners,
+  });
+}
+
+export function usePartnerShareSummary(from?: string, to?: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePartnerShareSummary(from, to),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ summary: PartnerShareSummary }>(
+        `/api/finance/partner-expenses/share-summary${toQuery({ from, to })}`,
+        {},
+        token,
+      )).summary,
+  });
+}
+
+export function useBranchSharePayments(filters: Record<string, unknown>) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeBranchShare(filters),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ payments: BranchSharePayment[] }>(
+        `/api/finance/branch-share${toQuery(filters)}`,
+        {},
+        token,
+      )).payments,
+  });
+}
+
+/**
+ * What each branch is still owed — recorded share minus what has been paid out,
+ * plus the split the branch is currently on.
+ *
+ * Read by the payout form so the amount is not keyed from memory. Since each
+ * branch may sit on its own percentage, "what do we owe Gilgit" stopped being a
+ * number anyone can hold in their head.
+ */
+export function useBranchShareBalances(branchId?: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeBranchShareBalances(branchId),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ balances: BranchShareBalance[] }>(
+        `/api/finance/branch-share/balances${toQuery({ branchId })}`,
+        {},
+        token,
+      )).balances,
   });
 }
 
@@ -315,6 +402,52 @@ export function useFinanceMutation<TResult = unknown, TBody = unknown>() {
       void queryClient.invalidateQueries({ queryKey: FINANCE_QK_ROOT });
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Help Desk
+// ---------------------------------------------------------------------------
+
+/**
+ * The query queue.
+ *
+ * What comes back is decided by the API from the JWT role, not by anything sent
+ * from here: a Finance Admin or Auditor gets the whole queue, everyone else gets
+ * only the queries they raised. The filters below narrow that set; they cannot
+ * widen it.
+ */
+export function useFinanceTickets(filters: Record<string, unknown> = {}) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTickets(filters),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ tickets: FinanceTicket[] }>(
+        `/api/finance/tickets${toQuery(filters)}`,
+        {},
+        token,
+      )).tickets,
+  });
+}
+
+/**
+ * Resolve a reference number to the finance record it names.
+ *
+ * A plain function rather than a hook: the lookup fires when someone presses
+ * Find, and a `useQuery` with `enabled` would either fire on every keystroke or
+ * need a second piece of state to hold "have they pressed it yet". The result is
+ * short-lived — it is shown once and then embedded in the ticket as a snapshot.
+ */
+export async function lookupFinanceReference(
+  referenceNo: string,
+  token: string | null | undefined,
+): Promise<FinanceTicketReferenceLookup> {
+  const { reference } = await apiCall<{ reference: FinanceTicketReferenceLookup }>(
+    `/api/finance/tickets/lookup?ref=${encodeURIComponent(referenceNo.trim())}`,
+    {},
+    token ?? undefined,
+  );
+  return reference;
 }
 
 // ---------------------------------------------------------------------------

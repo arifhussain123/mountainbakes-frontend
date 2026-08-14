@@ -10,8 +10,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { User, Branch, UserRole } from '@mb/shared';
-import { CreateUserSchema, FINANCE_ROLE_LABELS, FINANCE_ROLES, type CreateUserInput } from '@mb/shared';
+import type { User, Branch, UserRole, BranchShift } from '@mb/shared';
+import {
+  BRANCH_SHIFTS,
+  BRANCH_SHIFT_LABELS,
+  CreateUserSchema,
+  FINANCE_ROLE_LABELS,
+  FINANCE_ROLES,
+  isBranchRole,
+  type CreateUserInput,
+} from '@mb/shared';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -38,6 +46,9 @@ const col = createColumnHelper<User>();
 const ROLE_COLORS: Record<UserRole, string> = {
   super_admin: 'bg-primary/10 text-primary',
   branch_manager: 'bg-secondary/10 text-secondary',
+  // A shift account is a lighter shade of the same colour as the manager it sits
+  // under — they are the same shop, and the list should read that way.
+  branch_user: 'bg-secondary/5 text-secondary',
   production_user: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
   finance_admin: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
   finance_manager: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
@@ -145,6 +156,18 @@ export function UsersPage() {
       ),
     }),
     col.accessor('branchName', { header: 'Branch', cell: (info) => info.getValue() || <span className="text-muted-foreground">â€”</span> }),
+    // Null on every role but branch_user, so this column is mostly dashes — it
+    // earns its place because morning and evening accounts on one branch are
+    // otherwise indistinguishable in this list.
+    col.accessor('shift', {
+      header: 'Shift',
+      cell: (info) => {
+        const shift = info.getValue();
+        return shift
+          ? <span className="text-sm">{BRANCH_SHIFT_LABELS[shift]}</span>
+          : <span className="text-muted-foreground">â€”</span>;
+      },
+    }),
     col.accessor('phone', { header: 'Phone' }),
     col.accessor('status', {
       header: 'Status',
@@ -254,13 +277,22 @@ export function UsersPage() {
                     const role = v as UserRole;
                     setSelectedRole(role);
                     form.setValue('role', role);
-                    if (role !== 'branch_manager') form.setValue('branchId', null);
+                    if (!isBranchRole(role)) form.setValue('branchId', null);
+                    // Only a branch_user may carry a shift — migration 66's check
+                    // constraint says so, and the Zod schema refuses the pairing
+                    // before it ever reaches Postgres.
+                    form.setValue('shift', role === 'branch_user' ? 'morning' : null);
                   }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="super_admin">Super Admin</SelectItem>
                     <SelectItem value="branch_manager">Branch Manager</SelectItem>
+                    {/* The normal way a shift account is opened is the Account
+                        Requests queue, where a manager asks for one. This option
+                        is the direct path, for an admin setting a branch up
+                        before there is a manager to ask. */}
+                    <SelectItem value="branch_user">Branch User (shift)</SelectItem>
                     <SelectItem value="production_user">Production User</SelectItem>
                     {/* Finance Ledger accounts are provisioned here like every
                         other account — the role rides in app_metadata and is what
@@ -274,7 +306,7 @@ export function UsersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {selectedRole === 'branch_manager' && (
+              {isBranchRole(selectedRole) && (
                 <div className="space-y-1">
                   <Label>Branch</Label>
                   <Select
@@ -287,6 +319,25 @@ export function UsersPage() {
                       {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+              {selectedRole === 'branch_user' && (
+                <div className="space-y-1">
+                  <Label>Shift</Label>
+                  <Select
+                    value={form.watch('shift') ?? 'morning'}
+                    onValueChange={(v) => form.setValue('shift', (v as BranchShift) ?? 'morning')}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {BRANCH_SHIFTS.map((s) => (
+                        <SelectItem key={s} value={s}>{BRANCH_SHIFT_LABELS[s]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    A label only — it does not restrict when the account can sign in.
+                  </p>
                 </div>
               )}
             </div>

@@ -5,6 +5,7 @@ import {
   FINANCE_REPORT_TYPES,
   FINANCE_ROLES,
 } from '../types/finance.types';
+import { optionalAttachmentIds, requiredAttachmentIds } from './attachment.schemas';
 
 /**
  * Finance Ledger request schemas.
@@ -85,10 +86,26 @@ export const CreateFinanceTransactionSchema = z.object({
   notes: z.string().max(500).nullish(),
   /** Save as a draft instead of going straight to Pending Approval. */
   asDraft: z.boolean().default(false),
+  /** Set after the server warns this looks like a duplicate of a Branch Income
+   *  entry (same head/amount/date) and the user confirms it anyway. */
+  confirmDuplicate: z.boolean().default(false),
+  /**
+   * Staged photos of the receipt/voucher, uploaded before this request. Required
+   * even for a draft: the point of the photo is that it is taken at the moment
+   * the money moves, and "I'll attach it when I submit" is exactly the gap it
+   * exists to close.
+   */
+  attachmentIds: requiredAttachmentIds,
 });
 
+// attachmentIds is omitted: an edit revises the figures on a draft or rejected
+// document, and the photos bound at creation stay bound. Rebinding on update
+// would let a rejected voucher swap its evidence for a different receipt before
+// coming back to the same approver.
 export const UpdateFinanceTransactionSchema = CreateFinanceTransactionSchema.partial().omit({
   asDraft: true,
+  confirmDuplicate: true,
+  attachmentIds: true,
 });
 
 // ---------------------------------------------------------------------------
@@ -131,8 +148,17 @@ export const ImportBranchIncomeSchema = z.object({
   refresh: z.boolean().default(false),
 });
 
+/**
+ * Optional, not required — the only finance document where that is true.
+ *
+ * A branch-income row is imported from the branch closing by
+ * `importBranchIncome`, so it comes into being with no human at a camera.
+ * Requiring a photo would break that import outright. The verifier may attach
+ * one (a shot of the counted cash, say) and most will not.
+ */
 export const VerifyIncomeSchema = z.object({
   notes: z.string().max(500).nullish(),
+  attachmentIds: optionalAttachmentIds,
 });
 
 // ---------------------------------------------------------------------------
@@ -149,8 +175,17 @@ export const CreateEmployeeSchema = z.object({
   joinedOn: businessDate.nullish(),
 });
 
-export const UpdateEmployeeSchema = CreateEmployeeSchema.partial().extend({
-  isActive: z.boolean().optional(),
+// baseSalary is deliberately NOT editable here — changing it needs a reason
+// and an effective date, which only CreateSalaryRevisionSchema below collects.
+// A plain PUT that carried baseSalary would overwrite it with no trail at all.
+export const UpdateEmployeeSchema = CreateEmployeeSchema.omit({ baseSalary: true })
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
+
+export const CreateSalaryRevisionSchema = z.object({
+  newSalary: z.number().nonnegative('New salary cannot be negative').max(9_999_999_999.99),
+  reason: z.string().min(3, 'Reason is required').max(300),
+  effectiveFrom: businessDate,
 });
 
 export const CreateSalaryPaymentSchema = z.object({
@@ -164,6 +199,8 @@ export const CreateSalaryPaymentSchema = z.object({
   account: z.enum(FINANCE_ACCOUNTS),
   notes: z.string().max(500).nullish(),
   asDraft: z.boolean().default(false),
+  /** Photo of the signed payslip or the cash handover. */
+  attachmentIds: requiredAttachmentIds,
 })
   // netSalary is computed server-side, but a payslip that nets out to nothing —
   // or below it — is a data-entry error worth catching before it reaches an
@@ -184,23 +221,72 @@ export const UpdateSalaryPaymentSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Partner expenses
+// Partners, partner advances/draws, branch share payouts
 // ---------------------------------------------------------------------------
 
+/** Profile-only — the four partners and their 25% split are fixed at seed time. */
+export const UpdateFinancePartnerSchema = z.object({
+  fatherName: z.string().max(120).nullish(),
+  dateOfBirth: businessDate.nullish(),
+  joinedOn: businessDate.nullish(),
+  partnerType: z.enum(['founder', 'co_founder']).nullish(),
+  address: z.string().max(300).nullish(),
+  contactNumber: z.string().max(30).nullish(),
+  emergencyNumber: z.string().max(30).nullish(),
+});
+
+// ledgerHeadId and description are gone: an advance/draw always books against
+// EXP-PARTNER (resolved server-side) with a description generated from the
+// partner name and txnKind — the form only asks for what the brief asks for.
 export const CreatePartnerExpenseSchema = z.object({
-  partnerName: z.string().min(2, 'Partner name is required').max(120),
-  ledgerHeadId: z.string().uuid('Select an expense head'),
-  description: z.string().min(2, 'Description is required').max(300),
+  partnerId: z.string().uuid('Select a partner'),
+  txnKind: z.enum(['advance', 'draw']),
   amount: money('Amount'),
   paymentMethod: z.enum(FINANCE_PAYMENT_METHODS),
   account: z.enum(FINANCE_ACCOUNTS),
   businessDate: businessDate.optional(),
   notes: z.string().max(500).nullish(),
   asDraft: z.boolean().default(false),
+  /** Photo of the cash handover or the transfer slip. */
+  attachmentIds: requiredAttachmentIds,
 });
 
-export const UpdatePartnerExpenseSchema = CreatePartnerExpenseSchema.partial().omit({
+// partnerId and txnKind are excluded from editing for the same reason
+// UpdateSalaryPaymentSchema excludes employeeId/salaryMonth: changing either
+// would sidestep the constraint the field exists to enforce. attachmentIds is
+// excluded for the reason given on UpdateFinanceTransactionSchema.
+export const UpdatePartnerExpenseSchema = CreatePartnerExpenseSchema.omit({
+  partnerId: true,
+  txnKind: true,
   asDraft: true,
+  attachmentIds: true,
+}).partial();
+
+export const CreateBranchSharePaymentSchema = z
+  .object({
+    branchId: z.string().uuid('Select a branch'),
+    amount: z.number().nonnegative().max(9_999_999_999.99).default(0),
+    bonus: z.number().nonnegative().max(9_999_999_999.99).default(0),
+    paymentMethod: z.enum(FINANCE_PAYMENT_METHODS),
+    account: z.enum(FINANCE_ACCOUNTS),
+    businessDate: businessDate.optional(),
+    notes: z.string().max(500).nullish(),
+    asDraft: z.boolean().default(false),
+    /** Photo of the payout being handed over. */
+    attachmentIds: requiredAttachmentIds,
+  })
+  .refine((d) => d.amount > 0 || d.bonus > 0, {
+    message: 'Enter a share amount, a bonus, or both',
+    path: ['amount'],
+  });
+
+export const UpdateBranchSharePaymentSchema = z.object({
+  amount: z.number().nonnegative().max(9_999_999_999.99).optional(),
+  bonus: z.number().nonnegative().max(9_999_999_999.99).optional(),
+  paymentMethod: z.enum(FINANCE_PAYMENT_METHODS).optional(),
+  account: z.enum(FINANCE_ACCOUNTS).optional(),
+  businessDate: businessDate.optional(),
+  notes: z.string().max(500).nullish(),
 });
 
 // ---------------------------------------------------------------------------
@@ -292,10 +378,14 @@ export type AdjustLedgerEntryInput = z.infer<typeof AdjustLedgerEntrySchema>;
 export type ImportBranchIncomeInput = z.infer<typeof ImportBranchIncomeSchema>;
 export type CreateEmployeeInput = z.infer<typeof CreateEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof UpdateEmployeeSchema>;
+export type CreateSalaryRevisionInput = z.infer<typeof CreateSalaryRevisionSchema>;
 export type CreateSalaryPaymentInput = z.infer<typeof CreateSalaryPaymentSchema>;
 export type UpdateSalaryPaymentInput = z.infer<typeof UpdateSalaryPaymentSchema>;
+export type UpdateFinancePartnerInput = z.infer<typeof UpdateFinancePartnerSchema>;
 export type CreatePartnerExpenseInput = z.infer<typeof CreatePartnerExpenseSchema>;
 export type UpdatePartnerExpenseInput = z.infer<typeof UpdatePartnerExpenseSchema>;
+export type CreateBranchSharePaymentInput = z.infer<typeof CreateBranchSharePaymentSchema>;
+export type UpdateBranchSharePaymentInput = z.infer<typeof UpdateBranchSharePaymentSchema>;
 export type CloseFinanceDayInput = z.infer<typeof CloseFinanceDaySchema>;
 export type UpdateFinanceSettingsInput = z.infer<typeof UpdateFinanceSettingsSchema>;
 export type FinanceReportQueryInput = z.infer<typeof FinanceReportQuerySchema>;
