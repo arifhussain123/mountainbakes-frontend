@@ -482,7 +482,20 @@ function PreviewBody({
               <tbody>
                 {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
                   <tr key={it.productId} className="border-b border-neutral-200 align-top">
-                    <td className="py-1.5 pr-2 font-medium">{it.productName}</td>
+                    <td className="py-1.5 pr-2 font-medium">
+                      {it.productName}
+                      {/* Production cannot pick this off a shelf — it has to be
+                          made to the branch's description. Flagged on the slip
+                          itself, which is what the floor actually works from. */}
+                      {it.isSpecial && (
+                        <span className="ml-1.5 rounded border border-neutral-400 px-1 py-px text-[9px] font-bold uppercase">
+                          Special
+                        </span>
+                      )}
+                      {it.isSpecial && it.description && (
+                        <p className="mt-0.5 text-[10px] font-normal italic text-neutral-600">{it.description}</p>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt(previousBalance)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt(newDemand)}</td>
                     <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{fmt(totalDemand)}</td>
@@ -520,7 +533,17 @@ function PreviewBody({
           <div className="mt-3 space-y-3 md:hidden">
             {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
               <div key={it.productId} className="rounded-lg border border-neutral-200 p-3">
-                <p className="font-semibold">{it.productName}</p>
+                <p className="font-semibold">
+                  {it.productName}
+                  {it.isSpecial && (
+                    <span className="ml-1.5 rounded border border-neutral-400 px-1 py-px text-[9px] font-bold uppercase">
+                      Special
+                    </span>
+                  )}
+                </p>
+                {it.isSpecial && it.description && (
+                  <p className="mt-0.5 text-[11px] italic text-neutral-600">{it.description}</p>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   <Field label="Prev. Balance" value={fmt(previousBalance)} />
                   <Field label="New Demand" value={fmt(newDemand)} />

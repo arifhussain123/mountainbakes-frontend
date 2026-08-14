@@ -70,6 +70,13 @@ type ProductionOrderItem = { productId: string; qty: number };
 
 /** Optional packing-material line submitted with the same demand. */
 type ProductionOrderPackingItem = { packingMaterialId: string; qty: number };
+/** Mirrors SpecialOrderItemSchema in @mb/shared — name and qty required, the rest optional. */
+type SpecialOrderItemInput = {
+  name: string;
+  qty: number;
+  description: string;
+  attachmentIds: string[];
+};
 
 // Live/intraday queries: kept fresh by notification-driven invalidation
 // (useProductionRealtime / usePriceRealtime) rather than by constant refetching.
@@ -485,13 +492,16 @@ export function useMarkPrinted(token: string) {
 export function useSubmitProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    // Packing items are optional; an omitted/empty array posts exactly the payload
-    // this endpoint accepted before the packing-material module existed.
+    // Packing and special items are both optional; an omitted/empty array posts
+    // exactly the payload this endpoint accepted before either module existed.
     mutationFn: (v: {
       items: ProductionOrderItem[];
       packingItems?: ProductionOrderPackingItem[];
-      /** Photos of what the demand is for. At least one — the API refuses a demand without. */
-      attachmentIds: string[];
+      /**
+       * One-off items typed by hand. Each becomes a hidden `is_special` product
+       * server-side so it can carry production and branch stock like any line.
+       */
+      specialItems?: SpecialOrderItemInput[];
     }) =>
       apiCall(
         '/api/production-orders',
@@ -500,7 +510,7 @@ export function useSubmitProductionOrder(token: string) {
           body: JSON.stringify({
             items: v.items,
             packingItems: v.packingItems ?? [],
-            attachmentIds: v.attachmentIds,
+            specialItems: v.specialItems ?? [],
           }),
         },
         token,
@@ -508,6 +518,9 @@ export function useSubmitProductionOrder(token: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['productionOrders'] });
       qc.invalidateQueries({ queryKey: ['stock'] });
+      // A special item creates a product, so the catalogue the order form reads
+      // is now stale. Cheap to refetch and confusing if it is not.
+      qc.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }

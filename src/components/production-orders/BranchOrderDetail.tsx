@@ -156,7 +156,21 @@ export function BranchOrderDetail({
                     <tbody>
                       {order.items.map((it) => (
                         <tr key={it.productId} className="border-t">
-                          <td className="px-3 py-2 font-medium">{it.productName}</td>
+                          <td className="px-3 py-2 font-medium">
+                            {it.productName}
+                            {/* A special line moves stock like any other, so it
+                                is counted and verified in this same table — the
+                                badge is what tells the counter that this one was
+                                made to order rather than picked off the shelf. */}
+                            {it.isSpecial && (
+                              <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary">
+                                Special
+                              </span>
+                            )}
+                            {it.isSpecial && it.description && (
+                              <p className="mt-0.5 text-xs font-normal text-muted-foreground">{it.description}</p>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
                           {awaitingVerification ? (
