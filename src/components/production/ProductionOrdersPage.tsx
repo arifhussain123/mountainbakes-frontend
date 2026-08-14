@@ -8,7 +8,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { useProductionOrders, useReviewProductionOrder, useMarkPrinted, useFinalApproveProductionOrder } from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
-import { Eye } from 'lucide-react';
+import { Eye, Sparkles } from 'lucide-react';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -60,12 +60,36 @@ export function ProductionOrdersPage() {
     const branches = new Set<string>();
     const products = new Map<string, { productName: string; total: number; byBranch: Record<string, number> }>();
     const packing = new Map<string, { materialName: string; total: number; byBranch: Record<string, number> }>();
+    const special: {
+      orderId: string;
+      demandNumber: string;
+      branch: string;
+      name: string;
+      qty: number;
+      description: string;
+      photoCount: number;
+    }[] = [];
 
     for (const o of pending) {
       const branch = short(o.branchName);
       branches.add(branch);
 
       for (const it of o.items) {
+        // Special items are LISTED, never pivoted — see the note on the section
+        // below for why aggregating them would destroy the instruction.
+        if (it.isSpecial) {
+          special.push({
+            orderId: o.id,
+            demandNumber: o.demandNumber,
+            branch,
+            name: it.productName,
+            qty: it.qty,
+            description: it.description ?? '',
+            photoCount: (it.photos ?? []).length,
+          });
+          continue;
+        }
+
         let row = products.get(it.productId);
         if (!row) { row = { productName: it.productName, total: 0, byBranch: {} }; products.set(it.productId, row); }
         row.total += it.qty;
@@ -85,6 +109,7 @@ export function ProductionOrdersPage() {
       branches: [...branches].sort(),
       rows: [...products.values()].sort((a, b) => b.total - a.total),
       packingRows: [...packing.values()].sort((a, b) => b.total - a.total),
+      specialRows: special,
     };
   }, [pending]);
 
@@ -118,11 +143,16 @@ export function ProductionOrdersPage() {
       ),
     }),
     // Hidden, search-only. The global filter can only match what a column accessor
-    // exposes, so this is what lets someone find a demand by a product OR packing
-    // material name without adding either as a visible column.
+    // exposes, so this is what lets someone find a demand by a product, packing
+    // material OR special item name without adding any as a visible column.
+    // Special item DESCRIPTIONS are included too — "blue writing" is how someone
+    // will look for that cake, and it is not in any name.
     col.accessor(
       (o) =>
-        [...o.items.map((i) => i.productName), ...(o.packingItems ?? []).map((p) => p.materialName)].join(' '),
+        [
+          ...o.items.map((i) => `${i.productName} ${i.isSpecial ? (i.description ?? '') : ''}`),
+          ...(o.packingItems ?? []).map((p) => p.materialName),
+        ].join(' '),
       { id: 'contents', header: '' },
     ),
   ];
@@ -135,16 +165,67 @@ export function ProductionOrdersPage() {
           <CardTitle className="text-base">Demand Summary — Waiting Orders</CardTitle>
         </CardHeader>
         <CardContent>
-          {demand.rows.length === 0 && demand.packingRows.length === 0 ? (
+          {demand.rows.length === 0 && demand.packingRows.length === 0 && demand.specialRows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No waiting demands right now.</p>
           ) : (
             <>
-              {/* Labelled only when there is a second pivot to tell it apart from. */}
-              {demand.packingRows.length > 0 && (
+              {/* ---------- Special order items ----------
+                  FIRST on the page, and a LIST rather than a pivot.
+
+                  Not pivoted because aggregating them destroys the only thing
+                  that makes them makeable: two branches asking for a "Name
+                  cake" want different names piped on them, and a row reading
+                  "Name cake — 4" tells the floor to bake four of something it
+                  has no instructions for. Each one is its own job, so each one
+                  gets its own line with the branch that asked and what they
+                  asked for.
+
+                  First because it is the only demand on this page that cannot
+                  be filled from the standing plan, so it is the thing worth
+                  reading before anything else. Absent entirely on a day with
+                  none, leaving the page exactly as it was. */}
+              {demand.specialRows.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Special Order Items
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold normal-case text-primary">
+                      {demand.specialRows.length} to make
+                    </span>
+                  </h3>
+
+                  <ul className="divide-y rounded-lg border">
+                    {demand.specialRows.map((r, i) => (
+                      <li key={`${r.orderId}-${r.name}-${i}`} className="flex items-start gap-3 px-3 py-2.5 text-sm">
+                        <span className="mt-0.5 min-w-[2.5rem] shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-center font-bold tabular-nums text-primary">
+                          {r.qty}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium leading-tight">{r.name}</p>
+                          {/* The instruction. This is the reason the section exists. */}
+                          {r.description && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">{r.description}</p>
+                          )}
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {r.branch} · {r.demandNumber}
+                            {r.photoCount > 0 && ` · ${r.photoCount} photo${r.photoCount === 1 ? '' : 's'} — open the order to view`}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Labelled only when there is another section to tell it apart from. */}
+              {(demand.packingRows.length > 0 || demand.specialRows.length > 0) && demand.rows.length > 0 && (
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Products</h3>
               )}
 
-              {/* Desktop pivot table */}
+              {/* Desktop pivot table. Guarded on rows: a day whose only waiting
+                  demand is a special item would otherwise render a table of
+                  column headers with nothing under them. */}
+              {demand.rows.length > 0 && (
               <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-sm">
                   <thead>
@@ -169,6 +250,7 @@ export function ProductionOrdersPage() {
                   </tbody>
                 </table>
               </div>
+              )}
 
               {/* Mobile cards */}
               <div className="space-y-3 md:hidden">
