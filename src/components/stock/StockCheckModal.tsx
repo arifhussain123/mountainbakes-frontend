@@ -221,8 +221,9 @@ export function StockCheckModal({
                 // demand entry list, and for the same reason: a counter walking the
                 // shelf wants the whole product list in as few screens as possible.
                 // The name truncates (full text in `title`) rather than wrapping,
-                // which is what holds the row to one line, and the stock code goes
-                // with it — there is no room, and nobody counts by code.
+                // which is what holds the row to one line. The stock code is not
+                // shown at all — nobody counts by code — though search still
+                // matches it.
                 <div
                   key={row.productId}
                   className={cn(
@@ -237,7 +238,6 @@ export function StockCheckModal({
                     <p className="truncate text-sm font-medium leading-tight sm:text-base" title={row.productName}>
                       {row.productName}
                     </p>
-                    <p className="hidden font-mono text-xs text-muted-foreground sm:block">{row.stockCode}</p>
                   </div>
 
                   {/* Balance reads as inline text on mobile and as the bordered box
