@@ -11,6 +11,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
@@ -341,6 +342,32 @@ function PreviewBody({
         <div className="no-print mx-auto max-w-[880px] bg-white p-5 text-black shadow-sm sm:p-7">
           <SlipHeader logo={logo} companyName={companyName} status={order.status} branch={branch} />
           <OrderMeta order={order} />
+
+          {/* The branch's photos, on screen only — inside the `no-print` block,
+              so the slip that goes out with the delivery is unchanged.
+              The verification set is what Production checks before signing off:
+              stock has already moved on the branch's own count, and this is the
+              only independent record of a delivery nobody here can re-inspect. */}
+          {((order.demandPhotos?.length ?? 0) > 0 || (order.verificationPhotos?.length ?? 0) > 0) && (
+            <div className="mt-4 grid gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:grid-cols-2">
+              {(order.demandPhotos?.length ?? 0) > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    Demand Photo
+                  </p>
+                  <AttachmentGallery attachments={order.demandPhotos} title="Demand photo" />
+                </div>
+              )}
+              {(order.verificationPhotos?.length ?? 0) > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    Delivery Photo · verified by {order.verifiedByName ?? '—'}
+                  </p>
+                  <AttachmentGallery attachments={order.verificationPhotos} title="Delivery photo" />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Goods coming back against this delivery. Scoped to what was actually
               delivered — a product that never went out cannot come back — and

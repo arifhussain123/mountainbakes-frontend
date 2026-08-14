@@ -487,10 +487,22 @@ export function useSubmitProductionOrder(token: string) {
   return useMutation({
     // Packing items are optional; an omitted/empty array posts exactly the payload
     // this endpoint accepted before the packing-material module existed.
-    mutationFn: (v: { items: ProductionOrderItem[]; packingItems?: ProductionOrderPackingItem[] }) =>
+    mutationFn: (v: {
+      items: ProductionOrderItem[];
+      packingItems?: ProductionOrderPackingItem[];
+      /** Photos of what the demand is for. At least one — the API refuses a demand without. */
+      attachmentIds: string[];
+    }) =>
       apiCall(
         '/api/production-orders',
-        { method: 'POST', body: JSON.stringify({ items: v.items, packingItems: v.packingItems ?? [] }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            items: v.items,
+            packingItems: v.packingItems ?? [],
+            attachmentIds: v.attachmentIds,
+          }),
+        },
         token,
       ),
     onSuccess: () => {
@@ -622,6 +634,8 @@ export interface VerifyOrderPayload {
   id: string;
   verifiedItems: { productId: string; verifiedQty: number }[];
   newItems: { productId: string; qty: number }[];
+  /** Photos of what actually arrived. At least one — the API refuses a verification without. */
+  attachmentIds: string[];
 }
 
 /**

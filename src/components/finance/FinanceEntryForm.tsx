@@ -10,6 +10,7 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   FINANCE_PAYMENT_METHODS,
+  type Attachment,
   type CreateFinanceTransactionInput,
   type FinanceTransaction,
   type LedgerHeadType,
@@ -23,6 +24,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { cn } from '@/lib/utils';
 import { TriangleAlert } from 'lucide-react';
 
@@ -73,6 +76,15 @@ export function FinanceEntryForm({
   const mut = useFinanceMutation();
 
   const [headType, setHeadType] = useState<LedgerHeadType>(entry?.txnType ?? 'expense');
+  /**
+   * Photos are uploaded the moment they are captured, so this holds the STORED
+   * attachments — not pending files. The form field carries only their ids.
+   *
+   * On an existing entry they are already bound and cannot be changed (the
+   * update endpoint has no attachmentIds field, by design), so the form shows
+   * them read-only rather than offering the camera again.
+   */
+  const [photos, setPhotos] = useState<Attachment[]>(entry?.attachments ?? []);
   const [duplicateWarning, setDuplicateWarning] = useState<{
     match: DuplicateIncomeMatch;
     data: CreateFinanceTransactionInput;
@@ -92,8 +104,19 @@ export function FinanceEntryForm({
       referenceNo: entry?.referenceNo ?? '',
       notes: entry?.notes ?? '',
       asDraft: false,
+      attachmentIds: (entry?.attachments ?? []).map((a) => a.id),
     },
   });
+
+  /** Keep the validated field in step with the gallery above it. */
+  function setPhotoField(next: Attachment[]) {
+    setPhotos(next);
+    form.setValue(
+      'attachmentIds',
+      next.map((a) => a.id),
+      { shouldValidate: true },
+    );
+  }
 
   const heads = (headsQ.data ?? []).filter((h) => h.type === headType);
   const ledgerHeadId = form.watch('ledgerHeadId');
@@ -116,10 +139,13 @@ export function FinanceEntryForm({
       if (entry) {
         // Editing only ever touches a draft or a rejected document — a posted one
         // has no update path at all, by design.
+        // attachmentIds is stripped alongside asDraft: an edit revises the
+        // figures, and the photos bound at creation stay bound (see the note on
+        // UpdateFinanceTransactionSchema).
         await mut.mutateAsync({
           path: `/api/finance/income/entries/${entry.id}`,
           method: 'PUT',
-          body: { ...data, asDraft: undefined },
+          body: { ...data, asDraft: undefined, attachmentIds: undefined },
         });
         toast.success('Entry updated');
       } else {
@@ -301,6 +327,28 @@ export function FinanceEntryForm({
         <Label>Notes (optional)</Label>
         <Textarea rows={2} placeholder="Anything an approver should know" {...form.register('notes')} />
       </div>
+
+      {entry ? (
+        <div className="space-y-2">
+          <Label>Photo</Label>
+          <AttachmentGallery
+            attachments={photos}
+            title={`${entry.txnNo} receipt`}
+            emptyText="No photo was captured with this entry."
+          />
+        </div>
+      ) : (
+        <PhotoCapture
+          entity="finance_transaction"
+          value={photos}
+          onChange={setPhotoField}
+          label="Receipt photo"
+          required
+          disabled={mut.isPending}
+          hint="Photograph the receipt, bill or transfer slip that backs this entry."
+          error={errors.attachmentIds?.message}
+        />
+      )}
 
       {duplicateWarning && (
         <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">

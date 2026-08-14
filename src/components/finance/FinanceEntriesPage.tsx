@@ -14,6 +14,7 @@ import { useFinanceEntries, useLedgerHeads } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
 import { FinanceEntryForm } from './FinanceEntryForm';
@@ -306,6 +307,15 @@ export function FinanceEntriesPage() {
                     <p className="font-medium whitespace-pre-wrap break-words">{viewing.notes.trim()}</p>
                   </div>
                 )}
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Photo</p>
+                  <AttachmentGallery
+                    attachments={viewing.attachments}
+                    title={`${viewing.txnNo} receipt`}
+                    emptyText="No photo — this entry predates the requirement."
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>

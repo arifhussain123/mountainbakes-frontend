@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import type { BranchProductionOrder } from '@mb/shared';
+import type { Attachment, BranchProductionOrder } from '@mb/shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { useProducts, useVerifyProductionOrder } from '@/lib/queries';
 import { Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -64,6 +66,8 @@ export function BranchOrderDetail({
   const [addingItem, setAddingItem] = useState(false);
   const [newProductId, setNewProductId] = useState('');
   const [newQty, setNewQty] = useState('');
+  /** Photos of the delivery as counted. Cleared with the rest of the form. */
+  const [photos, setPhotos] = useState<Attachment[]>([]);
 
   function resetLocalState() {
     setVerifiedQtys({});
@@ -71,6 +75,7 @@ export function BranchOrderDetail({
     setAddingItem(false);
     setNewProductId('');
     setNewQty('');
+    setPhotos([]);
   }
 
   function addStagedItem() {
@@ -94,6 +99,7 @@ export function BranchOrderDetail({
         id: order.id,
         verifiedItems,
         newItems: newItems.map(({ productId, qty }) => ({ productId, qty })),
+        attachmentIds: photos.map((p) => p.id),
       });
       toast.success('Verified — sent to Production for final approval');
       resetLocalState();
@@ -269,6 +275,38 @@ export function BranchOrderDetail({
                 </div>
               )}
 
+              {/* What the branch photographed when it raised this demand. Shown
+                  at every status — it is the context for the quantities above. */}
+              {(order.demandPhotos?.length ?? 0) > 0 && (
+                <div>
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Demand Photo
+                  </h4>
+                  <AttachmentGallery attachments={order.demandPhotos} title="Demand photo" />
+                </div>
+              )}
+
+              {awaitingVerification ? (
+                <PhotoCapture
+                  entity="production_order_verification"
+                  value={photos}
+                  onChange={setPhotos}
+                  label="Delivery photo"
+                  required
+                  disabled={verifyMut.isPending}
+                  hint="Photograph what arrived before you verify. This is Production's only record of the delivery."
+                />
+              ) : (
+                (order.verificationPhotos?.length ?? 0) > 0 && (
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Delivery Photo
+                    </h4>
+                    <AttachmentGallery attachments={order.verificationPhotos} title="Delivery photo" />
+                  </div>
+                )
+              )}
+
               {order.status === 'approved' && (
                 <p className="text-xs text-muted-foreground">
                   Approved by {order.approvedByName ?? '—'}
@@ -285,7 +323,9 @@ export function BranchOrderDetail({
                 Close
               </Button>
               {awaitingVerification && (
-                <Button onClick={verify} disabled={verifyMut.isPending}>
+                // Disabled without a photo rather than letting the API 400 after
+                // the user has already committed to the count.
+                <Button onClick={verify} disabled={verifyMut.isPending || photos.length === 0}>
                   {verifyMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null} Verify
                 </Button>
               )}

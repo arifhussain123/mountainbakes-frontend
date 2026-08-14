@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
 import { EmployeeForm, SalaryForm, SalaryRevisionForm } from './SalaryForms';
@@ -287,6 +288,15 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
                     <p className="font-medium whitespace-pre-wrap break-words">{viewing.notes.trim()}</p>
                   </div>
                 )}
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Photo</p>
+                  <AttachmentGallery
+                    attachments={viewing.attachments}
+                    title={`${viewing.salaryNo} payslip`}
+                    emptyText="No photo — this payslip predates the requirement."
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>

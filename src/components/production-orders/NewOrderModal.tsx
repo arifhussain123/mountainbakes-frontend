@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ElementType } from 'react';
 import {
+  type Attachment,
   type Product,
   businessDateStr,
   karachiTimeStr,
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
@@ -59,6 +61,8 @@ export interface NewOrderModalProps {
   submit: (payload: {
     items: { productId: string; qty: number }[];
     packingItems: { packingMaterialId: string; qty: number }[];
+    /** Ids of the photos captured on the confirmation step. At least one — the API refuses a demand without. */
+    attachmentIds: string[];
   }) => Promise<unknown>;
   submitting: boolean;
 }
@@ -123,6 +127,16 @@ export function NewOrderModal({
   // start empty — a demand with none must behave exactly as it did before.
   const [packingOpen, setPackingOpen] = useState(false);
   const [packingRows, setPackingRows] = useState<PackingRow[]>([]);
+  /**
+   * Photos of what the demand is for, captured on the confirmation step rather
+   * than in the body of the form.
+   *
+   * Deliberately NOT part of the localStorage draft: an attachment id is a
+   * pointer to an uploaded file, and a draft restored days later would carry
+   * ids whose photos no longer describe today's demand. The quantities are
+   * worth keeping across a refresh; the photograph is not.
+   */
+  const [photos, setPhotos] = useState<Attachment[]>([]);
 
   const qtyRefs = useRef<(HTMLInputElement | null)[]>([]);
   const draftKey = branchId ? `mb:po-draft:${branchId}` : 'mb:po-draft';
@@ -277,10 +291,11 @@ export function NewOrderModal({
         packingMaterialId: r.packingMaterialId,
         qty: parseQty(r.qty),
       }));
-      await submit({ items, packingItems });
+      await submit({ items, packingItems, attachmentIds: photos.map((p) => p.id) });
       toast.success('Production Order Submitted Successfully');
       setQtyById({});
       setPackingRows([]);
+      setPhotos([]);
       setPackingOpen(false);
       try {
         localStorage.removeItem(draftKey);
@@ -593,11 +608,25 @@ export function NewOrderModal({
             )}
           </dl>
 
+          {/* The last thing before Confirm, and the reason the button stays
+              disabled — a demand without a photo is refused by the API, so
+              blocking here is the difference between a clear prompt and a 400
+              after the user has already committed. */}
+          <PhotoCapture
+            entity="production_order_demand"
+            value={photos}
+            onChange={setPhotos}
+            label="Demand photo"
+            required
+            disabled={submitting}
+            hint="Photograph the empty shelf or crate this demand is for."
+          />
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow}>
+            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow || photos.length === 0}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting…

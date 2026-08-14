@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { createColumnHelper } from '@tanstack/react-table';
-import { businessDateStr, type FinanceIncomeApproval } from '@mb/shared';
+import { businessDateStr, type Attachment, type FinanceIncomeApproval } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useFinanceSettings, useIncomeApprovals } from '@/lib/finance';
@@ -19,6 +19,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect, RejectDialog } from './finance-actions';
 import { ArrowDownToLine, BadgeCheck, Check, Eye, Info, X } from 'lucide-react';
@@ -55,6 +57,14 @@ export function BranchIncomePage() {
   const [to, setTo] = useState('');
   const [importing, setImporting] = useState(false);
   const [approving, setApproving] = useState<FinanceIncomeApproval | null>(null);
+  /**
+   * The row awaiting an Admin verification. A dialog rather than a straight
+   * button click, unlike before, so a photo of the counted cash can be attached
+   * — OPTIONAL here, because these rows are machine-imported from the branch
+   * closing and there is no moment of capture to demand one at. Every other
+   * finance document requires its photo.
+   */
+  const [verifying, setVerifying] = useState<FinanceIncomeApproval | null>(null);
   const [rejecting, setRejecting] = useState<FinanceIncomeApproval | null>(null);
   const [viewing, setViewing] = useState<FinanceIncomeApproval | null>(null);
 
@@ -82,10 +92,14 @@ export function BranchIncomePage() {
   const zeroRows = rows.filter((r) => r.totalAmount === 0);
   const tableRows = rows.filter((r) => r.totalAmount !== 0);
 
-  async function verify(approval: FinanceIncomeApproval) {
+  async function verify(approval: FinanceIncomeApproval, attachmentIds: string[]) {
     try {
-      await verifyMut.mutateAsync({ path: `/api/finance/income/${approval.id}/verify`, body: {} });
+      await verifyMut.mutateAsync({
+        path: `/api/finance/income/${approval.id}/verify`,
+        body: { attachmentIds },
+      });
       toast.success(`${approval.branchName} verified — now with Finance for approval`);
+      setVerifying(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not verify this income');
     }
@@ -128,7 +142,7 @@ export function BranchIncomePage() {
               <Eye className="h-3.5 w-3.5" />
             </Button>
             {row.status === 'pending_verification' && canVerify && (
-              <Button variant="outline" size="sm" disabled={verifyMut.isPending} onClick={() => void verify(row)}>
+              <Button variant="outline" size="sm" disabled={verifyMut.isPending} onClick={() => setVerifying(row)}>
                 <BadgeCheck className="h-3.5 w-3.5" />
                 Verify
               </Button>
@@ -250,6 +264,15 @@ export function BranchIncomePage() {
 
       <ApproveIncomeDialog approval={approving} onClose={() => setApproving(null)} />
 
+      <VerifyIncomeDialog
+        approval={verifying}
+        pending={verifyMut.isPending}
+        onClose={() => setVerifying(null)}
+        onConfirm={(ids) => {
+          if (verifying) void verify(verifying, ids);
+        }}
+      />
+
       {/* Mounted only while a row is selected, so the dialog can never hold a
           path built from an undefined id. */}
       {rejecting && (
@@ -319,6 +342,16 @@ export function BranchIncomePage() {
                     <p className="font-medium whitespace-pre-wrap break-words">{viewing.rejectionReason}</p>
                   </div>
                 )}
+                {(viewing.attachments?.length ?? 0) > 0 && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Photo</p>
+                    <AttachmentGallery
+                      attachments={viewing.attachments}
+                      title={`${viewing.referenceNo} photo`}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
               </div>
 
               <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
@@ -329,6 +362,69 @@ export function BranchIncomePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Admin's verification step, with an OPTIONAL photo.
+ *
+ * Optional is the whole point of this dialog existing separately from every
+ * other capture surface in the app. A branch-income row is imported from the
+ * branch closing by a machine — there is no moment at which someone is standing
+ * in front of the money with a phone, so a required photo would simply block
+ * the workflow. A verifier who did count the cash can attach a shot of it; one
+ * who is signing off on figures from a report can verify with nothing.
+ */
+function VerifyIncomeDialog({
+  approval,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  approval: FinanceIncomeApproval | null;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: (attachmentIds: string[]) => void;
+}) {
+  const [photos, setPhotos] = useState<Attachment[]>([]);
+
+  function close() {
+    setPhotos([]);
+    onClose();
+  }
+
+  return (
+    <Dialog open={approval !== null} onOpenChange={(open) => !open && close()}>
+      <DialogContent className="md:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Verify branch income</DialogTitle>
+          <DialogDescription>
+            {approval?.branchName} · {approval?.businessDate}. Verifying moves this to Finance for
+            approval; nothing is posted to the ledger yet.
+          </DialogDescription>
+        </DialogHeader>
+
+        <PhotoCapture
+          entity="finance_income_approval"
+          value={photos}
+          onChange={setPhotos}
+          label="Photo (optional)"
+          disabled={pending}
+          hint="Attach a photo of the counted cash if you have one. Not required — these figures come from the branch closing."
+        />
+
+        <DialogFooter>
+          <Button variant="outline" onClick={close} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={() => onConfirm(photos.map((p) => p.id))} disabled={pending}>
+            {pending ? 'Verifying…' : 'Verify'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

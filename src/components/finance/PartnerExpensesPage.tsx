@@ -6,22 +6,12 @@ import {
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
-  type BranchSharePayment,
-  type FinanceIncomeApproval,
   type FinancePartner,
   type PartnerExpense,
   type PartnerShareRow,
   type PartnerTxnKind,
 } from '@mb/shared';
-import { useAuth } from '@/hooks/useAuth';
-import { useBranches } from '@/lib/queries';
-import {
-  useBranchSharePayments,
-  useFinancePartners,
-  useIncomeApprovals,
-  usePartnerExpenses,
-  usePartnerShareSummary,
-} from '@/lib/finance';
+import { useFinancePartners, usePartnerExpenses, usePartnerShareSummary } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -29,15 +19,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
-import { BranchShareForm, PartnerDetailForm, PartnerTxnForm } from './CompanyTransactionForms';
+import { PartnerDetailForm, PartnerTxnForm } from './CompanyTransactionForms';
 import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
 
 /**
- * Company Transaction Details — five tabs over the same underlying idea:
+ * Company Transaction Details — four tabs over the same underlying idea:
  * money moving between the company and the people who own it.
+ *
+ * Branch share is deliberately NOT here: the payout document
+ * (branch_share_payments, /api/finance/branch-share) and its BranchShareForm
+ * still exist server-side, they just have no entry point on this page.
  *
  *   Advance Expense / Draw Company Share — partner_expenses rows, split by
  *     txnKind. An ADVANCE is lent against a partner's future share; a DRAW is
@@ -45,18 +40,34 @@ import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
  *     expense under EXP-PARTNER and both reduce the balance shown in Partner
  *     Share Detail, tracked separately because that table shows them
  *     separately.
- *   Branch Share — actually paying a branch its already-RECORDED share.
- *     Branch income approval posts the company/branch split to the ledger
- *     immediately (see Branch Income Approvals); nothing about that split
- *     moves cash to the branch until a row is approved here.
- *   All Branch Share — read-only, reuses the branch income approvals data —
- *     the day-wise collection/split history, with no write path of its own.
  *   Partner Share Detail — the reconciliation: total expenses (excluding
  *     partner advances/draws), total company share, the grand total the four
  *     partners split 25% each, and each partner's advance/draw/balance.
  *     Computed on read (finance-documents.service.ts#getPartnerShareSummary),
  *     never stored, so a reversal or adjustment is reflected automatically.
  */
+
+/**
+ * Tab triggers rendered as cards rather than the default compact segmented
+ * control: a bigger hit area (comfortable on the tablets the branches use), a
+ * real border + shadow, and a lift on hover. Applied per-trigger here instead
+ * of in `ui/tabs.tsx` so the rest of the app keeps the standard tab look.
+ *
+ * Two of these carry a `group-data-[variant=…]/tabs-list:` or `dark:` prefix
+ * they don't obviously need. That is deliberate: `ui/tabs.tsx` sets
+ * `…/tabs-list:data-active:shadow-sm` and `dark:data-active:border-input`, and
+ * a bare `data-active:shadow-xl` does NOT displace them — `cn()`/tailwind-merge
+ * only collapses classes whose modifiers match, so both survive and the base
+ * rule wins the cascade on specificity. Matching the prefix is what makes
+ * tailwind-merge drop the base value.
+ */
+const TAB_CARD =
+  'h-auto flex-none rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold shadow-md ' +
+  'transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent ' +
+  'hover:text-foreground hover:shadow-xl active:translate-y-0 ' +
+  'data-active:border-primary dark:data-active:border-primary ' +
+  'data-active:bg-background data-active:text-foreground ' +
+  'group-data-[variant=default]/tabs-list:data-active:shadow-xl';
 
 export function PartnerExpensesPage() {
   const abilities = useFinanceAbilities();
@@ -65,19 +76,25 @@ export function PartnerExpensesPage() {
     <div className="space-y-6">
       <FinancePageHeader
         title="Company Transaction Details"
-        description="Partner advances and draws, branch share payouts, and the partner profit-share reconciliation."
+        description="Partner advances and draws, and the partner profit-share reconciliation."
       />
 
       <ReadOnlyNotice abilities={abilities} />
 
       <Tabs defaultValue="advance">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="advance">Advance Expense</TabsTrigger>
-          <TabsTrigger value="draw">Draw Company Share</TabsTrigger>
-          <TabsTrigger value="branch-share">Branch Share</TabsTrigger>
-          <TabsTrigger value="all-branch-share">All Branch Share</TabsTrigger>
-          <TabsTrigger value="partner-share">Partner Share Detail</TabsTrigger>
-          <TabsTrigger value="partner-detail">Partner Detail</TabsTrigger>
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-3 bg-transparent p-0">
+          <TabsTrigger value="advance" className={TAB_CARD}>
+            Advance Expense
+          </TabsTrigger>
+          <TabsTrigger value="draw" className={TAB_CARD}>
+            Draw Company Share
+          </TabsTrigger>
+          <TabsTrigger value="partner-share" className={TAB_CARD}>
+            Partner Share Detail
+          </TabsTrigger>
+          <TabsTrigger value="partner-detail" className={TAB_CARD}>
+            Partner Detail
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="advance" className="mt-4">
@@ -85,12 +102,6 @@ export function PartnerExpensesPage() {
         </TabsContent>
         <TabsContent value="draw" className="mt-4">
           <PartnerLedgerTab txnKind="draw" abilities={abilities} />
-        </TabsContent>
-        <TabsContent value="branch-share" className="mt-4">
-          <BranchShareTab abilities={abilities} />
-        </TabsContent>
-        <TabsContent value="all-branch-share" className="mt-4">
-          <AllBranchShareTab />
         </TabsContent>
         <TabsContent value="partner-share" className="mt-4">
           <PartnerShareDetailTab />
@@ -315,6 +326,15 @@ function PartnerLedgerTab({
                     <p className="font-medium whitespace-pre-wrap break-words">{viewing.notes.trim()}</p>
                   </div>
                 )}
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Photo</p>
+                  <AttachmentGallery
+                    attachments={viewing.attachments}
+                    title={`${viewing.expenseNo} handover`}
+                    emptyText="No photo — this request predates the requirement."
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
@@ -324,315 +344,6 @@ function PartnerLedgerTab({
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Branch Share
-// ---------------------------------------------------------------------------
-
-const branchShareCol = createColumnHelper<BranchSharePayment>();
-const BRANCH_SHARE_BASE_PATH = '/api/finance/branch-share';
-
-function BranchShareTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbilities> }) {
-  const { token } = useAuth();
-  const branchesQ = useBranches(token ?? '');
-  const [status, setStatus] = useState('');
-  const [branchId, setBranchId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<BranchSharePayment | null>(null);
-  const [viewing, setViewing] = useState<BranchSharePayment | null>(null);
-
-  const { data, isLoading } = useBranchSharePayments({
-    status: status || undefined,
-    branchId: branchId || undefined,
-    from: from || undefined,
-    to: to || undefined,
-  });
-
-  const rows = data ?? [];
-  const total = rows.reduce((sum, r) => sum + r.amount + r.bonus, 0);
-
-  const columns = [
-    branchShareCol.accessor('paymentNo', {
-      header: 'No',
-      meta: { mobile: 'subtitle' },
-      cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span>,
-    }),
-    branchShareCol.accessor('branchName', {
-      header: 'Branch',
-      meta: { mobile: 'title' },
-      cell: (i) => <span className="font-medium">{i.getValue()}</span>,
-    }),
-    branchShareCol.accessor('businessDate', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    branchShareCol.accessor('amount', {
-      header: 'Share Amount',
-      cell: (i) => <Money value={i.getValue()} className="font-semibold" />,
-    }),
-    branchShareCol.accessor('bonus', {
-      header: 'Bonus',
-      cell: (i) => <Money value={i.getValue()} blankZero className="text-emerald-600 dark:text-emerald-400" />,
-    }),
-    branchShareCol.accessor('status', {
-      header: 'Status',
-      meta: { mobile: 'badge' },
-      cell: (i) => <StatusBadge status={i.getValue()} />,
-    }),
-    branchShareCol.display({
-      id: 'actions',
-      header: '',
-      cell: (i) => {
-        const row = i.row.original;
-        return (
-          <div className="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(row)}>
-              <Eye className="h-3.5 w-3.5" />
-            </Button>
-            {EDITABLE_DOC_STATUSES.includes(row.status) && abilities.create && (
-              <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => setEditing(row)}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            <DocumentActions doc={row} basePath={BRANCH_SHARE_BASE_PATH} abilities={abilities} label={row.paymentNo} />
-          </div>
-        );
-      },
-    }),
-  ];
-
-  return (
-    <div className="space-y-4">
-      <FilterBar>
-        <FilterField label="Status">
-          <FilterSelect
-            value={status}
-            onChange={setStatus}
-            allLabel="Any status"
-            options={[
-              { value: 'pending', label: 'Pending Approval' },
-              { value: 'draft', label: 'Draft' },
-              { value: 'posted', label: 'Posted' },
-              { value: 'locked', label: 'Locked' },
-              { value: 'rejected', label: 'Rejected' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Branch">
-          <FilterSelect
-            value={branchId}
-            onChange={setBranchId}
-            allLabel="All branches"
-            options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-          />
-        </FilterField>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={setFrom} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={setTo} />
-        </FilterField>
-        <div className="ml-auto flex items-end gap-3">
-          {rows.length > 0 && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Total for this selection</p>
-              <Money value={total} className="text-lg font-bold" />
-            </div>
-          )}
-          {abilities.create && (
-            <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Add branch share
-            </Button>
-          )}
-        </div>
-      </FilterBar>
-
-      <DataTable columns={columns} data={rows} loading={isLoading} searchPlaceholder="Search by branch…" />
-
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add branch share payment</DialogTitle>
-          </DialogHeader>
-          <BranchShareForm onSuccess={() => setCreating(false)} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit {editing?.paymentNo}</DialogTitle>
-          </DialogHeader>
-          {editing && <BranchShareForm payment={editing} onSuccess={() => setEditing(null)} />}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{viewing?.paymentNo}</DialogTitle>
-          </DialogHeader>
-          {viewing && (
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <StatusBadge status={viewing.status} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Date</p>
-                  <p className="font-medium">{viewing.businessDate}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Branch</p>
-                  <p className="font-medium">{viewing.branchName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Share Amount</p>
-                  <Money value={viewing.amount} className="font-semibold" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Bonus</p>
-                  <Money value={viewing.bonus} blankZero className="text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Payment Method</p>
-                  <p className="font-medium">{FINANCE_PAYMENT_METHOD_LABELS[viewing.paymentMethod] ?? viewing.paymentMethod}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Paid From</p>
-                  <p className="font-medium">{FINANCE_ACCOUNT_LABELS[viewing.account]}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Approved By</p>
-                  <p className="font-medium">{viewing.approvedByName ?? '—'}</p>
-                </div>
-                {viewing.status === 'rejected' && viewing.rejectionReason && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Rejection Reason</p>
-                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.rejectionReason}</p>
-                  </div>
-                )}
-                {viewing.notes?.trim() && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Note</p>
-                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.notes.trim()}</p>
-                  </div>
-                )}
-              </div>
-
-              <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
-                Close
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// All Branch Share — read-only, reuses Branch Income Approvals data
-// ---------------------------------------------------------------------------
-
-const incomeCol = createColumnHelper<FinanceIncomeApproval>();
-
-function AllBranchShareTab() {
-  const { token } = useAuth();
-  const branchesQ = useBranches(token ?? '');
-  const [branchId, setBranchId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-
-  // Only APPROVED rows: this tab shows share that has actually been recorded
-  // to the ledger, not what's still waiting on a decision.
-  const { data, isLoading } = useIncomeApprovals({
-    status: 'approved',
-    branchId: branchId || undefined,
-    from: from || undefined,
-    to: to || undefined,
-  });
-
-  const rows = data ?? [];
-  const totalCollected = rows.reduce((sum, r) => sum + r.totalAmount, 0);
-  const totalCompanyShare = rows.reduce((sum, r) => sum + r.companyShare, 0);
-  const totalBranchShare = rows.reduce((sum, r) => sum + r.branchShare, 0);
-
-  const columns = [
-    incomeCol.accessor('businessDate', {
-      header: 'Date',
-      meta: { mobile: 'subtitle' },
-      cell: (i) => <span className="text-sm">{i.getValue()}</span>,
-    }),
-    incomeCol.accessor('branchName', {
-      header: 'Branch',
-      meta: { mobile: 'title' },
-      cell: (i) => <span className="font-medium">{i.getValue()}</span>,
-    }),
-    incomeCol.accessor('totalAmount', {
-      header: 'Total Collected',
-      cell: (i) => <Money value={i.getValue()} className="font-semibold" />,
-    }),
-    incomeCol.accessor('companyShare', {
-      header: 'Company Share',
-      cell: (i) => (
-        <span className="whitespace-nowrap">
-          <Money value={i.getValue()} />
-          <span className="ml-1 text-xs text-muted-foreground">{i.row.original.companySharePct}%</span>
-        </span>
-      ),
-    }),
-    incomeCol.accessor('branchShare', {
-      header: 'Branch Share',
-      cell: (i) => (
-        <span className="whitespace-nowrap">
-          <Money value={i.getValue()} />
-          <span className="ml-1 text-xs text-muted-foreground">{i.row.original.branchSharePct}%</span>
-        </span>
-      ),
-    }),
-  ];
-
-  return (
-    <div className="space-y-4">
-      <FilterBar>
-        <FilterField label="Branch">
-          <FilterSelect
-            value={branchId}
-            onChange={setBranchId}
-            allLabel="All branches"
-            options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-          />
-        </FilterField>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={setFrom} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={setTo} />
-        </FilterField>
-        {rows.length > 0 && (
-          <div className="ml-auto grid grid-cols-3 gap-6 text-right">
-            <div>
-              <p className="text-xs text-muted-foreground">Collected</p>
-              <Money value={totalCollected} className="text-lg font-bold" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Company Share</p>
-              <Money value={totalCompanyShare} className="text-lg font-bold" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Branch Share</p>
-              <Money value={totalBranchShare} className="text-lg font-bold" />
-            </div>
-          </div>
-        )}
-      </FilterBar>
-
-      <DataTable columns={columns} data={rows} loading={isLoading} searchPlaceholder="Search by branch…" />
     </div>
   );
 }

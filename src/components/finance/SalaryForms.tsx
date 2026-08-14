@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   FINANCE_PAYMENT_METHODS,
+  type Attachment,
   type CreateEmployeeInput,
   type CreateSalaryPaymentInput,
   type CreateSalaryRevisionInput,
@@ -25,6 +27,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { cn } from '@/lib/utils';
 import { Money } from './finance-ui';
 
@@ -69,8 +73,20 @@ export function SalaryForm({
       account: salary?.account ?? 'cash',
       notes: salary?.notes ?? '',
       asDraft: false,
+      attachmentIds: (salary?.attachments ?? []).map((a) => a.id),
     },
   });
+
+  const [photos, setPhotos] = useState<Attachment[]>(salary?.attachments ?? []);
+
+  function setPhotoField(next: Attachment[]) {
+    setPhotos(next);
+    form.setValue(
+      'attachmentIds',
+      next.map((a) => a.id),
+      { shouldValidate: true },
+    );
+  }
 
   const employeeId = form.watch('employeeId');
   const account = form.watch('account');
@@ -251,6 +267,28 @@ export function SalaryForm({
         <Label>Notes (optional)</Label>
         <Textarea rows={2} placeholder="e.g. Eid bonus included" {...form.register('notes')} />
       </div>
+
+      {salary ? (
+        <div className="space-y-2">
+          <Label>Photo</Label>
+          <AttachmentGallery
+            attachments={photos}
+            title={`${salary.salaryNo} payslip`}
+            emptyText="No photo was captured with this payslip."
+          />
+        </div>
+      ) : (
+        <PhotoCapture
+          entity="salary_payment"
+          value={photos}
+          onChange={setPhotoField}
+          label="Payslip photo"
+          required
+          disabled={mut.isPending}
+          hint="Photograph the signed payslip or the cash handover."
+          error={errors.attachmentIds?.message}
+        />
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row">
         {!salary && (

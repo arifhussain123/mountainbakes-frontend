@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
@@ -372,7 +373,7 @@ export function DailyLedgerPage() {
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
                   {[
-                    'Date', 'Voucher No', 'Ledger Head', 'Description', 'Branch',
+                    'Date', 'Voucher No', 'Ledger Head', 'Description', 'Photo', 'Branch',
                     'Debit', 'Credit', 'Balance', 'Status',
                   ].map((h) => (
                     <TableHead
@@ -394,7 +395,8 @@ export function DailyLedgerPage() {
                     voucher. Without it the Balance column starts at a number the
                     reader cannot account for. */}
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableCell colSpan={7} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {/* Spans Date → Credit, so the figure below lands under Balance. */}
+                  <TableCell colSpan={8} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Opening balance brought forward
                   </TableCell>
                   <TableCell className="text-right font-semibold">
@@ -406,7 +408,7 @@ export function DailyLedgerPage() {
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: abilities.adjust ? 10 : 9 }).map((__, j) => (
+                      {Array.from({ length: abilities.adjust ? 11 : 10 }).map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-4 w-full" />
                         </TableCell>
@@ -415,7 +417,7 @@ export function DailyLedgerPage() {
                   ))
                 ) : entries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={abilities.adjust ? 10 : 9} className="p-0">
+                    <TableCell colSpan={abilities.adjust ? 11 : 10} className="p-0">
                       <EmptyState
                         icon={BookOpen}
                         title="No vouchers for this selection"
@@ -434,7 +436,9 @@ export function DailyLedgerPage() {
                   sits directly under the last voucher at any page length. */}
               <TableBody>
                 <TableRow className="border-t-2 bg-muted/40 font-semibold hover:bg-muted/40">
-                  <TableCell colSpan={5} className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {/* Spans Date → Branch, so the three money cells below line up
+                      with Debit / Credit / Balance. */}
+                  <TableCell colSpan={6} className="text-xs uppercase tracking-wide text-muted-foreground">
                     Totals · {total} {total === 1 ? 'voucher' : 'vouchers'} matching the filters
                   </TableCell>
                   <TableCell className="text-right">
@@ -546,6 +550,16 @@ function LedgerRow({
       <TableCell className="whitespace-nowrap font-mono text-xs">{entry.voucherNo}</TableCell>
       <TableCell className="text-sm font-medium">{entry.ledgerHeadName}</TableCell>
       <TableCell className="max-w-[22rem] text-sm">{entry.description}</TableCell>
+      {/* The receipt behind the voucher, resolved server-side from
+          (sourceType, sourceId) — see LedgerEntry.attachments. Empty for
+          opening balances, reversals and anything not keyed in by hand. */}
+      <TableCell>
+        <AttachmentGallery
+          attachments={entry.attachments}
+          size="xs"
+          title={`${entry.voucherNo} photo`}
+        />
+      </TableCell>
       <TableCell className="text-sm text-muted-foreground">{entry.branchName ?? '—'}</TableCell>
       <TableCell className="text-right">
         <Money value={entry.debit} blankZero className="text-emerald-600 dark:text-emerald-400" />
@@ -623,6 +637,13 @@ function LedgerCard({
           <dd className="truncate font-medium">{entry.branchName ?? '—'}</dd>
         </div>
       </dl>
+
+      <AttachmentGallery
+        attachments={entry.attachments}
+        size="xs"
+        title={`${entry.voucherNo} photo`}
+        className="mt-2.5"
+      />
 
       {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
         <div className="mt-3 border-t pt-2.5">

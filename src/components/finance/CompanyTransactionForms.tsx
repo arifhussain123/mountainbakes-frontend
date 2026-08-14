@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -11,6 +12,7 @@ import {
   FINANCE_PAYMENT_METHOD_LABELS,
   FINANCE_PAYMENT_METHODS,
   UpdateFinancePartnerSchema,
+  type Attachment,
   type BranchSharePayment,
   type CreateBranchSharePaymentInput,
   type CreatePartnerExpenseInput,
@@ -27,6 +29,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,8 +66,22 @@ export function PartnerTxnForm({
       businessDate: expense?.businessDate ?? businessDateStr(),
       notes: expense?.notes ?? '',
       asDraft: false,
+      attachmentIds: (expense?.attachments ?? []).map((a) => a.id),
     },
   });
+
+  // Stored attachments, uploaded as they were captured. See the note on the
+  // equivalent state in FinanceEntryForm.
+  const [photos, setPhotos] = useState<Attachment[]>(expense?.attachments ?? []);
+
+  function setPhotoField(next: Attachment[]) {
+    setPhotos(next);
+    form.setValue(
+      'attachmentIds',
+      next.map((a) => a.id),
+      { shouldValidate: true },
+    );
+  }
 
   const partnerId = form.watch('partnerId');
   const account = form.watch('account');
@@ -184,6 +202,28 @@ export function PartnerTxnForm({
         <Textarea rows={2} placeholder="Anything an approver should know" {...form.register('notes')} />
       </div>
 
+      {expense ? (
+        <div className="space-y-2">
+          <Label>Photo</Label>
+          <AttachmentGallery
+            attachments={photos}
+            title={`${expense.expenseNo} receipt`}
+            emptyText="No photo was captured with this request."
+          />
+        </div>
+      ) : (
+        <PhotoCapture
+          entity="partner_expense"
+          value={photos}
+          onChange={setPhotoField}
+          label="Handover photo"
+          required
+          disabled={mut.isPending}
+          hint="Photograph the cash handover or the transfer slip."
+          error={errors.attachmentIds?.message}
+        />
+      )}
+
       <div className="flex flex-col gap-2 sm:flex-row">
         {!expense && (
           <Button
@@ -231,8 +271,20 @@ export function BranchShareForm({
       businessDate: payment?.businessDate ?? businessDateStr(),
       notes: payment?.notes ?? '',
       asDraft: false,
+      attachmentIds: (payment?.attachments ?? []).map((a) => a.id),
     },
   });
+
+  const [photos, setPhotos] = useState<Attachment[]>(payment?.attachments ?? []);
+
+  function setPhotoField(next: Attachment[]) {
+    setPhotos(next);
+    form.setValue(
+      'attachmentIds',
+      next.map((a) => a.id),
+      { shouldValidate: true },
+    );
+  }
 
   const branchId = form.watch('branchId');
   const account = form.watch('account');
@@ -365,6 +417,28 @@ export function BranchShareForm({
         <Label>Note (optional)</Label>
         <Textarea rows={2} placeholder="Anything an approver should know" {...form.register('notes')} />
       </div>
+
+      {payment ? (
+        <div className="space-y-2">
+          <Label>Photo</Label>
+          <AttachmentGallery
+            attachments={photos}
+            title={`${payment.paymentNo} handover`}
+            emptyText="No photo was captured with this payout."
+          />
+        </div>
+      ) : (
+        <PhotoCapture
+          entity="branch_share_payment"
+          value={photos}
+          onChange={setPhotoField}
+          label="Handover photo"
+          required
+          disabled={mut.isPending}
+          hint="Photograph the payout being handed over."
+          error={errors.attachmentIds?.message}
+        />
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row">
         {!payment && (
