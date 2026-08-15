@@ -529,27 +529,35 @@ function PreviewBody({
             </table>
           </div>
 
-          {/* Review cards — mobile */}
+          {/* Review cards — mobile.
+
+              Product · Approved · Amount share ONE row at the top of each card:
+              those three are what the slip is actually read for, and burying
+              Approved and Amount in a six-cell grid meant scanning a phone
+              column-by-column to answer "what are we sending and what does it
+              come to". The remaining figures stay on the card, demoted to a
+              supporting line — they are review context, not the answer.
+
+              Approved keeps its input in that row while editing (narrower than
+              the old grid cell, which is why it is w-16 here). */}
           <div className="mt-3 space-y-3 md:hidden">
             {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
               <div key={it.productId} className="rounded-lg border border-neutral-200 p-3">
-                <p className="font-semibold">
-                  {it.productName}
-                  {it.isSpecial && (
-                    <span className="ml-1.5 rounded border border-neutral-400 px-1 py-px text-[9px] font-bold uppercase">
-                      Special
-                    </span>
-                  )}
-                </p>
-                {it.isSpecial && it.description && (
-                  <p className="mt-0.5 text-[11px] italic text-neutral-600">{it.description}</p>
-                )}
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                  <Field label="Prev. Balance" value={fmt(previousBalance)} />
-                  <Field label="New Demand" value={fmt(newDemand)} />
-                  <Field label="Total Demand" value={fmt(totalDemand)} strong />
-                  <Field label="Unit Price" value={money(unitPrice, sym)} />
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold leading-tight">
+                      {it.productName}
+                      {it.isSpecial && (
+                        <span className="ml-1.5 rounded border border-neutral-400 px-1 py-px text-[9px] font-bold uppercase">
+                          Special
+                        </span>
+                      )}
+                    </p>
+                    {it.isSpecial && it.description && (
+                      <p className="mt-0.5 text-[11px] italic text-neutral-600">{it.description}</p>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Approved</p>
                     {editing && !readOnly ? (
                       <Input
@@ -557,13 +565,22 @@ function PreviewBody({
                         inputMode="numeric"
                         value={edits[it.productId] ?? String(totalDemand)}
                         onChange={(e) => setEdits((p) => ({ ...p, [it.productId]: digits(e.target.value) }))}
-                        className="mt-0.5 h-8 w-24 text-right tabular-nums"
+                        className="mt-0.5 h-8 w-16 text-right tabular-nums"
                       />
                     ) : (
                       <p className="font-semibold tabular-nums">{fmt(approved)}</p>
                     )}
                   </div>
-                  <Field label="Amount" value={money(amount, sym)} strong />
+                  <div className="shrink-0 text-right">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Amount</p>
+                    <p className="font-semibold tabular-nums text-primary">{money(amount, sym)}</p>
+                  </div>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-neutral-100 pt-2 text-xs">
+                  <Field label="Prev. Balance" value={fmt(previousBalance)} />
+                  <Field label="New Demand" value={fmt(newDemand)} />
+                  <Field label="Total Demand" value={fmt(totalDemand)} strong />
+                  <Field label="Unit Price" value={money(unitPrice, sym)} />
                 </div>
               </div>
             ))}
@@ -620,14 +637,15 @@ function PreviewBody({
                 </table>
               </div>
 
-              {/* Mobile cards */}
+              {/* Mobile cards — material and Approved share one row, matching the
+                  product cards above. There is no Amount here: packing materials
+                  carry no unit price (see the section note). */}
               <div className="space-y-3 md:hidden">
                 {packingRows.map(({ it, requested, approved }) => (
                   <div key={it.packingMaterialId} className="rounded-lg border border-neutral-200 p-3">
-                    <p className="font-semibold">{it.materialName}</p>
-                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                      <Field label="Requested Qty" value={fmt(requested)} />
-                      <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 flex-1 font-semibold leading-tight">{it.materialName}</p>
+                      <div className="shrink-0 text-right">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Approved Qty</p>
                         {editing && !readOnly ? (
                           <Input
@@ -637,12 +655,15 @@ function PreviewBody({
                             onChange={(e) =>
                               setPackingEdits((p) => ({ ...p, [it.packingMaterialId]: digits(e.target.value) }))
                             }
-                            className="mt-0.5 h-8 w-24 text-right tabular-nums"
+                            className="mt-0.5 h-8 w-16 text-right tabular-nums"
                           />
                         ) : (
                           <p className="font-semibold tabular-nums">{fmt(approved)}</p>
                         )}
                       </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-neutral-100 pt-2 text-xs">
+                      <Field label="Requested Qty" value={fmt(requested)} />
                     </div>
                   </div>
                 ))}

@@ -320,26 +320,38 @@ export function ProductionOrdersPage() {
               </div>
               )}
 
-              {/* Mobile cards */}
+              {/* Mobile cards.
+
+                  Unlike the desktop table above, the per-branch breakdown lists
+                  ONLY the branches that actually asked for this product. The
+                  table has to print a '—' in every column to keep them aligned;
+                  a wrapping chip list has no such constraint, and on a phone a
+                  row of "Branch: 0" for branches that ordered nothing is pure
+                  noise pushing the real numbers off the screen. */}
               <div className="space-y-3 md:hidden">
-                {demand.rows.map((r) => (
-                  <div key={r.productName} className="rounded-lg border bg-card p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium">{r.productName}</p>
-                      <span className="text-right font-bold tabular-nums text-primary">
-                        {r.total}
-                        {r.sent > 0 && (
-                          <span className="block text-[10px] font-normal text-muted-foreground">{r.sent} sent</span>
-                        )}
-                      </span>
+                {demand.rows.map((r) => {
+                  const ordering = demand.branches.filter((b) => (r.byBranch[b] ?? 0) > 0);
+                  return (
+                    <div key={r.productName} className="rounded-lg border bg-card p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium">{r.productName}</p>
+                        <span className="text-right font-bold tabular-nums text-primary">
+                          {r.total}
+                          {r.sent > 0 && (
+                            <span className="block text-[10px] font-normal text-muted-foreground">{r.sent} sent</span>
+                          )}
+                        </span>
+                      </div>
+                      {ordering.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          {ordering.map((b) => (
+                            <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b]}</span></span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {demand.branches.map((b) => (
-                        <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b] ?? 0}</span></span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Packing materials — same pivot, its own table. Absent entirely when
@@ -382,25 +394,31 @@ export function ProductionOrdersPage() {
                     </table>
                   </div>
 
+                  {/* Zero-ordering branches omitted, same as the product cards above. */}
                   <div className="space-y-3 md:hidden">
-                    {demand.packingRows.map((r) => (
-                      <div key={r.materialName} className="rounded-lg border bg-card p-3">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium">{r.materialName}</p>
-                          <span className="text-right font-bold tabular-nums text-primary">
-                            {r.total}
-                            {r.sent > 0 && (
-                              <span className="block text-[10px] font-normal text-muted-foreground">{r.sent} sent</span>
-                            )}
-                          </span>
+                    {demand.packingRows.map((r) => {
+                      const ordering = demand.branches.filter((b) => (r.byBranch[b] ?? 0) > 0);
+                      return (
+                        <div key={r.materialName} className="rounded-lg border bg-card p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium">{r.materialName}</p>
+                            <span className="text-right font-bold tabular-nums text-primary">
+                              {r.total}
+                              {r.sent > 0 && (
+                                <span className="block text-[10px] font-normal text-muted-foreground">{r.sent} sent</span>
+                              )}
+                            </span>
+                          </div>
+                          {ordering.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              {ordering.map((b) => (
+                                <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b]}</span></span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          {demand.branches.map((b) => (
-                            <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b] ?? 0}</span></span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
