@@ -2,12 +2,23 @@
 
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProducts, useProductionOrders, useStock, useSubmitProductionOrder } from '@/lib/queries';
+import {
+  useCancelProductionOrder,
+  useProducts,
+  useProductionOrders,
+  useStock,
+  useSubmitProductionOrder,
+} from '@/lib/queries';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
-import { Eye, Plus } from 'lucide-react';
+import { Eye, Plus, Trash2 } from 'lucide-react';
+import { liveItems, livePackingItems } from '@/utils/demandLines';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
@@ -36,11 +47,15 @@ const STATUS_STYLES: Record<string, string> = {
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   delivered: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  cancelled: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   awaiting_verification: 'Awaiting Verification',
   verified: 'Verified — Awaiting Approval',
+  // Called "Deleted" on screen, not "Cancelled": this is the outcome of the
+  // Delete button, and 'cancelled' is only what the API happens to call it.
+  cancelled: 'Deleted',
 };
 
 function StatusPill({ status }: { status: string }) {
@@ -64,12 +79,15 @@ export function BranchNewOrders() {
   const [openedOnce, setOpenedOnce] = useState(false);
   const [viewOrder, setViewOrder] = useState<BranchProductionOrder | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [deleting, setDeleting] = useState<BranchProductionOrder | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
 
   // Products/stock load lazily on first open; both are cached across reopens.
   const productsQ = useProducts(token, { isActive: true, enabled: openedOnce });
   const stockQ = useStock(token, { enabled: openedOnce });
   const ordersQ = useProductionOrders(token);
   const submitMut = useSubmitProductionOrder(token);
+  const cancelMut = useCancelProductionOrder(token);
 
   function openModal() {
     setOpenedOnce(true);
@@ -83,6 +101,26 @@ export function BranchNewOrders() {
   function openView(order: BranchProductionOrder) {
     setViewOrder(order);
     setViewOpen(true);
+  }
+
+  function openDelete(order: BranchProductionOrder) {
+    setDeleting(order);
+    setDeleteReason('');
+  }
+
+  async function submitDelete() {
+    if (!deleting) return;
+    try {
+      await cancelMut.mutateAsync({ id: deleting.id, reason: deleteReason.trim() });
+      toast.success(`Demand ${deleting.demandNumber} deleted`);
+      setDeleting(null);
+      setDeleteReason('');
+    } catch (err) {
+      // Most likely a 409: Production reviewed it between the table rendering
+      // and the button being pressed. The list has already been invalidated by
+      // then, so the row repaints out of 'pending' on its own.
+      toast.error(err instanceof Error ? err.message : 'Failed to delete the demand');
+    }
   }
 
   // One row per demand submission (matching how Production sees the same list) —
@@ -102,19 +140,55 @@ export function BranchNewOrders() {
       header: 'Items',
       cell: (i) => {
         const o = i.row.original;
-        const count = o.items.length + (o.packingItems?.length ?? 0);
+        // Counts only lines with a quantity behind them, so the number here
+        // agrees with what the View dialog actually lists. A line Production
+        // reviewed down to zero is not an item on this demand any more.
+        const count = liveItems(o.items).length + livePackingItems(o.packingItems).length;
         return <span className="text-sm text-muted-foreground">{count} item{count === 1 ? '' : 's'}</span>;
       },
     }),
     col.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
+    // The reason the demand was deleted, shown against the row it belongs to.
+    // The column is always present rather than conditional on the page holding a
+    // deleted demand — a column that appears and disappears as the last seven
+    // days roll over reshuffles every other column's width with it.
+    col.accessor((o) => o.cancelReason ?? '', {
+      id: 'reason',
+      header: 'Reason',
+      meta: { mobileFull: true },
+      cell: (i) =>
+        i.getValue() ? (
+          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground/50">—</span>
+        ),
+    }),
     col.display({
       id: 'actions',
       header: '',
-      cell: (i) => (
-        <Button variant="ghost" size="sm" onClick={() => openView(i.row.original)}>
-          <Eye className="mr-1.5 h-4 w-4" /> View
-        </Button>
-      ),
+      cell: (i) => {
+        const o = i.row.original;
+        return (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => openView(o)}>
+              <Eye className="mr-1.5 h-4 w-4" /> View
+            </Button>
+            {/* Only while Production has not reviewed it. Past 'pending' the
+                goods are out of the door — and past verification stock has
+                already moved — so there is nothing left to take back. */}
+            {o.status === 'pending' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => openDelete(o)}
+              >
+                <Trash2 className="mr-1.5 h-4 w-4" /> Delete
+              </Button>
+            )}
+          </div>
+        );
+      },
     }),
   ];
 
@@ -157,6 +231,53 @@ export function BranchNewOrders() {
         submit={(payload) => submitMut.mutateAsync(payload)}
         submitting={submitMut.isPending}
       />
+
+      {/* Delete a demand Production has not started on. The reason is mandatory
+          — Production is planning against this demand from the moment it lands,
+          so it leaves their summary with an explanation attached rather than
+          silently. */}
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent className="md:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Demand</DialogTitle>
+          </DialogHeader>
+          {deleting && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-mono font-medium text-foreground">{deleting.demandNumber}</span>
+                {' · '}
+                {deleting.date} {deleting.time}
+                {' · '}
+                {(() => {
+                  const n = liveItems(deleting.items).length + livePackingItems(deleting.packingItems).length;
+                  return `${n} item${n === 1 ? '' : 's'}`;
+                })()}
+              </p>
+              <div className="space-y-1">
+                <Label>Reason</Label>
+                <Textarea
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="Production sees this on the demand."
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setDeleting(null)}>
+                  Keep Demand
+                </Button>
+                <Button
+                  className="flex-1"
+                  variant="destructive"
+                  disabled={deleteReason.trim().length < 3 || cancelMut.isPending}
+                  onClick={submitDelete}
+                >
+                  {cancelMut.isPending ? 'Deleting…' : 'Delete Demand'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Fab onClick={openModal} icon={Plus} label="New production order" />
     </div>

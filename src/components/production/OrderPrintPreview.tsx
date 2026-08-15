@@ -187,6 +187,22 @@ function PreviewBody({
     rows.some(({ approved, totalDemand }) => approved !== totalDemand) ||
     packingRows.some(({ approved, requested }) => approved !== requested);
 
+  // What the on-screen review table shows, as opposed to what gets submitted.
+  //
+  // Filtered ONLY once the order is frozen. While it is still 'pending' every
+  // line has to stay on screen — that table is the control Production sets the
+  // quantities with, and hiding a line would remove the only way to give it one.
+  // After review, a line approved at zero is not going out, and the print slips
+  // have always dropped it; the screen the slip is generated from should not be
+  // the one place it survives.
+  //
+  // `rows` / `packingRows` above are left whole on purpose: `approvedItems` is
+  // built from them, and a short override list would let the RPC fall back to
+  // `totalRequiredQty` for the missing lines — silently re-approving in full
+  // exactly what somebody had cut to zero.
+  const visibleRows = frozen ? rows.filter(({ approved }) => approved > 0) : rows;
+  const visiblePackingRows = frozen ? packingRows.filter(({ approved }) => approved > 0) : packingRows;
+
   const printRows: PrintRow[] = rows.map(({ it, ...r }) => ({ productName: it.productName, ...r }));
   // The slip prints the APPROVED quantity, which is what actually ships.
   const packingPrintRows = packingRows.map(({ it, approved }) => ({ materialName: it.materialName, qty: approved }));
@@ -480,7 +496,7 @@ function PreviewBody({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
+                {visibleRows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
                   <tr key={it.productId} className="border-b border-neutral-200 align-top">
                     <td className="py-1.5 pr-2 font-medium">
                       {it.productName}
@@ -543,7 +559,7 @@ function PreviewBody({
               Approved keeps its input in that row while editing — w-16 so the
               product name, the input and the amount all fit one line. */}
           <div className="mt-3 space-y-3 md:hidden">
-            {rows.map(({ it, totalDemand, approved, amount }) => (
+            {visibleRows.map(({ it, totalDemand, approved, amount }) => (
               <div key={it.productId} className="rounded-lg border border-neutral-200 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -592,7 +608,7 @@ function PreviewBody({
               no previous balance, no unit price and no amount, so they would leave
               four columns empty. Rendered only when the demand has packing lines,
               so an ordinary order looks exactly as it did. */}
-          {packingRows.length > 0 && (
+          {visiblePackingRows.length > 0 && (
             <div className="mt-6">
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-600">
                 Packing Material Demand
@@ -608,7 +624,7 @@ function PreviewBody({
                     </tr>
                   </thead>
                   <tbody>
-                    {packingRows.map(({ it, requested, approved }) => (
+                    {visiblePackingRows.map(({ it, requested, approved }) => (
                       <tr key={it.packingMaterialId} className="border-b border-neutral-200 align-top">
                         <td className="py-1.5 pr-2 font-medium">{it.materialName}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{fmt(requested)}</td>
@@ -637,7 +653,7 @@ function PreviewBody({
                   product cards above. There is no Amount here: packing materials
                   carry no unit price (see the section note). */}
               <div className="space-y-3 md:hidden">
-                {packingRows.map(({ it, requested, approved }) => (
+                {visiblePackingRows.map(({ it, requested, approved }) => (
                   <div key={it.packingMaterialId} className="rounded-lg border border-neutral-200 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <p className="min-w-0 flex-1 font-semibold leading-tight">{it.materialName}</p>

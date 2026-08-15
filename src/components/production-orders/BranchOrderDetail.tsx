@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Attachment, BranchProductionOrder } from '@mb/shared';
+import { liveItems, livePackingItems } from '@/utils/demandLines';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +69,18 @@ export function BranchOrderDetail({
   const [newQty, setNewQty] = useState('');
   /** Photos of the delivery as counted. Cleared with the rest of the form. */
   const [photos, setPhotos] = useState<Attachment[]>([]);
+
+  /**
+   * The lines actually worth counting. A line at zero was either never really
+   * ordered or was reviewed down to "sending none of this" — asking someone to
+   * verify receipt of nothing is noise at the exact moment they are stood over a
+   * crate counting, which is when noise costs the most.
+   *
+   * Display only. `verify()` below still submits every line, so the quantities
+   * and balances Production sees are unchanged by what is hidden here.
+   */
+  const shownItems = useMemo(() => liveItems(order?.items), [order?.items]);
+  const shownPackingItems = useMemo(() => livePackingItems(order?.packingItems), [order?.packingItems]);
 
   function resetLocalState() {
     setVerifiedQtys({});
@@ -159,7 +172,17 @@ export function BranchOrderDetail({
                       </tr>
                     </thead>
                     <tbody>
-                      {order.items.map((it) => (
+                      {/* Every line reviewed down to zero. The table is not
+                          empty by accident, so it says so rather than leaving a
+                          bare header the counter has to interpret. */}
+                      {shownItems.length === 0 && newItems.length === 0 && (
+                        <tr className="border-t">
+                          <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                            No products were sent on this demand.
+                          </td>
+                        </tr>
+                      )}
+                      {shownItems.map((it) => (
                         <tr key={it.productId} className="border-t">
                           <td className="px-3 py-2 font-medium">
                             {it.productName}
@@ -273,7 +296,7 @@ export function BranchOrderDetail({
                 )}
               </div>
 
-              {order.packingItems && order.packingItems.length > 0 && (
+              {shownPackingItems.length > 0 && (
                 <div>
                   <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packing Materials</h4>
                   <div className="overflow-x-auto rounded-lg border">
@@ -287,7 +310,7 @@ export function BranchOrderDetail({
                         </tr>
                       </thead>
                       <tbody>
-                        {order.packingItems.map((it) => (
+                        {shownPackingItems.map((it) => (
                           <tr key={it.packingMaterialId} className="border-t">
                             <td className="px-3 py-2 font-medium">{it.materialName}</td>
                             <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>

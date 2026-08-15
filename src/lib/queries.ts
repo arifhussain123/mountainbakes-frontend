@@ -525,6 +525,30 @@ export function useSubmitProductionOrder(token: string) {
   });
 }
 
+/**
+ * Branch deletes a demand it has just sent, with a mandatory reason.
+ *
+ * A soft delete server-side — the row stays, flips to 'cancelled' and carries
+ * the reason — so this only has to invalidate the order list for both sides to
+ * repaint. The overview is invalidated too: a withdrawn demand leaves
+ * Production's waiting count and demand charts.
+ */
+export function useCancelProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; reason: string }) =>
+      apiCall(
+        `/api/production-orders/${v.id}/cancel`,
+        { method: 'PUT', body: JSON.stringify({ reason: v.reason }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Production module
 // ─────────────────────────────────────────────────────────────────────────────

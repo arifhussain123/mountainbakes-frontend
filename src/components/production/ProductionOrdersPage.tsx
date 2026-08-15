@@ -9,6 +9,7 @@ import { useProductionOrders, useReviewProductionOrder, useMarkPrinted, useFinal
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { Eye, Sparkles } from 'lucide-react';
+import { effectivePackingQty, effectiveQty, liveItems, livePackingItems } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -17,11 +18,15 @@ const STATUS_STYLES: Record<string, string> = {
   verified: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  cancelled: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   awaiting_verification: 'Awaiting Verification',
   verified: 'Verified — Awaiting Approval',
+  // The branch withdrew it. Read as "Deleted" here too, so the word on this
+  // screen is the same word the branch pressed.
+  cancelled: 'Deleted by Branch',
 };
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
@@ -51,6 +56,11 @@ export function ProductionOrdersPage() {
   // stock actually moves. Dropping those orders off this card at review time hid
   // exactly the demand still in flight: the floor could no longer see what had
   // gone out and not been confirmed. Verification ('verified') is what closes it.
+  //
+  // A demand the branch deleted is 'cancelled', so it falls out of here — and
+  // therefore out of the whole Demand Summary — while its row stays in the
+  // Orders table below carrying the reason. That is the deletion: it stops being
+  // work to do without becoming something nobody can account for.
   const waiting = useMemo(
     () => orders.filter((o) => o.status === 'pending' || o.status === 'awaiting_verification'),
     [orders],
@@ -101,7 +111,14 @@ export function ProductionOrdersPage() {
       if (sent) awaitingOrders += 1; else pendingOrders += 1;
 
       for (const it of o.items) {
-        const qty = it.approvedQty ?? it.qty;
+        const qty = effectiveQty(it);
+
+        // Nothing to make: either the line was never really ordered, or it was
+        // reviewed down to "sending none of this". Skipped before it can reach a
+        // pivot row, because a product whose only demand is a zero line would
+        // otherwise print a whole row of dashes against a total of 0 — a job on
+        // the board that is not a job.
+        if (qty <= 0) continue;
 
         // Special items are LISTED, never pivoted — see the note on the section
         // below for why aggregating them would destroy the instruction.
@@ -128,7 +145,8 @@ export function ProductionOrdersPage() {
 
       // Optional and absent on every demand created before the packing module.
       for (const it of o.packingItems ?? []) {
-        const qty = it.approvedQty ?? it.qty;
+        const qty = effectivePackingQty(it);
+        if (qty <= 0) continue; // same rule as the product lines above
         let row = packing.get(it.packingMaterialId);
         if (!row) { row = { materialName: it.materialName, total: 0, sent: 0, byBranch: {} }; packing.set(it.packingMaterialId, row); }
         row.total += qty;
@@ -167,6 +185,20 @@ export function ProductionOrdersPage() {
         </span>
       ),
     }),
+    // Why a demand disappeared from the summary above. The branch is required to
+    // give one, so on a 'cancelled' row this is never empty — and it is the only
+    // thing on this screen that explains work that was planned and then pulled.
+    col.accessor((o) => o.cancelReason ?? '', {
+      id: 'reason',
+      header: 'Reason',
+      meta: { mobileFull: true },
+      cell: (i) =>
+        i.getValue() ? (
+          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground/50">—</span>
+        ),
+    }),
     col.display({
       id: 'actions',
       header: '',
@@ -181,11 +213,15 @@ export function ProductionOrdersPage() {
     // material OR special item name without adding any as a visible column.
     // Special item DESCRIPTIONS are included too — "blue writing" is how someone
     // will look for that cake, and it is not in any name.
+    // Zero lines are excluded here too. Matching a demand on a product that was
+    // cut to nothing surfaces a row whose product appears on none of the tables
+    // or slips behind it — the search would be pointing at something that is not
+    // there.
     col.accessor(
       (o) =>
         [
-          ...o.items.map((i) => `${i.productName} ${i.isSpecial ? (i.description ?? '') : ''}`),
-          ...(o.packingItems ?? []).map((p) => p.materialName),
+          ...liveItems(o.items).map((i) => `${i.productName} ${i.isSpecial ? (i.description ?? '') : ''}`),
+          ...livePackingItems(o.packingItems).map((p) => p.materialName),
         ].join(' '),
       { id: 'contents', header: '' },
     ),
