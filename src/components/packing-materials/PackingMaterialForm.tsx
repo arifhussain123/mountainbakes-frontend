@@ -77,7 +77,7 @@ export function PackingMaterialForm({
             id="pm-code"
             value={materialCode}
             onChange={(e) => setMaterialCode(e.target.value)}
-            placeholder="PACK-012"
+            placeholder="PACK-016"
             autoComplete="off"
           />
         </div>
