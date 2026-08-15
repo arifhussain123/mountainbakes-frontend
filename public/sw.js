@@ -9,7 +9,9 @@
  *      them automatically when connectivity returns.
  */
 
-const VERSION = 'v2';
+// Bumped whenever the caching rules change, which drops the previous caches on
+// activate. v3: navigations are cached, so offline actually reaches the app.
+const VERSION = 'v3';
 const PRECACHE = `mb-precache-${VERSION}`;
 const RUNTIME = `mb-runtime-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -17,6 +19,13 @@ const OFFLINE_URL = '/offline.html';
 // App shell — everything needed to render a friendly offline experience.
 const PRECACHE_URLS = [
   OFFLINE_URL,
+  // The two entry points, fetched at install so the app opens offline even on a
+  // device that has never navigated to them. Every other screen is cached as it
+  // is visited (see handleNavigate). Trailing slashes are required —
+  // `trailingSlash: true` means the export serves out/login/index.html at
+  // '/login/', and '/login' would 308 rather than cache.
+  '/',
+  '/login/',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -106,15 +115,37 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ── Caching strategies ───────────────────────────────────────────────────
+/**
+ * Navigations: network-first, and the response is KEPT.
+ *
+ * It previously returned the network response without ever caching it, so the
+ * fallback below had nothing to find — `caches.match` on a navigation could only
+ * ever miss, and every offline page load, the login screen included, landed on
+ * offline.html. The app could not be opened offline at all, which also put the
+ * restored data cache out of reach: no document, no app to hydrate.
+ *
+ * Storing each visited page's HTML means any screen reached while online opens
+ * again without a connection. The shells are a couple of KB each; the hashed
+ * bundles they pull in are already cached by the `_next/static` rule.
+ */
 async function handleNavigate(event) {
   const request = event.request;
+  const cache = await caches.open(RUNTIME);
   try {
     const preload = await event.preloadResponse;
-    if (preload) return preload;
+    if (preload) {
+      if (preload.ok) event.waitUntil(cache.put(request, preload.clone()));
+      return preload;
+    }
     const network = await fetch(request);
+    if (network.ok) event.waitUntil(cache.put(request, network.clone()));
     return network;
   } catch {
-    const cached = await caches.match(request);
+    // ignoreSearch, because a navigation often carries a query string the stored
+    // copy does not have — ?from=… would otherwise miss its own cached page.
+    const cached =
+      (await cache.match(request, { ignoreSearch: true })) ||
+      (await caches.match(request, { ignoreSearch: true }));
     if (cached) return cached;
     return (await caches.match(OFFLINE_URL)) || Response.error();
   }
