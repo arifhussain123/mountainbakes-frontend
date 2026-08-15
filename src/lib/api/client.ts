@@ -147,6 +147,16 @@ function endDeadSession(): void {
   if (typeof window === 'undefined') return;
   if (window.location.pathname.startsWith('/login')) return;
 
+  // Not while offline. The 401 above is real, but the refresh that was meant to
+  // answer it never reached Supabase — connectivity dropped between the two —
+  // so "the session is gone for good" is a conclusion drawn from a network
+  // failure. Acting on it signs the user out and sends them to a login screen
+  // that cannot sign anyone in without a connection, which is precisely the
+  // lock-out the held identity in AuthProvider exists to prevent. When the
+  // network returns, either the refresh succeeds or the next 401 tears the
+  // session down properly.
+  if (navigator.onLine === false) return;
+
   sessionTeardown ??= (async () => {
     try {
       const { supabase } = await import('@/lib/supabase/client');
