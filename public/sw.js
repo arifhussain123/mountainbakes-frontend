@@ -9,7 +9,7 @@
  *      them automatically when connectivity returns.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const PRECACHE = `mb-precache-${VERSION}`;
 const RUNTIME = `mb-runtime-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -35,7 +35,13 @@ self.addEventListener('install', (event) => {
       await Promise.allSettled(
         PRECACHE_URLS.map((url) => cache.add(new Request(url, { cache: 'reload' }))),
       );
-      await self.skipWaiting();
+      // NO skipWaiting() here, deliberately.
+      //
+      // Activating on install makes this worker seize control the moment it
+      // downloads, which fires `controllerchange` in every open tab and reloads
+      // them — potentially over a half-typed sale. The new worker now waits, and
+      // the page decides when to take it: the client posts SKIP_WAITING once it
+      // has established that nobody is mid-entry (hooks/useAppRefresh.tsx).
     })(),
   );
 });

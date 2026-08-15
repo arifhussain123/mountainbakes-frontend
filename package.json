@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/generate-version.mjs && next build",
     "start": "firebase emulators:start --only hosting",
     "preview": "firebase emulators:start --only hosting",
-    "deploy": "next build && firebase deploy --only hosting",
+    "deploy": "node scripts/generate-version.mjs && next build && firebase deploy --only hosting",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },
