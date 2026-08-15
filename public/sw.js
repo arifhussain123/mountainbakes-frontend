@@ -164,6 +164,31 @@ async function networkFirst(request) {
 // Requests tagged `X-Background-Sync: true` that fail while offline are stored
 // in IndexedDB and replayed on the browser's `sync` event (or when the client
 // asks us to flush via postMessage).
+//
+// ***THIS IS DISABLED, AND MUST NOT BE SWITCHED ON AS IT STANDS.***
+//
+// Nothing in the app sets that header, so nothing is ever queued: offline
+// support today is READ-ONLY (lib/offline/queryPersist.ts restores the last
+// synced data; apiCall refuses writes with no connection). Tagging a mutation
+// would activate the code below, and it would lose people's work:
+//
+//   1. `queueRequest` freezes the request's `Authorization: Bearer <jwt>`
+//      header. A Supabase access token lasts about an hour, so anything
+//      replayed later arrives with an expired one and comes back 401 — and
+//      `replayQueue` DELETES any entry answered with a 4xx, on the reasoning
+//      that a client error "won't fix itself". A sale recorded offline at
+//      closing time would be dropped overnight without a trace.
+//   2. There are no idempotency keys. A request the server actually processed
+//      before the connection died is replayed and applied a second time —
+//      duplicate sales, double stock movements.
+//   3. The API stamps the business day when it RECEIVES a write, and enforces
+//      order windows (assertBusinessDayOpen, isWithinOrderWindow). A demand
+//      queued at 9pm and replayed at 7am belongs to a day that has closed.
+//
+// Fixing (1) means minting a fresh token at replay time, (2) an idempotency key
+// per queued request honoured by the API, and (3) sending the captured-at time
+// and letting the server decide. That is a change across both repos plus a
+// migration — see the offline discussion, where "browse only" was chosen first.
 const SYNC_TAG = 'mb-sync-queue';
 const DB_NAME = 'mb-pwa';
 const STORE = 'sync-queue';

@@ -12,6 +12,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 60 * 1000,
             retry: 1,
+            // Held for a day rather than the default five minutes, because this
+            // cache is now written to disk for offline reading (OfflineCache).
+            // At the default, a screen the user had not opened in five minutes
+            // would be evicted from memory and so be missing from the next
+            // snapshot — the app would go offline having forgotten most of
+            // itself. Memory cost is bounded by how much this app fetches in a
+            // day, which is the same data the snapshot already holds.
+            gcTime: 24 * 60 * 60 * 1000,
             // Live data is refreshed by notification-driven invalidation
             // (useProductionRealtime / usePriceRealtime), so refetching on every
             // window focus is redundant and just multiplies API traffic.
