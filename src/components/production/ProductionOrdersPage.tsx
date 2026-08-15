@@ -290,28 +290,32 @@ export function ProductionOrdersPage() {
                   <thead>
                     <tr className="bg-muted/50 text-left">
                       <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
-                      <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
+                      <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
                       {demand.branches.map((b) => (
-                        <th key={b} className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
+                        <th key={b} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {demand.rows.map((r) => (
                       <tr key={r.productName} className="border-t">
+                        {/* Only the name stays left. Every figure is centred under its
+                            heading, headers included so the two never drift apart. */}
                         <td className="px-3 py-2 font-medium">{r.productName}</td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums text-primary">
-                          {r.total}
+                        <td className="whitespace-nowrap px-3 py-2 text-center font-bold tabular-nums text-primary">
                           {/* Part of that total is already out for delivery — without
-                              this the row reads as work still to do. */}
+                              this the row reads as work still to do. Inline and ahead
+                              of the number rather than stacked under it, which doubled
+                              the height of every row carrying one. */}
                           {r.sent > 0 && (
-                            <span className="block text-[10px] font-normal text-muted-foreground">
+                            <span className="mr-2 text-[10px] font-normal text-muted-foreground">
                               {r.sent} sent
                             </span>
                           )}
+                          {r.total}
                         </td>
                         {demand.branches.map((b) => (
-                          <td key={b} className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
+                          <td key={b} className="px-3 py-2 text-center tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
                         ))}
                       </tr>
                     ))}
@@ -367,9 +371,9 @@ export function ProductionOrdersPage() {
                       <thead>
                         <tr className="bg-muted/50 text-left">
                           <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Packing Material</th>
-                          <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
+                          <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
                           {demand.branches.map((b) => (
-                            <th key={b} className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
+                            <th key={b} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
                           ))}
                         </tr>
                       </thead>
@@ -377,16 +381,17 @@ export function ProductionOrdersPage() {
                         {demand.packingRows.map((r) => (
                           <tr key={r.materialName} className="border-t">
                             <td className="px-3 py-2 font-medium">{r.materialName}</td>
-                            <td className="px-3 py-2 text-right font-bold tabular-nums text-primary">
-                              {r.total}
+                            {/* Same centring and inline treatment as the products table. */}
+                            <td className="whitespace-nowrap px-3 py-2 text-center font-bold tabular-nums text-primary">
                               {r.sent > 0 && (
-                                <span className="block text-[10px] font-normal text-muted-foreground">
+                                <span className="mr-2 text-[10px] font-normal text-muted-foreground">
                                   {r.sent} sent
                                 </span>
                               )}
+                              {r.total}
                             </td>
                             {demand.branches.map((b) => (
-                              <td key={b} className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
+                              <td key={b} className="px-3 py-2 text-center tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
                             ))}
                           </tr>
                         ))}
