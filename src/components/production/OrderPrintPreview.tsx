@@ -531,17 +531,19 @@ function PreviewBody({
 
           {/* Review cards — mobile.
 
-              Product · Approved · Amount share ONE row at the top of each card:
-              those three are what the slip is actually read for, and burying
-              Approved and Amount in a six-cell grid meant scanning a phone
-              column-by-column to answer "what are we sending and what does it
-              come to". The remaining figures stay on the card, demoted to a
-              supporting line — they are review context, not the answer.
+              ONE row per item: product · Approved · Amount, and nothing else.
+              Those three are what the slip is read for on a phone — what are we
+              sending, and what does it come to. Prev. Balance, New Demand, Total
+              Demand and Unit Price are deliberately NOT here: they are desk-work
+              figures, they are all still on the desktop table above (which is
+              what a reviewer sitting down actually uses), and a six-cell grid
+              under every product turned a ten-line order into a page of
+              scrolling. The order-level totals still close the list below.
 
-              Approved keeps its input in that row while editing (narrower than
-              the old grid cell, which is why it is w-16 here). */}
+              Approved keeps its input in that row while editing — w-16 so the
+              product name, the input and the amount all fit one line. */}
           <div className="mt-3 space-y-3 md:hidden">
-            {rows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
+            {rows.map(({ it, totalDemand, approved, amount }) => (
               <div key={it.productId} className="rounded-lg border border-neutral-200 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -575,12 +577,6 @@ function PreviewBody({
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Amount</p>
                     <p className="font-semibold tabular-nums text-primary">{money(amount, sym)}</p>
                   </div>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-neutral-100 pt-2 text-xs">
-                  <Field label="Prev. Balance" value={fmt(previousBalance)} />
-                  <Field label="New Demand" value={fmt(newDemand)} />
-                  <Field label="Total Demand" value={fmt(totalDemand)} strong />
-                  <Field label="Unit Price" value={money(unitPrice, sym)} />
                 </div>
               </div>
             ))}
