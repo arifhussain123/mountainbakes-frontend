@@ -143,13 +143,18 @@ export function BranchOrderDetail({
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                       <tr>
+                        {/* Every figure is centred under its heading, in both
+                            states of this table — the editable "Verified Qty"
+                            one and the read-only "Pending" one — so the columns
+                            do not shift when the order changes status. Only the
+                            product name stays left. */}
                         <th className="px-3 py-2 font-medium">Product</th>
-                        <th className="px-3 py-2 text-right font-medium">Requested</th>
-                        <th className="px-3 py-2 text-right font-medium">Approved</th>
+                        <th className="px-3 py-2 text-center font-medium">Requested</th>
+                        <th className="px-3 py-2 text-center font-medium">Approved</th>
                         {awaitingVerification ? (
-                          <th className="px-3 py-2 text-right font-medium">Verified Qty</th>
+                          <th className="px-3 py-2 text-center font-medium">Verified Qty</th>
                         ) : (
-                          <th className="px-3 py-2 text-right font-medium">Pending</th>
+                          <th className="px-3 py-2 text-center font-medium">Pending</th>
                         )}
                       </tr>
                     </thead>
@@ -171,10 +176,13 @@ export function BranchOrderDetail({
                               <p className="mt-0.5 text-xs font-normal text-muted-foreground">{it.description}</p>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
+                          <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
+                          <td className="px-3 py-2 text-center tabular-nums">{it.approvedQty ?? '—'}</td>
                           {awaitingVerification ? (
-                            <td className="px-3 py-1.5 text-right">
+                            <td className="px-3 py-1.5 text-center">
+                              {/* mx-auto, not ml-auto: the box itself is centred
+                                  in the column like the plain figures around it,
+                                  and the digits are centred inside the box. */}
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -182,11 +190,11 @@ export function BranchOrderDetail({
                                 onChange={(e) =>
                                   setVerifiedQtys((p) => ({ ...p, [it.productId]: digits(e.target.value) }))
                                 }
-                                className="ml-auto h-8 w-20 text-right tabular-nums"
+                                className="mx-auto h-8 w-20 text-center tabular-nums"
                               />
                             </td>
                           ) : (
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            <td className="px-3 py-2 text-center tabular-nums">
                               {it.remainingBalanceQty ? (
                                 <span className="font-semibold text-amber-600">{it.remainingBalanceQty}</span>
                               ) : '—'}
@@ -199,10 +207,12 @@ export function BranchOrderDetail({
                           <td className="px-3 py-2 font-medium">
                             {it.productName} <span className="text-xs font-normal text-emerald-600">(new)</span>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
-                          <td className="px-3 py-1.5 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">—</td>
+                          <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">—</td>
+                          <td className="px-3 py-1.5 text-center">
+                            {/* Centred as a unit — the quantity with its remove
+                                control — so it lines up with the inputs above. */}
+                            <div className="flex items-center justify-center gap-2">
                               <span className="tabular-nums">{it.qty}</span>
                               <button
                                 type="button"
@@ -270,17 +280,18 @@ export function BranchOrderDetail({
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                         <tr>
+                          {/* Same centring as the products table above. */}
                           <th className="px-3 py-2 font-medium">Material</th>
-                          <th className="px-3 py-2 text-right font-medium">Requested</th>
-                          <th className="px-3 py-2 text-right font-medium">Approved</th>
+                          <th className="px-3 py-2 text-center font-medium">Requested</th>
+                          <th className="px-3 py-2 text-center font-medium">Approved</th>
                         </tr>
                       </thead>
                       <tbody>
                         {order.packingItems.map((it) => (
                           <tr key={it.packingMaterialId} className="border-t">
                             <td className="px-3 py-2 font-medium">{it.materialName}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{it.approvedQty ?? '—'}</td>
                           </tr>
                         ))}
                       </tbody>
