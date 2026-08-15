@@ -21,7 +21,7 @@ import { ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { EmptyState } from './EmptyState';
-import { bucketCells, mobileLabel } from './table-meta';
+import { alignClass, bucketCells, mobileLabel } from './table-meta';
 
 interface DataTableProps<TData> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,7 +125,13 @@ export function DataTable<TData>({
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} className="bg-muted/50 hover:bg-muted/50">
                 {hg.headers.map((h) => (
-                  <TableHead key={h.id} className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                  <TableHead
+                    key={h.id}
+                    className={cn(
+                      'font-semibold text-xs uppercase tracking-wide text-muted-foreground',
+                      alignClass(h.column.columnDef.meta?.align),
+                    )}
+                  >
                     {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
@@ -155,7 +161,7 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className={alignClass(cell.column.columnDef.meta?.align)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

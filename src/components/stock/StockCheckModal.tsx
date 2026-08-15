@@ -405,7 +405,9 @@ function DiffList({
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               balance {r.balance} · counted {r.counted}
             </span>
-            <span className={cn('w-14 shrink-0 text-right font-bold tabular-nums', toneText)}>
+            {/* Fixed width, so the variance forms a column down the list — centred
+                in it like every other stock figure. */}
+            <span className={cn('w-14 shrink-0 text-center font-bold tabular-nums', toneText)}>
               {r.diff > 0 ? `+${r.diff}` : r.diff}
             </span>
           </li>

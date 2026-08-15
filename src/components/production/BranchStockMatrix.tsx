@@ -38,7 +38,7 @@ export function BranchStockMatrix() {
             <tr className="bg-muted/50 text-left">
               <th className="sticky left-0 bg-muted/50 px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
               {branches.map((b) => (
-                <th key={b.branchId} className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">{short(b.branchName)}</th>
+                <th key={b.branchId} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{short(b.branchName)}</th>
               ))}
             </tr>
           </thead>
@@ -52,7 +52,7 @@ export function BranchStockMatrix() {
                   {branches.map((b) => {
                     const v = r.byBranch[b.branchId] ?? 0;
                     return (
-                      <td key={b.branchId} className={`px-3 py-2 text-right tabular-nums ${v <= 0 ? 'text-red-500' : v < 5 ? 'text-amber-600' : ''}`}>{v}</td>
+                      <td key={b.branchId} className={`px-3 py-2 text-center tabular-nums ${v <= 0 ? 'text-red-500' : v < 5 ? 'text-amber-600' : ''}`}>{v}</td>
                     );
                   })}
                 </tr>

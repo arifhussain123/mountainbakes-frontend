@@ -33,23 +33,46 @@ export function StockPage() {
     // The remaining columns are the day's ledger for this product. As a card they
     // become a label:value grid, which reads like the receipt it describes.
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    col.accessor('opening', { header: 'Opening Stock', cell: (i) => <span>{i.getValue()}</span> }),
-    col.accessor('newQty', { header: 'New Stock', cell: (i) => <span className="text-emerald-600 dark:text-emerald-400">{i.getValue() ? `+${i.getValue()}` : 0}</span> }),
-    col.accessor('sold', { header: 'Sold', cell: (i) => <span className="text-red-600 dark:text-red-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),
-    col.accessor('returned', { header: 'Returned', cell: (i) => <span className="text-amber-600 dark:text-amber-400">{i.getValue() ? `-${i.getValue()}` : 0}</span> }),
+    // Every figure in the ledger is centred under its heading (meta.align), which
+    // moves the heading with it — a class on the cell alone would leave the two
+    // pointing at different places. `tabular-nums` keeps the digits on a fixed
+    // width so a centred column of numbers still lines up rather than jittering
+    // with each row's digit count.
+    col.accessor('opening', {
+      header: 'Opening Stock',
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums">{i.getValue()}</span>,
+    }),
+    col.accessor('newQty', {
+      header: 'New Stock',
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{i.getValue() ? `+${i.getValue()}` : 0}</span>,
+    }),
+    col.accessor('sold', {
+      header: 'Sold',
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums text-red-600 dark:text-red-400">{i.getValue() ? `-${i.getValue()}` : 0}</span>,
+    }),
+    col.accessor('returned', {
+      header: 'Returned',
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums text-amber-600 dark:text-amber-400">{i.getValue() ? `-${i.getValue()}` : 0}</span>,
+    }),
     // Signed, unlike Sold/Returned: an admin correction can go either way, and
     // without it the row does not add up to Balance.
     col.accessor('adjustment', {
       header: 'Adjustment',
+      meta: { align: 'center' },
       cell: (i) => {
         const v = i.getValue();
-        if (!v) return <span>0</span>;
-        return <span className="text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
+        if (!v) return <span className="tabular-nums">0</span>;
+        return <span className="tabular-nums text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
       },
     }),
     col.accessor('balance', {
       header: 'Balance',
-      cell: (i) => <span className={cn('font-semibold', i.getValue() < 0 && 'text-destructive')}>{i.getValue()}</span>,
+      meta: { align: 'center' },
+      cell: (i) => <span className={cn('font-semibold tabular-nums', i.getValue() < 0 && 'text-destructive')}>{i.getValue()}</span>,
     }),
   ];
 

@@ -24,15 +24,16 @@ export function ProductionStockPage() {
     // the DataTable's filter, so an ID from a ticket finds its row here.
     col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    col.accessor('preparedToday', { header: 'Prepared Today', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('totalStock', { header: 'Total Stock', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('approvedQty', { header: 'Approved Qty', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('soldToday', { header: 'Sold', cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    col.accessor('preparedToday', { header: 'Prepared Today', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    col.accessor('totalStock', { header: 'Total Stock', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    col.accessor('approvedQty', { header: 'Approved Qty', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    col.accessor('soldToday', { header: 'Sold', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('balance', {
       header: 'Balance',
+      meta: { align: 'center' },
       cell: (i) => <span className={`font-semibold tabular-nums ${i.getValue() < 0 ? 'text-red-500' : ''}`}>{i.getValue()}</span>,
     }),
-    col.accessor('returned', { header: 'Returned', cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    col.accessor('returned', { header: 'Returned', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
   ];
 
   return (

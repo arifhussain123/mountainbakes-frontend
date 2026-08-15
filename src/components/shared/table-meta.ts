@@ -50,7 +50,24 @@ declare module '@tanstack/react-table' {
     mobileLabel?: string;
     /** Give this field the full card width — notes, messages, long item lists. */
     mobileFull?: boolean;
+    /**
+     * Horizontal alignment for this column's header AND its cells, in the wide
+     * table. Defaults to left.
+     *
+     * Set on the column rather than written into each cell's markup, because a
+     * cell's own class cannot move the heading above it — align them separately
+     * and they drift apart the first time someone edits one. Mobile cards are
+     * unaffected: they are a label/value grid, where alignment has no meaning.
+     */
+    align?: 'left' | 'center' | 'right';
   }
+}
+
+/** Tailwind class for a column's {@link ColumnMeta.align}. */
+export function alignClass(align?: 'left' | 'center' | 'right'): string {
+  if (align === 'center') return 'text-center';
+  if (align === 'right') return 'text-right';
+  return '';
 }
 
 /** A row's cells sorted into card slots. */
