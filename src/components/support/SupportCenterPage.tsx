@@ -259,8 +259,16 @@ export function SupportCenterPage() {
         // A POOL ticket overrides the flag: production stock became correctable
         // (migration 50) after those snapshots were frozen with `readOnly: true`,
         // and the dialog re-reads the pool live before writing anything.
+        //
+        // A DEMAND likewise overrides it: a rejected/cancelled demand still has
+        // no correctable lines, but it can now be deleted (migration 82), and
+        // the dialog router sends it straight to the delete confirmation. Left
+        // disabled it would be the one demand an admin cannot remove.
         const canChange =
-          Boolean(t.referenceSnapshot) && (t.referenceSnapshot?.readOnly !== true || isPoolStockTicket(t));
+          Boolean(t.referenceSnapshot) &&
+          (t.referenceSnapshot?.readOnly !== true ||
+            isPoolStockTicket(t) ||
+            t.referenceType === 'demand');
         const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
         return (
           <>
@@ -781,6 +789,22 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
   // render the reference's DISPLAY fields as editable inputs and resolve the ticket
   // with a "Correction recorded (manual follow-up)" note that corrected nothing.
   // The server rejects the PATCH regardless; this keeps the UI honest.
+  // A rejected or cancelled demand still cannot have its LINES corrected — that
+  // would produce a document claiming a commitment nobody made, which is why
+  // migration 77 refuses it. It can be deleted, though: deleting asserts
+  // nothing, and such a demand moved no stock, so the reversal comes back empty.
+  // Routing it here rather than to the dead-end below is what makes "the admin
+  // can delete any demand" true.
+  if (ref?.type === 'demand' && ref.readOnly) {
+    return (
+      <DeleteDemandDialog
+        ticket={ticket}
+        stockMoved={ref.demandStockMoved === true}
+        onClose={onClose}
+        onDone={onDone}
+      />
+    );
+  }
   if (!ref || ref.readOnly) {
     return <NothingToChangeDialog onClose={onClose} />;
   }
@@ -837,6 +861,7 @@ function DemandItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [seq, setSeq] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -1022,9 +1047,145 @@ function DemandItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="What was done" />
         </div>
 
+        <DialogFooter className="sm:justify-between">
+          {/* Separated from the save actions on purpose: this is the one control
+              here that cannot be undone, and grouping it beside "Save & resolve"
+              is how it gets clicked by muscle memory. */}
+          <Button variant="destructive" onClick={() => setConfirmDelete(true)} disabled={busy}>
+            <Trash2 className="h-4 w-4" /> Delete demand
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button onClick={submit} disabled={busy || !valid}>{busy ? 'Saving…' : 'Save & resolve'}</Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+
+      {confirmDelete && (
+        <DeleteDemandDialog
+          ticket={ticket}
+          stockMoved={stockMoved}
+          onClose={() => setConfirmDelete(false)}
+          onDone={onDone}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+/**
+ * Destroying a demand outright — the escalation from the line editor, for one
+ * that was verified when it should never have been. No set of corrected lines
+ * says "this delivery did not happen": the editor refuses an empty line list,
+ * and a line left at zero still leaves a document asserting a delivery.
+ *
+ * This is the only irreversible action in the Support Center, so it asks for the
+ * demand number to be typed out. The Support Center is a queue of rows that all
+ * look alike, and the cost of deleting the wrong one is a demand that cannot be
+ * brought back — the ledger keeps its entries and audit_logs keeps a snapshot,
+ * but the order itself is gone. The server re-checks the typed number against
+ * the ticket's own reference rather than trusting this comparison.
+ */
+function DeleteDemandDialog({ ticket, stockMoved, onClose, onDone }: {
+  ticket: SupportTicket;
+  stockMoved: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { token } = useAuth();
+  const [reason, setReason] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const demandNumber = ticket.referenceId ?? '';
+  const numberMatches = confirm.trim().toUpperCase() === demandNumber.trim().toUpperCase();
+  // Mirrors DeleteDemandSchema's `.trim().min(5)` so the button disables for the
+  // same input the server would reject.
+  const reasonValid = reason.trim().length >= 5;
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const res = await apiCall<{ stockMoved: boolean; branchReversals: { productName: string; delta: number }[] }>(
+        `/api/support/${ticket.id}/demand`,
+        { method: 'DELETE', body: JSON.stringify({ reason, confirmDemandNumber: confirm, note }) },
+        token,
+      );
+      toast.success(
+        res.stockMoved
+          ? `${demandNumber} deleted — stock reversed on ${res.branchReversals.length} product${res.branchReversals.length === 1 ? '' : 's'}`
+          : `${demandNumber} deleted`,
+      );
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete the demand');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="md:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-destructive">Delete demand — {demandNumber}</DialogTitle>
+          <DialogDescription>
+            This permanently removes the demand and every line on it. It cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+
+        {stockMoved ? (
+          <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            This demand has already been delivered. Deleting it gives the stock back to the
+            production pool and takes it off the branch — the branch&rsquo;s balance will drop by
+            everything this demand credited.
+          </p>
+        ) : (
+          <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            This demand never delivered, so no stock moves. Only the demand itself is removed.
+          </p>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          The stock ledger keeps both the original movements and the reversal, and a full copy of
+          the demand is written to the audit log — so the figures stay explainable after it is gone.
+        </p>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Reason (required, kept in the audit log)</Label>
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this demand is being deleted"
+            aria-invalid={reason.length > 0 && !reasonValid}
+          />
+          {reason.length > 0 && !reasonValid && (
+            <p className="text-xs text-destructive">Give at least a few words.</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">
+            Type <span className="font-mono font-semibold text-foreground">{demandNumber}</span> to confirm
+          </Label>
+          <Input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder={demandNumber}
+            autoComplete="off"
+            aria-invalid={confirm.length > 0 && !numberMatches}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Resolution note (sent to the raiser)</Label>
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="What was done" />
+        </div>
+
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || !valid}>{busy ? 'Saving…' : 'Save & resolve'}</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="destructive" onClick={submit} disabled={busy || !numberMatches || !reasonValid}>
+            <Trash2 className="h-4 w-4" /> {busy ? 'Deleting…' : 'Delete demand'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1033,8 +1194,11 @@ function DemandItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
 
 /**
  * Terminal state for a reference that carries nothing correctable — the
- * production stock pool, a Production counter sale, a rejected/cancelled demand,
- * or a 'system' ticket. Answering it is a resolution note, which lives in View.
+ * production stock pool, a Production counter sale, or a 'system' ticket.
+ * Answering it is a resolution note, which lives in View.
+ *
+ * A rejected/cancelled demand no longer lands here: its lines still cannot be
+ * corrected, but it can now be deleted, so it routes to DeleteDemandDialog.
  */
 function NothingToChangeDialog({ onClose }: { onClose: () => void }) {
   return (
