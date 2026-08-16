@@ -138,7 +138,15 @@ export function BranchOrderDetail({
                 <span className="font-mono">{order.demandNumber}</span>
                 <StatusPill status={order.status} />
               </DialogTitle>
-              <p className="text-sm text-muted-foreground">{order.date} · {order.time}</p>
+              {/* Raised date · time, then what the branch asked for. Omitted
+                  entirely on demands predating the field rather than shown as
+                  a blank "Required" that reads like nobody filled it in. */}
+              <p className="text-sm text-muted-foreground">
+                {order.date} · {order.time}
+                {order.requiredDate ? (
+                  <> · Required by <span className="font-medium text-foreground">{order.requiredDate}</span></>
+                ) : null}
+              </p>
             </DialogHeader>
 
             <div className="max-h-[70vh] space-y-4 overflow-y-auto">

@@ -882,6 +882,11 @@ function OrderMeta({ order }: { order: BranchProductionOrder }) {
     <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-3 text-[11px] sm:grid-cols-3">
       <MetaKV k="Order #" v={slipReference(order)} mono />
       <MetaKV k="Business Date" v={order.date} />
+      {/* Beside the date it was RAISED, because the pair is the point: one is
+          when the branch asked, the other is when they need it. Empty on demands
+          predating the field — MetaKV prints '—' rather than falling back to
+          order.date, which would show a commitment nobody made. */}
+      <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
       <MetaKV k="Time" v={order.time} />
       <MetaKV k="Branch" v={order.branchName} />
       <MetaKV k="Requested By" v={order.createdByName} />
@@ -979,6 +984,7 @@ function PrintCopy({
         <div className="mt-1.5 grid grid-cols-3 gap-x-4 pr-20 text-[9px] leading-tight">
           <MetaKV k="Production Order No" v={slipReference(order)} mono />
           <MetaKV k="Business Date" v={order.date} />
+          <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
           <MetaKV k="Branch" v={order.branchName} />
           <MetaKV k="Print Date" v={printDate} />
           <MetaKV k="Print Time" v={printTime} />
@@ -1206,6 +1212,7 @@ function ProductionCheckSheet({
           <MetaKV k="Branch" v={order.branchName} />
           <MetaKV k="Production Order No" v={slipReference(order)} mono />
           <MetaKV k="Business Date" v={order.date} />
+          <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
           <MetaKV k="Print Date" v={printDate} />
         </div>
       </div>
