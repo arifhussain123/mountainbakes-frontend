@@ -34,6 +34,19 @@ export function ProductionStockPage() {
       cell: (i) => <span className={`font-semibold tabular-nums ${i.getValue() < 0 ? 'text-red-500' : ''}`}>{i.getValue()}</span>,
     }),
     col.accessor('returned', { header: 'Returned', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    // Signed, and its own column: an admin correction can go either way, and
+    // folding it into Prepared or Returned would report a correction as one of
+    // them. Day-scoped like the rest of this row — it reads 0 tomorrow, its
+    // effect already inside Balance.
+    col.accessor('adjustment', {
+      header: 'Adjustment',
+      meta: { align: 'center' },
+      cell: (i) => {
+        const v = i.getValue();
+        if (!v) return <span className="tabular-nums">0</span>;
+        return <span className="tabular-nums text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
+      },
+    }),
   ];
 
   return (

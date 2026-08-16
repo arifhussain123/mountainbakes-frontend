@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useStockRows } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
@@ -28,30 +28,18 @@ export function StockPage() {
   const { data: rows = [], isPending, refetch } = useStockRows(token ?? '');
   useStockRealtime();
 
-  // No Adjustment column on this table: a branch reads its day as stock in and
-  // stock out, and a separate signed "correction" line was one concept too many.
-  // The correction is never pending — `applyStockMovement` writes the delta to
-  // the persisted balance the moment it is made, so Balance already has it out
-  // (or in). All that is left is keeping the visible row reconcilable, so each
-  // signed adjustment folds into the column that already carries its direction:
-  // stock taken away reads as Returned, stock put back as New Stock. Only the
-  // display moves — `rows` keeps the raw figures for the modals below, and the
-  // admin Support Center still reports Adjustment on its own line.
-  const tableRows = useMemo(
-    () =>
-      rows.map((r) =>
-        r.adjustment === 0
-          ? r
-          : {
-              ...r,
-              newQty: r.newQty + Math.max(r.adjustment, 0),
-              returned: r.returned + Math.max(-r.adjustment, 0),
-              adjustment: 0,
-            },
-      ),
-    [rows],
-  );
-
+  // Adjustment is its OWN column. It briefly folded into New Stock / Returned by
+  // sign, but that was only ever a workaround for a bug underneath: a return
+  // accepted by Production wrote stock_history.type = 'adjustment' instead of
+  // 'return', so the Returned column read 0 and the fold was what made the row
+  // look right. That is fixed at the source now — a return is typed 'return'
+  // whoever recorded it — so 'adjustment' means an admin correction and nothing
+  // else, and folding it would disguise a correction as new stock or a return.
+  //
+  // The figure is DAY-SCOPED: computeStockRows sums stock_history for this
+  // business date only, so a correction shows here on the day it is made and the
+  // column reads 0 again tomorrow. Its effect is not lost — it is inside the
+  // balance that becomes tomorrow's Opening.
   const columns = [
     col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     // The remaining columns are the day's ledger for this product. As a card they
@@ -82,6 +70,17 @@ export function StockPage() {
       meta: { align: 'center' },
       cell: (i) => <span className="tabular-nums text-amber-600 dark:text-amber-400">{i.getValue() ? `-${i.getValue()}` : 0}</span>,
     }),
+    // Signed, unlike Sold/Returned: an admin correction can go either way, and
+    // without it the row does not add up to Balance.
+    col.accessor('adjustment', {
+      header: 'Adjustment',
+      meta: { align: 'center' },
+      cell: (i) => {
+        const v = i.getValue();
+        if (!v) return <span className="tabular-nums">0</span>;
+        return <span className="tabular-nums text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
+      },
+    }),
     col.accessor('balance', {
       header: 'Balance',
       meta: { align: 'center' },
@@ -105,11 +104,11 @@ export function StockPage() {
         </div>
         <div className="order-1 sm:order-2 sm:text-right">
           <h2 className="text-lg font-semibold">Stock</h2>
-          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval, admin corrections come off the balance and show under New Stock or Returned</p>
+          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections made today and clear tomorrow</p>
         </div>
       </div>
 
-      <DataTable columns={columns} data={tableRows} loading={isPending} searchPlaceholder="Search products…" pageSize={50} />
+      <DataTable columns={columns} data={rows} loading={isPending} searchPlaceholder="Search products…" pageSize={50} />
 
       <ReturnItemsModal
         open={returnOpen}

@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, Product, PaymentMethod, StockFigures, ProductionStockFigures } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, StockFigures, ProductionStockFigures } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
@@ -34,9 +34,10 @@ const STATUS_VARIANT: Record<SupportTicket['status'], 'default' | 'secondary' | 
 };
 
 // 'Demand' is a branch's production request (DMD-…), raised from the Production
-// Help Desk. 'System' tickets are opened automatically when an unattended job fails
-// (e.g. the 2 AM closing summary) — they carry no editable reference, only the
-// failure detail. Both are read-only; see `canChange` below.
+// Help Desk; it is corrected through DemandItemsDialog. 'System' tickets are opened
+// automatically when an unattended job fails (e.g. the 2 AM closing summary) — they
+// carry no editable reference, only the failure detail, so they stay read-only;
+// see `canChange` below.
 const TYPE_LABEL: Record<SupportReference['type'], string> = {
   sale: 'Sale',
   demand: 'Demand',
@@ -186,14 +187,17 @@ export function SupportCenterPage() {
       .finally(() => setLoading(false));
   }, [token, refreshKey]);
 
-  async function handleDelete(ticket: SupportTicket) {
-    if (!confirm(`Delete query ${ticket.ticketNumber}? This cannot be undone.`)) return;
+  // Archives rather than deletes (migration 76). The row survives — it is the only
+  // record of what was asked and how it was answered, and corrections applied from
+  // it carry its id in stock_history.ref_id. It just leaves the queue.
+  async function handleArchive(ticket: SupportTicket) {
+    if (!confirm(`Archive query ${ticket.ticketNumber}? It leaves the list but is kept on record.`)) return;
     try {
       await apiCall(`/api/support/${ticket.id}`, { method: 'DELETE' }, token);
-      toast.success('Query deleted');
+      toast.success('Query archived');
       reload();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete');
+      toast.error(err instanceof Error ? err.message : 'Failed to archive');
     }
   }
 
@@ -242,8 +246,9 @@ export function SupportCenterPage() {
       cell: ({ row }) => {
         const t = row.original;
         // Offer "Change figures" only where something can actually be changed. A
-        // read-only reference (demand, production pool, counter sale) and a
-        // 'system' ticket (no reference at all) are answered from View instead.
+        // read-only reference (production pool, counter sale, a rejected or
+        // cancelled demand) and a 'system' ticket (no reference at all) are
+        // answered from View instead.
         //
         // Keyed on the snapshot's own flag rather than `editableFields.length`:
         // sales legitimately carry an empty editableFields (they are corrected
@@ -267,7 +272,7 @@ export function SupportCenterPage() {
                 <SlidersHorizontal className="h-3.5 w-3.5" />
               </IconBtn>
               <IconBtn title="Reject" className="text-amber-600" onClick={() => openDialog(t, 'reject')}><Ban className="h-3.5 w-3.5" /></IconBtn>
-              <IconBtn title="Delete" className="text-destructive" onClick={() => handleDelete(t)}><Trash2 className="h-3.5 w-3.5" /></IconBtn>
+              <IconBtn title="Archive" className="text-destructive" onClick={() => handleArchive(t)}><Trash2 className="h-3.5 w-3.5" /></IconBtn>
             </div>
 
             {/* On a phone five 44px targets are ~220px — more than half the screen
@@ -287,8 +292,8 @@ export function SupportCenterPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openDialog(t, 'reject')}><Ban className="h-4 w-4" /> Reject</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(t)}>
-                  <Trash2 className="h-4 w-4" /> Delete
+                <DropdownMenuItem variant="destructive" onClick={() => handleArchive(t)}>
+                  <Trash2 className="h-4 w-4" /> Archive
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -784,6 +789,11 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
   if (ref?.type === 'sale' && ref.saleItems) {
     return <SaleItemsDialog ticket={ticket} reference={ref} onClose={onClose} onDone={onDone} />;
   }
+  // Demands get their own line editor: two quantities per line rather than a
+  // price, and whether a change moves stock depends on delivery, not status.
+  if (ref?.type === 'demand' && ref.demandItems) {
+    return <DemandItemsDialog ticket={ticket} reference={ref} onClose={onClose} onDone={onDone} />;
+  }
   // Stock gets the whole derived row — Opening / New / Sold / Returned / Balance —
   // with every correctable figure editable and applied to the branch's ledger.
   if (ref?.type === 'stock') {
@@ -792,10 +802,239 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
   return <FieldEditDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
 }
 
+// --- Demand line editor ----------------------------------------------------
+type DemandRow = SupportDemandItem & { key: string };
+
 /**
- * Terminal state for a reference that carries nothing correctable — a demand, the
- * production stock pool, a Production counter sale, or a 'system' ticket. Answering
- * it is a resolution note, which lives in View.
+ * Edits a demand's product lines. Two quantities per line, and they mean
+ * different things: `qty` is what the branch asked for (a record of the request)
+ * and `approvedQty` is what Production granted — the only one that ever moves
+ * stock, at verification.
+ *
+ * So the warning below is not decoration. If this demand already delivered, a
+ * change to Approved is a change to inventory that is physically in the shop, and
+ * the server reconciles it on both the branch ledger and the production pool.
+ * `demandStockMoved` comes from the ledger rather than the order's status, which
+ * cannot answer the question — see migration 77.
+ */
+function DemandItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
+  ticket: SupportTicket;
+  reference: SupportReference;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { token } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  // Same reasoning as the sale editor: the snapshot is from when the query was
+  // raised, and the demand may have been re-reviewed since. Seed from it, then
+  // reseed once the live reference lands.
+  const { reference: live, loading } = useLiveReference(ticket);
+  const reference = live ?? snapshot;
+  const [rows, setRows] = useState<DemandRow[]>(
+    () => (snapshot.demandItems ?? []).map((it, i) => ({ ...it, key: `orig-${i}` })),
+  );
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [seq, setSeq] = useState(0);
+
+  useEffect(() => {
+    if (!token) return;
+    apiCall<{ products: Product[] }>('/api/products?isActive=true', {}, token)
+      .then((r) => setProducts(r.products ?? []))
+      .catch(() => toast.error('Could not load products'));
+  }, [token]);
+
+  const [seededFrom, setSeededFrom] = useState<SupportReference | null>(snapshot);
+  if (live && live !== seededFrom) {
+    setSeededFrom(live);
+    if (live.demandItems) setRows(live.demandItems.map((it, i) => ({ ...it, key: `live-${i}` })));
+  }
+
+  const stockMoved = reference.demandStockMoved === true;
+  const original = useMemo(
+    () => new Map((reference.demandItems ?? []).map((i) => [i.productId, i.approvedQty])),
+    [reference.demandItems],
+  );
+
+  // What the branch ledger will actually move, previewed exactly as the server
+  // computes it: new approved − old approved, per product, zero-deltas dropped.
+  const deltas = useMemo(() => {
+    const out: { productName: string; delta: number }[] = [];
+    const seen = new Set<string>();
+    for (const r of rows) {
+      if (!r.productId) continue;
+      seen.add(r.productId);
+      const d = r.approvedQty - (original.get(r.productId) ?? 0);
+      if (d !== 0) out.push({ productName: r.productName, delta: d });
+    }
+    for (const [pid, approved] of original) {
+      if (!seen.has(pid) && approved !== 0) {
+        out.push({ productName: (reference.demandItems ?? []).find((i) => i.productId === pid)?.productName ?? 'Removed line', delta: -approved });
+      }
+    }
+    return out;
+  }, [rows, original, reference.demandItems]);
+
+  function patchRow(key: string, patch: Partial<DemandRow>) {
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+  function pickProduct(key: string, p: Product | null) {
+    if (!p) return;
+    patchRow(key, { productId: p.id, productName: p.name });
+  }
+  function addRow() {
+    const key = `new-${seq}`;
+    setSeq((n) => n + 1);
+    setRows((rs) => [...rs, { key, productId: '', productName: '', qty: 0, approvedQty: 0 }]);
+  }
+  function removeRow(key: string) {
+    setRows((rs) => rs.filter((r) => r.key !== key));
+  }
+
+  const duplicated = useMemo(() => {
+    const ids = rows.map((r) => r.productId).filter(Boolean);
+    return new Set(ids).size !== ids.length;
+  }, [rows]);
+  const rowValid = (r: DemandRow) => Boolean(r.productId) && r.qty >= 0 && r.approvedQty >= 0;
+  const valid = rows.length > 0 && rows.every(rowValid) && !duplicated;
+
+  async function submit() {
+    if (!valid) {
+      toast.error(duplicated ? 'The same product is on two lines — combine them' : 'Every line needs a product and quantities of 0 or more');
+      return;
+    }
+    setBusy(true);
+    try {
+      const items = rows.map((r) => ({
+        productId: r.productId,
+        productName: r.productName,
+        qty: r.qty,
+        approvedQty: r.approvedQty,
+      }));
+      await apiCall(`/api/support/${ticket.id}/demand-items`, { method: 'PATCH', body: JSON.stringify({ items, reason, note }) }, token);
+      toast.success(stockMoved && deltas.length ? 'Demand updated, stock reconciled & query resolved' : 'Demand updated & query resolved');
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update the demand');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="md:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit demand — {ticket.referenceId}</DialogTitle>
+          <DialogDescription>
+            <span className="font-medium">Requested</span> is what the branch asked for.{' '}
+            <span className="font-medium">Approved</span> is what Production granted — that is the
+            figure that moves stock. Add or remove products, or change either quantity.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && <p className="text-xs text-muted-foreground">Reading the demand’s live figures…</p>}
+
+        {stockMoved ? (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            This demand has already been delivered. Changing <span className="font-medium">Approved</span>{' '}
+            moves real stock — the difference is applied to the branch and taken back out of the
+            production pool.
+          </p>
+        ) : (
+          <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            This demand has not delivered yet, so no stock moves. Whatever Approved says here is what
+            will be transferred when the branch verifies receipt.
+          </p>
+        )}
+
+        <div className="space-y-2">
+          <div className="hidden gap-2 px-1 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[1fr_6rem_6rem_2rem]">
+            <span>Product</span><span className="text-center">Requested</span><span className="text-center">Approved</span><span />
+          </div>
+          {rows.map((r) => (
+            <div key={r.key} className="grid gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_6rem_6rem_2rem] sm:items-end sm:border-0 sm:p-0">
+              <LineField label="Product">
+                <Combobox
+                  items={products}
+                  filter={productMatchesQuery}
+                  value={products.find((p) => p.id === r.productId) ?? null}
+                  onValueChange={(p: Product | null) => pickProduct(r.key, p)}
+                  itemToStringLabel={(p: Product) => `${p.sku} — ${p.name}`}
+                  itemToStringValue={(p: Product) => p.id}
+                  isItemEqualToValue={(a: Product, b: Product) => a?.id === b?.id}
+                >
+                  <ComboboxInput placeholder={r.productName || 'Search product…'} />
+                  <ComboboxContent>
+                    <ComboboxEmpty>No products found.</ComboboxEmpty>
+                    <ComboboxList>
+                      {(p: Product) => (
+                        <ComboboxItem key={p.id} value={p}>
+                          <span className="font-medium">{p.sku} · {p.name}</span>
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </LineField>
+              <LineField label="Requested">
+                <Input
+                  type="number" min={0} inputMode="numeric" className="text-center tabular-nums"
+                  value={r.qty}
+                  onChange={(e) => patchRow(r.key, { qty: Number(e.target.value) })}
+                />
+              </LineField>
+              <LineField label="Approved">
+                <Input
+                  type="number" min={0} inputMode="numeric" className="text-center tabular-nums"
+                  value={r.approvedQty}
+                  onChange={(e) => patchRow(r.key, { approvedQty: Number(e.target.value) })}
+                />
+              </LineField>
+              <Button variant="ghost" size="icon" title="Remove this product" onClick={() => removeRow(r.key)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={addRow}><Plus className="h-4 w-4" /> Add product</Button>
+          {duplicated && <p className="text-xs text-destructive">The same product is on more than one line — combine them.</p>}
+        </div>
+
+        {stockMoved && deltas.length > 0 && (
+          <div className="rounded-md border border-border p-3 text-sm">
+            <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Stock that will move</p>
+            {deltas.map((d) => (
+              <div key={d.productName} className="flex justify-between">
+                <span className="text-muted-foreground">{d.productName}</span>
+                <span className={cn('tabular-nums', d.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+                  {d.delta > 0 ? `+${d.delta}` : d.delta}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <Label className="text-xs">Reason (kept on the demand)</Label>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this was corrected" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Resolution note (sent to the raiser)</Label>
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="What was done" />
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || !valid}>{busy ? 'Saving…' : 'Save & resolve'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Terminal state for a reference that carries nothing correctable — the
+ * production stock pool, a Production counter sale, a rejected/cancelled demand,
+ * or a 'system' ticket. Answering it is a resolution note, which lives in View.
  */
 function NothingToChangeDialog({ onClose }: { onClose: () => void }) {
   return (
@@ -857,6 +1096,19 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
   const [targets, setTargets] = useState<Record<string, string>>({});
   // Until the admin edits Balance themselves, it tracks the other three figures.
   const [balanceTouched, setBalanceTouched] = useState(false);
+  /**
+   * Which end of the residual the admin is typing. Balance and Adjustment are ONE
+   * degree of freedom — adjustment is the residual in
+   * opening + new − sold − returned + adjustment = balance — so exactly one of
+   * them can be entered and the other is derived. The server refuses both
+   * (migration 78); this is what stops the UI ever sending them.
+   *
+   * 'balance' is the default and is the old behaviour: reconcile to a counted
+   * shelf. 'adjustment' is for when the correction itself is the intent —
+   * including setting it to 0, which clears the day's correction.
+   */
+  const [residualMode, setResidualMode] = useState<'balance' | 'adjustment'>('balance');
+  const [adjustmentTouched, setAdjustmentTouched] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -879,6 +1131,7 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
           newQty: String(f.newQty),
           sold: String(f.sold),
           returned: String(f.returned),
+          adjustment: String(f.adjustment),
           balance: String(f.balance),
         });
       })
@@ -898,26 +1151,53 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
     return figures.opening + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']) + figures.adjustment;
   }, [figures, targets]);
 
+  // The balance the other three figures imply with the adjustment REMOVED — the
+  // base that a typed Adjustment is added to.
+  const baseWithoutAdjustment = useMemo(() => {
+    if (!figures) return 0;
+    return figures.opening + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']);
+  }, [figures, targets]);
+
+  const inAdjustmentMode = residualMode === 'adjustment';
+
   // The extra adjustment the typed Balance would book on top of the other edits.
-  const extraAdjustment = balanceTouched ? num(targets['balance']) - implied : 0;
-  const finalBalance = balanceTouched ? num(targets['balance']) : implied;
+  // In adjustment mode the admin states the adjustment outright instead.
+  const extraAdjustment = inAdjustmentMode
+    ? num(targets['adjustment']) - (figures?.adjustment ?? 0)
+    : balanceTouched ? num(targets['balance']) - implied : 0;
+
+  const finalBalance = inAdjustmentMode
+    ? baseWithoutAdjustment + num(targets['adjustment'])
+    : balanceTouched ? num(targets['balance']) : implied;
+
+  const finalAdjustment = inAdjustmentMode
+    ? num(targets['adjustment'])
+    : (figures?.adjustment ?? 0) + extraAdjustment;
 
   function setFigure(key: string, value: string) {
     setTargets((t) => ({ ...t, [key]: value }));
     if (key === 'balance') setBalanceTouched(true);
+    if (key === 'adjustment') setAdjustmentTouched(true);
   }
 
   // Keep Balance showing the implied result while the admin has not overridden it.
-  const shownBalance = balanceTouched ? (targets['balance'] ?? '') : String(implied);
+  const shownBalance = inAdjustmentMode
+    ? String(finalBalance)
+    : balanceTouched ? (targets['balance'] ?? '') : String(implied);
+  // Mirror image: in balance mode the Adjustment box shows what will be booked.
+  const shownAdjustment = inAdjustmentMode
+    ? (adjustmentTouched ? (targets['adjustment'] ?? '') : String(figures?.adjustment ?? 0))
+    : String(finalAdjustment);
 
   const invalid =
     ['newQty', 'sold', 'returned'].some((k) => {
       const v = num(targets[k]);
       return targets[k] === '' || !Number.isFinite(v) || v < 0;
     }) ||
-    // A cleared Balance is not "zero" — it is no figure at all, and would otherwise
-    // submit as a count of 0.
-    (balanceTouched && targets['balance'] === '') ||
+    // A cleared box is not "zero" — it is no figure at all, and would otherwise
+    // submit as a count of 0. (Adjustment 0 is meaningful, but only when TYPED.)
+    (!inAdjustmentMode && balanceTouched && targets['balance'] === '') ||
+    (inAdjustmentMode && (targets['adjustment'] === '' || !Number.isFinite(num(targets['adjustment'])))) ||
     finalBalance < 0;
 
   /**
@@ -936,9 +1216,17 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
     for (const k of ['newQty', 'sold', 'returned'] as const) {
       if (num(targets[k]) !== figures[k]) out[k] = num(targets[k]);
     }
-    if (balanceTouched && num(targets['balance']) !== implied) out['balance'] = num(targets['balance']);
+    // Exactly one of the pair, never both — the server refuses both, and they are
+    // two names for the same free variable.
+    if (inAdjustmentMode) {
+      if (adjustmentTouched && num(targets['adjustment']) !== figures.adjustment) {
+        out['adjustment'] = num(targets['adjustment']);
+      }
+    } else if (balanceTouched && num(targets['balance']) !== implied) {
+      out['balance'] = num(targets['balance']);
+    }
     return out;
-  }, [figures, targets, balanceTouched, implied]);
+  }, [figures, targets, balanceTouched, adjustmentTouched, inAdjustmentMode, implied]);
 
   const changed = Object.keys(edits).length > 0;
 
@@ -1014,22 +1302,86 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
               </div>
             ))}
 
-            <div className="space-y-1">
-              <div className="flex items-baseline justify-between gap-2">
-                <Label>Balance</Label>
-                <span className="text-xs text-muted-foreground">
-                  now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
-                </span>
+            {/* Balance and Adjustment are one degree of freedom: type either and
+                the other follows. The toggle picks which one is the input, so the
+                pair can never both be sent. */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Set the shelf count, or set the correction
+                </Label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button" size="sm"
+                    variant={inAdjustmentMode ? 'ghost' : 'secondary'}
+                    onClick={() => setResidualMode('balance')}
+                  >
+                    Balance
+                  </Button>
+                  <Button
+                    type="button" size="sm"
+                    variant={inAdjustmentMode ? 'secondary' : 'ghost'}
+                    onClick={() => setResidualMode('adjustment')}
+                  >
+                    Adjustment
+                  </Button>
+                </div>
               </div>
-              <Input
-                type="number" min="0" step="0.001" inputMode="decimal"
-                className={cn('text-right', finalBalance < 0 && 'border-destructive')}
-                value={shownBalance}
-                onChange={(e) => setFigure('balance', e.target.value)}
-              />
+
+              <div className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Balance</Label>
+                  <span className="text-xs text-muted-foreground">
+                    now {figures.balance} ·{' '}
+                    {inAdjustmentMode ? 'follows the adjustment' : balanceTouched ? 'set by hand' : 'follows the figures above'}
+                  </span>
+                </div>
+                <Input
+                  type="number" min="0" step="0.001" inputMode="decimal"
+                  disabled={inAdjustmentMode}
+                  className={cn('text-right', finalBalance < 0 && 'border-destructive')}
+                  value={shownBalance}
+                  onChange={(e) => setFigure('balance', e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Adjustment</Label>
+                  <span className="text-xs text-muted-foreground">
+                    now {figures.adjustment > 0 ? `+${figures.adjustment}` : figures.adjustment} ·{' '}
+                    {inAdjustmentMode ? 'signed — may be negative' : 'follows the balance'}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    // No min: an adjustment is signed. Clearing it is `0`.
+                    type="number" step="0.001" inputMode="decimal"
+                    disabled={!inAdjustmentMode}
+                    className="text-right"
+                    value={shownAdjustment}
+                    onChange={(e) => setFigure('adjustment', e.target.value)}
+                  />
+                  <Button
+                    type="button" variant="outline"
+                    title="Clear today's correction — sets Adjustment to 0 and gives the balance back"
+                    disabled={figures.adjustment === 0 && num(targets['adjustment']) === 0}
+                    onClick={() => { setResidualMode('adjustment'); setFigure('adjustment', '0'); }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Only today’s corrections. The column clears tomorrow on its own — the
+                  effect stays inside the balance that becomes tomorrow’s Opening.
+                </p>
+              </div>
+
               {extraAdjustment !== 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Booked as an adjustment of {extraAdjustment > 0 ? `+${extraAdjustment}` : extraAdjustment}.
+                  {inAdjustmentMode
+                    ? `Adjustment ${figures.adjustment} → ${finalAdjustment}, so Balance ${figures.balance} → ${finalBalance}.`
+                    : `Booked as an adjustment of ${extraAdjustment > 0 ? `+${extraAdjustment}` : extraAdjustment}.`}
                 </p>
               )}
               {finalBalance < 0 && (
