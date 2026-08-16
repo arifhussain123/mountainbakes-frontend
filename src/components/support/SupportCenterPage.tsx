@@ -1560,6 +1560,11 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
         ) : (
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+              {/* Opening first, matching the branch dialog: it is where the day
+                  starts, and the figures below are only readable against it. Not
+                  editable, for the same reason as the branch's — it is the
+                  previous day's closing. */}
+              <FigureRow label="Opening Stock" value={String(figures.opening)} hint="carried from yesterday" />
               <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="balance + what left today" />
               {figures.adjustment !== 0 && (
                 <FigureRow
