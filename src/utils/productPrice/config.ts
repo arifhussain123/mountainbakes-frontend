@@ -56,8 +56,3 @@ export function resolveQueryClient(): QueryClient {
   }
   return config.queryClient;
 }
-
-/** @internal Test seam. */
-export function resetProductPriceConfig(): void {
-  config = null;
-}

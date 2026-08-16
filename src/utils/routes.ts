@@ -83,7 +83,6 @@ export const ROUTES = {
   FINANCE_SETTINGS: '/finance-settings',
 } as const;
 
-export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];
 
 /**
  * Strip the trailing slash so a live pathname can be compared against ROUTES.

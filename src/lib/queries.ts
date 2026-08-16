@@ -10,17 +10,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
-import {
-  addProduct,
-  removeProduct,
-  updateProductPrice,
-  saveImport,
-  toPriceProduct,
-  type AddProductInput,
-  type PriceProduct,
-  type SaveImportInput,
-  type UpdatePriceInput,
-} from '@/utils/productPrice';
 // businessDayBounds is a VALUE, not a type — Branch Closing turns a business
 // date into the UTC instants /api/orders filters created_at on.
 import { businessDayBounds } from '@mb/shared';
@@ -46,7 +35,6 @@ import type {
   BranchLocation,
   BranchLocationRow,
   BranchLocationStats,
-  GeofenceLog,
   UpsertBranchLocationInput,
   ReportSummary,
   StockRow,
@@ -109,33 +97,10 @@ export function useCategories(token: string, opts?: { enabled?: boolean }) {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Product price facade — React bindings for @/utils/productPrice.
-//
-// These share qk.products(isActive) with useProducts above (same cache entry,
-// different `select`), so one price change invalidates every screen at once.
-// Mutations delegate to the facade functions rather than re-implementing
-// apiCall, keeping one HTTP definition per endpoint.
-
-/** Module-level so TanStack can memoize the select; an inline arrow would re-map every render. */
-const selectPriceProducts = (r: { products: Product[] }): PriceProduct[] =>
-  (r.products ?? []).map(toPriceProduct);
-
-/** Products in the facade's shape (productCode / currentPrice / status). */
-export function usePriceProducts(token: string, opts?: { isActive?: boolean; enabled?: boolean }) {
-  const isActive = opts?.isActive;
-  return useQuery({
-    queryKey: qk.products(isActive),
-    queryFn: () =>
-      apiCall<{ products: Product[] }>(
-        `/api/products${isActive !== undefined ? `?isActive=${isActive}` : ''}`,
-        {},
-        token,
-      ),
-    select: selectPriceProducts,
-    enabled: !!token && (opts?.enabled ?? true),
-  });
-}
+// Price history. The write side of the price facade (add / remove / update /
+// import) had React bindings here too; nothing ever called them — every screen
+// goes through @/utils/productPrice directly — so they were removed rather than
+// left as a second, untested way to change a price.
 
 export function usePriceHistory(
   token: string,
@@ -157,26 +122,6 @@ export function usePriceHistory(
     select: (r) => r.history ?? [],
     enabled: !!token && (opts?.enabled ?? true),
   });
-}
-
-/** The only way to change a price. Invalidation is what refreshes open sale screens. */
-export function useUpdateProductPrice(token: string) {
-  return useMutation({
-    mutationFn: (v: { productId: string; input: UpdatePriceInput }) =>
-      updateProductPrice(v.productId, v.input, { token }),
-  });
-}
-
-export function useAddProduct(token: string) {
-  return useMutation({ mutationFn: (input: AddProductInput) => addProduct(input, { token }) });
-}
-
-export function useRemoveProduct(token: string) {
-  return useMutation({ mutationFn: (productId: string) => removeProduct(productId, { token }) });
-}
-
-export function useCommitPriceImport(token: string) {
-  return useMutation({ mutationFn: (input: SaveImportInput) => saveImport(input, { token }) });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,30 +187,6 @@ export function useDeleteBranchLocation(token: string) {
     mutationFn: (branchId: string) =>
       apiCall(`/api/branch-locations/${branchId}`, { method: 'DELETE' }, token),
     onSuccess: () => invalidateBranchLocations(qc),
-  });
-}
-
-/** The geofence audit trail. Admin-only on the server; `blockedOnly` is the hot filter. */
-export function useGeofenceLogs(
-  token: string,
-  filters: { branchId?: string | null; blockedOnly?: boolean },
-  opts?: { enabled?: boolean },
-) {
-  return useQuery({
-    queryKey: qk.geofenceLogs(filters),
-    queryFn: () => {
-      const qs = new URLSearchParams();
-      if (filters.branchId) qs.set('branchId', filters.branchId);
-      if (filters.blockedOnly) qs.set('blockedOnly', 'true');
-      const query = qs.toString();
-      return apiCall<{ logs: GeofenceLog[] }>(
-        `/api/branch-locations/logs${query ? `?${query}` : ''}`,
-        {},
-        token,
-      );
-    },
-    select: (r) => r.logs ?? [],
-    enabled: !!token && (opts?.enabled ?? true),
   });
 }
 
@@ -1062,32 +983,6 @@ export function useRegenerateEventSchedule(token: string) {
  * Recompute Hijri estimates. Must be run once after migration 41 — the seeded
  * catalogue ships with no resolved dates, so until this runs the calendar is empty.
  */
-export function useRefreshEventEstimates(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { year?: number } = {}) =>
-      apiCall<{ updated: number; unresolved: number; schedulesRegenerated: number }>(
-        '/api/special-events/maintenance/refresh-estimates',
-        { method: 'POST', body: JSON.stringify(body) },
-        token,
-      ),
-    onSuccess: () => invalidateEvents(qc),
-  });
-}
-
-export function useRollForwardEvents(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { targetYear?: number } = {}) =>
-      apiCall<{ created: number; skipped: number }>(
-        '/api/special-events/maintenance/roll-forward',
-        { method: 'POST', body: JSON.stringify(body) },
-        token,
-      ),
-    onSuccess: () => invalidateEvents(qc),
-  });
-}
-
 // ───────────────────────────────────────────────────────────────────────────
 // Shift-account requests
 //

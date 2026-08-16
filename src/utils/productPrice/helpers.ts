@@ -42,19 +42,6 @@ export function toPriceProduct(p: Product): PriceProduct {
   };
 }
 
-/** Reverse map, for building API payloads from facade-shaped input. */
-export function toProductPayload(p: Partial<PriceProduct>): Partial<Product> {
-  const out: Partial<Product> = {};
-  if (p.productName !== undefined) out.name = p.productName;
-  if (p.productCode !== undefined) out.sku = p.productCode;
-  if (p.categoryId !== undefined) out.categoryId = p.categoryId;
-  if (p.currentPrice !== undefined) out.price = p.currentPrice;
-  if (p.costPrice !== undefined) out.costPrice = p.costPrice;
-  if (p.description !== undefined) out.description = p.description;
-  if (p.status !== undefined) out.isActive = p.status === 'Active';
-  return out;
-}
-
 // ─── Formatting ─────────────────────────────────────────────────────────────
 // Re-exported, never redefined — one implementation per formatter, repo-wide.
 //
@@ -97,18 +84,6 @@ export function sortProducts(
     if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sign;
     return String(av).localeCompare(String(bv)) * sign;
   });
-}
-
-/** Case-insensitive match across code, name and category. Blank query → unfiltered. */
-export function searchProducts(products: PriceProduct[], query: string): PriceProduct[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return products;
-  return products.filter(
-    (p) =>
-      p.productCode.toLowerCase().includes(q) ||
-      p.productName.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q),
-  );
 }
 
 /** Matches on category name or categoryId — callers have one or the other. */

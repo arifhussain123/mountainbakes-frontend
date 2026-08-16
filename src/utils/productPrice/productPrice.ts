@@ -2,7 +2,7 @@ import type { Product } from '@mb/shared';
 import { apiCall } from '@/utils/api';
 import { qk } from '@/lib/queryKeys';
 import { resolveToken, resolveQueryClient } from './config';
-import { toPriceProduct, onlyActive, filterByCategory, type PriceProduct } from './helpers';
+import { toPriceProduct, type PriceProduct } from './helpers';
 
 /**
  * Central product/price accessors — the single source of truth for product
@@ -54,20 +54,11 @@ export function getAllProducts(opts?: PriceOpts): Promise<PriceProduct[]> {
   return fetchProducts(undefined, opts);
 }
 
-export function getActiveProducts(opts?: PriceOpts): Promise<PriceProduct[]> {
-  return fetchProducts(true, opts);
-}
-
 export async function getProductByCode(productCode: string, opts?: PriceOpts): Promise<PriceProduct | null> {
   const code = productCode.trim().toLowerCase();
   if (!code) return null;
   const products = await getAllProducts(opts);
   return products.find((p) => p.productCode.toLowerCase() === code) ?? null;
-}
-
-export async function getProductById(productId: string, opts?: PriceOpts): Promise<PriceProduct | null> {
-  const products = await getAllProducts(opts);
-  return products.find((p) => p.id === productId) ?? null;
 }
 
 /**
@@ -77,19 +68,6 @@ export async function getProductById(productId: string, opts?: PriceOpts): Promi
 export async function getProductPrice(productCode: string, opts?: PriceOpts): Promise<number | null> {
   const product = await getProductByCode(productCode, opts);
   return product ? product.currentPrice : null;
-}
-
-/**
- * Filters the already-cached list rather than issuing `?categoryId=`. The server
- * supports that query, but each variant becomes its own cache entry that every
- * mutation would then have to invalidate. The full list is small and already warm.
- */
-export async function getProductsByCategory(category: string, opts?: PriceOpts): Promise<PriceProduct[]> {
-  return filterByCategory(await getAllProducts(opts), category);
-}
-
-export async function getActiveProductsByCategory(category: string, opts?: PriceOpts): Promise<PriceProduct[]> {
-  return onlyActive(filterByCategory(await getAllProducts(opts), category));
 }
 
 // ─── Writes ─────────────────────────────────────────────────────────────────
@@ -132,26 +110,6 @@ export async function updateProductPrice(
   return res;
 }
 
-/** Convenience wrapper. Throws on an unknown or ambiguous (duplicate-sku) code. */
-export async function updateProductPriceByCode(
-  productCode: string,
-  input: UpdatePriceInput,
-  opts?: PriceOpts,
-): Promise<UpdatePriceResult> {
-  const code = productCode.trim().toLowerCase();
-  const products = await getAllProducts(opts);
-  const matches = products.filter((p) => p.productCode.toLowerCase() === code);
-
-  if (matches.length === 0) throw new Error(`No product found with code "${productCode}"`);
-  if (matches.length > 1) {
-    throw new Error(
-      `Product code "${productCode}" matches ${matches.length} products. ` +
-        `Use updateProductPrice(productId, …) to target one explicitly.`,
-    );
-  }
-  return updateProductPrice(matches[0]!.id, input, opts);
-}
-
 export interface AddProductInput {
   productName: string;
   categoryId: string;
@@ -180,11 +138,4 @@ export async function addProduct(input: AddProductInput, opts?: PriceOpts): Prom
   );
   invalidateProducts();
   return res;
-}
-
-/** Soft delete — the server sets isActive:false, so the product becomes 'Inactive'. */
-export async function removeProduct(productId: string, opts?: PriceOpts): Promise<void> {
-  const token = await resolveToken(opts?.token);
-  await apiCall(`/api/products/${productId}`, { method: 'DELETE' }, token);
-  invalidateProducts();
 }

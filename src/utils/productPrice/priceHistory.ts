@@ -2,7 +2,7 @@ import type { PriceHistoryDoc } from '@mb/shared';
 import { apiCall } from '@/utils/api';
 import { qk } from '@/lib/queryKeys';
 import { resolveToken, resolveQueryClient } from './config';
-import { updateProductPrice, type PriceOpts } from './productPrice';
+import type { PriceOpts } from './productPrice';
 
 /**
  * Price-change history. Append-only and written exclusively server-side, inside
@@ -40,30 +40,3 @@ export async function getPriceHistory(opts?: GetPriceHistoryOpts): Promise<Price
   });
   return res.history ?? [];
 }
-
-/**
- * The newest history row for a product, whatever its status.
- *
- * Returns the document rather than a number on purpose: the newest row may be a
- * `scheduled` future price that is NOT yet chargeable. Displaying that as the
- * current price would misquote customers. Inspect `.status` before using it, or
- * call getProductPrice() — which always returns the live, chargeable price.
- */
-export async function getLatestPrice(productId: string, opts?: PriceOpts): Promise<PriceHistoryDoc | null> {
-  const history = await getPriceHistory({ ...opts, productId, limit: 50 });
-  return history[0] ?? null;
-}
-
-/** The pending future price change for a product, if one is queued. */
-export async function getScheduledPrice(productId: string, opts?: PriceOpts): Promise<PriceHistoryDoc | null> {
-  const history = await getPriceHistory({ ...opts, productId, limit: 50 });
-  return history.find((h) => h.status === 'scheduled') ?? null;
-}
-
-/**
- * @deprecated Use `updateProductPrice`. History is append-only and is written
- * server-side by that same call, inside the transaction that computes the version
- * number, supersedes stale scheduled rows and updates products.price. A separate
- * client-side write path could desync history from the live price.
- */
-export const addPriceHistory = updateProductPrice;

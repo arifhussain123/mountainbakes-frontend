@@ -51,32 +51,3 @@ export interface ImportOutcome {
   /** null when nothing was applied — no valid rows, or `confirm` declined. */
   commit: ImportCommitResult | null;
 }
-
-/**
- * Preview → confirm → commit in one call, for callers that don't need to drive
- * the two phases themselves. `confirm` receives the preview and decides whether
- * to proceed; omit it to commit whenever there is at least one valid row.
- */
-export async function importProductPrices(
-  file: File,
-  meta: {
-    effectiveDate: string;
-    reason: string;
-    confirm?: (preview: ImportPreviewResult) => boolean | Promise<boolean>;
-  },
-  opts?: PriceOpts,
-): Promise<ImportOutcome> {
-  const preview = await previewImport(file, opts);
-  if (!preview.validRows.length) return { preview, commit: null };
-  if (meta.confirm && !(await meta.confirm(preview))) return { preview, commit: null };
-
-  const commit = await saveImport(
-    {
-      rows: preview.validRows.map((r) => ({ productId: r.productId, newPrice: r.newPrice })),
-      effectiveDate: meta.effectiveDate,
-      reason: meta.reason,
-    },
-    opts,
-  );
-  return { preview, commit };
-}

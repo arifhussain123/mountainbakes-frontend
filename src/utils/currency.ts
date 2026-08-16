@@ -1,4 +1,3 @@
-export const CURRENCY = 'PKR';
 export const CURRENCY_SYMBOL = 'Rs.';
 export const CURRENCY_LOCALE = 'en-PK';
 

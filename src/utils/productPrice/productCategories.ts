@@ -22,11 +22,3 @@ export async function getCategories(opts?: PriceOpts): Promise<Category[]> {
   });
   return res.categories ?? [];
 }
-
-export async function getCategoryNames(opts?: PriceOpts): Promise<string[]> {
-  return (await getCategories(opts)).map((c) => c.name);
-}
-
-export async function getActiveCategories(opts?: PriceOpts): Promise<Category[]> {
-  return (await getCategories(opts)).filter((c) => c.isActive);
-}

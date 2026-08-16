@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 
 export const DATE_FORMAT = 'dd MMM yyyy';
 export const DATETIME_FORMAT = 'dd MMM yyyy, hh:mm a';
@@ -22,20 +22,8 @@ export function formatTime(date: string | Date | null | undefined): string {
   return isValid(d) ? format(d, TIME_FORMAT) : '—';
 }
 
-export function timeAgo(date: string | Date | null | undefined): string {
-  if (!date) return '—';
-  const d = typeof date === 'string' ? parseISO(date) : date;
-  return isValid(d) ? formatDistanceToNow(d, { addSuffix: true }) : '—';
-}
-
 export function toISOString(date: Date): string {
   return date.toISOString();
-}
-
-export function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
 }
 
 export function startOfMonth(): Date {

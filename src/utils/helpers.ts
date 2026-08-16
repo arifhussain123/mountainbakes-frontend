@@ -1,10 +1,6 @@
 // Note: `cn()` (the shadcn class merger) lives in `@/lib/utils` — import it from
 // there. It was previously duplicated here; that copy has been removed.
 
-export function slugify(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-}
-
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }

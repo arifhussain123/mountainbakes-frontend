@@ -6,7 +6,6 @@ import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
   BranchShareBalance,
-  BranchSharePayment,
   FinanceAuditLog,
   FinanceDashboard,
   FinanceDayClosing,
@@ -264,20 +263,6 @@ export function usePartnerShareSummary(from?: string, to?: string) {
         {},
         token,
       )).summary,
-  });
-}
-
-export function useBranchSharePayments(filters: Record<string, unknown>) {
-  const token = useToken();
-  return useQuery({
-    queryKey: qk.financeBranchShare(filters),
-    enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ payments: BranchSharePayment[] }>(
-        `/api/finance/branch-share${toQuery(filters)}`,
-        {},
-        token,
-      )).payments,
   });
 }
 

@@ -24,4 +24,3 @@ export const PUBLIC_IMAGES = {
 
 export const IMAGES = PUBLIC_IMAGES;
 
-export type ImageKey = keyof typeof IMAGES;
