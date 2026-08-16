@@ -147,6 +147,16 @@ function endDeadSession(): void {
   if (typeof window === 'undefined') return;
   if (window.location.pathname.startsWith('/login')) return;
 
+  // Not while offline. The 401 above is real, but the refresh that was meant to
+  // answer it never reached Supabase — connectivity dropped between the two —
+  // so "the session is gone for good" is a conclusion drawn from a network
+  // failure. Acting on it signs the user out and sends them to a login screen
+  // that cannot sign anyone in without a connection, which is precisely the
+  // lock-out the held identity in AuthProvider exists to prevent. When the
+  // network returns, either the refresh succeeds or the next 401 tears the
+  // session down properly.
+  if (navigator.onLine === false) return;
+
   sessionTeardown ??= (async () => {
     try {
       const { supabase } = await import('@/lib/supabase/client');
@@ -187,6 +197,27 @@ export async function apiCall<T = unknown>(
   token?: string
 ): Promise<T> {
   assertApiReachable();
+
+  // Refuse writes with no connection, in the app's own words.
+  //
+  // Reading offline works — the last synced data is restored from disk (see
+  // lib/offline/queryPersist.ts) — but a write has nowhere to go, and nothing
+  // queues it: see the disabled Background Sync queue in public/sw.js for why
+  // replaying mutations is not safe to switch on as it stands. Failing here
+  // rather than in fetch() is what turns an alarming "could not reach the API,
+  // check CORS_ORIGINS" into a sentence a branch user can act on.
+  //
+  // navigator.onLine only reliably tells the truth when it says FALSE — online
+  // can still mean a dead captive portal — so this catches the certain case and
+  // leaves the rest to the network error below.
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError(
+      "You're offline. This can't be saved until you reconnect — your entry is still on screen, so nothing is lost.",
+      0,
+    );
+  }
+
   return request<T>(endpoint, options, token, true);
 }
 

@@ -1,19 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  useProductionReturns, useCreateReturn, useReviewReturn, useBranches, useProducts,
-} from '@/lib/queries';import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useProductionReturns, useReviewReturn } from '@/lib/queries';
+import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/shared/DataTable';
-import { Plus, Check, X } from 'lucide-react';
+import { formatDate } from '@/utils/date';
+import { Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -26,36 +20,7 @@ const short = (name: string) => name.replace('Mountain Bakes ', '');
 export function ProductionReturnsPage() {
   const { token } = useAuth();
   const returnsQ = useProductionReturns(token);
-  const branchesQ = useBranches(token);
-  const productsQ = useProducts(token, { isActive: true });
-  const createMut = useCreateReturn(token);
   const reviewMut = useReviewReturn(token);
-
-  const [open, setOpen] = useState(false);
-  const [branchId, setBranchId] = useState('');
-  const [productId, setProductId] = useState('');
-  const [qty, setQty] = useState('');
-  const [reason, setReason] = useState('');
-
-  function reset() {
-    setBranchId(''); setProductId(''); setQty(''); setReason('');
-  }
-
-  async function save() {
-    const q = parseInt(qty, 10) || 0;
-    if (!branchId || !productId || q <= 0 || !reason.trim()) {
-      toast.error('Fill in branch, product, quantity and reason.');
-      return;
-    }
-    try {
-      await createMut.mutateAsync({ branchId, productId, qty: q, reason: reason.trim() });
-      toast.success('Return recorded');
-      reset();
-      setOpen(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to record return');
-    }
-  }
 
   async function review(id: string, status: 'accepted' | 'rejected') {
     try {
@@ -68,7 +33,15 @@ export function ProductionReturnsPage() {
 
   const col = createColumnHelper<ProductionReturn>();
   const columns = [
-    col.accessor('date', { header: 'Return Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
+    // The global filter only matches what it reaches through the accessor, so the
+    // accessor carries both spellings — the ISO date and the displayed one — and
+    // "15 Aug", "Aug 2026" and "2026-08-15" all find the row. Keeping the ISO date
+    // first also leaves the value sorting chronologically.
+    col.accessor((r) => `${r.date} ${formatDate(r.date)}`, {
+      id: 'date',
+      header: 'Return Date',
+      cell: ({ row }) => <span className="text-sm whitespace-nowrap">{formatDate(row.original.date)}</span>,
+    }),
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('qty', { header: 'Qty', cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span> }),
@@ -98,54 +71,12 @@ export function ProductionReturnsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Product Returns</h2>
-          <p className="text-sm text-muted-foreground">Last 30 days</p>
-        </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="mr-1 h-4 w-4" /> New Return
-        </Button>
+      <div>
+        <h2 className="text-lg font-semibold">Product Returns</h2>
+        <p className="text-sm text-muted-foreground">Last 30 days</p>
       </div>
 
       <DataTable columns={columns} data={returnsQ.data ?? []} loading={returnsQ.isLoading} searchPlaceholder="Search returns…" />
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="md:max-w-lg">
-          <DialogHeader><DialogTitle>Record a Product Return</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Branch</Label>
-              <Select value={branchId} onValueChange={(v) => setBranchId((v as string) ?? '')}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Select branch" /></SelectTrigger>
-                <SelectContent>
-                  {(branchesQ.data ?? []).map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Product</Label>
-              <Select value={productId} onValueChange={(v) => setProductId((v as string) ?? '')}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="Select product" /></SelectTrigger>
-                <SelectContent>
-                  {(productsQ.data ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Quantity</Label>
-              <Input type="text" inputMode="numeric" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} />
-            </div>
-            <div className="space-y-1">
-              <Label>Reason</Label>
-              <Textarea placeholder="e.g. Damaged / unsold / expired" value={reason} onChange={(e) => setReason(e.target.value)} />
-            </div>
-            <Button className="w-full" size="lg" onClick={save} disabled={createMut.isPending}>
-              {createMut.isPending ? 'Saving…' : 'Save Return'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

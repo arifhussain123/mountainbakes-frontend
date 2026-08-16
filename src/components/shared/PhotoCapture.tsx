@@ -1,11 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { Camera, ImageUp, Loader2, X } from 'lucide-react';
 import { ATTACHMENT_MAX_PER_ENTITY, type Attachment, type AttachmentEntity } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { canUseLiveCamera, captureAndUpload, formatBytes } from '@/lib/attachments';
+import {
+  canUseLiveCamera,
+  captureAndUpload,
+  formatBytes,
+  prefersDeviceCamera,
+  subscribeDeviceCamera,
+} from '@/lib/attachments';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,20 +21,24 @@ import { Label } from '@/components/ui/label';
  * Capture a photo, compress it, upload it, and hand the caller back the stored
  * attachments.
  *
- * TWO CAPTURE PATHS, and both are needed:
+ * TWO CAPTURE PATHS, and which one "Take photo" uses depends on the device:
  *
+ *   * **The device camera app** (`<input capture="environment">`) — what a PHONE
+ *     gets. It returns a full-resolution still, focused and sharpened by the
+ *     camera pipeline. This is the path that makes a photographed receipt
+ *     readable, and it is why phones no longer get the in-app preview.
  *   * **Live camera** (`getUserMedia` + `<video>`) — a preview inside the app
- *     with a shutter button. This is the only path that works on a DESKTOP
- *     browser, where `<input capture>` is ignored and silently degrades to a
- *     file picker. It needs a secure context, so it is absent over plain http.
- *   * **File input with `capture="environment"`** — on a phone this opens the
- *     native camera app directly. It is the fallback when `getUserMedia` is
- *     unavailable or the user denies permission, and it is also the only way to
- *     attach a photo already in the gallery.
+ *     with a shutter button, kept for DESKTOP, where `<input capture>` is
+ *     ignored and degrades to a file picker, leaving no capture path at all. It
+ *     needs a secure context, so it is absent over plain http.
  *
- * Offering only the first would break http/LAN testing and permission-denied
- * devices; offering only the second would mean no desktop user could ever
- * capture, only browse.
+ * A grabbed video frame is not a photograph — see `prefersDeviceCamera`. The
+ * live path remains the desktop fallback, and the fallback for a phone whose
+ * camera app cannot be reached.
+ *
+ * The gallery gets its OWN input, without `capture`. Sharing one input with the
+ * camera meant "Upload" opened the camera too on the phones that honour the
+ * attribute, so an existing photo could not be attached at all.
  *
  * REMOVING a photo is purely local. An uploaded attachment is immutable and
  * cannot be deleted (migration 67 — a document's supporting photo is part of its
@@ -61,10 +71,22 @@ export function PhotoCapture({
   const { token } = useAuth();
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  // `false` during prerender, the real answer once mounted — see
+  // subscribeDeviceCamera for why this is a store subscription rather than
+  // state set in an effect.
+  const useDeviceCamera = useSyncExternalStore(subscribeDeviceCamera, prefersDeviceCamera, () => false);
 
   const atLimit = value.length >= max;
   const canCapture = !disabled && !busy && !atLimit;
+
+  // A phone goes straight to its camera app; a desktop opens the in-app preview.
+  const takePhoto = useCallback(() => {
+    if (useDeviceCamera) cameraInputRef.current?.click();
+    else setCameraOpen(true);
+  }, [useDeviceCamera]);
 
   const store = useCallback(
     async (source: Blob) => {
@@ -122,8 +144,11 @@ export function PhotoCapture({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {canUseLiveCamera() && (
-          <Button type="button" variant="outline" disabled={!canCapture} onClick={() => setCameraOpen(true)}>
+        {/* Present on a phone (device camera) and on a desktop that can open a
+            live preview. Absent only where neither exists — an http desktop —
+            where the gallery button below is the whole story. */}
+        {(useDeviceCamera || canUseLiveCamera()) && (
+          <Button type="button" variant="outline" disabled={!canCapture} onClick={takePhoto}>
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Camera className="mr-1.5 h-4 w-4" />}
             Take photo
           </Button>
@@ -132,17 +157,18 @@ export function PhotoCapture({
           type="button"
           variant="outline"
           disabled={!canCapture}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => galleryInputRef.current?.click()}
         >
           <ImageUp className="mr-1.5 h-4 w-4" />
-          {canUseLiveCamera() ? 'Upload' : 'Camera or gallery'}
+          {useDeviceCamera ? 'Gallery' : 'Upload'}
         </Button>
+
+        {/* Camera. `capture` sends a phone straight to its camera app; a desktop
+            ignores it, which is why this input is only ever clicked on a phone. */}
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
-          // Ignored by desktop browsers (they show a file picker instead), which
-          // is why the live-camera button above exists.
           capture="environment"
           className="hidden"
           onChange={(e) => {
@@ -150,6 +176,20 @@ export function PhotoCapture({
             // Reset first: picking the SAME file twice fires no change event
             // otherwise, so a retake of an identical shot would appear to do
             // nothing.
+            e.target.value = '';
+            if (file) void store(file);
+          }}
+        />
+
+        {/* Gallery / file picker. No `capture`, or a phone would open the camera
+            here too and an existing photo could never be attached. */}
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
             e.target.value = '';
             if (file) void store(file);
           }}
@@ -170,10 +210,10 @@ export function PhotoCapture({
         }}
         onUnavailable={() => {
           setCameraOpen(false);
-          // Not an error worth a toast on its own — the file input opens the
-          // phone's camera app just as well, so send them there instead of
+          // Not an error worth a toast on its own — the camera input opens the
+          // device's camera app just as well, so send them there instead of
           // leaving them staring at a dead dialog.
-          fileInputRef.current?.click();
+          cameraInputRef.current?.click();
         }}
       />
     </div>
@@ -219,7 +259,17 @@ function CameraDialog({
           // `environment` asks for the rear camera on a phone and is ignored on a
           // laptop, which has only one. Not `exact`: an exact constraint throws
           // outright on a device with no rear camera rather than falling back.
-          video: { facingMode: 'environment' },
+          //
+          // The `ideal` sizes matter more than they look. Asked for nothing, a
+          // browser hands back its default capture size — commonly 640×480 — and
+          // that VGA frame, not the compression, is what made a photographed
+          // receipt unreadable. `ideal` is a preference, not a demand: a webcam
+          // that cannot reach it simply returns its best.
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 2560 },
+            height: { ideal: 1440 },
+          },
           audio: false,
         });
         if (cancelled) {
@@ -251,17 +301,20 @@ function CameraDialog({
     const video = videoRef.current;
     if (!video) return;
 
-    // Captured at the sensor's own resolution; compressImage does the
-    // downscaling, so the shutter never has to guess a target size.
+    // Captured at whatever the stream negotiated; compressImage normalises it to
+    // the stored size, so the shutter never has to guess a target.
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // 0.98: this frame is an intermediate that compressImage immediately decodes
+    // and re-encodes. Any quality thrown away here is thrown away twice, and
+    // these bytes never leave the device.
     canvas.toBlob((blob) => {
       if (blob) onCapture(blob);
-    }, 'image/jpeg', 0.92);
+    }, 'image/jpeg', 0.98);
   }
 
   return (

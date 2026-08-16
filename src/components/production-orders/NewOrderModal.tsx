@@ -27,9 +27,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
-import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Store, Trash2, User } from 'lucide-react';
+import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
 import { toast } from 'sonner';
@@ -61,8 +62,11 @@ export interface NewOrderModalProps {
   submit: (payload: {
     items: { productId: string; qty: number }[];
     packingItems: { packingMaterialId: string; qty: number }[];
-    /** Ids of the photos captured on the confirmation step. At least one — the API refuses a demand without. */
-    attachmentIds: string[];
+    /**
+     * One-off items typed by hand. The server turns each into a hidden product
+     * so it can carry production and branch stock like any other line.
+     */
+    specialItems: { name: string; qty: number; description: string; attachmentIds: string[] }[];
   }) => Promise<unknown>;
   submitting: boolean;
 }
@@ -76,6 +80,24 @@ interface PackingRow {
   packingMaterialId: string;
   qty: string;
 }
+
+/**
+ * One in-progress special-order row — something the branch needs that is not in
+ * the catalogue. Name and quantity make it a request; description and photo are
+ * optional extras.
+ *
+ * `photos` is deliberately NOT part of the saved draft (see `saveDraft`): an
+ * attachment id points at an uploaded file, and a draft restored days later
+ * would carry ids whose photos no longer describe today's demand.
+ */
+interface SpecialRow {
+  name: string;
+  qty: string;
+  description: string;
+  photos: Attachment[];
+}
+
+const EMPTY_SPECIAL_ROW: SpecialRow = { name: '', qty: '', description: '', photos: [] };
 
 /** Parse a raw qty string into a positive whole number (0 = blank / not ordered). */
 function parseQty(raw: string | undefined): number {
@@ -91,6 +113,51 @@ function sanitizeQty(raw: string): string {
 /** Human-readable reference number shown in the header (display only; the doc id is the real key). */
 function makeOrderNumber(code: string, d: Date): string {
   return `PO-${code}-${businessDateStr(d).replace(/-/g, '')}-${karachiTimeStr(d).replace(':', '')}`;
+}
+
+/** One headed group of lines in the confirmation dialog. */
+function ConfirmSection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+        <span className="text-xs text-muted-foreground">{count}</span>
+      </div>
+      <ul className="divide-y rounded-lg border">{children}</ul>
+    </div>
+  );
+}
+
+/** One `name … qty` line, with the optional description and photo count under it. */
+function ConfirmLine({
+  name,
+  qty,
+  note,
+  badge,
+}: {
+  name: string;
+  qty: number;
+  note?: string;
+  badge?: string;
+}) {
+  return (
+    <li className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+      <div className="min-w-0">
+        <p className="font-medium leading-tight">{name}</p>
+        {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
+        {badge && <p className="mt-0.5 text-[11px] text-muted-foreground">{badge}</p>}
+      </div>
+      <span className="shrink-0 font-semibold tabular-nums">{qty}</span>
+    </li>
+  );
 }
 
 function Meta({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string }) {
@@ -127,16 +194,11 @@ export function NewOrderModal({
   // start empty — a demand with none must behave exactly as it did before.
   const [packingOpen, setPackingOpen] = useState(false);
   const [packingRows, setPackingRows] = useState<PackingRow[]>([]);
-  /**
-   * Photos of what the demand is for, captured on the confirmation step rather
-   * than in the body of the form.
-   *
-   * Deliberately NOT part of the localStorage draft: an attachment id is a
-   * pointer to an uploaded file, and a draft restored days later would carry
-   * ids whose photos no longer describe today's demand. The quantities are
-   * worth keeping across a refresh; the photograph is not.
-   */
-  const [photos, setPhotos] = useState<Attachment[]>([]);
+  // Special order items — one-offs typed by hand. Same posture as packing
+  // materials: optional, collapsed until asked for, and a demand with none
+  // behaves exactly as it did before.
+  const [specialOpen, setSpecialOpen] = useState(false);
+  const [specialRows, setSpecialRows] = useState<SpecialRow[]>([]);
 
   const qtyRefs = useRef<(HTMLInputElement | null)[]>([]);
   const draftKey = branchId ? `mb:po-draft:${branchId}` : 'mb:po-draft';
@@ -158,13 +220,22 @@ export function NewOrderModal({
       if (raw) {
         // Older drafts may still carry a `remarksById` key — ignored now that
         // Remarks has been removed from the form.
-        const d = JSON.parse(raw) as { qtyById?: Record<string, string>; packingRows?: PackingRow[] };
+        const d = JSON.parse(raw) as {
+          qtyById?: Record<string, string>;
+          packingRows?: PackingRow[];
+          specialRows?: Omit<SpecialRow, 'photos'>[];
+        };
         if (d && typeof d === 'object') {
           setQtyById(d.qtyById ?? {});
           // A draft saved before packing materials existed simply has no rows.
           const rows = Array.isArray(d.packingRows) ? d.packingRows : [];
           setPackingRows(rows);
           if (rows.length > 0) setPackingOpen(true);
+          // Likewise for special items. `photos` is re-seeded empty because the
+          // draft never stored ids — see saveDraft.
+          const special = Array.isArray(d.specialRows) ? d.specialRows : [];
+          setSpecialRows(special.map((r) => ({ ...EMPTY_SPECIAL_ROW, ...r, photos: [] })));
+          if (special.length > 0) setSpecialOpen(true);
         }
       }
     } catch {
@@ -190,13 +261,18 @@ export function NewOrderModal({
   );
   const totalProducts = selectedItems.length;
   const totalQty = selectedItems.reduce((s, x) => s + x.qty, 0);
-  const canSubmit = totalProducts > 0 && withinWindow && !submitting;
 
   // ── Packing materials ──────────────────────────────────────────────────────
   // Active only. The server re-checks this on submit (a material can be disabled
   // while the form is open), so this is the convenience half of the rule.
   const packingQ = usePackingMaterials(token, { enabled: open && !!token });
   const packingMaterials = useMemo(() => packingQ.data ?? [], [packingQ.data]);
+
+  /** id → name, for rendering the Select trigger. See the SelectValue note below. */
+  const packingNameById = useMemo(
+    () => new Map(packingMaterials.map((m) => [m.id, m.materialName])),
+    [packingMaterials],
+  );
 
   // Only complete rows count: a row where the user picked a material but hasn't
   // typed a quantity yet is still being filled in, not a request.
@@ -239,6 +315,57 @@ export function NewOrderModal({
     [packingRows, packingMaterials],
   );
 
+  // ── Special order items ────────────────────────────────────────────────────
+  // A row counts as a request once it has BOTH a name and a quantity. A row with
+  // only a name typed is still being filled in, exactly like a packing row with
+  // no quantity yet.
+  const selectedSpecial = useMemo(
+    () => specialRows.filter((r) => r.name.trim() !== '' && parseQty(r.qty) > 0),
+    [specialRows],
+  );
+  const specialCount = selectedSpecial.length;
+
+  /**
+   * Two special rows with the same name would resolve to one auto-created
+   * product on the server and be rejected there. Caught here so it reads as a
+   * field error rather than a failed submit.
+   */
+  const duplicateSpecialNames = useMemo(() => {
+    const seen = new Set<string>();
+    const dupes = new Set<string>();
+    for (const r of specialRows) {
+      const key = r.name.trim().toLowerCase();
+      if (!key) continue;
+      if (seen.has(key)) dupes.add(key);
+      seen.add(key);
+    }
+    return dupes;
+  }, [specialRows]);
+
+  const addSpecialRow = useCallback(() => {
+    setSpecialOpen(true);
+    setSpecialRows((rows) => [...rows, { ...EMPTY_SPECIAL_ROW }]);
+  }, []);
+
+  const removeSpecialRow = useCallback((index: number) => {
+    setSpecialRows((rows) => rows.filter((_, i) => i !== index));
+  }, []);
+
+  const setSpecialField = useCallback(
+    (index: number, patch: Partial<SpecialRow>) => {
+      setSpecialRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    },
+    [],
+  );
+
+  // Declared after the packing and special tallies because it now depends on
+  // them: a demand of packing materials or special items alone is a real demand.
+  const canSubmit =
+    (totalProducts > 0 || specialCount > 0 || packingCount > 0) &&
+    duplicateSpecialNames.size === 0 &&
+    withinWindow &&
+    !submitting;
+
   const setQty = useCallback((id: string, raw: string) => setQtyById((p) => ({ ...p, [id]: sanitizeQty(raw) })), []);
 
   const handleQtyKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>, flatIndex: number) => {
@@ -258,6 +385,8 @@ export function NewOrderModal({
     setQtyById({});
     setPackingRows([]);
     setPackingOpen(false);
+    setSpecialRows([]);
+    setSpecialOpen(false);
     try {
       localStorage.removeItem(draftKey);
     } catch {
@@ -268,7 +397,10 @@ export function NewOrderModal({
 
   function saveDraft() {
     try {
-      localStorage.setItem(draftKey, JSON.stringify({ qtyById, packingRows }));
+      // Special rows are saved WITHOUT their photos — an attachment id in a
+      // days-old draft points at a photo of a different day's request.
+      const specialDraft = specialRows.map(({ name, qty, description }) => ({ name, qty, description }));
+      localStorage.setItem(draftKey, JSON.stringify({ qtyById, packingRows, specialRows: specialDraft }));
       toast.success('Draft saved');
     } catch {
       toast.error('Could not save draft');
@@ -277,8 +409,14 @@ export function NewOrderModal({
 
   function handleSubmitClick() {
     if (!withinWindow) return;
-    if (totalProducts === 0) {
+    // A demand of special items only is valid — the branch may need one named
+    // cake and nothing else. What is refused is a demand asking for nothing.
+    if (totalProducts === 0 && specialCount === 0 && packingCount === 0) {
       toast.error(EMPTY_PRODUCT_MESSAGE);
+      return;
+    }
+    if (duplicateSpecialNames.size > 0) {
+      toast.error('Two special items have the same name. Rename one or remove it.');
       return;
     }
     setConfirmOpen(true);
@@ -291,12 +429,19 @@ export function NewOrderModal({
         packingMaterialId: r.packingMaterialId,
         qty: parseQty(r.qty),
       }));
-      await submit({ items, packingItems, attachmentIds: photos.map((p) => p.id) });
+      const specialItems = selectedSpecial.map((r) => ({
+        name: r.name.trim(),
+        qty: parseQty(r.qty),
+        description: r.description.trim(),
+        attachmentIds: r.photos.map((p) => p.id),
+      }));
+      await submit({ items, packingItems, specialItems });
       toast.success('Production Order Submitted Successfully');
       setQtyById({});
       setPackingRows([]);
-      setPhotos([]);
       setPackingOpen(false);
+      setSpecialRows([]);
+      setSpecialOpen(false);
       try {
         localStorage.removeItem(draftKey);
       } catch {
@@ -479,7 +624,19 @@ export function NewOrderModal({
                             onValueChange={(v) => v && setPackingMaterial(i, v)}
                           >
                             <SelectTrigger className="h-11 w-full sm:h-10">
-                              <SelectValue placeholder={packingQ.isLoading ? 'Loading…' : 'Select a packing material'} />
+                              {/* The children FUNCTION is load-bearing, not decoration.
+                                  base-ui's Select.Value renders the raw VALUE unless it
+                                  is given one (or `items`/`itemToStringLabel` on Root) —
+                                  and the value here is the material's uuid, so a bare
+                                  <SelectValue /> showed a 36-character id in the box
+                                  after you picked something. Radix resolved the item's
+                                  text automatically; this library does not. */}
+                              <SelectValue placeholder={packingQ.isLoading ? 'Loading…' : 'Select a packing material'}>
+                                {(value) =>
+                                  packingNameById.get(String(value ?? '')) ??
+                                  (packingQ.isLoading ? 'Loading…' : 'Select a packing material')
+                                }
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                               {optionsForRow(i).map((m) => (
@@ -536,6 +693,129 @@ export function NewOrderModal({
                 </div>
               )}
             </div>
+
+            {/* ---------- Special Order Items (optional) ---------- */}
+            {/* Last on the form, after the catalogue and the packing materials:
+                these are the things that are not in either list. Same collapsed,
+                never-required shape as packing materials. */}
+            <div className="mt-6 rounded-xl border bg-card">
+              <button
+                type="button"
+                onClick={() => setSpecialOpen((o) => !o)}
+                aria-expanded={specialOpen}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Sparkles className="h-4 w-4 text-muted-foreground" />
+                  Special Order Items
+                  <span className="text-sm font-normal text-muted-foreground">(Optional)</span>
+                  {specialCount > 0 && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                      {specialCount} added
+                    </span>
+                  )}
+                </span>
+                <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', specialOpen && 'rotate-180')} />
+              </button>
+
+              {specialOpen && (
+                <div className="space-y-3 border-t px-4 py-3">
+                  {specialRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Anything you need that isn&apos;t in the product list — a named cake, a one-off box. Add a row to
+                      request one.
+                    </p>
+                  ) : (
+                    specialRows.map((row, i) => {
+                      const isDuplicate =
+                        row.name.trim() !== '' && duplicateSpecialNames.has(row.name.trim().toLowerCase());
+                      return (
+                        <div key={i} className="space-y-2 rounded-lg border bg-background p-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <label className="text-xs text-muted-foreground">Item name</label>
+                              <Input
+                                value={row.name}
+                                onChange={(e) => setSpecialField(i, { name: e.target.value })}
+                                placeholder="e.g. Name cake — blue writing"
+                                aria-label="Special item name"
+                                aria-invalid={isDuplicate}
+                                className={cn('h-11 text-base sm:h-10 sm:text-sm', isDuplicate && 'border-destructive')}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-3 sm:block sm:space-y-1">
+                              <label className="text-xs text-muted-foreground">Qty</label>
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                autoComplete="off"
+                                placeholder="0"
+                                aria-label="Special item quantity"
+                                value={row.qty}
+                                onChange={(e) => setSpecialField(i, { qty: sanitizeQty(e.target.value) })}
+                                onFocus={(e) => e.currentTarget.select()}
+                                className="h-11 w-28 text-center text-base tabular-nums sm:h-10"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Remove special item row"
+                              onClick={() => removeSpecialRow(i)}
+                              className="h-11 w-11 shrink-0 self-end text-muted-foreground hover:text-destructive sm:h-10 sm:w-10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          {isDuplicate && (
+                            <p className="text-xs text-destructive">
+                              Another row already asks for this item. Rename one or remove it.
+                            </p>
+                          )}
+
+                          <div className="space-y-1">
+                            <label className="text-xs text-muted-foreground">Description (optional)</label>
+                            <Textarea
+                              rows={2}
+                              value={row.description}
+                              onChange={(e) => setSpecialField(i, { description: e.target.value })}
+                              placeholder="What should be done with it — writing, colour, packing"
+                              aria-label="Special item description"
+                            />
+                          </div>
+
+                          {/* Optional, unlike the verification photo. A branch
+                              asking for "20 blue boxes" has nothing to show. */}
+                          <PhotoCapture
+                            entity="production_order_special_item"
+                            value={row.photos}
+                            onChange={(next) => setSpecialField(i, { photos: next })}
+                            label="Photo (optional)"
+                            disabled={submitting}
+                            hint="Add a picture if it helps explain what you need."
+                          />
+                        </div>
+                      );
+                    })
+                  )}
+
+                  <Button type="button" variant="outline" size="sm" onClick={addSpecialRow}>
+                    <Plus className="mr-1 h-4 w-4" /> Add Row
+                  </Button>
+                </div>
+              )}
+
+              {!specialOpen && (
+                <div className="border-t px-4 py-3">
+                  <Button type="button" variant="outline" size="sm" onClick={addSpecialRow}>
+                    <Plus className="mr-1 h-4 w-4" /> Add Special Order Item
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ---------- Sticky footer ---------- */}
@@ -577,56 +857,75 @@ export function NewOrderModal({
       </Dialog>
 
       {/* ---------- Confirmation dialog ---------- */}
+      {/* ---------- Confirmation dialog ----------
+          Now an ITEMISED review rather than three totals. The totals told you
+          how many lines you were about to send but not which — and the one
+          mistake this dialog exists to catch (a quantity typed into the wrong
+          row, on a form of a hundred products) is invisible in a count. The
+          list scrolls; the totals stay pinned underneath it. */}
       <Dialog open={confirmOpen} onOpenChange={(o) => !submitting && setConfirmOpen(o)}>
-        <DialogContent className="md:max-w-md">
+        <DialogContent className="flex max-h-[85vh] flex-col md:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageCheck className="h-5 w-5 text-primary" /> Confirm Submission
             </DialogTitle>
-            <DialogDescription>Are you sure you want to submit this Production Order?</DialogDescription>
+            <DialogDescription>
+              {branchName || '—'} · {dateStr} · check the quantities before submitting.
+            </DialogDescription>
           </DialogHeader>
 
-          <dl className="divide-y rounded-lg border text-sm">
+          <div className="-mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
+            {totalProducts > 0 && (
+              <ConfirmSection title="Products" count={totalProducts}>
+                {selectedItems.map(({ product, qty }) => (
+                  <ConfirmLine key={product.id} name={product.name} qty={qty} />
+                ))}
+              </ConfirmSection>
+            )}
+
+            {packingCount > 0 && (
+              <ConfirmSection title="Packing Materials" count={packingCount}>
+                {selectedPacking.map((r, i) => (
+                  <ConfirmLine
+                    key={`${r.packingMaterialId}-${i}`}
+                    name={packingNameById.get(r.packingMaterialId) ?? 'Packing material'}
+                    qty={parseQty(r.qty)}
+                  />
+                ))}
+              </ConfirmSection>
+            )}
+
+            {specialCount > 0 && (
+              <ConfirmSection title="Special Order Items" count={specialCount}>
+                {selectedSpecial.map((r, i) => (
+                  <ConfirmLine
+                    key={`${r.name}-${i}`}
+                    name={r.name.trim()}
+                    qty={parseQty(r.qty)}
+                    note={r.description.trim() || undefined}
+                    badge={r.photos.length > 0 ? `${r.photos.length} photo` : undefined}
+                  />
+                ))}
+              </ConfirmSection>
+            )}
+          </div>
+
+          <dl className="shrink-0 divide-y rounded-lg border bg-muted/40 text-sm">
             <div className="flex justify-between px-3 py-2">
-              <dt className="text-muted-foreground">Branch</dt>
-              <dd className="font-medium">{branchName || '—'}</dd>
+              <dt className="text-muted-foreground">Lines</dt>
+              <dd className="font-semibold tabular-nums">{totalProducts + packingCount + specialCount}</dd>
             </div>
             <div className="flex justify-between px-3 py-2">
-              <dt className="text-muted-foreground">Products ordered</dt>
-              <dd className="font-semibold tabular-nums">{totalProducts}</dd>
-            </div>
-            <div className="flex justify-between px-3 py-2">
-              <dt className="text-muted-foreground">Total quantity</dt>
+              <dt className="text-muted-foreground">Total product quantity</dt>
               <dd className="font-semibold tabular-nums">{totalQty}</dd>
             </div>
-            {/* Only when there are any — a products-only confirmation is unchanged. */}
-            {packingCount > 0 && (
-              <div className="flex justify-between px-3 py-2">
-                <dt className="text-muted-foreground">Packing materials</dt>
-                <dd className="font-semibold tabular-nums">{packingCount}</dd>
-              </div>
-            )}
           </dl>
 
-          {/* The last thing before Confirm, and the reason the button stays
-              disabled — a demand without a photo is refused by the API, so
-              blocking here is the difference between a clear prompt and a 400
-              after the user has already committed. */}
-          <PhotoCapture
-            entity="production_order_demand"
-            value={photos}
-            onChange={setPhotos}
-            label="Demand photo"
-            required
-            disabled={submitting}
-            hint="Photograph the empty shelf or crate this demand is for."
-          />
-
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow || photos.length === 0}>
+            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting…

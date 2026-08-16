@@ -8,6 +8,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/pwa/ServiceWorkerRegister';
 import { InstallPrompt } from '@/components/pwa/InstallPrompt';
 import { NetworkStatus } from '@/components/pwa/NetworkStatus';
+import { OfflineCache } from '@/components/pwa/OfflineCache';
 import { OrientationLock } from '@/components/pwa/OrientationLock';
 import { appleStartupImages } from '@/utils/pwa-splash';
 import './globals.css';
@@ -74,6 +75,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <RouteGuard>{children}</RouteGuard>
               <ServiceWorkerRegister />
               <NetworkStatus />
+              {/* Restores the last synced data at boot so the app opens and can be
+                  read with no connection. Inside AuthProvider: a snapshot belongs
+                  to one user and is never restored into another's session. */}
+              <OfflineCache />
               <InstallPrompt />
               <OrientationLock />
               <Toaster richColors position="top-right" />

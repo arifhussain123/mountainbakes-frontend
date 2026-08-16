@@ -5,6 +5,7 @@ import { RealtimeBridge } from '@/components/layout/RealtimeBridge';
 import { PushNotifications } from '@/components/pwa/PushNotifications';
 import { RealtimeProvider } from '@/providers/RealtimeProvider';
 import { GeofenceProvider } from '@/providers/GeofenceProvider';
+import { AppRefreshProvider } from '@/hooks/useAppRefresh';
 
 /**
  * Chrome for every signed-in screen.
@@ -21,21 +22,28 @@ import { GeofenceProvider } from '@/providers/GeofenceProvider';
  * GeofenceProvider sits alongside RealtimeProvider for the same reason it does:
  * one location watcher for the session. Mounted per page it would restart the GPS
  * ticker — and re-prompt for permission — on every navigation.
+ *
+ * AppRefreshProvider is here rather than in the root layout on the same
+ * principle — one 2-minute refresh timer for the session — and because there is
+ * nothing to refresh on the login screen. It must sit above Topbar, whose
+ * Refresh button reads it.
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <RealtimeProvider>
       <GeofenceProvider>
-        <div className="flex h-screen overflow-hidden bg-background">
-          <RealtimeBridge />
-          <PushNotifications />
-          <Sidebar />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Topbar />
-            <main className="flex-1 overflow-y-auto pb-20 md:pb-0">{children}</main>
+        <AppRefreshProvider>
+          <div className="flex h-screen overflow-hidden bg-background">
+            <RealtimeBridge />
+            <PushNotifications />
+            <Sidebar />
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <Topbar />
+              <main className="flex-1 overflow-y-auto pb-20 md:pb-0">{children}</main>
+            </div>
+            <BottomNav />
           </div>
-          <BottomNav />
-        </div>
+        </AppRefreshProvider>
       </GeofenceProvider>
     </RealtimeProvider>
   );

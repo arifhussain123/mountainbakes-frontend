@@ -36,6 +36,17 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    // Signing in is the one thing the app genuinely cannot do offline: only
+    // Supabase can issue a session, and no cached anything substitutes for one.
+    // Said plainly here rather than letting signInWithPassword fail with a
+    // network error that reads like wrong credentials — the worst thing to show
+    // someone at a shop door who is certain their password is right.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setError('You are offline. Signing in needs a connection — reconnect and try again.');
+      return;
+    }
+
     setLoading(true);
 
     try {

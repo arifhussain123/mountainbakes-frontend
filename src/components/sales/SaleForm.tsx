@@ -75,8 +75,9 @@ interface PosSaleResponse {
 // to [0, gross] so a line can never go negative. This resolved rupee number is what we
 // store — the shared schema and the server keep treating `discount` as a plain number.
 // Product search matches on the product code (SKU) or the name, case-insensitively,
-// so a cashier can type either. This is passed to the Combobox's `filter` so search
-// stays correct independent of how each row's display label is formatted.
+// so a cashier can still type a code even though only the name is displayed. This is
+// passed to the Combobox's `filter` so search stays correct independent of how each
+// row's display label is formatted.
 function productMatchesQuery(p: Product | null, query: string): boolean {
   if (p == null) return false;
   const q = query.trim().toLowerCase();
@@ -422,7 +423,7 @@ export function SaleForm({
                         filter={productMatchesQuery}
                         value={selected ?? null}
                         onValueChange={(p: Product | null) => form.setValue(`items.${i}.productId`, p?.id ?? '', { shouldValidate: true })}
-                        itemToStringLabel={(p: Product) => `${p.sku} — ${p.name}`}
+                        itemToStringLabel={(p: Product) => p.name}
                         itemToStringValue={(p: Product) => p.id}
                         isItemEqualToValue={(a: Product, b: Product) => a?.id === b?.id}
                       >
@@ -435,7 +436,7 @@ export function SaleForm({
                               return (
                                 <ComboboxItem key={p.id} value={p} disabled={pOut}>
                                   <div className="flex flex-1 flex-col">
-                                    <span className="font-medium">{p.sku} · {p.name}</span>
+                                    <span className="font-medium">{p.name}</span>
                                     <span className="text-xs text-muted-foreground">
                                       {p.categoryName} · {cur} {p.price.toLocaleString()}{pOut ? ' · Out of Stock' : ''}
                                     </span>

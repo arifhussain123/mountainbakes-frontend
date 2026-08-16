@@ -12,6 +12,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 60 * 1000,
             retry: 1,
+            // Held for a day rather than the default five minutes, because this
+            // cache is now written to disk for offline reading (OfflineCache).
+            // At the default, a screen the user had not opened in five minutes
+            // would be evicted from memory and so be missing from the next
+            // snapshot — the app would go offline having forgotten most of
+            // itself. Memory cost is bounded by how much this app fetches in a
+            // day, which is the same data the snapshot already holds.
+            gcTime: 24 * 60 * 60 * 1000,
             // Live data is refreshed by notification-driven invalidation
             // (useProductionRealtime / usePriceRealtime), so refetching on every
             // window focus is redundant and just multiplies API traffic.
@@ -36,21 +44,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     });
   }, [queryClient]);
 
-  // Fallback freshness net on top of notification-driven invalidation: every 2
-  // minutes, silently refetch whatever's currently on screen (no page reload,
-  // no visible flash — React Query just swaps data in place). Skipped whenever
-  // a Dialog is open (New Sale, New Order, print preview, any edit form) so an
-  // in-flight refetch never reshuffles props out from under someone mid-entry —
-  // `[data-slot="dialog-content"]` is only in the DOM while a Dialog is open
-  // (see `components/ui/dialog.tsx`), so this needs no per-dialog wiring.
-  useEffect(() => {
-    const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
-    const id = setInterval(() => {
-      if (document.querySelector('[data-slot="dialog-content"]')) return;
-      queryClient.refetchQueries({ type: 'active' });
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [queryClient]);
+  // The 2-minute fallback refetch that used to live here now runs in
+  // AppRefreshProvider (hooks/useAppRefresh.tsx), which puts it on the same tick
+  // as the new-build check and exposes it to the Topbar's Refresh button. Same
+  // cadence, same dialog guard — one timer instead of two, and one place that
+  // decides whether refreshing right now would interrupt someone.
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

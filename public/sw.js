@@ -9,7 +9,9 @@
  *      them automatically when connectivity returns.
  */
 
-const VERSION = 'v1';
+// Bumped whenever the caching rules change, which drops the previous caches on
+// activate. v3: navigations are cached, so offline actually reaches the app.
+const VERSION = 'v3';
 const PRECACHE = `mb-precache-${VERSION}`;
 const RUNTIME = `mb-runtime-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -17,6 +19,13 @@ const OFFLINE_URL = '/offline.html';
 // App shell — everything needed to render a friendly offline experience.
 const PRECACHE_URLS = [
   OFFLINE_URL,
+  // The two entry points, fetched at install so the app opens offline even on a
+  // device that has never navigated to them. Every other screen is cached as it
+  // is visited (see handleNavigate). Trailing slashes are required —
+  // `trailingSlash: true` means the export serves out/login/index.html at
+  // '/login/', and '/login' would 308 rather than cache.
+  '/',
+  '/login/',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -35,7 +44,13 @@ self.addEventListener('install', (event) => {
       await Promise.allSettled(
         PRECACHE_URLS.map((url) => cache.add(new Request(url, { cache: 'reload' }))),
       );
-      await self.skipWaiting();
+      // NO skipWaiting() here, deliberately.
+      //
+      // Activating on install makes this worker seize control the moment it
+      // downloads, which fires `controllerchange` in every open tab and reloads
+      // them — potentially over a half-typed sale. The new worker now waits, and
+      // the page decides when to take it: the client posts SKIP_WAITING once it
+      // has established that nobody is mid-entry (hooks/useAppRefresh.tsx).
     })(),
   );
 });
@@ -100,15 +115,37 @@ self.addEventListener('fetch', (event) => {
 });
 
 // ── Caching strategies ───────────────────────────────────────────────────
+/**
+ * Navigations: network-first, and the response is KEPT.
+ *
+ * It previously returned the network response without ever caching it, so the
+ * fallback below had nothing to find — `caches.match` on a navigation could only
+ * ever miss, and every offline page load, the login screen included, landed on
+ * offline.html. The app could not be opened offline at all, which also put the
+ * restored data cache out of reach: no document, no app to hydrate.
+ *
+ * Storing each visited page's HTML means any screen reached while online opens
+ * again without a connection. The shells are a couple of KB each; the hashed
+ * bundles they pull in are already cached by the `_next/static` rule.
+ */
 async function handleNavigate(event) {
   const request = event.request;
+  const cache = await caches.open(RUNTIME);
   try {
     const preload = await event.preloadResponse;
-    if (preload) return preload;
+    if (preload) {
+      if (preload.ok) event.waitUntil(cache.put(request, preload.clone()));
+      return preload;
+    }
     const network = await fetch(request);
+    if (network.ok) event.waitUntil(cache.put(request, network.clone()));
     return network;
   } catch {
-    const cached = await caches.match(request);
+    // ignoreSearch, because a navigation often carries a query string the stored
+    // copy does not have — ?from=… would otherwise miss its own cached page.
+    const cached =
+      (await cache.match(request, { ignoreSearch: true })) ||
+      (await caches.match(request, { ignoreSearch: true }));
     if (cached) return cached;
     return (await caches.match(OFFLINE_URL)) || Response.error();
   }
@@ -158,6 +195,31 @@ async function networkFirst(request) {
 // Requests tagged `X-Background-Sync: true` that fail while offline are stored
 // in IndexedDB and replayed on the browser's `sync` event (or when the client
 // asks us to flush via postMessage).
+//
+// ***THIS IS DISABLED, AND MUST NOT BE SWITCHED ON AS IT STANDS.***
+//
+// Nothing in the app sets that header, so nothing is ever queued: offline
+// support today is READ-ONLY (lib/offline/queryPersist.ts restores the last
+// synced data; apiCall refuses writes with no connection). Tagging a mutation
+// would activate the code below, and it would lose people's work:
+//
+//   1. `queueRequest` freezes the request's `Authorization: Bearer <jwt>`
+//      header. A Supabase access token lasts about an hour, so anything
+//      replayed later arrives with an expired one and comes back 401 — and
+//      `replayQueue` DELETES any entry answered with a 4xx, on the reasoning
+//      that a client error "won't fix itself". A sale recorded offline at
+//      closing time would be dropped overnight without a trace.
+//   2. There are no idempotency keys. A request the server actually processed
+//      before the connection died is replayed and applied a second time —
+//      duplicate sales, double stock movements.
+//   3. The API stamps the business day when it RECEIVES a write, and enforces
+//      order windows (assertBusinessDayOpen, isWithinOrderWindow). A demand
+//      queued at 9pm and replayed at 7am belongs to a day that has closed.
+//
+// Fixing (1) means minting a fresh token at replay time, (2) an idempotency key
+// per queued request honoured by the API, and (3) sending the captured-at time
+// and letting the server decide. That is a change across both repos plus a
+// migration — see the offline discussion, where "browse only" was chosen first.
 const SYNC_TAG = 'mb-sync-queue';
 const DB_NAME = 'mb-pwa';
 const STORE = 'sync-queue';

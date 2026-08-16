@@ -8,7 +8,8 @@ import { useSettings } from '@/hooks/useSettings';
 import { useProductionOrders, useReviewProductionOrder, useMarkPrinted, useFinalApproveProductionOrder } from '@/lib/queries';import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
-import { Eye } from 'lucide-react';
+import { Eye, Sparkles } from 'lucide-react';
+import { effectivePackingQty, effectiveQty, liveItems, livePackingItems } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -17,11 +18,15 @@ const STATUS_STYLES: Record<string, string> = {
   verified: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  cancelled: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   awaiting_verification: 'Awaiting Verification',
   verified: 'Verified — Awaiting Approval',
+  // The branch withdrew it. Read as "Deleted" here too, so the word on this
+  // screen is the same word the branch pressed.
+  cancelled: 'Deleted by Branch',
 };
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
@@ -43,41 +48,110 @@ export function ProductionOrdersPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
-  const pending = useMemo(() => orders.filter((o) => o.status === 'pending'), [orders]);
+
+  // "Waiting" runs until the BRANCH verifies, not until Production reviews.
+  //
+  // 'awaiting_verification' means Production sent the goods out but nobody at the
+  // branch has counted them yet — and since migration 58 that step is also where
+  // stock actually moves. Dropping those orders off this card at review time hid
+  // exactly the demand still in flight: the floor could no longer see what had
+  // gone out and not been confirmed. Verification ('verified') is what closes it.
+  //
+  // A demand the branch deleted is 'cancelled', so it falls out of here — and
+  // therefore out of the whole Demand Summary — while its row stays in the
+  // Orders table below carrying the reason. That is the deletion: it stops being
+  // work to do without becoming something nobody can account for.
+  const waiting = useMemo(
+    () => orders.filter((o) => o.status === 'pending' || o.status === 'awaiting_verification'),
+    [orders],
+  );
   const selected = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
 
   // Demand summary pivots: Product × Branch and Packing Material × Branch, both
-  // from pending demands only.
+  // over the waiting set above (not yet verified by the branch).
   //
   // Two pivots rather than one: a packing material is not something the factory
   // bakes, and it has no unit price or amount, so mixing it into the Product column
   // would misstate the production plan. They share one `branches` list so the two
   // tables line up column-for-column.
   //
-  // `qty` is the requested quantity — correct here because these are WAITING orders,
-  // where nothing has been approved yet and `approvedQty` is still null.
+  // Quantity is `approvedQty ?? qty`, and the fallback is what makes both states
+  // read correctly with one expression: a 'pending' line has not been reviewed, so
+  // `approvedQty` is null and the branch's request stands; a reviewed line carries
+  // the figure Production actually sent, which is the number still to be confirmed.
+  // Summing the original request there would overstate a demand that was cut.
+  //
+  // `sent` tracks the reviewed share of each total, so a row can say how much of it
+  // is already out of the door rather than still to make. Same figure, split — it is
+  // never added on top of `total`.
   const demand = useMemo(() => {
     const branches = new Set<string>();
-    const products = new Map<string, { productName: string; total: number; byBranch: Record<string, number> }>();
-    const packing = new Map<string, { materialName: string; total: number; byBranch: Record<string, number> }>();
+    type Row = { total: number; sent: number; byBranch: Record<string, number> };
+    const products = new Map<string, Row & { productName: string }>();
+    const packing = new Map<string, Row & { materialName: string }>();
+    const special: {
+      orderId: string;
+      demandNumber: string;
+      branch: string;
+      name: string;
+      qty: number;
+      description: string;
+      photoCount: number;
+      awaitingVerification: boolean;
+    }[] = [];
+    let pendingOrders = 0;
+    let awaitingOrders = 0;
 
-    for (const o of pending) {
+    for (const o of waiting) {
       const branch = short(o.branchName);
       branches.add(branch);
 
+      // Reviewed and out for delivery — counted, but distinguishable below.
+      const sent = o.status === 'awaiting_verification';
+      if (sent) awaitingOrders += 1; else pendingOrders += 1;
+
       for (const it of o.items) {
+        const qty = effectiveQty(it);
+
+        // Nothing to make: either the line was never really ordered, or it was
+        // reviewed down to "sending none of this". Skipped before it can reach a
+        // pivot row, because a product whose only demand is a zero line would
+        // otherwise print a whole row of dashes against a total of 0 — a job on
+        // the board that is not a job.
+        if (qty <= 0) continue;
+
+        // Special items are LISTED, never pivoted — see the note on the section
+        // below for why aggregating them would destroy the instruction.
+        if (it.isSpecial) {
+          special.push({
+            orderId: o.id,
+            demandNumber: o.demandNumber,
+            branch,
+            name: it.productName,
+            qty,
+            description: it.description ?? '',
+            photoCount: (it.photos ?? []).length,
+            awaitingVerification: sent,
+          });
+          continue;
+        }
+
         let row = products.get(it.productId);
-        if (!row) { row = { productName: it.productName, total: 0, byBranch: {} }; products.set(it.productId, row); }
-        row.total += it.qty;
-        row.byBranch[branch] = (row.byBranch[branch] ?? 0) + it.qty;
+        if (!row) { row = { productName: it.productName, total: 0, sent: 0, byBranch: {} }; products.set(it.productId, row); }
+        row.total += qty;
+        if (sent) row.sent += qty;
+        row.byBranch[branch] = (row.byBranch[branch] ?? 0) + qty;
       }
 
       // Optional and absent on every demand created before the packing module.
       for (const it of o.packingItems ?? []) {
+        const qty = effectivePackingQty(it);
+        if (qty <= 0) continue; // same rule as the product lines above
         let row = packing.get(it.packingMaterialId);
-        if (!row) { row = { materialName: it.materialName, total: 0, byBranch: {} }; packing.set(it.packingMaterialId, row); }
-        row.total += it.qty;
-        row.byBranch[branch] = (row.byBranch[branch] ?? 0) + it.qty;
+        if (!row) { row = { materialName: it.materialName, total: 0, sent: 0, byBranch: {} }; packing.set(it.packingMaterialId, row); }
+        row.total += qty;
+        if (sent) row.sent += qty;
+        row.byBranch[branch] = (row.byBranch[branch] ?? 0) + qty;
       }
     }
 
@@ -85,8 +159,11 @@ export function ProductionOrdersPage() {
       branches: [...branches].sort(),
       rows: [...products.values()].sort((a, b) => b.total - a.total),
       packingRows: [...packing.values()].sort((a, b) => b.total - a.total),
+      specialRows: special,
+      pendingOrders,
+      awaitingOrders,
     };
-  }, [pending]);
+  }, [waiting]);
 
   function openOrder(order: BranchProductionOrder) {
     setSelectedId(order.id);
@@ -108,6 +185,20 @@ export function ProductionOrdersPage() {
         </span>
       ),
     }),
+    // Why a demand disappeared from the summary above. The branch is required to
+    // give one, so on a 'cancelled' row this is never empty — and it is the only
+    // thing on this screen that explains work that was planned and then pulled.
+    col.accessor((o) => o.cancelReason ?? '', {
+      id: 'reason',
+      header: 'Reason',
+      meta: { mobileFull: true },
+      cell: (i) =>
+        i.getValue() ? (
+          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground/50">—</span>
+        ),
+    }),
     col.display({
       id: 'actions',
       header: '',
@@ -118,11 +209,20 @@ export function ProductionOrdersPage() {
       ),
     }),
     // Hidden, search-only. The global filter can only match what a column accessor
-    // exposes, so this is what lets someone find a demand by a product OR packing
-    // material name without adding either as a visible column.
+    // exposes, so this is what lets someone find a demand by a product, packing
+    // material OR special item name without adding any as a visible column.
+    // Special item DESCRIPTIONS are included too — "blue writing" is how someone
+    // will look for that cake, and it is not in any name.
+    // Zero lines are excluded here too. Matching a demand on a product that was
+    // cut to nothing surfaces a row whose product appears on none of the tables
+    // or slips behind it — the search would be pointing at something that is not
+    // there.
     col.accessor(
       (o) =>
-        [...o.items.map((i) => i.productName), ...(o.packingItems ?? []).map((p) => p.materialName)].join(' '),
+        [
+          ...liveItems(o.items).map((i) => `${i.productName} ${i.isSpecial ? (i.description ?? '') : ''}`),
+          ...livePackingItems(o.packingItems).map((p) => p.materialName),
+        ].join(' '),
       { id: 'contents', header: '' },
     ),
   ];
@@ -133,58 +233,165 @@ export function ProductionOrdersPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Demand Summary — Waiting Orders</CardTitle>
+          {/* Says which of the two waiting states the numbers below are made of.
+              Rendered only when something is waiting, so an empty card keeps its
+              single-line header. */}
+          {(demand.pendingOrders > 0 || demand.awaitingOrders > 0) && (
+            <p className="text-xs text-muted-foreground">
+              {demand.pendingOrders > 0 && `${demand.pendingOrders} to review`}
+              {demand.pendingOrders > 0 && demand.awaitingOrders > 0 && ' · '}
+              {demand.awaitingOrders > 0 && `${demand.awaitingOrders} sent, awaiting branch verification`}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
-          {demand.rows.length === 0 && demand.packingRows.length === 0 ? (
+          {demand.rows.length === 0 && demand.packingRows.length === 0 && demand.specialRows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No waiting demands right now.</p>
           ) : (
             <>
-              {/* Labelled only when there is a second pivot to tell it apart from. */}
-              {demand.packingRows.length > 0 && (
+              {/* ---------- Special order items ----------
+                  FIRST on the page, and a LIST rather than a pivot.
+
+                  Not pivoted because aggregating them destroys the only thing
+                  that makes them makeable: two branches asking for a "Name
+                  cake" want different names piped on them, and a row reading
+                  "Name cake — 4" tells the floor to bake four of something it
+                  has no instructions for. Each one is its own job, so each one
+                  gets its own line with the branch that asked and what they
+                  asked for.
+
+                  First because it is the only demand on this page that cannot
+                  be filled from the standing plan, so it is the thing worth
+                  reading before anything else. Absent entirely on a day with
+                  none, leaving the page exactly as it was. */}
+              {demand.specialRows.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Special Order Items
+                    {/* "to make" now means the ones NOT yet sent. Counting the whole
+                        list would tell the floor to bake cakes already delivered. */}
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold normal-case text-primary">
+                      {(() => {
+                        const toMake = demand.specialRows.filter((r) => !r.awaitingVerification).length;
+                        return toMake === demand.specialRows.length
+                          ? `${toMake} to make`
+                          : `${toMake} of ${demand.specialRows.length} to make`;
+                      })()}
+                    </span>
+                  </h3>
+
+                  <ul className="divide-y rounded-lg border">
+                    {demand.specialRows.map((r, i) => (
+                      <li key={`${r.orderId}-${r.name}-${i}`} className="flex items-start gap-3 px-3 py-2.5 text-sm">
+                        <span className="mt-0.5 min-w-[2.5rem] shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-center font-bold tabular-nums text-primary">
+                          {r.qty}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium leading-tight">{r.name}</p>
+                          {/* The instruction. This is the reason the section exists. */}
+                          {r.description && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">{r.description}</p>
+                          )}
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {r.branch} · {r.demandNumber}
+                            {r.photoCount > 0 && ` · ${r.photoCount} photo${r.photoCount === 1 ? '' : 's'} — open the order to view`}
+                          </p>
+                          {/* Each special item is its own job, so "already sent"
+                              belongs on the line itself — a pivot total cannot say
+                              which of two Name cakes has gone out. */}
+                          {r.awaitingVerification && (
+                            <span className="mt-1 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+                              Sent — awaiting verification
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Labelled only when there is another section to tell it apart from. */}
+              {(demand.packingRows.length > 0 || demand.specialRows.length > 0) && demand.rows.length > 0 && (
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Products</h3>
               )}
 
-              {/* Desktop pivot table */}
+              {/* Desktop pivot table. Guarded on rows: a day whose only waiting
+                  demand is a special item would otherwise render a table of
+                  column headers with nothing under them. */}
+              {demand.rows.length > 0 && (
               <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted/50 text-left">
                       <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
-                      <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
+                      <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
                       {demand.branches.map((b) => (
-                        <th key={b} className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
+                        <th key={b} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {demand.rows.map((r) => (
                       <tr key={r.productName} className="border-t">
+                        {/* Only the name stays left. Every figure is centred under its
+                            heading, headers included so the two never drift apart. */}
                         <td className="px-3 py-2 font-medium">{r.productName}</td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums text-primary">{r.total}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-center font-bold tabular-nums text-primary">
+                          {/* Part of that total is already out for delivery — without
+                              this the row reads as work still to do. Inline and ahead
+                              of the number rather than stacked under it, which doubled
+                              the height of every row carrying one. */}
+                          {r.sent > 0 && (
+                            <span className="mr-2 text-[10px] font-normal text-muted-foreground">
+                              {r.sent} sent
+                            </span>
+                          )}
+                          {r.total}
+                        </td>
                         {demand.branches.map((b) => (
-                          <td key={b} className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
+                          <td key={b} className="px-3 py-2 text-center tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
                         ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              )}
 
-              {/* Mobile cards */}
+              {/* Mobile cards.
+
+                  Unlike the desktop table above, the per-branch breakdown lists
+                  ONLY the branches that actually asked for this product. The
+                  table has to print a '—' in every column to keep them aligned;
+                  a wrapping chip list has no such constraint, and on a phone a
+                  row of "Branch: 0" for branches that ordered nothing is pure
+                  noise pushing the real numbers off the screen. */}
               <div className="space-y-3 md:hidden">
-                {demand.rows.map((r) => (
-                  <div key={r.productName} className="rounded-lg border bg-card p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium">{r.productName}</p>
-                      <span className="font-bold tabular-nums text-primary">{r.total}</span>
+                {demand.rows.map((r) => {
+                  const ordering = demand.branches.filter((b) => (r.byBranch[b] ?? 0) > 0);
+                  return (
+                    <div key={r.productName} className="rounded-lg border bg-card p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium">{r.productName}</p>
+                        <span className="text-right font-bold tabular-nums text-primary">
+                          {r.total}
+                          {r.sent > 0 && (
+                            <span className="block text-[10px] font-normal text-muted-foreground">{r.sent} sent</span>
+                          )}
+                        </span>
+                      </div>
+                      {ordering.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          {ordering.map((b) => (
+                            <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b]}</span></span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {demand.branches.map((b) => (
-                        <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b] ?? 0}</span></span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Packing materials — same pivot, its own table. Absent entirely when
@@ -200,9 +407,9 @@ export function ProductionOrdersPage() {
                       <thead>
                         <tr className="bg-muted/50 text-left">
                           <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Packing Material</th>
-                          <th className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
+                          <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
                           {demand.branches.map((b) => (
-                            <th key={b} className="px-3 py-2 text-right text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
+                            <th key={b} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
                           ))}
                         </tr>
                       </thead>
@@ -210,9 +417,17 @@ export function ProductionOrdersPage() {
                         {demand.packingRows.map((r) => (
                           <tr key={r.materialName} className="border-t">
                             <td className="px-3 py-2 font-medium">{r.materialName}</td>
-                            <td className="px-3 py-2 text-right font-bold tabular-nums text-primary">{r.total}</td>
+                            {/* Same centring and inline treatment as the products table. */}
+                            <td className="whitespace-nowrap px-3 py-2 text-center font-bold tabular-nums text-primary">
+                              {r.sent > 0 && (
+                                <span className="mr-2 text-[10px] font-normal text-muted-foreground">
+                                  {r.sent} sent
+                                </span>
+                              )}
+                              {r.total}
+                            </td>
                             {demand.branches.map((b) => (
-                              <td key={b} className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
+                              <td key={b} className="px-3 py-2 text-center tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
                             ))}
                           </tr>
                         ))}
@@ -220,20 +435,31 @@ export function ProductionOrdersPage() {
                     </table>
                   </div>
 
+                  {/* Zero-ordering branches omitted, same as the product cards above. */}
                   <div className="space-y-3 md:hidden">
-                    {demand.packingRows.map((r) => (
-                      <div key={r.materialName} className="rounded-lg border bg-card p-3">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium">{r.materialName}</p>
-                          <span className="font-bold tabular-nums text-primary">{r.total}</span>
+                    {demand.packingRows.map((r) => {
+                      const ordering = demand.branches.filter((b) => (r.byBranch[b] ?? 0) > 0);
+                      return (
+                        <div key={r.materialName} className="rounded-lg border bg-card p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium">{r.materialName}</p>
+                            <span className="text-right font-bold tabular-nums text-primary">
+                              {r.total}
+                              {r.sent > 0 && (
+                                <span className="block text-[10px] font-normal text-muted-foreground">{r.sent} sent</span>
+                              )}
+                            </span>
+                          </div>
+                          {ordering.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              {ordering.map((b) => (
+                                <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b]}</span></span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          {demand.branches.map((b) => (
-                            <span key={b}>{b}: <span className="font-medium text-foreground">{r.byBranch[b] ?? 0}</span></span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}

@@ -14,31 +14,67 @@ import type { Attachment } from './attachment.types';
 // Stock deliberately moves on verification rather than on Production's step, so
 // the pool is debited once for the quantity actually counted and branch stock
 // never claims goods nobody has confirmed receiving.
+//
+// Two terminal states sit outside that line:
+//   rejected  Production refused it
+//   cancelled the BRANCH withdrew it, before Production reviewed (migration 73)
+//
+// They are kept apart deliberately — only one of them is a fulfilment failure.
 export type BranchProductionOrderStatus =
   | 'pending'
   | 'awaiting_verification'
   | 'verified'
   | 'approved'
-  | 'rejected';
+  | 'rejected'
+  | 'cancelled';
 
 export interface BranchProductionOrderItem {
   productId: string;
   productName: string;
-  qty: number; // requested quantity — the branch's "New Demand" for this order
+  qty: number; // the branch's demand for this order — the whole requirement
   remarks: string;
   /**
-   * Quantity Production actually approved. Defaults to `totalRequiredQty` on approval
-   * (previous balance + new demand); may be lower/higher when Production adjusts.
+   * Quantity Production actually approved. Defaults to `qty` — the fresh demand —
+   * and is lower when Production reduces a line, higher when it raises one.
    */
   approvedQty?: number;
   /**
    * Pending-balance carry-forward fields, frozen onto the item at approval time.
-   * Absent on pending orders (computed live in the print preview) and on legacy
-   * orders created before this feature — treat missing values as 0.
+   *
+   * DEAD as of server migration 74, which removed the carry-forward entirely: a
+   * demand is now the fresh demand alone. New rows are written with
+   * previousBalanceQty = 0, totalRequiredQty = qty and remainingBalanceQty = 0,
+   * and nothing computes with them.
+   *
+   * They stay readable because orders approved BEFORE that migration genuinely
+   * were approved against previous balance + new demand, and these stored figures
+   * are the only record of what was decided on the day. Absent on pending orders
+   * and on legacy orders predating the feature — treat missing values as 0.
+   *
+   * Do NOT reintroduce them into any calculation: adding previousBalanceQty back
+   * into a demand is precisely the bug migration 74 fixed.
    */
-  previousBalanceQty?: number; // outstanding balance carried in from prior orders
-  totalRequiredQty?: number; // previousBalanceQty + qty (New Demand)
-  remainingBalanceQty?: number; // max(0, totalRequiredQty - approvedQty) — carried forward
+  previousBalanceQty?: number; // historical only — balance carried in from prior orders
+  totalRequiredQty?: number; // historical: previousBalanceQty + qty. Now always qty.
+  remainingBalanceQty?: number; // historical: the shortfall carried on. Now always 0.
+  /**
+   * This line came from the Special Order Items section, not the product list.
+   *
+   * It is still an ordinary line in every mechanical sense — it has a real
+   * product behind it (a hidden `is_special` one, created on submit) and moves
+   * stock exactly like any other. The flag is what lets the screens group it
+   * under its own heading and label it. Absent on every demand raised before
+   * migration 69; read as `?? false`.
+   */
+  isSpecial?: boolean;
+  /**
+   * What the branch typed in the Description box. Stored in `remarks`, which is
+   * where it is read from — this alias exists only so a screen rendering a
+   * special item does not have to know that.
+   */
+  description?: string;
+  /** The optional photo captured with a special item. Empty on everything else. */
+  photos?: Attachment[];
 }
 
 export interface BranchProductionOrder {
@@ -73,6 +109,16 @@ export interface BranchProductionOrder {
   verifiedBy?: string | null;
   verifiedByName?: string | null;
   verifiedAt?: string | null;
+  /**
+   * Why the branch deleted this demand. Present only on a 'cancelled' order, and
+   * mandatory there — the whole point of the soft delete is that Production can
+   * see what was withdrawn and why, rather than a demand quietly vanishing off
+   * the summary it was planning against.
+   */
+  cancelReason?: string | null;
+  cancelledBy?: string | null;
+  cancelledByName?: string | null;
+  cancelledAt?: string | null; // ISO UTC
   /**
    * Photos the branch captured when RAISING the demand — what it is asking for
    * and why. Absent on demands created before this feature; read as `?? []`.

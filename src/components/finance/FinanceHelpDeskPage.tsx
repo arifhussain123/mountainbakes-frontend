@@ -20,7 +20,7 @@ import { Headset, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import {
   CreateFinanceTicketSchema,
   FINANCE_TICKET_REFERENCE_LABELS,
-  FINANCE_TICKET_REFERENCES,
+  FINANCE_TICKET_PREFIXES,
   type FinanceTicket,
   type FinanceTicketReferenceLookup,
 } from '@mb/shared';
@@ -50,9 +50,7 @@ const STATUS_VARIANT: Record<FinanceTicket['status'], 'default' | 'secondary' | 
   rejected: 'destructive',
 };
 
-const PREFIX_HINT = Object.values(FINANCE_TICKET_REFERENCES)
-  .map((r) => `${r.prefix}-…`)
-  .join(', ');
+const PREFIX_HINT = FINANCE_TICKET_PREFIXES.map((p) => `${p}-…`).join(', ');
 
 /**
  * The referenced record's figures.
@@ -172,7 +170,7 @@ function NewQueryDialog({
                     void handleLookup();
                   }
                 }}
-                placeholder="e.g. FV-000001"
+                placeholder="e.g. RV-000001"
                 autoFocus
               />
               <Button

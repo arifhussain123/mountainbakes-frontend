@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Attachment, BranchProductionOrder } from '@mb/shared';
+import { liveItems, livePackingItems } from '@/utils/demandLines';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +69,18 @@ export function BranchOrderDetail({
   const [newQty, setNewQty] = useState('');
   /** Photos of the delivery as counted. Cleared with the rest of the form. */
   const [photos, setPhotos] = useState<Attachment[]>([]);
+
+  /**
+   * The lines actually worth counting. A line at zero was either never really
+   * ordered or was reviewed down to "sending none of this" — asking someone to
+   * verify receipt of nothing is noise at the exact moment they are stood over a
+   * crate counting, which is when noise costs the most.
+   *
+   * Display only. `verify()` below still submits every line, so the quantities
+   * and balances Production sees are unchanged by what is hidden here.
+   */
+  const shownItems = useMemo(() => liveItems(order?.items), [order?.items]);
+  const shownPackingItems = useMemo(() => livePackingItems(order?.packingItems), [order?.packingItems]);
 
   function resetLocalState() {
     setVerifiedQtys({});
@@ -143,24 +156,56 @@ export function BranchOrderDetail({
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                       <tr>
+                        {/* Every figure is centred under its heading, in both
+                            states of this table — the editable "Verified Qty"
+                            one and the read-only "Pending" one — so the columns
+                            do not shift when the order changes status. Only the
+                            product name stays left. */}
                         <th className="px-3 py-2 font-medium">Product</th>
-                        <th className="px-3 py-2 text-right font-medium">Requested</th>
-                        <th className="px-3 py-2 text-right font-medium">Approved</th>
+                        <th className="px-3 py-2 text-center font-medium">Requested</th>
+                        <th className="px-3 py-2 text-center font-medium">Approved</th>
                         {awaitingVerification ? (
-                          <th className="px-3 py-2 text-right font-medium">Verified Qty</th>
+                          <th className="px-3 py-2 text-center font-medium">Verified Qty</th>
                         ) : (
-                          <th className="px-3 py-2 text-right font-medium">Pending</th>
+                          <th className="px-3 py-2 text-center font-medium">Pending</th>
                         )}
                       </tr>
                     </thead>
                     <tbody>
-                      {order.items.map((it) => (
+                      {/* Every line reviewed down to zero. The table is not
+                          empty by accident, so it says so rather than leaving a
+                          bare header the counter has to interpret. */}
+                      {shownItems.length === 0 && newItems.length === 0 && (
+                        <tr className="border-t">
+                          <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                            No products were sent on this demand.
+                          </td>
+                        </tr>
+                      )}
+                      {shownItems.map((it) => (
                         <tr key={it.productId} className="border-t">
-                          <td className="px-3 py-2 font-medium">{it.productName}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
+                          <td className="px-3 py-2 font-medium">
+                            {it.productName}
+                            {/* A special line moves stock like any other, so it
+                                is counted and verified in this same table — the
+                                badge is what tells the counter that this one was
+                                made to order rather than picked off the shelf. */}
+                            {it.isSpecial && (
+                              <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary">
+                                Special
+                              </span>
+                            )}
+                            {it.isSpecial && it.description && (
+                              <p className="mt-0.5 text-xs font-normal text-muted-foreground">{it.description}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
+                          <td className="px-3 py-2 text-center tabular-nums">{it.approvedQty ?? '—'}</td>
                           {awaitingVerification ? (
-                            <td className="px-3 py-1.5 text-right">
+                            <td className="px-3 py-1.5 text-center">
+                              {/* mx-auto, not ml-auto: the box itself is centred
+                                  in the column like the plain figures around it,
+                                  and the digits are centred inside the box. */}
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -168,11 +213,11 @@ export function BranchOrderDetail({
                                 onChange={(e) =>
                                   setVerifiedQtys((p) => ({ ...p, [it.productId]: digits(e.target.value) }))
                                 }
-                                className="ml-auto h-8 w-20 text-right tabular-nums"
+                                className="mx-auto h-8 w-20 text-center tabular-nums"
                               />
                             </td>
                           ) : (
-                            <td className="px-3 py-2 text-right tabular-nums">
+                            <td className="px-3 py-2 text-center tabular-nums">
                               {it.remainingBalanceQty ? (
                                 <span className="font-semibold text-amber-600">{it.remainingBalanceQty}</span>
                               ) : '—'}
@@ -185,10 +230,12 @@ export function BranchOrderDetail({
                           <td className="px-3 py-2 font-medium">
                             {it.productName} <span className="text-xs font-normal text-emerald-600">(new)</span>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
-                          <td className="px-3 py-1.5 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">—</td>
+                          <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">—</td>
+                          <td className="px-3 py-1.5 text-center">
+                            {/* Centred as a unit — the quantity with its remove
+                                control — so it lines up with the inputs above. */}
+                            <div className="flex items-center justify-center gap-2">
                               <span className="tabular-nums">{it.qty}</span>
                               <button
                                 type="button"
@@ -249,24 +296,25 @@ export function BranchOrderDetail({
                 )}
               </div>
 
-              {order.packingItems && order.packingItems.length > 0 && (
+              {shownPackingItems.length > 0 && (
                 <div>
                   <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packing Materials</h4>
                   <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                         <tr>
+                          {/* Same centring as the products table above. */}
                           <th className="px-3 py-2 font-medium">Material</th>
-                          <th className="px-3 py-2 text-right font-medium">Requested</th>
-                          <th className="px-3 py-2 text-right font-medium">Approved</th>
+                          <th className="px-3 py-2 text-center font-medium">Requested</th>
+                          <th className="px-3 py-2 text-center font-medium">Approved</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {order.packingItems.map((it) => (
+                        {shownPackingItems.map((it) => (
                           <tr key={it.packingMaterialId} className="border-t">
                             <td className="px-3 py-2 font-medium">{it.materialName}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{it.qty}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{it.approvedQty ?? '—'}</td>
                           </tr>
                         ))}
                       </tbody>

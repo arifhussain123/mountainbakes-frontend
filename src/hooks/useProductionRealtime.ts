@@ -47,6 +47,17 @@ export function useProductionRealtime() {
         } catch {
           /* not supported */
         }
+      } else if (n.type === 'production_demand_cancelled') {
+        // A branch pulled a demand Production may already be planning against —
+        // worth the same interrupt a new one gets, and the message carries the
+        // reason so the toast is actionable on its own.
+        refreshOrders = true;
+        toast(`🗑️ ${n.message}`);
+        try {
+          navigator.vibrate?.(200);
+        } catch {
+          /* not supported */
+        }
       } else if (n.type === 'production_reviewed') {
         // Received by the branch manager when Production approves/rejects their
         // demand. Refresh their order list so the status flips live, and toast.

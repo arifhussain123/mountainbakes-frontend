@@ -70,6 +70,13 @@ type ProductionOrderItem = { productId: string; qty: number };
 
 /** Optional packing-material line submitted with the same demand. */
 type ProductionOrderPackingItem = { packingMaterialId: string; qty: number };
+/** Mirrors SpecialOrderItemSchema in @mb/shared — name and qty required, the rest optional. */
+type SpecialOrderItemInput = {
+  name: string;
+  qty: number;
+  description: string;
+  attachmentIds: string[];
+};
 
 // Live/intraday queries: kept fresh by notification-driven invalidation
 // (useProductionRealtime / usePriceRealtime) rather than by constant refetching.
@@ -421,8 +428,13 @@ export function useProductionOrders(token: string, opts?: { branchId?: string | 
 
 /**
  * Live outstanding pending balances per product for a branch, keyed by productId.
- * Advisory — used to show Previous Balance / Total Required on a still-pending order;
- * the approval transaction recomputes the authoritative figures server-side.
+ *
+ * @deprecated UNUSED as of server migration 74, which removed the pending-balance
+ * carry-forward: a demand is now the fresh demand only, so there is no Previous
+ * Balance / Total Required pair for this to feed. `production_balances` is no
+ * longer written and every row was zeroed by that migration, so this now resolves
+ * to an empty map for every branch. Kept only because the API route still exists.
+ * Do NOT wire it back into the review screen — that is the bug migration 74 fixed.
  */
 export function useProductionBalances(token: string, opts?: { branchId?: string | null; enabled?: boolean }) {
   const branchId = opts?.branchId;
@@ -485,13 +497,16 @@ export function useMarkPrinted(token: string) {
 export function useSubmitProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    // Packing items are optional; an omitted/empty array posts exactly the payload
-    // this endpoint accepted before the packing-material module existed.
+    // Packing and special items are both optional; an omitted/empty array posts
+    // exactly the payload this endpoint accepted before either module existed.
     mutationFn: (v: {
       items: ProductionOrderItem[];
       packingItems?: ProductionOrderPackingItem[];
-      /** Photos of what the demand is for. At least one — the API refuses a demand without. */
-      attachmentIds: string[];
+      /**
+       * One-off items typed by hand. Each becomes a hidden `is_special` product
+       * server-side so it can carry production and branch stock like any line.
+       */
+      specialItems?: SpecialOrderItemInput[];
     }) =>
       apiCall(
         '/api/production-orders',
@@ -500,7 +515,7 @@ export function useSubmitProductionOrder(token: string) {
           body: JSON.stringify({
             items: v.items,
             packingItems: v.packingItems ?? [],
-            attachmentIds: v.attachmentIds,
+            specialItems: v.specialItems ?? [],
           }),
         },
         token,
@@ -508,6 +523,33 @@ export function useSubmitProductionOrder(token: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['productionOrders'] });
       qc.invalidateQueries({ queryKey: ['stock'] });
+      // A special item creates a product, so the catalogue the order form reads
+      // is now stale. Cheap to refetch and confusing if it is not.
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
+/**
+ * Branch deletes a demand it has just sent, with a mandatory reason.
+ *
+ * A soft delete server-side — the row stays, flips to 'cancelled' and carries
+ * the reason — so this only has to invalidate the order list for both sides to
+ * repaint. The overview is invalidated too: a withdrawn demand leaves
+ * Production's waiting count and demand charts.
+ */
+export function useCancelProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; reason: string }) =>
+      apiCall(
+        `/api/production-orders/${v.id}/cancel`,
+        { method: 'PUT', body: JSON.stringify({ reason: v.reason }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
     },
   });
 }

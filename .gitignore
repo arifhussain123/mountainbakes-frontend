@@ -58,3 +58,6 @@ skills-lock.json
 # than one lockfile, so an `npm install` run by mistake must not be committable.
 package-lock.json
 yarn.lock
+
+# Build stamp written by scripts/generate-version.mjs on every build
+public/version.json

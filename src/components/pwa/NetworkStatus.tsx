@@ -7,42 +7,39 @@ import { toast } from 'sonner';
 const OFFLINE_TOAST = 'mb-offline';
 
 /**
- * Watches connectivity and drives offline UX + auto-sync:
- *  - shows a persistent "You're offline" toast while disconnected;
- *  - on reconnect, refetches server data (React Query) and asks the service
- *    worker to flush any Background-Sync queue, then confirms.
+ * Watches connectivity and drives the offline experience:
+ *  - a persistent notice while disconnected, saying what still works;
+ *  - on reconnect, refetches everything on screen and confirms.
+ *
+ * The message is deliberately specific about what offline means HERE. It used to
+ * promise "changes will sync automatically once you reconnect", which was never
+ * true: the Background Sync queue that would have carried them is disabled and
+ * nothing was ever put in it (see public/sw.js). Reading offline is what works —
+ * the last synced data is restored from disk by OfflineCache — and a write is
+ * refused up front by apiCall with a message saying so.
  */
 export function NetworkStatus() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     const goOffline = () => {
-      toast.error("You're offline", {
+      toast.warning("You're offline", {
         id: OFFLINE_TOAST,
-        description: 'Changes will sync automatically once you reconnect.',
+        description: 'You can still look things up. Saving is paused until you reconnect.',
         duration: Infinity,
       });
     };
 
     const goOnline = () => {
       toast.dismiss(OFFLINE_TOAST);
-      // Refresh any stale data now that the network is back.
+      // Everything on screen is now whatever was last synced, so pull it all
+      // fresh rather than waiting for it to go stale on its own.
       queryClient.invalidateQueries();
-      // Ask the service worker to replay queued offline mutations.
-      navigator.serviceWorker?.controller?.postMessage({ type: 'FLUSH_QUEUE' });
-      toast.success('Back online', { description: 'Syncing your latest data…', duration: 2500 });
-    };
-
-    const onSwMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'SYNC_COMPLETE') {
-        queryClient.invalidateQueries();
-        toast.success('Changes synced');
-      }
+      toast.success('Back online', { description: 'Bringing your data up to date…', duration: 2500 });
     };
 
     window.addEventListener('offline', goOffline);
     window.addEventListener('online', goOnline);
-    navigator.serviceWorker?.addEventListener('message', onSwMessage);
 
     // Reflect the state on first mount (e.g. loaded while already offline).
     if (typeof navigator !== 'undefined' && !navigator.onLine) goOffline();
@@ -50,7 +47,6 @@ export function NetworkStatus() {
     return () => {
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('online', goOnline);
-      navigator.serviceWorker?.removeEventListener('message', onSwMessage);
     };
   }, [queryClient]);
 

@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
+import { RefreshButton } from '@/components/layout/RefreshButton';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter, usePathname } from 'next/navigation';
@@ -47,20 +48,29 @@ export function Topbar({ title }: { title?: string }) {
   return (
     <>
       <header className="h-14 border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center px-4 gap-3">
-        {/* Mobile menu toggle */}
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleSidebar}>
-          <Menu className="h-5 w-5" />
-        </Button>
+        {/* Three sections rather than the old "content, spacer, content": both
+            outer sections are `flex-1` from a zero basis, so they grow equally
+            and leave the Refresh button in the true centre of the bar. The left
+            one carries `min-w-0` so a long page title truncates instead of
+            shoving the centre off. */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {/* Mobile menu toggle */}
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleSidebar}>
+            <Menu className="h-5 w-5" />
+          </Button>
 
-        {/* Page title. Shown on mobile too — with the sidebar closed by default
-            and the bottom nav only labelling five destinations, this heading is
-            the only thing telling a phone user which screen they are on. */}
-        {heading && (
-          <h1 className="truncate text-base font-semibold text-foreground">{heading}</h1>
-        )}
+          {/* Page title. Shown on mobile too — with the sidebar closed by default
+              and the bottom nav only labelling five destinations, this heading is
+              the only thing telling a phone user which screen they are on. */}
+          {heading && (
+            <h1 className="truncate text-base font-semibold text-foreground">{heading}</h1>
+          )}
+        </div>
 
-        <div className="flex-1" />
+        {/* Centre: refresh / apply-update */}
+        <RefreshButton />
 
+        <div className="flex flex-1 items-center justify-end gap-1">
         {/* Search trigger */}
         <Button
           variant="outline"
@@ -170,6 +180,7 @@ export function Topbar({ title }: { title?: string }) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
