@@ -1128,6 +1128,7 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
         if (!f) { toast.error('Could not read this branch’s stock figures'); return; }
         setFigures(f);
         setTargets({
+          opening: String(f.opening),
           newQty: String(f.newQty),
           sold: String(f.sold),
           returned: String(f.returned),
@@ -1148,14 +1149,14 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
    */
   const implied = useMemo(() => {
     if (!figures) return 0;
-    return figures.opening + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']) + figures.adjustment;
+    return num(targets['opening']) + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']) + figures.adjustment;
   }, [figures, targets]);
 
   // The balance the other three figures imply with the adjustment REMOVED — the
   // base that a typed Adjustment is added to.
   const baseWithoutAdjustment = useMemo(() => {
     if (!figures) return 0;
-    return figures.opening + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']);
+    return num(targets['opening']) + num(targets['newQty']) - num(targets['sold']) - num(targets['returned']);
   }, [figures, targets]);
 
   const inAdjustmentMode = residualMode === 'adjustment';
@@ -1190,7 +1191,7 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
     : String(finalAdjustment);
 
   const invalid =
-    ['newQty', 'sold', 'returned'].some((k) => {
+    ['opening', 'newQty', 'sold', 'returned'].some((k) => {
       const v = num(targets[k]);
       return targets[k] === '' || !Number.isFinite(v) || v < 0;
     }) ||
@@ -1213,7 +1214,7 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
   const edits = useMemo(() => {
     if (!figures) return {} as Record<string, number>;
     const out: Record<string, number> = {};
-    for (const k of ['newQty', 'sold', 'returned'] as const) {
+    for (const k of ['opening', 'newQty', 'sold', 'returned'] as const) {
       if (num(targets[k]) !== figures[k]) out[k] = num(targets[k]);
     }
     // Exactly one of the pair, never both — the server refuses both, and they are
@@ -1274,8 +1275,36 @@ function StockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket
           <p className="text-sm text-muted-foreground">Current stock is unavailable.</p>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
-              <FigureRow label="Opening Stock" value={String(figures.opening)} hint="carried from yesterday" />
+            {/* Opening is editable, but it is not a figure about TODAY: it is
+                yesterday's closing. A movement dated today cannot shift it —
+                balance and the day's net move together and the difference does
+                not budge — so the server dates the correction to the previous
+                business day. Hence the warning, and hence its own block rather
+                than sitting with the day's figures below. */}
+            <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+              <div className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Opening Stock</Label>
+                  <span className="text-xs text-muted-foreground">
+                    now {figures.opening} · carried from yesterday
+                  </span>
+                </div>
+                <Input
+                  type="number" min="0" step="0.001" inputMode="decimal"
+                  className="text-right"
+                  value={targets['opening'] ?? ''}
+                  onChange={(e) => setFigure('opening', e.target.value)}
+                />
+                {figures && num(targets['opening']) !== figures.opening && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    This corrects <strong>yesterday’s closing</strong>, so the change is
+                    recorded on the previous business day. Today’s New / Sold / Returned
+                    are untouched; the balance moves by{' '}
+                    {num(targets['opening']) - figures.opening > 0 ? '+' : ''}
+                    {num(targets['opening']) - figures.opening}.
+                  </p>
+                )}
+              </div>
               {figures.adjustment !== 0 && (
                 <FigureRow
                   label="Adjustment so far"
