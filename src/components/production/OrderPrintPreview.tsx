@@ -161,13 +161,27 @@ function PreviewBody({
     // pre-migration-74 order that figure may exceed `qty`, because it was
     // approved against a carry-forward that no longer exists. Showing it as
     // stored is the truth about that delivery; recomputing it would not be.
-    const newDemand = it.qty;
+    //
+    // A line Production added, or one found in the delivery at verification, was
+    // never demanded by the branch (migration 83). Its `qty` still carries the
+    // intended quantity and is still what the approval defaults to — changing
+    // that would change what ships — so the two are read apart here:
+    //
+    //   approvalDefault  what Production means to send        = qty, always
+    //   newDemand        what the BRANCH asked for            = 0 on an added line
+    //
+    // Collapsing them is the bug this fixes: an added line came out with Demand
+    // equal to Approved, so it read as though the branch had asked for exactly
+    // what was being sent, and the Demand total counted goods nobody requested.
+    const isAdded = it.addedByProduction === true;
+    const approvalDefault = it.qty;
+    const newDemand = isAdded ? 0 : it.qty;
     const approved = frozen
-      ? (it.approvedQty ?? newDemand)
-      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : newDemand);
+      ? (it.approvedQty ?? approvalDefault)
+      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : approvalDefault);
     const unitPrice = priceById.get(it.productId) ?? 0;
     const amount = approved * unitPrice;
-    return { newDemand, approved, unitPrice, amount };
+    return { newDemand, approved, unitPrice, amount, isAdded };
   }
 
   const rows = order.items.map((it) => ({ it, ...rowFor(it) }));
@@ -501,7 +515,7 @@ function PreviewBody({
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map(({ it, newDemand, approved, unitPrice, amount }) => (
+                {visibleRows.map(({ it, newDemand, approved, unitPrice, amount, isAdded }) => (
                   <tr key={it.productId} className="border-b border-neutral-200 align-top">
                     <td className="py-1.5 pr-2 font-medium">
                       {it.productName}
@@ -513,11 +527,25 @@ function PreviewBody({
                           Special
                         </span>
                       )}
+                      {/* Says why Demand reads '—' on this row. Without it the
+                          dash looks like missing data rather than the fact that
+                          nobody demanded this line. */}
+                      {isAdded && (
+                        <span className="ml-1.5 rounded border border-neutral-400 px-1 py-px text-[9px] font-bold uppercase text-neutral-600">
+                          Added
+                        </span>
+                      )}
                       {it.isSpecial && it.description && (
                         <p className="mt-0.5 text-[10px] font-normal italic text-neutral-600">{it.description}</p>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{fmt(newDemand)}</td>
+                    {/* An added line has no branch demand to show. A dash, not a
+                        0 — the branch did not ask for none of this, it was never
+                        asked at all, and a 0 in a column of quantities reads as a
+                        cut line rather than an addition. */}
+                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums">
+                      {isAdded ? <span className="font-normal text-neutral-400">—</span> : fmt(newDemand)}
+                    </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
                       {editing && !readOnly ? (
                         <Input
