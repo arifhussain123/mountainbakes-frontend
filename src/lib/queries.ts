@@ -507,6 +507,11 @@ export function useSubmitProductionOrder(token: string) {
        * server-side so it can carry production and branch stock like any line.
        */
       specialItems?: SpecialOrderItemInput[];
+      /**
+       * 'YYYY-MM-DD' the branch needs this delivered by. REQUIRED, unlike the
+       * two above — the API rejects a demand without one.
+       */
+      requiredDate: string;
     }) =>
       apiCall(
         '/api/production-orders',
@@ -516,6 +521,7 @@ export function useSubmitProductionOrder(token: string) {
             items: v.items,
             packingItems: v.packingItems ?? [],
             specialItems: v.specialItems ?? [],
+            requiredDate: v.requiredDate,
           }),
         },
         token,

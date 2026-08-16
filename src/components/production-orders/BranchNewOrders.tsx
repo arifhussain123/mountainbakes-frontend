@@ -130,6 +130,21 @@ export function BranchNewOrders() {
   const columns = [
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    // The date the branch ASKED for, next to the date it asked ON. Blank on
+    // demands raised before the field existed — rendered '—' rather than falling
+    // back to `date`, which would show a delivery commitment nobody made.
+    col.accessor((o) => o.requiredDate ?? '', {
+      id: 'requiredDate',
+      header: 'Required Date',
+      cell: (i) => {
+        const v = i.getValue<string>();
+        return v ? (
+          <span className="text-sm font-medium tabular-nums">{v}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        );
+      },
+    }),
     col.accessor('demandNumber', {
       header: 'Demand #',
       meta: { mobile: 'title' },

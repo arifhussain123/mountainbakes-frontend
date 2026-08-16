@@ -175,6 +175,21 @@ export function ProductionOrdersPage() {
     col.display({ id: 'ref', header: 'Order #', meta: { mobile: 'subtitle' }, cell: ({ row }) => <span className="font-mono text-xs">{slipReference(row.original)}</span> }),
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    // What the branch is committing Production to. Emphasised over the raised
+    // date beside it — this is the one Production plans against. Blank on
+    // demands raised before the field existed; never defaulted to `date`.
+    col.accessor((o) => o.requiredDate ?? '', {
+      id: 'requiredDate',
+      header: 'Required Date',
+      cell: (i) => {
+        const v = i.getValue<string>();
+        return v ? (
+          <span className="text-sm font-medium tabular-nums">{v}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        );
+      },
+    }),
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
     col.accessor('status', {
       header: 'Status',

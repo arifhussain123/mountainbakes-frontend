@@ -36,6 +36,7 @@ import { sortProducts } from '@/utils/productSort';
 import { toast } from 'sonner';
 
 const EMPTY_PRODUCT_MESSAGE = 'Please enter the quantity for at least one product.';
+const MISSING_REQUIRED_DATE_MESSAGE = 'Please choose the date this demand is required by.';
 const BLOCKED_QTY_KEYS = ['e', 'E', '+', '-', '.', ','];
 
 /** 'HH:mm' (24-hour) → '8:00 AM' for display. */
@@ -67,6 +68,8 @@ export interface NewOrderModalProps {
      * so it can carry production and branch stock like any other line.
      */
     specialItems: { name: string; qty: number; description: string; attachmentIds: string[] }[];
+    /** 'YYYY-MM-DD' the branch needs this delivered by. Never empty — see `canSubmit`. */
+    requiredDate: string;
   }) => Promise<unknown>;
   submitting: boolean;
 }
@@ -199,6 +202,16 @@ export function NewOrderModal({
   // behaves exactly as it did before.
   const [specialOpen, setSpecialOpen] = useState(false);
   const [specialRows, setSpecialRows] = useState<SpecialRow[]>([]);
+  /**
+   * The day the branch needs this delivered by. Mandatory — unlike every other
+   * field on this form, an empty value blocks the submit rather than simply
+   * being omitted from the payload.
+   *
+   * Starts EMPTY rather than pre-filled with today. A default would be accepted
+   * unread on most demands, which is the same as having no field: the point is
+   * that somebody chose the date.
+   */
+  const [requiredDate, setRequiredDate] = useState('');
 
   const qtyRefs = useRef<(HTMLInputElement | null)[]>([]);
   const draftKey = branchId ? `mb:po-draft:${branchId}` : 'mb:po-draft';
@@ -224,9 +237,16 @@ export function NewOrderModal({
           qtyById?: Record<string, string>;
           packingRows?: PackingRow[];
           specialRows?: Omit<SpecialRow, 'photos'>[];
+          requiredDate?: string;
         };
         if (d && typeof d === 'object') {
           setQtyById(d.qtyById ?? {});
+          // A draft saved before this field existed has none, and a draft
+          // restored after its required date has passed must not silently keep
+          // it — in both cases the branch picks the date again, which is the
+          // one thing this field is not allowed to guess.
+          const savedDate = typeof d.requiredDate === 'string' ? d.requiredDate : '';
+          setRequiredDate(savedDate >= businessDateStr(new Date()) ? savedDate : '');
           // A draft saved before packing materials existed simply has no rows.
           const rows = Array.isArray(d.packingRows) ? d.packingRows : [];
           setPackingRows(rows);
@@ -358,11 +378,24 @@ export function NewOrderModal({
     [],
   );
 
+  /**
+   * Earliest date the branch may ask for — today's BUSINESS date, not today's
+   * calendar date. Between midnight and 2 AM those differ, and the calendar one
+   * would refuse a demand for the day the branch is currently working.
+   */
+  const minRequiredDate = now ? businessDateStr(now) : '';
+  const requiredDateInPast = requiredDate !== '' && minRequiredDate !== '' && requiredDate < minRequiredDate;
+
   // Declared after the packing and special tallies because it now depends on
   // them: a demand of packing materials or special items alone is a real demand.
   const canSubmit =
     (totalProducts > 0 || specialCount > 0 || packingCount > 0) &&
     duplicateSpecialNames.size === 0 &&
+    // The whole point of the field: no date, no demand. `min` on the input is
+    // advisory only — a typed date bypasses the picker — so the value is
+    // re-checked here rather than trusted to the browser.
+    requiredDate !== '' &&
+    !requiredDateInPast &&
     withinWindow &&
     !submitting;
 
@@ -387,6 +420,7 @@ export function NewOrderModal({
     setPackingOpen(false);
     setSpecialRows([]);
     setSpecialOpen(false);
+    setRequiredDate('');
     try {
       localStorage.removeItem(draftKey);
     } catch {
@@ -400,7 +434,10 @@ export function NewOrderModal({
       // Special rows are saved WITHOUT their photos — an attachment id in a
       // days-old draft points at a photo of a different day's request.
       const specialDraft = specialRows.map(({ name, qty, description }) => ({ name, qty, description }));
-      localStorage.setItem(draftKey, JSON.stringify({ qtyById, packingRows, specialRows: specialDraft }));
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({ qtyById, packingRows, specialRows: specialDraft, requiredDate }),
+      );
       toast.success('Draft saved');
     } catch {
       toast.error('Could not save draft');
@@ -419,6 +456,17 @@ export function NewOrderModal({
       toast.error('Two special items have the same name. Rename one or remove it.');
       return;
     }
+    // Reached only if the Submit button was somehow activated with the field
+    // empty; the toast still matters, because the disabled button alone never
+    // says WHICH field is missing on a form this long.
+    if (requiredDate === '') {
+      toast.error(MISSING_REQUIRED_DATE_MESSAGE);
+      return;
+    }
+    if (requiredDateInPast) {
+      toast.error('The required date cannot be in the past.');
+      return;
+    }
     setConfirmOpen(true);
   }
 
@@ -435,13 +483,14 @@ export function NewOrderModal({
         description: r.description.trim(),
         attachmentIds: r.photos.map((p) => p.id),
       }));
-      await submit({ items, packingItems, specialItems });
+      await submit({ items, packingItems, specialItems, requiredDate });
       toast.success('Production Order Submitted Successfully');
       setQtyById({});
       setPackingRows([]);
       setPackingOpen(false);
       setSpecialRows([]);
       setSpecialOpen(false);
+      setRequiredDate('');
       try {
         localStorage.removeItem(draftKey);
       } catch {
@@ -820,6 +869,41 @@ export function NewOrderModal({
 
           {/* ---------- Sticky footer ---------- */}
           <div className="shrink-0 space-y-3 border-t bg-muted/40 px-5 py-3">
+            {/* Required date sits in the sticky footer, next to Submit, rather
+                than in the scrolling body — on a catalogue of a hundred products
+                a field at the top of the form is off-screen by the time anyone
+                reaches the button that it blocks. */}
+            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+              <label
+                htmlFor="po-required-date"
+                className="flex shrink-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Required Date <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="po-required-date"
+                type="date"
+                required
+                value={requiredDate}
+                min={minRequiredDate || undefined}
+                onChange={(e) => setRequiredDate(e.target.value)}
+                disabled={submitting}
+                aria-invalid={requiredDate === '' || requiredDateInPast}
+                className={cn(
+                  'h-9 w-full sm:w-48',
+                  (requiredDate === '' || requiredDateInPast) && 'border-destructive',
+                )}
+              />
+              <span className="text-xs text-muted-foreground">
+                {requiredDateInPast
+                  ? 'The required date cannot be in the past.'
+                  : requiredDate === ''
+                    ? 'Choose when you need this delivered — the order cannot be submitted without it.'
+                    : 'When you need this delivered by.'}
+              </span>
+            </div>
+
             <div className="flex flex-wrap items-center gap-x-8 gap-y-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">Selected Products</span>
@@ -911,6 +995,13 @@ export function NewOrderModal({
           </div>
 
           <dl className="shrink-0 divide-y rounded-lg border bg-muted/40 text-sm">
+            {/* First row, and emphasised: it is the only line here the branch
+                chose freely rather than derived from the quantities above, so it
+                is the one worth a second look before sending. */}
+            <div className="flex justify-between px-3 py-2">
+              <dt className="text-muted-foreground">Required by</dt>
+              <dd className="font-semibold tabular-nums text-primary">{requiredDate || '—'}</dd>
+            </div>
             <div className="flex justify-between px-3 py-2">
               <dt className="text-muted-foreground">Lines</dt>
               <dd className="font-semibold tabular-nums">{totalProducts + packingCount + specialCount}</dd>
@@ -925,7 +1016,7 @@ export function NewOrderModal({
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow}>
+            <Button onClick={confirmSubmit} disabled={submitting || !withinWindow || !canSubmit}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Submitting…
