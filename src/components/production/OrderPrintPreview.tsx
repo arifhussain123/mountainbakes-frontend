@@ -1105,10 +1105,17 @@ function PrintCopy({
           {groups.map((group, gi) => (
             <table key={gi} className="w-full border-collapse text-[9px] leading-tight">
               <thead>
+                {/* Headings match the single-column table above WORD FOR WORD.
+                    They used to be abbreviated to "Qty" / "Price" here, which
+                    meant the same two columns were named one thing on a demand
+                    of six items and another on a demand of twenty — on a
+                    document whose whole job is to be checked against goods. The
+                    longer words wrap to two lines in a narrow column; that costs
+                    one header row and is worth it. */}
                 <tr className="border-y border-neutral-400 text-left">
                   <th className="py-0.5 pr-1 font-semibold">Product</th>
-                  <th className="px-1 py-0.5 text-right font-semibold">Qty</th>
-                  <th className="px-1 py-0.5 text-right font-semibold">Price</th>
+                  <th className="px-1 py-0.5 text-right font-semibold">Approved Qty</th>
+                  <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
                   <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
                 </tr>
               </thead>
