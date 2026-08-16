@@ -881,7 +881,7 @@ function OrderMeta({ order }: { order: BranchProductionOrder }) {
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-3 text-[11px] sm:grid-cols-3">
       <MetaKV k="Order #" v={slipReference(order)} mono />
-      <MetaKV k="Business Date" v={order.date} />
+      <MetaKV k="Demand Date" v={order.date} />
       {/* Beside the date it was RAISED, because the pair is the point: one is
           when the branch asked, the other is when they need it. Empty on demands
           predating the field — MetaKV prints '—' rather than falling back to
@@ -983,7 +983,7 @@ function PrintCopy({
         </div>
         <div className="mt-1.5 grid grid-cols-3 gap-x-4 pr-20 text-[9px] leading-tight">
           <MetaKV k="Production Order No" v={slipReference(order)} mono />
-          <MetaKV k="Business Date" v={order.date} />
+          <MetaKV k="Demand Date" v={order.date} />
           <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
           <MetaKV k="Branch" v={order.branchName} />
           <MetaKV k="Print Date" v={printDate} />
@@ -1007,7 +1007,7 @@ function PrintCopy({
               // cash at the counter and has to be verifiable line by line.
               <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
                 <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
-                <MetaKV k="Previous Business Date" v={previousRef!.date} />
+                <MetaKV k="Previous Demand Date" v={previousRef!.date} />
                 <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
                 <MetaKV k={`Company Share (${companySharePct}%)`} v={money(companyShareValue, sym)} />
                 <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
@@ -1211,7 +1211,7 @@ function ProductionCheckSheet({
         <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] sm:grid-cols-4">
           <MetaKV k="Branch" v={order.branchName} />
           <MetaKV k="Production Order No" v={slipReference(order)} mono />
-          <MetaKV k="Business Date" v={order.date} />
+          <MetaKV k="Demand Date" v={order.date} />
           <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
           <MetaKV k="Print Date" v={printDate} />
         </div>
