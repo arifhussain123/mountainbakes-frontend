@@ -428,8 +428,13 @@ export function useProductionOrders(token: string, opts?: { branchId?: string | 
 
 /**
  * Live outstanding pending balances per product for a branch, keyed by productId.
- * Advisory — used to show Previous Balance / Total Required on a still-pending order;
- * the approval transaction recomputes the authoritative figures server-side.
+ *
+ * @deprecated UNUSED as of server migration 74, which removed the pending-balance
+ * carry-forward: a demand is now the fresh demand only, so there is no Previous
+ * Balance / Total Required pair for this to feed. `production_balances` is no
+ * longer written and every row was zeroed by that migration, so this now resolves
+ * to an empty map for every branch. Kept only because the API route still exists.
+ * Do NOT wire it back into the review screen — that is the bug migration 74 fixed.
  */
 export function useProductionBalances(token: string, opts?: { branchId?: string | null; enabled?: boolean }) {
   const branchId = opts?.branchId;

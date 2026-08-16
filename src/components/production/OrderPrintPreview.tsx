@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProductionBalances, useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
+import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -116,11 +116,16 @@ function PreviewBody({
   onClose: () => void;
 }) {
   const readOnly = order.status !== 'pending';
-  // Item balance fields (previousBalanceQty/totalRequiredQty/approvedQty) are
-  // frozen onto the row by review_production_order the moment the order leaves
-  // 'pending', and verification overwrites approvedQty with the counted figure.
-  // All three post-review states therefore read the stored values, never live
-  // balances — a rejected order has none, so it keeps the live path.
+  // `approvedQty` is frozen onto the row by review_production_order the moment
+  // the order leaves 'pending', and verification overwrites it with the counted
+  // figure. All three post-review states therefore read the stored value.
+  //
+  // The pending-balance carry-forward is GONE (server migration 74). A demand is
+  // the fresh demand: Production no longer sees a Prev. Balance / Total Demand
+  // pair, and approval is against `qty` alone. `previousBalanceQty` /
+  // `totalRequiredQty` still exist on historical rows — orders reviewed before
+  // that migration were genuinely approved against prev + new — but nothing
+  // computes with them any more, so they are not read here.
   const frozen =
     order.status === 'awaiting_verification' ||
     order.status === 'verified' ||
@@ -140,8 +145,6 @@ function PreviewBody({
   const [returnQty, setReturnQty] = useState('');
   const [returnReason, setReturnReason] = useState('');
 
-  const balancesQ = useProductionBalances(token, { branchId: order.branchId, enabled: order.status === 'pending' });
-  const liveBalances = balancesQ.data ?? {};
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
   const addItemMut = useAddProductionOrderItem(token);
@@ -153,15 +156,18 @@ function PreviewBody({
   const sym = settings?.currencySymbol || 'Rs.';
 
   function rowFor(it: BranchProductionOrderItem) {
+    // The fresh demand is the whole requirement, and the default approval. On a
+    // frozen order `approvedQty` is whatever was actually decided — on a
+    // pre-migration-74 order that figure may exceed `qty`, because it was
+    // approved against a carry-forward that no longer exists. Showing it as
+    // stored is the truth about that delivery; recomputing it would not be.
     const newDemand = it.qty;
-    const previousBalance = frozen ? (it.previousBalanceQty ?? 0) : (liveBalances[it.productId] ?? 0);
-    const totalDemand = frozen ? (it.totalRequiredQty ?? previousBalance + newDemand) : previousBalance + newDemand;
     const approved = frozen
-      ? (it.approvedQty ?? totalDemand)
-      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : totalDemand);
+      ? (it.approvedQty ?? newDemand)
+      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : newDemand);
     const unitPrice = priceById.get(it.productId) ?? 0;
     const amount = approved * unitPrice;
-    return { newDemand, previousBalance, totalDemand, approved, unitPrice, amount };
+    return { newDemand, approved, unitPrice, amount };
   }
 
   const rows = order.items.map((it) => ({ it, ...rowFor(it) }));
@@ -184,7 +190,7 @@ function PreviewBody({
   }));
 
   const changed =
-    rows.some(({ approved, totalDemand }) => approved !== totalDemand) ||
+    rows.some(({ approved, newDemand }) => approved !== newDemand) ||
     packingRows.some(({ approved, requested }) => approved !== requested);
 
   // What the on-screen review table shows, as opposed to what gets submitted.
@@ -198,8 +204,9 @@ function PreviewBody({
   //
   // `rows` / `packingRows` above are left whole on purpose: `approvedItems` is
   // built from them, and a short override list would let the RPC fall back to
-  // `totalRequiredQty` for the missing lines — silently re-approving in full
-  // exactly what somebody had cut to zero.
+  // its own default for the missing lines — silently re-approving in full
+  // exactly what somebody had cut to zero. (That default is now the fresh
+  // demand rather than prev + new, but the hazard is identical.)
   const visibleRows = frozen ? rows.filter(({ approved }) => approved > 0) : rows;
   const visiblePackingRows = frozen ? packingRows.filter(({ approved }) => approved > 0) : packingRows;
 
@@ -207,7 +214,7 @@ function PreviewBody({
   // The slip prints the APPROVED quantity, which is what actually ships.
   const packingPrintRows = packingRows.map(({ it, approved }) => ({ materialName: it.materialName, qty: approved }));
   const totals = printRows.reduce(
-    (a, r) => ({ demand: a.demand + r.totalDemand, approved: a.approved + r.approved, amount: a.amount + r.amount }),
+    (a, r) => ({ demand: a.demand + r.newDemand, approved: a.approved + r.approved, amount: a.amount + r.amount }),
     { demand: 0, approved: 0, amount: 0 },
   );
 
@@ -487,16 +494,14 @@ function PreviewBody({
               <thead>
                 <tr className="border-y border-neutral-400 text-left">
                   <th className="py-1.5 pr-2 font-semibold">Product</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Prev. Bal.</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">New Demand</th>
-                  <th className="px-2 py-1.5 text-right font-semibold">Total Demand</th>
+                  <th className="px-2 py-1.5 text-right font-semibold">Demand</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Approved</th>
                   <th className="px-2 py-1.5 text-right font-semibold">Unit Price</th>
                   <th className="py-1.5 pl-2 text-right font-semibold">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map(({ it, newDemand, previousBalance, totalDemand, approved, unitPrice, amount }) => (
+                {visibleRows.map(({ it, newDemand, approved, unitPrice, amount }) => (
                   <tr key={it.productId} className="border-b border-neutral-200 align-top">
                     <td className="py-1.5 pr-2 font-medium">
                       {it.productName}
@@ -512,15 +517,13 @@ function PreviewBody({
                         <p className="mt-0.5 text-[10px] font-normal italic text-neutral-600">{it.description}</p>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(previousBalance)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(newDemand)}</td>
-                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{fmt(totalDemand)}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{fmt(newDemand)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
                       {editing && !readOnly ? (
                         <Input
                           type="text"
                           inputMode="numeric"
-                          value={edits[it.productId] ?? String(totalDemand)}
+                          value={edits[it.productId] ?? String(newDemand)}
                           onChange={(e) => setEdits((p) => ({ ...p, [it.productId]: digits(e.target.value) }))}
                           className="ml-auto h-8 w-20 text-right tabular-nums"
                         />
@@ -535,7 +538,7 @@ function PreviewBody({
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-neutral-400 font-semibold">
-                  <td className="pt-2" colSpan={3}>Totals</td>
+                  <td className="pt-2">Totals</td>
                   <td className="px-2 pt-2 text-right tabular-nums">{fmt(totals.demand)}</td>
                   <td className="px-2 pt-2 text-right tabular-nums">{fmt(totals.approved)}</td>
                   <td className="px-2 pt-2 text-right"></td>
@@ -549,17 +552,17 @@ function PreviewBody({
 
               ONE row per item: product · Approved · Amount, and nothing else.
               Those three are what the slip is read for on a phone — what are we
-              sending, and what does it come to. Prev. Balance, New Demand, Total
-              Demand and Unit Price are deliberately NOT here: they are desk-work
-              figures, they are all still on the desktop table above (which is
-              what a reviewer sitting down actually uses), and a six-cell grid
-              under every product turned a ten-line order into a page of
-              scrolling. The order-level totals still close the list below.
+              sending, and what does it come to. Demand and Unit Price are
+              deliberately NOT here: they are desk-work figures, they are both
+              still on the desktop table above (which is what a reviewer sitting
+              down actually uses), and a wider grid under every product turned a
+              ten-line order into a page of scrolling. The order-level totals
+              still close the list below.
 
               Approved keeps its input in that row while editing — w-16 so the
               product name, the input and the amount all fit one line. */}
           <div className="mt-3 space-y-3 md:hidden">
-            {visibleRows.map(({ it, totalDemand, approved, amount }) => (
+            {visibleRows.map(({ it, newDemand, approved, amount }) => (
               <div key={it.productId} className="rounded-lg border border-neutral-200 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -581,7 +584,7 @@ function PreviewBody({
                       <Input
                         type="text"
                         inputMode="numeric"
-                        value={edits[it.productId] ?? String(totalDemand)}
+                        value={edits[it.productId] ?? String(newDemand)}
                         onChange={(e) => setEdits((p) => ({ ...p, [it.productId]: digits(e.target.value) }))}
                         className="mt-0.5 h-8 w-16 text-right tabular-nums"
                       />
@@ -844,9 +847,7 @@ function PreviewBody({
 
 interface PrintRow {
   productName: string;
-  previousBalance: number;
   newDemand: number;
-  totalDemand: number;
   approved: number;
   unitPrice: number;
   amount: number;
