@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -175,26 +176,53 @@ export function ReturnItemsModal({
             too). Viewing the stock table behind this modal stays unrestricted. */}
         <GeofenceGate action="Stock updates">
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-          {/* Auto fields */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Date</Label>
-              <Input value={stamp.date} readOnly disabled />
-            </div>
-            <div className="space-y-1">
-              <Label>Time</Label>
-              <Input value={stamp.time} readOnly disabled />
-            </div>
+          {/* Auto fields. All three are read-only, so on a phone they are a compact
+              label:value strip rather than three full-height disabled inputs — a
+              bottom sheet has no vertical space to spend on fields nobody edits. */}
+          <div className="rounded-lg border bg-muted/30 p-2.5 text-sm sm:hidden">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Date</dt>
+              <dd className="text-right tabular-nums">{stamp.date}</dd>
+              <dt className="text-muted-foreground">Time</dt>
+              <dd className="text-right tabular-nums">{stamp.time}</dd>
+              <dt className="text-muted-foreground">Branch</dt>
+              <dd className="truncate text-right font-medium">{branchName || '—'}</dd>
+            </dl>
           </div>
-          <div className="space-y-1">
-            <Label>Branch Name</Label>
-            <Input value={branchName} readOnly disabled />
+
+          <div className="hidden sm:block sm:space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Date</Label>
+                <Input value={stamp.date} readOnly disabled />
+              </div>
+              <div className="space-y-1">
+                <Label>Time</Label>
+                <Input value={stamp.time} readOnly disabled />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Branch Name</Label>
+              <Input value={branchName} readOnly disabled />
+            </div>
           </div>
 
           <Separator />
 
+          {/* Column headings, desktop only — on a phone each row labels itself, the
+              same shape as the StockCheckModal counting list. Per-row <Label>s used
+              to do this job, but hidden on mobile from the second row down (`sr-only
+              sm:not-sr-only`), which is backwards: it is exactly when the fields
+              stack that they need naming. */}
+          <div className="hidden px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:flex sm:items-center sm:gap-2">
+            <span className="min-w-0 flex-1">Product</span>
+            <span className="w-24 text-center">Available</span>
+            <span className="w-24 text-center">Return Qty</span>
+            <span className="w-8 shrink-0" aria-hidden />
+          </div>
+
           {/* Product rows */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             {returnRows.map((row, i) => {
               const stock = byId.get(row.productId) ?? null;
               const available = stock?.balance ?? 0;
@@ -202,15 +230,31 @@ export function ReturnItemsModal({
               const exceeds = !!stock && qty > available;
 
               return (
-                <div key={i} className="rounded-lg border bg-card p-3 sm:border-0 sm:bg-transparent sm:p-0">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <Label className={i === 0 ? undefined : 'sr-only sm:not-sr-only'}>Product</Label>
+                <div
+                  key={i}
+                  className={cn(
+                    'rounded-lg border bg-card p-2 sm:border-0 sm:bg-transparent sm:p-1',
+                    // A ring rather than a tint, so the offending card is findable
+                    // without scrolling to its message. Desktop keeps the message
+                    // alone — there is no card there to ring.
+                    exceeds && 'ring-2 ring-destructive/40 sm:ring-0',
+                  )}
+                >
+                  {/* Phone: product picker on its own line, then available / qty /
+                      remove on a second line. Three stacked full-width fields per
+                      row put Save an entire screen away by the third product.
+                      Desktop is unchanged — `sm:contents` dissolves the second-line
+                      wrapper so its fields become columns under the headings. */}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                    <div className="min-w-0 flex-1">
                       <Select
                         value={row.productId || null}
                         onValueChange={(v) => v && setRowProduct(i, v as string)}
                       >
-                        <SelectTrigger className="w-full">
+                        {/* min-h, not h: the trigger's own `h-8` is variant-prefixed
+                            (`data-[size=default]:h-8`), so a plain `h-10` lands in a
+                            different tailwind-merge group and loses to it. */}
+                        <SelectTrigger aria-label="Product" className="min-h-10 w-full sm:min-h-8">
                           <SelectValue placeholder={returnable.length ? 'Select a product…' : 'No products in stock'} />
                         </SelectTrigger>
                         <SelectContent>
@@ -223,13 +267,21 @@ export function ReturnItemsModal({
                       </Select>
                     </div>
 
-                    <div className="w-full space-y-1 sm:w-28">
-                      <Label className={i === 0 ? undefined : 'sr-only sm:not-sr-only'}>Available</Label>
-                      <Input value={stock ? String(available) : ''} readOnly disabled placeholder="—" className="text-center tabular-nums" />
-                    </div>
+                    <div className="flex items-center gap-2 sm:contents">
+                      {/* Available reads as inline text on a phone and as the bordered
+                          box on desktop, where it has a heading to sit under. */}
+                      <span className="shrink-0 text-xs text-muted-foreground sm:hidden">
+                        Available{' '}
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {stock ? available : '—'}
+                        </span>
+                      </span>
+                      <div className="hidden h-8 w-24 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-sm tabular-nums text-muted-foreground sm:flex">
+                        {stock ? available : '—'}
+                      </div>
 
-                    <div className="w-full space-y-1 sm:w-28">
-                      <Label className={i === 0 ? undefined : 'sr-only sm:not-sr-only'}>Return Qty</Label>
+                      {/* h-10 for a thumb-sized target; text-base (16px) stops iOS
+                          zooming the sheet on focus. Desktop keeps the h-8 scale. */}
                       <Input
                         type="text"
                         inputMode="numeric"
@@ -241,25 +293,25 @@ export function ReturnItemsModal({
                         onChange={(e) => setRowQty(i, e.target.value)}
                         onFocus={(e) => e.currentTarget.select()}
                         disabled={!stock}
-                        className="text-center text-base tabular-nums sm:text-sm"
+                        className="ml-auto h-10 w-20 shrink-0 text-center text-base tabular-nums sm:ml-0 sm:h-8 sm:w-24 sm:text-sm"
                       />
-                    </div>
 
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Remove this product"
-                      onClick={() => removeRow(i)}
-                      disabled={submitting}
-                      className="shrink-0 self-end text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remove this product"
+                        onClick={() => removeRow(i)}
+                        disabled={submitting}
+                        className="size-10 shrink-0 text-muted-foreground hover:text-destructive sm:size-8"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   {exceeds && (
-                    <p className="mt-1 text-sm font-medium text-red-700 dark:text-red-400">
+                    <p className="mt-1.5 text-xs font-medium text-red-700 sm:text-sm dark:text-red-400">
                       ❌ {stock!.productName}: cannot return more than {available} in stock.
                     </p>
                   )}
@@ -271,9 +323,9 @@ export function ReturnItemsModal({
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={addRow}
             disabled={submitting || returnRows.length >= returnable.length}
+            className="h-10 w-full sm:h-7 sm:w-auto sm:px-2.5 sm:text-[0.8rem]"
           >
             <Plus className="mr-1 h-4 w-4" /> Add Item
           </Button>
@@ -296,10 +348,16 @@ export function ReturnItemsModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+              className="h-10 sm:h-8"
+            >
               Cancel
             </Button>
-            <Button type="button" onClick={onSave} disabled={!valid || submitting}>
+            <Button type="button" onClick={onSave} disabled={!valid || submitting} className="h-10 sm:h-8">
               <RotateCcw className="mr-1.5 h-4 w-4" /> {submitting ? 'Saving…' : 'Save Return'}
             </Button>
           </div>
