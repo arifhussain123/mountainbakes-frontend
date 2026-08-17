@@ -8,7 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { Separator } from '@/components/ui/separator';
@@ -37,6 +44,19 @@ function sanitizeQty(raw: string): string {
 function parseQty(raw: string): number {
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Search matches the stock code or the product name, case-insensitively — the same
+ * two fields the Stock table itself searches on, and the same shape as SaleForm's
+ * `productMatchesQuery`. Passed to the Combobox's `filter` so search stays correct
+ * independent of how the row renders its label.
+ */
+function stockMatchesQuery(r: StockRow | null, query: string): boolean {
+  if (r == null) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return r.stockCode.toLowerCase().includes(q) || r.productName.toLowerCase().includes(q);
 }
 
 export function ReturnItemsModal({
@@ -246,25 +266,47 @@ export function ReturnItemsModal({
                       Desktop is unchanged — `sm:contents` dissolves the second-line
                       wrapper so its fields become columns under the headings. */}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                    {/* A Combobox, not a Select — the same picker SaleForm uses for
+                        the same job. The Select dropdown does not open at all inside
+                        this bottom sheet on Android Chrome (reported from the shop
+                        floor; not reproducible in headless Chrome at any viewport,
+                        row position or scroll offset, so the mechanism is unproven).
+                        Combobox is the picker this app already runs on a phone all
+                        day in Sales, and it brings search, which a long product list
+                        wants anyway. */}
                     <div className="min-w-0 flex-1">
-                      <Select
-                        value={row.productId || null}
-                        onValueChange={(v) => v && setRowProduct(i, v as string)}
+                      <Combobox
+                        items={optionsForRow(i)}
+                        filter={stockMatchesQuery}
+                        value={stock}
+                        onValueChange={(r: StockRow | null) => setRowProduct(i, r?.productId ?? '')}
+                        itemToStringLabel={(r: StockRow) => r.productName}
+                        itemToStringValue={(r: StockRow) => r.productId}
+                        isItemEqualToValue={(a: StockRow, b: StockRow) => a?.productId === b?.productId}
                       >
-                        {/* min-h, not h: the trigger's own `h-8` is variant-prefixed
-                            (`data-[size=default]:h-8`), so a plain `h-10` lands in a
-                            different tailwind-merge group and loses to it. */}
-                        <SelectTrigger aria-label="Product" className="min-h-10 w-full sm:min-h-8">
-                          <SelectValue placeholder={returnable.length ? 'Select a product…' : 'No products in stock'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {optionsForRow(i).map((r) => (
-                            <SelectItem key={r.productId} value={r.productId}>
-                              {r.productName} — {r.balance} in stock
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        <ComboboxInput
+                          aria-label="Product"
+                          disabled={returnable.length === 0}
+                          placeholder={returnable.length ? 'Search product…' : 'No products in stock'}
+                          // 16px on the phone, or Chrome/Safari zoom the sheet on focus.
+                          className="text-base sm:h-8 sm:text-sm"
+                        />
+                        <ComboboxContent>
+                          <ComboboxEmpty>No products found.</ComboboxEmpty>
+                          <ComboboxList>
+                            {(r: StockRow) => (
+                              <ComboboxItem key={r.productId} value={r}>
+                                <div className="flex flex-1 flex-col">
+                                  <span className="font-medium">{r.productName}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {r.stockCode} · {r.balance} in stock
+                                  </span>
+                                </div>
+                              </ComboboxItem>
+                            )}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
                     </div>
 
                     <div className="flex items-center gap-2 sm:contents">
