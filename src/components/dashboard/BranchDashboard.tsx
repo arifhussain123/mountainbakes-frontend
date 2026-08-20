@@ -121,13 +121,20 @@ export function BranchDashboard() {
         </Card>
       </div>
 
-      {/* Day-by-day stock ledger. Sits under Budget because the two are read
-          together at closing time — what was taken against what is left. */}
-      <BranchStockHistoryCard days={stockDays} onDaysChange={setStockDays} branchId={user?.branchId ?? null} />
+      {/* Stock, two ways, side by side: the ledger day by day, and one day of it
+          opened out line by line. Both read the same movements, so a figure
+          picked out of the history on the left can be understood from the
+          statement on the right without leaving the screen.
 
-      {/* The single-day statement behind the history above: same ledger, opened
-          out line by line for one date. */}
-      <BranchDailyStockCard date={stockDate} onDateChange={setStockDate} branchId={user?.branchId ?? null} />
+          Paired only at `xl`. Each card holds a table that is already near its
+          natural width at full span — the history card alone carries six figure
+          groups — so splitting them 50/50 any earlier would leave both scrolling
+          sideways on an ordinary laptop. Below `xl` they stack full width and
+          behave exactly as they did apart. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <BranchStockHistoryCard days={stockDays} onDaysChange={setStockDays} branchId={user?.branchId ?? null} />
+        <BranchDailyStockCard date={stockDate} onDateChange={setStockDate} branchId={user?.branchId ?? null} />
+      </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
