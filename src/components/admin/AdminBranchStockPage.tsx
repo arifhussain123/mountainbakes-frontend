@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 import { Plus, RotateCcw, Save, Search, Trash2 } from 'lucide-react';
 import { AddBranchStockModal } from './AddBranchStockModal';
 import { DeleteBranchStockDialog } from './DeleteBranchStockDialog';
+import { AllBranchesStockSummary } from './AllBranchesStockSummary';
+import { BranchStockHistoryCard } from '@/components/dashboard/BranchStockHistoryCard';
 
 /**
  * Admin → Branch Stock. Direct control over any branch's stock ledger.
@@ -65,6 +67,20 @@ const SENT_KEYS = ['opening', 'newQty', 'sold', 'returned', 'adjustment'] as con
 const COUNT_KEYS = ['opening', 'newQty', 'sold', 'returned', 'balance'] as const;
 
 type Draft = Record<FigureKey, string>;
+
+/**
+ * The branch-picker value meaning "every branch at once".
+ *
+ * A sentinel in the same Select rather than a separate tab, because the question
+ * it answers is the same one the page already asks — what is the stock — only
+ * widened. It is deliberately not a uuid, so it can never collide with a branch
+ * id.
+ *
+ * Editing is per-branch by nature (a correction targets one branch's ledger), so
+ * selecting it swaps the editable table for the branch-wise summary rather than
+ * leaving inputs on screen with nowhere to write.
+ */
+const ALL_BRANCHES = 'all';
 
 const COLUMNS: { key: FigureKey; label: string; signed: boolean }[] = [
   { key: 'opening', label: 'Opening', signed: false },
@@ -146,6 +162,9 @@ export function AdminBranchStockPage() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StockRow | null>(null);
+  // Shared by both history views, so switching between one branch and all of them
+  // keeps the window the admin chose rather than snapping back to a week.
+  const [historyDays, setHistoryDays] = useState(7);
 
   // First branch as the default, once the list arrives. React's documented
   // render-time adjustment rather than an effect — an effect would render the
@@ -156,7 +175,17 @@ export function AdminBranchStockPage() {
     setBranchId(branches[0].id);
   }
 
-  const { data: rows = [], isPending, isFetching, refetch } = useAdminStockRows(token ?? '', { branchId, date });
+  // Every editing affordance below keys off this: with "All branches" selected
+  // there is no single ledger to write to.
+  const editing = !!branchId && branchId !== ALL_BRANCHES;
+
+  const { data: rows = [], isPending, isFetching, refetch } = useAdminStockRows(token ?? '', {
+    branchId,
+    date,
+    // ALL_BRANCHES is truthy, so the hook's own `!!branchId` guard would let it
+    // fire and ask the API for a branch called "all".
+    enabled: editing,
+  });
   // The same bridge the branch's own Stock page uses: a Production approval or a
   // sale landing while this page is open invalidates the whole ['stock'] prefix,
   // which this page's key sits under.
@@ -296,6 +325,7 @@ export function AdminBranchStockPage() {
               <SelectValue placeholder={branchesPending ? 'Loading…' : 'Choose a branch'} />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={ALL_BRANCHES}>All branches</SelectItem>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
               ))}
@@ -303,6 +333,10 @@ export function AdminBranchStockPage() {
           </Select>
         </div>
 
+        {/* Date, search and reason all describe an edit to ONE branch's ledger.
+            Under "All branches" they have nothing to act on, so they go rather
+            than sit there inviting input that cannot be saved. */}
+        {editing && (
         <div className="space-y-1">
           <Label htmlFor="stock-date">Business date</Label>
           {/* Past dates are editable too — a correction is filed against the day it
@@ -316,7 +350,9 @@ export function AdminBranchStockPage() {
             onChange={(e) => { setDate(e.target.value || businessDateStr()); resetDrafts(); }}
           />
         </div>
+        )}
 
+        {editing && (
         <div className="space-y-1">
           <Label htmlFor="stock-search">Search</Label>
           <div className="relative">
@@ -330,7 +366,9 @@ export function AdminBranchStockPage() {
             />
           </div>
         </div>
+        )}
 
+        {editing && (
         <div className="space-y-1">
           <Label htmlFor="stock-reason">Reason (optional)</Label>
           {/* Rides along on the notification the branch receives, so a figure that
@@ -343,9 +381,14 @@ export function AdminBranchStockPage() {
             onChange={(e) => setReason(e.target.value)}
           />
         </div>
+        )}
       </div>
 
       {/* ── Actions ────────────────────────────────────────────────────────── */}
+      {/* Hidden rather than disabled under "All branches": a row of greyed-out
+          buttons reads as "you lack permission", when the truth is that the view
+          simply has no single branch to write to. */}
+      {editing && (
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => setAddOpen(true)} disabled={!branchId || busy}>
           <Plus className="mr-1.5 h-4 w-4" /> Add Stock
@@ -365,9 +408,15 @@ export function AdminBranchStockPage() {
           {dirtyRows.length > 0 && ` · ${dirtyRows.length} unsaved`}
         </p>
       </div>
+      )}
 
       {/* ── The ledger ─────────────────────────────────────────────────────── */}
-      {!branchId ? (
+      {branchId === ALL_BRANCHES ? (
+        // Branch-wise: one row per branch over the window, with a company total.
+        // The per-product editor is not shown, because a correction targets one
+        // branch's ledger and there is no way to say which from here.
+        <AllBranchesStockSummary days={historyDays} onDaysChange={setHistoryDays} />
+      ) : !branchId ? (
         <EmptyState title="Choose a branch" description="Pick a branch to load and edit its stock." />
       ) : isPending ? (
         <Skeleton className="h-96 w-full" />
@@ -504,6 +553,15 @@ export function AdminBranchStockPage() {
             })}
           </div>
         </>
+      )}
+
+      {/* Day-by-day ledger for the selected branch — the activity behind the
+          figures in the table above. The SAME component the Branch Dashboard
+          renders, pointed at the branch chosen here: one implementation, so the
+          admin and the branch manager cannot be shown different histories of the
+          same days. */}
+      {editing && (
+        <BranchStockHistoryCard days={historyDays} onDaysChange={setHistoryDays} branchId={branchId} />
       )}
 
       <AddBranchStockModal

@@ -17,6 +17,7 @@ import type {
   ApproveBranchUserRequestInput,
   Branch,
   BranchStockHistoryRow,
+  BranchStockSummaryResult,
   BranchProductionOrder,
   BranchUserRequest,
   CreateBranchUserRequestInput,
@@ -361,6 +362,59 @@ export function useBranchStockHistory(
         token,
       );
     },
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Branch Daily Stock: the single-day statement — Previous balance, New Stock,
+ * Sale, Remaining — for one business date.
+ *
+ * `retry: false` unlike the defaults. The API answers a date it cannot derive
+ * (in the future, or past the 365-day reach of the backwards walk) with a 400
+ * carrying the reason, and that is a final answer — retrying it three times just
+ * delays showing the user why their date did not work.
+ */
+export function useBranchStockDay(
+  token: string,
+  opts: { branchId?: string | null; date: string; enabled?: boolean },
+) {
+  const { branchId, date } = opts;
+  return useQuery({
+    queryKey: qk.stockDay(branchId, date),
+    queryFn: () => {
+      const params = new URLSearchParams({ date });
+      if (branchId) params.set('branchId', branchId);
+      return apiCall<{ row: BranchStockHistoryRow; date: string }>(
+        `/api/stock/history?${params.toString()}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.row,
+    enabled: !!token && !!date && (opts.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+    retry: false,
+  });
+}
+
+/**
+ * Admin → Branch Stock, "All branches": one row per branch, totalled over the
+ * window, rather than one row per day for a single branch.
+ *
+ * Super-admin only server-side, so `enabled` matters — a branch account mounting
+ * this would take a 403 for a screen it cannot reach anyway.
+ */
+export function useAllBranchesStockSummary(
+  token: string,
+  opts?: { days?: number; enabled?: boolean },
+) {
+  const days = opts?.days ?? 7;
+  return useQuery({
+    queryKey: qk.stockSummary(days),
+    queryFn: () =>
+      apiCall<BranchStockSummaryResult>(`/api/stock/history/branches?days=${days}`, {}, token),
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
   });

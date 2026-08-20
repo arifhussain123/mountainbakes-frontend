@@ -41,6 +41,14 @@ export const qk = {
   // answers, not the same one at a different zoom.
   stockHistory: (branchId?: string | null, days?: number | null) =>
     ['stock', 'history', branchId ?? 'me', days ?? 7] as const,
+  // Admin → Branch Stock, "All branches". Same ['stock'] prefix as its siblings
+  // so one invalidation refreshes every stock view; keyed by window length only,
+  // because the row set is every branch by definition.
+  stockSummary: (days?: number | null) => ['stock', 'summary', days ?? 7] as const,
+  // Branch Daily Stock — ONE business day, keyed by that date. Under the
+  // ['stock'] prefix with the rest, so a movement invalidates it too.
+  stockDay: (branchId?: string | null, date?: string | null) =>
+    ['stock', 'day', branchId ?? 'me', date ?? 'today'] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
