@@ -54,6 +54,19 @@ export const ROUTES = {
   BRANCH_NEW_ORDERS: '/branch-new-orders',
   BRANCH_SALES: '/branch-sales',
   BRANCH_STOCK: '/branch-stock',
+  /**
+   * Branch → Daily Stock. One business day as a statement: previous balance
+   * brought forward, new stock, sales, closing balance.
+   *
+   * The path is '/branch-daily-stock', NOT '/branch-stock-daily'. RouteGuard
+   * decides a shift account's access with
+   * `BRANCH_USER_NAV.some(item => pathname.startsWith(item.href))`, and
+   * BRANCH_USER_NAV contains '/branch-stock' — so anything spelled
+   * '/branch-stock…' would match that prefix and hand this page to branch_user
+   * silently, without being listed in their nav. Keep the distinguishing word
+   * first.
+   */
+  BRANCH_DAILY_STOCK: '/branch-daily-stock',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
