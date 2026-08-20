@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 import { loadEnvConfig } from "@next/env";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Standalone app: env lives in this folder (frontend/.env.local), not the repo root.
 loadEnvConfig(process.cwd());
@@ -15,6 +17,29 @@ loadEnvConfig(process.cwd());
 // handlers are gone and the session lives entirely in the browser (Supabase,
 // localStorage).
 
+/**
+ * The build stamp, reused as the deployment id so every asset URL moves per build.
+ *
+ * `scripts/generate-version.mjs` runs immediately before `next build` in both the
+ * `build` and `deploy` scripts, so this file is always fresh by the time the
+ * config is loaded. Reading it here rather than minting a second id keeps one
+ * value identifying a release: what /version.json reports is what the assets
+ * carry.
+ *
+ * Absent in `next dev` (the generator is not part of that script) and in a fresh
+ * clone that has not built yet — both fall back to no deployment id at all,
+ * which is the behaviour this project had before.
+ */
+function buildStamp(): string | undefined {
+  try {
+    const raw = readFileSync(join(process.cwd(), "public", "version.json"), "utf8");
+    const { buildId } = JSON.parse(raw) as { buildId?: string };
+    return buildId || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const nextConfig: NextConfig = {
   // Static export (CSR). Every route is pre-rendered to a plain .html shell at
   // build time and everything else happens in the browser, so the output can be
@@ -26,6 +51,25 @@ const nextConfig: NextConfig = {
   // `next build` into a hard error. Route guarding is done by
   // src/components/auth/RouteGuard.tsx instead.
   output: 'export',
+
+  // Append `?dpl=<buildId>` to every static asset URL.
+  //
+  // Next hashes chunk filenames by CONTENT, so a file whose source did not change
+  // keeps its name across builds — which is normally the point, and is why
+  // firebase.json serves /_next/static/** as `immutable` for a year. The cost is
+  // that a client holding a stale copy of an unchanged chunk has no reason to
+  // ever refetch it, and the service worker's cache-first rule for /_next/static/
+  // compounds it: a cached entry for that URL is served forever.
+  //
+  // That combination is how a tab ends up running a mix of old and new code after
+  // a deploy. Keying every asset URL to the build makes each release's assets a
+  // distinct cache entry in BOTH caches, so a reload after a deploy can only ever
+  // fetch that deploy's code. Cache-busting by URL, not by filename — the hashes
+  // themselves are still content-derived and still correct.
+  //
+  // Old entries are not orphaned forever: bumping VERSION in public/sw.js drops
+  // the previous runtime cache wholesale on activate.
+  deploymentId: buildStamp(),
 
   // Emit out/login/index.html rather than out/login.html, so every route is served
   // by a plain directory-index lookup on the host.

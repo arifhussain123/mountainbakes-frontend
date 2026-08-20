@@ -11,7 +11,11 @@
 
 // Bumped whenever the caching rules change, which drops the previous caches on
 // activate. v3: navigations are cached, so offline actually reaches the app.
-const VERSION = 'v3';
+// v4: purge. Asset URLs now carry `?dpl=<buildId>` (next.config.ts), so a release
+// can no longer serve a client a stale chunk it happens to be holding — but the
+// entries cached under the OLD, unkeyed URLs would otherwise sit here forever.
+// Bumping the version is what actually evicts them.
+const VERSION = 'v4';
 const PRECACHE = `mb-precache-${VERSION}`;
 const RUNTIME = `mb-runtime-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
