@@ -67,6 +67,10 @@ const ADMIN_PREFIXES = [
   '/settings',
   '/price-list',
   '/price-history',
+  // Admin → Branch Stock. Same reason '/geofencing' is spelled out below: the
+  // screen edits branch data but is admin-only, and naming it '/branch-…' would
+  // have handed it to the '/branch-' rule and locked admins out of it.
+  '/stock-control',
   // Admin → Branch Locations. Named '/geofencing' rather than '/branch-locations'
   // precisely so it does not collide with the '/branch-' rule below, which would
   // have bounced super admins off their own screen. See ROUTES.BRANCH_LOCATIONS.

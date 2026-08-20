@@ -38,6 +38,7 @@ import type {
   UpsertBranchLocationInput,
   ReportSummary,
   StockRow,
+  StockFigures,
   ConsolidatedDemandRow,
   EventBranchDemand,
   EventDashboardSummary,
@@ -329,6 +330,109 @@ export function useStock(token: string, opts?: { branchId?: string | null; enabl
     },
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Admin → Branch Stock: the same derived rows as `useStockRows`, for ANY branch on
+ * ANY business date.
+ *
+ * A separate hook rather than a `date` option on `useStockRows`, because the two
+ * want opposite cache behaviour. `useStockRows` is today's live figures for the
+ * signed-in branch and is shared with `useStock`'s balance map under one key; this
+ * one is keyed by (branch, date) so switching either does not serve the previous
+ * pair's numbers while the new ones load. `staleTime: 0` for the same reason the
+ * page exists — an admin about to overwrite a figure must be looking at the
+ * current one, not a cached one from before someone else's sale.
+ */
+export function useAdminStockRows(
+  token: string,
+  opts: { branchId?: string | null; date?: string | null; enabled?: boolean },
+) {
+  const { branchId, date } = opts;
+  return useQuery({
+    queryKey: qk.adminStock(branchId, date),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (branchId) params.set('branchId', branchId);
+      if (date) params.set('date', date);
+      return apiCall<{ rows: StockRow[]; date: string }>(`/api/stock?${params.toString()}`, {}, token);
+    },
+    select: (r) => r.rows ?? [],
+    enabled: !!token && !!branchId && (opts.enabled ?? true),
+    staleTime: 0,
+  });
+}
+
+/** One product's target figures in an admin save. Mirrors AdminStockRowInput. */
+export interface AdminStockRowEdit {
+  productId: string;
+  opening?: number;
+  newQty?: number;
+  sold?: number;
+  returned?: number;
+  adjustment?: number;
+  balance?: number;
+}
+
+/**
+ * What PATCH /api/stock/admin reports back. Partial saves are possible and named:
+ * `saved` is what the correction engine accepted (with `applied: false` for a row
+ * whose figures already matched — a no-op, not a failure), `failed` is every row
+ * it refused and why.
+ */
+export interface AdminStockSaveResult {
+  branchId: string;
+  date: string;
+  changedCount: number;
+  saved: { productId: string; productName: string; applied: boolean; before: StockFigures; after: StockFigures }[];
+  failed: { productId: string; productName: string; error: string }[];
+}
+
+/**
+ * Save edited stock figures for one or many products in one branch.
+ *
+ * Invalidates the bare ['stock'] prefix rather than this page's key alone: the
+ * branch's own Stock page, the production Branch Stock matrix and every balance
+ * map read from the same prefix, and all of them are now wrong.
+ */
+export function useSaveAdminStock(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { branchId: string; date?: string; reason?: string; rows: AdminStockRowEdit[] }) =>
+      apiCall<AdminStockSaveResult>(
+        '/api/stock/admin',
+        { method: 'PATCH', body: JSON.stringify(v) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+    },
+  });
+}
+
+/**
+ * Remove a product's stock from a branch.
+ *
+ * `mode: 'zero'` corrects the balance to 0 and keeps the ledger — the reversible
+ * one, and the default. `mode: 'purge'` DELETES the stock row and its entire
+ * movement history for that branch; it cannot be undone and it restates any past
+ * figure derived from those movements. The caller is expected to have confirmed.
+ */
+export function useDeleteAdminStock(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { branchId: string; productId: string; mode: 'zero' | 'purge'; date?: string; reason?: string }) =>
+      apiCall<{ mode: 'zero' | 'purge'; productId: string; productName: string }>(
+        '/api/stock/admin/delete',
+        { method: 'POST', body: JSON.stringify(v) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+    },
   });
 }
 

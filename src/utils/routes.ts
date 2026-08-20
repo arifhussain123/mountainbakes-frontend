@@ -20,6 +20,16 @@ export const ROUTES = {
    * /api/branch-locations; only this app's own URL had to move.
    */
   BRANCH_LOCATIONS: '/geofencing',
+  /**
+   * Admin → Branch Stock. Direct control over any branch's stock ledger.
+   *
+   * The path is '/stock-control', NOT '/branch-stock-admin' or anything else
+   * beginning '/branch-': RouteGuard maps every '/branch-' prefix to the branch
+   * roles, so an admin screen under it would bounce a super admin to their own
+   * home page — the exact trap BRANCH_LOCATIONS documents above. '/branch-stock'
+   * itself is taken by the branch's own read-only page.
+   */
+  STOCK_CONTROL: '/stock-control',
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',

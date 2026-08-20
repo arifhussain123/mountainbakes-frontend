@@ -48,6 +48,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Customers',       href: ROUTES.CUSTOMERS,        icon: Users },
   { label: 'Branches',        href: ROUTES.BRANCHES,         icon: Store },
   { label: 'Branch Locations', href: ROUTES.BRANCH_LOCATIONS, icon: MapPin },
+  { label: 'Branch Stock',    href: ROUTES.STOCK_CONTROL,   icon: Boxes },
   { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
   { label: 'Special Events',  href: ROUTES.SPECIAL_EVENTS,   icon: CalendarDays },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },

@@ -27,6 +27,13 @@ export const qk = {
   reportSummary: (period: string, branchId?: string | null) =>
     ['reportSummary', period, branchId ?? null] as const,
   stock: (branchId?: string | null) => ['stock', branchId ?? 'me'] as const,
+  // Admin → Branch Stock. A SEPARATE key from `stock` above because it is
+  // date-scoped: the admin page reads any branch on any past business day, and
+  // serving one date's figures for another is a reconciliation bug. It still
+  // sits under the ['stock'] prefix, so `useStockRealtime`'s prefix
+  // invalidation reaches it exactly as it reaches the branch's own page.
+  adminStock: (branchId?: string | null, date?: string | null) =>
+    ['stock', 'admin', branchId ?? 'none', date ?? 'today'] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,

@@ -24,6 +24,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.CUSTOMERS]: 'Customers',
   [ROUTES.BRANCHES]: 'Branches',
   [ROUTES.BRANCH_LOCATIONS]: 'Branch Locations',
+  [ROUTES.STOCK_CONTROL]: 'Branch Stock Control',
   [ROUTES.REPORTS]: 'Reports & Analytics',
   [ROUTES.SUPPORT_CENTER]: 'Support Center',
   [ROUTES.NOTIFICATION_RECIPIENTS]: 'Notification Recipients',
