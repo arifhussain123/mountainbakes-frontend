@@ -13,7 +13,7 @@ import {
 } from '@tanstack/react-table';
 import { useState } from 'react';
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,6 +84,19 @@ export function DataTable<TData>({
 
   const cards = mobileLayout === 'cards';
   const emptyHint = globalFilter ? 'Try a different search term.' : undefined;
+
+  /**
+   * Whether any visible column asked for a totals row.
+   *
+   * A footer is handed the whole `table`, so what it sums is the footer's own
+   * choice — but the useful choice is `getFilteredRowModel()`, NOT
+   * `getRowModel()`. `getRowModel()` is the CURRENT PAGE, so on a paginated
+   * table it would show a total that changes as you page through, which reads
+   * exactly like a bug. Filtered rows means the total tracks the search box —
+   * search "cake" and the total is the cakes — which is what someone typing in
+   * that box is asking for.
+   */
+  const hasFooter = table.getAllLeafColumns().some((c) => c.getIsVisible() && c.columnDef.footer != null);
 
   return (
     <div className="space-y-4">
@@ -169,6 +182,28 @@ export function DataTable<TData>({
               ))
             )}
           </TableBody>
+
+          {/* Totals row. Rendered only when a column actually defines `footer`,
+              so every existing table is untouched.
+              A footer sums whatever it is given — see the note on `hasFooter`
+              below for WHICH rows that is, because the honest answer is not
+              "all of them" once a search box and pagination are in play. */}
+          {hasFooter && !loading && table.getRowModel().rows.length > 0 && (
+            <TableFooter>
+              {table.getFooterGroups().map((fg) => (
+                <TableRow key={fg.id} className="hover:bg-transparent">
+                  {fg.headers.map((h) => (
+                    <TableCell
+                      key={h.id}
+                      className={cn('font-semibold', alignClass(h.column.columnDef.meta?.align))}
+                    >
+                      {h.isPlaceholder ? null : flexRender(h.column.columnDef.footer, h.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableFooter>
+          )}
         </Table>
       </div>
 
@@ -183,6 +218,7 @@ export function DataTable<TData>({
             table={table}
             loading={loading}
             empty={empty ?? <EmptyState title="No results found" description={emptyHint} />}
+            showFooter={hasFooter}
           />
         </div>
       )}
@@ -232,10 +268,13 @@ function DataTableCards<TData>({
   table,
   loading,
   empty,
+  showFooter,
 }: {
   table: TanstackTable<TData>;
   loading?: boolean;
   empty: React.ReactNode;
+  /** Append a totals card mirroring the desktop `<tfoot>`. */
+  showFooter?: boolean;
 }) {
   if (loading) {
     return (
@@ -327,6 +366,43 @@ function DataTableCards<TData>({
           </div>
         );
       })}
+
+      {/* Totals, mirroring the desktop <tfoot>. Without this the phone layout
+          would be the one place the total is missing — and a phone is where a
+          branch manager actually reads this table.
+
+          Only FIGURE columns are listed. A column with no footer (the product
+          name) would render an empty label:value pair, and an identity column
+          whose footer is just the row's label ("Total" on the ID column, which
+          the desktop <tfoot> needs at its far left) would render as
+          "ID: Total" — noise in a list that is meant to be numbers. Identity
+          columns are exactly the ones bucketed as the card's title/subtitle, so
+          that annotation is what filters them. */}
+      {showFooter && (
+        <div className="rounded-lg border bg-muted/50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</p>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            {table.getFooterGroups().flatMap((fg) =>
+              fg.headers
+                .filter((h) => {
+                  if (h.isPlaceholder || h.column.columnDef.footer == null) return false;
+                  const slot = h.column.columnDef.meta?.mobile;
+                  return slot !== 'title' && slot !== 'subtitle';
+                })
+                .map((h) => (
+                  <div key={h.id} className="flex items-baseline justify-between gap-2">
+                    <dt className="shrink-0 text-muted-foreground">
+                      {flexRender(h.column.columnDef.header, h.getContext())}
+                    </dt>
+                    <dd className="min-w-0 text-right font-semibold tabular-nums">
+                      {flexRender(h.column.columnDef.footer, h.getContext())}
+                    </dd>
+                  </div>
+                )),
+            )}
+          </dl>
+        </div>
+      )}
     </div>
   );
 }
