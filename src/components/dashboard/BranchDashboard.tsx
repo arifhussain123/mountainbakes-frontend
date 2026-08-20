@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import dynamic from 'next/dynamic';
 import { RecentOrdersTable } from './RecentOrdersTable';
+import { BranchStockHistoryCard } from './BranchStockHistoryCard';
 import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
 import { ShoppingCart, DollarSign, Receipt, TrendingUp, Percent } from 'lucide-react';
 
@@ -29,6 +30,11 @@ export function BranchDashboard() {
   const { token, user } = useAuth();
   const { settings } = useSettings();
   const [period, setPeriod] = useState('daily');
+  // Its own state, not derived from `period`. The period select drives money
+  // figures for one window; the stock card is a day-by-day ledger and a branch
+  // manager reading it wants to change its depth without also reframing every
+  // stat above it.
+  const [stockDays, setStockDays] = useState(7);
 
   const cur = settings?.currencySymbol || 'Rs.';
 
@@ -108,6 +114,10 @@ export function BranchDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Day-by-day stock ledger. Sits under Budget because the two are read
+          together at closing time — what was taken against what is left. */}
+      <BranchStockHistoryCard days={stockDays} onDaysChange={setStockDays} branchId={user?.branchId ?? null} />
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

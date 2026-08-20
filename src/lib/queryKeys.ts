@@ -34,6 +34,13 @@ export const qk = {
   // invalidation reaches it exactly as it reaches the branch's own page.
   adminStock: (branchId?: string | null, date?: string | null) =>
     ['stock', 'admin', branchId ?? 'none', date ?? 'today'] as const,
+  // Branch Dashboard → Branch Stock History. Under the ['stock'] prefix for the
+  // same reason `adminStock` is: a sale or a Production approval invalidates the
+  // whole prefix, and this card is reading the ledger those movements land in.
+  // Keyed by window length as well as branch — 7 days and 30 days are different
+  // answers, not the same one at a different zoom.
+  stockHistory: (branchId?: string | null, days?: number | null) =>
+    ['stock', 'history', branchId ?? 'me', days ?? 7] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,

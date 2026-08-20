@@ -16,6 +16,7 @@ import { businessDayBounds } from '@mb/shared';
 import type {
   ApproveBranchUserRequestInput,
   Branch,
+  BranchStockHistoryRow,
   BranchProductionOrder,
   BranchUserRequest,
   CreateBranchUserRequestInput,
@@ -327,6 +328,38 @@ export function useStock(token: string, opts?: { branchId?: string | null; enabl
       const map: Record<string, number> = {};
       for (const row of r.rows ?? []) map[row.productId] = row.balance;
       return map;
+    },
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Branch Dashboard → Branch Stock History: one row per business day rather than
+ * one per product — Previous / New / Sold / Remaining in units and money.
+ *
+ * Its own key (not `qk.stock`) because the shape is different and the window
+ * length is part of the answer, but under the same ['stock'] prefix so the
+ * realtime invalidation that refreshes the Stock page refreshes this too.
+ * `branchId` is omitted for a branch account — the API takes the branch off the
+ * JWT and refuses any other.
+ */
+export function useBranchStockHistory(
+  token: string,
+  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
+) {
+  const branchId = opts?.branchId;
+  const days = opts?.days ?? 7;
+  return useQuery({
+    queryKey: qk.stockHistory(branchId, days),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (branchId) params.set('branchId', branchId);
+      return apiCall<{ rows: BranchStockHistoryRow[]; from: string; to: string; capped: boolean }>(
+        `/api/stock/history?${params.toString()}`,
+        {},
+        token,
+      );
     },
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
