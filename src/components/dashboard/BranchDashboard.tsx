@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useReportSummary } from '@/lib/queries';
+import { businessDateStr } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import dynamic from 'next/dynamic';
 import { RecentOrdersTable } from './RecentOrdersTable';
 import { BranchStockHistoryCard } from './BranchStockHistoryCard';
+import { BranchDailyStockCard } from './BranchDailyStockCard';
 import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
 import { ShoppingCart, DollarSign, Receipt, TrendingUp, Percent } from 'lucide-react';
 
@@ -35,6 +37,10 @@ export function BranchDashboard() {
   // manager reading it wants to change its depth without also reframing every
   // stat above it.
   const [stockDays, setStockDays] = useState(7);
+  // The day the Stock Detail statement is showing. Owned here rather than inside
+  // the card so it survives a re-render of the dashboard and can later drive
+  // anything else that wants the same day.
+  const [stockDate, setStockDate] = useState(businessDateStr());
 
   const cur = settings?.currencySymbol || 'Rs.';
 
@@ -118,6 +124,10 @@ export function BranchDashboard() {
       {/* Day-by-day stock ledger. Sits under Budget because the two are read
           together at closing time — what was taken against what is left. */}
       <BranchStockHistoryCard days={stockDays} onDaysChange={setStockDays} branchId={user?.branchId ?? null} />
+
+      {/* The single-day statement behind the history above: same ledger, opened
+          out line by line for one date. */}
+      <BranchDailyStockCard date={stockDate} onDateChange={setStockDate} branchId={user?.branchId ?? null} />
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

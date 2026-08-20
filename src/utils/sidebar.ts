@@ -93,11 +93,6 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'New Orders',    href: ROUTES.BRANCH_NEW_ORDERS,  icon: ClipboardList },
   { label: 'Sales',         href: ROUTES.BRANCH_SALES,       icon: ShoppingCart },
   { label: 'Stock',         href: ROUTES.BRANCH_STOCK,       icon: Boxes },
-  // Manager-only, so deliberately NOT added to BRANCH_USER_NAV: a shift account
-  // gets the six screens its brief names, and reading a past day's ledger is not
-  // one of them. RouteGuard derives their allowlist from that nav, so leaving it
-  // out here is the whole enforcement.
-  { label: 'Daily Stock',   href: ROUTES.BRANCH_DAILY_STOCK, icon: ClipboardList },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
   { label: 'Branch Closing',href: ROUTES.BRANCH_CLOSING,     icon: CalendarCheck },
