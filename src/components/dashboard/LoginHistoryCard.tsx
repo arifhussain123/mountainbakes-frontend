@@ -133,13 +133,16 @@ export function LoginHistoryCard() {
     col.accessor((s) => `${s.loginAt} ${formatDate(s.loginAt)}`, {
       id: 'date',
       header: 'Login Date',
-      meta: { mobile: 'subtitle' },
+      // The mobile card's title, and it has to come from a column that is always
+      // visible. It used to be Email, which is hidden for a non-admin — so every
+      // branch and production user got a stack of title-less cards on a phone.
+      meta: { mobile: 'title' },
       cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.loginAt)}</span>,
     }),
     col.accessor('loginAt', {
       id: 'time',
       header: 'Time',
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'subtitle' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
     col.accessor((s) => s.country ?? '', {
@@ -154,7 +157,7 @@ export function LoginHistoryCard() {
     }),
     col.accessor('userEmail', {
       header: 'Email',
-      meta: { mobile: 'title' },
+      meta: { mobileFull: true },
       cell: (i) => <span className="break-all font-medium">{i.getValue()}</span>,
     }),
     col.accessor('durationMs', {

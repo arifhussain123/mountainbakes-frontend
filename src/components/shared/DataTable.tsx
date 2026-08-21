@@ -31,6 +31,17 @@ interface DataTableProps<TData> {
   searchPlaceholder?: string;
   onExport?: () => void;
   actions?: React.ReactNode;
+  /**
+   * Rendered to the LEFT of the search field, inside the same group.
+   *
+   * For a control that narrows what the table is showing before the search box
+   * filters within it — a date, a status, a branch. That reading order is the
+   * point, and it is why this is not just another `actions` node: `actions` sits
+   * at the far right and reads as "things to do", while a scope control belongs
+   * ahead of the search it scopes. On a phone it stacks above the search field
+   * for the same reason.
+   */
+  leading?: React.ReactNode;
   pageSize?: number;
   /**
    * Columns to hide, e.g. `{ search: false }`.
@@ -61,6 +72,7 @@ export function DataTable<TData>({
   searchPlaceholder = 'Search…',
   onExport,
   actions,
+  leading,
   pageSize = 20,
   columnVisibility,
   empty,
@@ -102,6 +114,8 @@ export function DataTable<TData>({
     <div className="space-y-4">
       {/* Toolbar — stacks on a phone so the search field gets the full width. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+        {leading}
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -110,6 +124,7 @@ export function DataTable<TData>({
             onChange={(e) => setGlobalFilter(e.target.value)}
             className="pl-9 h-11 md:h-9"
           />
+        </div>
         </div>
         {(actions || onExport) && (
           <div className="flex w-full items-center gap-2 sm:w-auto">

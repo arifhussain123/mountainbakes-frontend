@@ -7,6 +7,8 @@ import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { type StockRow, businessDateStr } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ClipboardCheck, RotateCcw } from 'lucide-react';
 import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
@@ -20,12 +22,20 @@ export function StockPage() {
   const [returnOpen, setReturnOpen] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
 
+  // Which business day the table is showing. Defaults to today, which is the
+  // only day the page used to have — every figure below is day-scoped
+  // (computeStockRows sums stock_history for ONE business date), so the page was
+  // already answering a question about a specific day without letting anyone
+  // choose which.
+  const [date, setDate] = useState(businessDateStr());
+  const isToday = date === businessDateStr();
+
   // On TanStack Query (per the project convention) rather than a one-shot fetch,
   // so an invalidation can reach it — that is what makes the page pick up stock
   // moved elsewhere: a Production approval, or an admin correcting a Help Desk
   // query. `useStockRealtime` fires those invalidations off the notifications
   // stream; the ReturnItemsModal reuses the same refetch after saving.
-  const { data: rows = [], isPending, refetch } = useStockRows(token ?? '');
+  const { data: rows = [], isPending, refetch } = useStockRows(token ?? '', { date });
   useStockRealtime();
 
   // Adjustment is its OWN column. It briefly folded into New Stock / Returned by
@@ -132,23 +142,55 @@ export function StockPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="order-2 flex flex-wrap gap-2 sm:order-1">
-          <Button onClick={() => setReturnOpen(true)}>
+          {/* Both act on LIVE stock — a return moves units now, and a stock check
+              diffs a physical count against the current balance. Neither means
+              anything against a past day's figures, and Return Items in
+              particular would validate today's shelf against last week's
+              numbers. So they are disabled off-today rather than left to fail
+              confusingly at save. */}
+          <Button onClick={() => setReturnOpen(true)} disabled={!isToday}>
             <RotateCcw className="h-4 w-4 mr-1.5" /> Return Items
           </Button>
-          {/* Read-only counterpart to Return Items: opens the same product list
-              with a count box per row and diffs it against Balance. It writes
-              nothing, so it needs no geofence gate and no refetch on close. */}
-          <Button onClick={() => setCheckOpen(true)}>
+          <Button onClick={() => setCheckOpen(true)} disabled={!isToday}>
             <ClipboardCheck className="h-4 w-4 mr-1.5" /> Stock Check
           </Button>
         </div>
         <div className="order-1 sm:order-2 sm:text-right">
           <h2 className="text-lg font-semibold">Stock</h2>
-          <p className="text-sm text-muted-foreground">{businessDateStr()} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections made today and clear tomorrow</p>
+          <p className="text-sm text-muted-foreground">
+            {isToday
+              ? `${date} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections made today and clear tomorrow`
+              : `${date} · a past business day, read-only. Adjustments show on the day they were made.`}
+          </p>
         </div>
       </div>
 
-      <DataTable columns={columns} data={rows} loading={isPending} searchPlaceholder="Search products…" pageSize={50} />
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={isPending}
+        searchPlaceholder="Search products…"
+        pageSize={50}
+        // Ahead of the search box, because it scopes what the search then filters
+        // WITHIN: pick the day first, find the product second.
+        leading={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="stock-date" className="whitespace-nowrap text-xs text-muted-foreground">
+              Date
+            </Label>
+            <Input
+              id="stock-date"
+              type="date"
+              value={date}
+              // No future days: computeStockRows would be asked for a date it
+              // cannot derive and answers 400.
+              max={businessDateStr()}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+              className="h-11 w-40 md:h-9"
+            />
+          </div>
+        }
+      />
 
       <ReturnItemsModal
         open={returnOpen}

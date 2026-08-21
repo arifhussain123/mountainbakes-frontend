@@ -41,6 +41,13 @@ export const qk = {
   // answers, not the same one at a different zoom.
   stockHistory: (branchId?: string | null, days?: number | null) =>
     ['stock', 'history', branchId ?? 'me', days ?? 7] as const,
+  // Branch Stock on a PAST business day. A separate key from `stock` above,
+  // which today's read deliberately shares with `useStock`'s balance map — a
+  // historical row set served to that map would hand the Return Items modal
+  // last week's balances to validate against. Today's read keeps the shared key;
+  // only a back-dated one lands here.
+  stockOn: (branchId?: string | null, date?: string | null) =>
+    ['stock', 'on', branchId ?? 'me', date ?? 'today'] as const,
   // Admin → Branch Stock, "All branches". Same ['stock'] prefix as its siblings
   // so one invalidation refreshes every stock view; keyed by window length only,
   // because the row set is every branch by definition.

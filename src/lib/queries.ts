@@ -12,7 +12,7 @@ import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
 // businessDayBounds is a VALUE, not a type — Branch Closing turns a business
 // date into the UTC instants /api/orders filters created_at on.
-import { businessDayBounds } from '@mb/shared';
+import { businessDayBounds, businessDateStr } from '@mb/shared';
 import type {
   ApproveBranchUserRequestInput,
   Branch,
@@ -307,12 +307,29 @@ export function useReportSummary(token: string, period: string, branchId?: strin
  * invalidation refreshes the table and every balance map at once. Do not give this
  * its own key — that would let the two drift apart.
  */
-export function useStockRows(token: string, opts?: { branchId?: string | null; enabled?: boolean }) {
+export function useStockRows(
+  token: string,
+  opts?: { branchId?: string | null; enabled?: boolean; date?: string | null },
+) {
   const branchId = opts?.branchId;
+  const date = opts?.date ?? null;
+  // The shared key is kept for TODAY and only for today. The docstring above is
+  // emphatic that this hook must not get a key of its own, and the reason is
+  // `useStock`'s balance map reading the same cache entry — but that reason is
+  // exactly why a BACK-DATED read must not land there: it would serve the Return
+  // Items modal a past day's balances to validate a return against. So a past
+  // date gets `qk.stockOn` and today's behaviour is unchanged.
+  const historical = !!date && date !== businessDateStr();
+
   return useQuery({
-    queryKey: qk.stock(branchId),
-    queryFn: () =>
-      apiCall<{ rows: StockRow[] }>(`/api/stock${branchId ? `?branchId=${branchId}` : ''}`, {}, token),
+    queryKey: historical ? qk.stockOn(branchId, date) : qk.stock(branchId),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (branchId) params.set('branchId', branchId);
+      if (historical && date) params.set('date', date);
+      const qs = params.toString();
+      return apiCall<{ rows: StockRow[] }>(`/api/stock${qs ? `?${qs}` : ''}`, {}, token);
+    },
     select: (r) => r.rows ?? [],
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
