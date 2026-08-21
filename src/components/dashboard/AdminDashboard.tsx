@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import { RecentOrdersTable } from './RecentOrdersTable';
 import { ShoppingCart, Clock, DollarSign, Package } from 'lucide-react';
 import type { ReportSummary } from '@mb/shared';
+import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
 // Charts pull in recharts; load them lazily on the client so the dashboard's
 // initial bundle doesn't include the charting library.
@@ -77,6 +78,12 @@ export function AdminDashboard() {
 
       {/* Recent orders */}
       <RecentOrdersTable />
+
+      {/* Login History. On every dashboard, but not showing the same thing on
+          each: the API gives a super admin every account's sessions and pins
+          every other role to its own. Last, because it is a record to consult
+          rather than something to act on. */}
+      <LoginHistoryCard />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { RealtimeBridge } from '@/components/layout/RealtimeBridge';
+import { LoginHistoryBridge } from '@/components/layout/LoginHistoryBridge';
 import { PushNotifications } from '@/components/pwa/PushNotifications';
 import { RealtimeProvider } from '@/providers/RealtimeProvider';
 import { GeofenceProvider } from '@/providers/GeofenceProvider';
@@ -35,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <AppRefreshProvider>
           <div className="flex h-screen overflow-hidden bg-background">
             <RealtimeBridge />
+            <LoginHistoryBridge />
             <PushNotifications />
             <Sidebar />
             <div className="flex flex-1 flex-col overflow-hidden">

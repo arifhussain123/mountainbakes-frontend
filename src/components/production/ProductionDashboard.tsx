@@ -10,6 +10,7 @@ import {
   CalendarRange, TrendingUp, Store, Package, BarChart3, Boxes,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
 type CardColor = 'orange' | 'brown' | 'green' | 'blue' | 'red';
 
@@ -91,6 +92,12 @@ export function ProductionDashboard() {
       </div>
 
       <TopRequestedChart data={data?.topProducts ?? []} loading={isLoading} />
+
+      {/* Login History. On every dashboard, but not showing the same thing on
+          each: the API gives a super admin every account's sessions and pins
+          every other role to its own. Last, because it is a record to consult
+          rather than something to act on. */}
+      <LoginHistoryCard />
     </div>
   );
 }

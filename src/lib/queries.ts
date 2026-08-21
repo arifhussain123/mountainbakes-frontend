@@ -28,6 +28,7 @@ import type {
   Product,
   ProductionBalanceDoc,
   ProductionReturn,
+  LoginSession,
   ProductionStockRow,
   PriceHistoryDoc,
   PackingMaterial,
@@ -834,6 +835,37 @@ export function useProductionBranchStock(token: string) {
   return useQuery({
     queryKey: qk.productionBranchStock(),
     queryFn: () => apiCall<BranchStockMatrix>('/api/production/branch-stock', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Login History
+//
+// The API decides the scope, not this hook: a super admin gets every user's
+// sessions, and every other role is pinned to its own whatever it asks for. The
+// `scope` argument only picks the cache key, so an admin toggling between "all"
+// and "mine" does not serve one from the other's entry.
+//
+// LIVE_STALE_TIME because a session's duration grows while you watch it — the
+// row for the tab you are reading this in is still open.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useLoginHistory(token: string, opts?: { userId?: string | null; days?: number }) {
+  const days = opts?.days ?? 90;
+  return useQuery({
+    queryKey: qk.loginHistory(opts?.userId ?? 'all', days),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (opts?.userId) params.set('userId', opts.userId);
+      return apiCall<{ sessions: LoginSession[]; scope: string }>(
+        `/api/login-history?${params.toString()}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.sessions ?? [],
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });

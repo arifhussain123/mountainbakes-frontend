@@ -5,6 +5,7 @@ import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { isValidRole } from '@/utils/roleHome';
 import { forgetIdentity, readIdentity, rememberIdentity } from '@/lib/offline/lastSession';
+import { endLoginSession } from '@/lib/loginHistory';
 import type { UserRole } from '@mb/shared';
 
 export interface AuthUser {
@@ -186,6 +187,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signingOut.current = true;
     try {
       forgetIdentity();
+      // BEFORE signOut, not after: closing the session needs the access token
+      // that signOut is about to destroy. It never throws and never blocks —
+      // see lib/loginHistory.ts — so sign-out cannot fail on its account.
+      await endLoginSession();
       await supabase.auth.signOut();
     } finally {
       signingOut.current = false;

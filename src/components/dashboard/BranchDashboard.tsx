@@ -15,6 +15,7 @@ import { BranchStockHistoryCard } from './BranchStockHistoryCard';
 import { BranchDailyStockCard } from './BranchDailyStockCard';
 import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
 import { ShoppingCart, DollarSign, Receipt, TrendingUp, Percent } from 'lucide-react';
+import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
 const PERIODS = [
   { value: 'daily', label: 'Today', budgetKey: 'daily' as const },
@@ -145,6 +146,12 @@ export function BranchDashboard() {
       <SalesVsExpensesChart data={summary?.dailyData ?? []} loading={loading} />
 
       <RecentOrdersTable branchId={user?.branchId ?? undefined} />
+
+      {/* Login History. On every dashboard, but not showing the same thing on
+          each: the API gives a super admin every account's sessions and pins
+          every other role to its own. Last, because it is a record to consult
+          rather than something to act on. */}
+      <LoginHistoryCard />
     </div>
   );
 }

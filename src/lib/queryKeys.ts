@@ -57,6 +57,12 @@ export const qk = {
   // Keyed by window length as well as branch, for the reason `stockHistory` is.
   branchReturns: (branchId?: string | null, days?: number | null) =>
     ['stock', 'returns', branchId ?? 'me', days ?? 90] as const,
+  // Login History. Keyed by the window and by the scope the caller asked for —
+  // 'all' and one user's id are different answers, and an admin's dashboard can
+  // show either. NOT under any existing prefix: nothing else invalidates it, and
+  // it is refetched by the ordinary 2-minute active-query refresh.
+  loginHistory: (scope?: string | null, days?: number | null) =>
+    ['loginHistory', scope ?? 'all', days ?? 90] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,

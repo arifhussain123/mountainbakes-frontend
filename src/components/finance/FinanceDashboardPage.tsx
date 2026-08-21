@@ -22,6 +22,7 @@ import {
   Store,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
 /**
  * The Finance dashboard — the nine summary cards the brief specifies, plus the
@@ -153,6 +154,12 @@ export function FinanceDashboardPage() {
           <RecentEntriesCard entries={data?.recentEntries ?? []} loading={isLoading} />
         </div>
       </div>
+
+      {/* Login History. On every dashboard, but not showing the same thing on
+          each: the API gives a super admin every account's sessions and pins
+          every other role to its own. Last, because it is a record to consult
+          rather than something to act on. */}
+      <LoginHistoryCard />
     </div>
   );
 }

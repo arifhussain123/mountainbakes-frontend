@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { pingLoginSession } from '@/lib/loginHistory';
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
@@ -173,6 +174,15 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     const id = setInterval(async () => {
+      // Login History: this tab is still open. Deliberately on THIS tick rather
+      // than a timer of its own — the module comment above is explicit that there
+      // must be exactly one interval for the session, and "is the tab still
+      // open?" is the same question this tick already exists to ask. Unawaited
+      // and self-swallowing, so a failed ping cannot delay or skip the refresh
+      // below it. Runs even while a Dialog is open: someone mid-entry is the
+      // clearest possible evidence the session is alive.
+      void pingLoginSession();
+
       // Data: skipped only while a Dialog is open, so an in-flight refetch never
       // reshuffles props out from under someone mid-entry.
       if (!dialogOpen()) {
