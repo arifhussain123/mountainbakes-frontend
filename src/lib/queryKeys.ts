@@ -49,6 +49,14 @@ export const qk = {
   // ['stock'] prefix with the rest, so a movement invalidates it too.
   stockDay: (branchId?: string | null, date?: string | null) =>
     ['stock', 'day', branchId ?? 'me', date ?? 'today'] as const,
+  // Branch → Return Stock. Under the ['stock'] prefix like every key above, and
+  // that placement is what keeps the page live: a return moves branch stock, so
+  // `useStockRealtime`'s prefix invalidation already refreshes this list — and
+  // conversely, correcting a return here invalidates ['stock'] and the Stock
+  // page, the history card and the dashboard's Stock Detail all follow.
+  // Keyed by window length as well as branch, for the reason `stockHistory` is.
+  branchReturns: (branchId?: string | null, days?: number | null) =>
+    ['stock', 'returns', branchId ?? 'me', days ?? 90] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,

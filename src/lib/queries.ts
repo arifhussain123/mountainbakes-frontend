@@ -839,6 +839,68 @@ export function useProductionBranchStock(token: string) {
   });
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Branch → Return Stock
+//
+// A branch reads its OWN returns from /api/stock/returns, not from
+// /api/production-returns — that endpoint is Production's board of every
+// branch's returns and 403s a branch role outright.
+//
+// The two mutations both invalidate ['stock'], not just the returns key: a
+// revision or a withdrawal moves real units, so the Stock page, the history
+// card and the dashboard's Stock Detail are all stale the moment one lands.
+// The ['stock'] prefix reaches every one of them, this list included — see
+// `qk.branchReturns`. ['productionStock'] and ['productionBranchStock'] go too,
+// because the units move on the Production side of the ledger as well.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchReturns(token: string, opts?: { branchId?: string | null; days?: number }) {
+  const days = opts?.days ?? 90;
+  return useQuery({
+    queryKey: qk.branchReturns(opts?.branchId ?? null, days),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      // Only an admin may name a branch; the API ignores it for a branch role and
+      // reads the JWT instead, so sending it is harmless either way.
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      return apiCall<{ returns: ProductionReturn[] }>(`/api/stock/returns?${params.toString()}`, {}, token);
+    },
+    select: (r) => r.returns ?? [],
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+function invalidateAfterReturnChange(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['stock'] });
+  qc.invalidateQueries({ queryKey: ['productionReturns'] });
+  qc.invalidateQueries({ queryKey: ['productionStock'] });
+  qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+  qc.invalidateQueries({ queryKey: ['productionOverview'] });
+}
+
+export function useReviseBranchReturn(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, qty, reason }: { id: string; qty: number; reason?: string }) =>
+      apiCall<ProductionReturn>(
+        `/api/stock/returns/${id}`,
+        { method: 'PUT', body: JSON.stringify({ qty, ...(reason !== undefined ? { reason } : {}) }) },
+        token,
+      ),
+    onSuccess: () => invalidateAfterReturnChange(qc),
+  });
+}
+
+export function useWithdrawBranchReturn(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall<{ success: boolean }>(`/api/stock/returns/${id}`, { method: 'DELETE' }, token),
+    onSuccess: () => invalidateAfterReturnChange(qc),
+  });
+}
+
 export function useProductionReturns(token: string) {
   return useQuery({
     queryKey: qk.productionReturns(),

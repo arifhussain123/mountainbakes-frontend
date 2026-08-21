@@ -81,6 +81,28 @@ function linesFor(row: BranchStockHistoryRow): Line[] {
   return lines;
 }
 
+/**
+ * The foot-check: what the lines above say should be left, less what is left.
+ *
+ * `opening + new − sold − returned + adjustment = balance` holds by construction
+ * on the server (see `computeBranchStockHistory`), so on a healthy day this is
+ * ZERO — and that is the point of showing it. A non-zero figure means the
+ * statement no longer foots, which is a real ledger fault worth surfacing rather
+ * than a number to read off. The amount column can land on a rounding-sized
+ * value where the qty column is exactly 0, since amounts are units valued at the
+ * current price list; `isZero` therefore tolerates a sub-currency-unit residue
+ * instead of colouring the row red over half a rupee.
+ *
+ * Returned and Adjustment are included whether or not their lines were rendered
+ * — they are omitted above only when zero, which cannot change this sum.
+ */
+function endDifference(row: BranchStockHistoryRow): { qty: number; amount: number; isZero: boolean } {
+  const qty = row.openingQty + row.newQty - row.soldQty - row.returnedQty + row.adjustmentQty - row.balanceQty;
+  const amount =
+    row.openingAmount + row.newAmount - row.soldAmount - row.returnedAmount + row.adjustmentAmount - row.balanceAmount;
+  return { qty, amount, isZero: Math.abs(qty) < 0.5 && Math.abs(amount) < 1 };
+}
+
 export function BranchStockStatement({ date, branchId }: { date: string; branchId?: string | null }) {
   const { token } = useAuth();
   const { settings } = useSettings();
@@ -145,6 +167,27 @@ export function BranchStockStatement({ date, branchId }: { date: string; branchI
               {money(row.balanceAmount)}
             </td>
           </tr>
+
+          {(() => {
+            const diff = endDifference(row);
+            return (
+              <tr className="bg-muted/30">
+                <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatStatementDate(row.date)}</td>
+                <td className="px-4 py-3 font-semibold">
+                  End Difference
+                  {!diff.isZero && (
+                    <span className="ml-2 text-xs font-normal text-destructive">statement does not foot</span>
+                  )}
+                </td>
+                <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', !diff.isZero && 'text-destructive')}>
+                  {diff.isZero ? qty(0) : signedQty(diff.qty)}
+                </td>
+                <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', !diff.isZero && 'text-destructive')}>
+                  {money(diff.isZero ? 0 : diff.amount)}
+                </td>
+              </tr>
+            );
+          })()}
         </tbody>
       </table>
     </div>

@@ -54,6 +54,16 @@ export const ROUTES = {
   BRANCH_NEW_ORDERS: '/branch-new-orders',
   BRANCH_SALES: '/branch-sales',
   BRANCH_STOCK: '/branch-stock',
+  /**
+   * Branch → Return Stock. The branch's own log of stock it has sent back to
+   * production, and the only place it can correct one.
+   *
+   * The path deliberately starts '/branch-' so RouteGuard's prefix rule covers
+   * it. Note the sibling it is NOT: '/production-returns' is Production's board
+   * of every branch's returns, behind a production-only router — these two read
+   * the same table and are not interchangeable.
+   */
+  BRANCH_RETURN_STOCK: '/branch-return-stock',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
