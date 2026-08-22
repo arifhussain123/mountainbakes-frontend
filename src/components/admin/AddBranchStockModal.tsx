@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSaveAdminStock } from '@/lib/queries';
 import type { StockRow } from '@mb/shared';
@@ -85,6 +85,11 @@ export function AddBranchStockModal({
   const { token } = useAuth();
   const save = useSaveAdminStock(token ?? '');
 
+  // Adding stock is a forward-looking act, so the picker offers active products
+  // only. `rows` now also carries discontinued products that still hold stock —
+  // they belong in the table being counted, not in a list of things to stock up.
+  const sellable = useMemo(() => rows.filter((r) => r.isActive), [rows]);
+
   const [product, setProduct] = useState<StockRow | null>(null);
   const [qty, setQty] = useState('');
   const [bookAs, setBookAs] = useState<'newQty' | 'adjustment'>('newQty');
@@ -143,7 +148,7 @@ export function AddBranchStockModal({
                 Return Items dialog uses one: the product list is long and this
                 has to work on a phone. */}
             <Combobox
-              items={rows}
+              items={sellable}
               filter={matches}
               value={product}
               onValueChange={(r: StockRow | null) => setProduct(r)}

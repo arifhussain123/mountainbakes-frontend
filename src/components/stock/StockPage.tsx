@@ -35,7 +35,7 @@ export function StockPage() {
   // moved elsewhere: a Production approval, or an admin correcting a Help Desk
   // query. `useStockRealtime` fires those invalidations off the notifications
   // stream; the ReturnItemsModal reuses the same refetch after saving.
-  const { data: rows = [], isPending, refetch } = useStockRows(token ?? '', { date });
+  const { data: rows = [], isPending, error, refetch } = useStockRows(token ?? '', { date });
   useStockRealtime();
 
   // Adjustment is its OWN column. It briefly folded into New Stock / Returned by
@@ -85,7 +85,25 @@ export function StockPage() {
     }),
     // The remaining columns are the day's ledger for this product. As a card they
     // become a label:value grid, which reads like the receipt it describes.
-    col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
+    // A discontinued product is listed while it still holds stock or moved today
+    // — the units are on the shelf and inside the balance, so leaving it out is
+    // what used to make this page's total disagree with the dashboard's
+    // Remaining Stock. Badged, because "why is this still here" is the first
+    // question it raises.
+    col.accessor('productName', {
+      header: 'Product',
+      meta: { mobile: 'title' },
+      cell: (i) => (
+        <span className="font-medium">
+          {i.getValue()}
+          {!i.row.original.isActive && (
+            <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Discontinued
+            </span>
+          )}
+        </span>
+      ),
+    }),
     // Every figure in the ledger is centred under its heading (meta.align), which
     // moves the heading with it — a class on the cell alone would leave the two
     // pointing at different places. `tabular-nums` keeps the digits on a fixed
@@ -160,10 +178,24 @@ export function StockPage() {
           <p className="text-sm text-muted-foreground">
             {isToday
               ? `${date} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections made today and clear tomorrow`
-              : `${date} · a past business day, read-only. Adjustments show on the day they were made.`}
+              : `${date} · a past business day, read-only. Balances are that day's closing figures, not today's. Adjustments show on the day they were made.`}
           </p>
         </div>
       </div>
+
+      {/* The server refuses a date it cannot derive — anything over a year back,
+          since every balance is walked out of today's live figure. Without this
+          the refusal read as an empty table, which is indistinguishable from a
+          day on which nothing happened. */}
+      {error && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3">
+          <p className="text-sm font-medium text-destructive">Couldn&apos;t load stock for {date}.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {error instanceof Error ? error.message : 'The request failed. Please try again.'}
+          </p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>Retry</Button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}
