@@ -285,12 +285,29 @@ export function useBranches(token: string, opts?: { enabled?: boolean }) {
   });
 }
 
-export function useReportSummary(token: string, period: string, branchId?: string | null) {
+/**
+ * `range` narrows the summary to an explicit window instead of a named period.
+ *
+ * The API only reads `from`/`to` when `period` is NOT one of its four named
+ * periods — those are recomputed server-side and would silently ignore the
+ * window — so passing a range sends `period=custom`. See getDateRange in
+ * reports.routes.ts.
+ */
+export function useReportSummary(
+  token: string,
+  period: string,
+  branchId?: string | null,
+  range?: { fromISO: string; toISO: string } | null,
+) {
+  const effectivePeriod = range ? 'custom' : period;
+  const rangeParams = range
+    ? `&from=${encodeURIComponent(range.fromISO)}&to=${encodeURIComponent(range.toISO)}`
+    : '';
   return useQuery({
-    queryKey: qk.reportSummary(period, branchId),
+    queryKey: qk.reportSummary(effectivePeriod, branchId, range?.fromISO, range?.toISO),
     queryFn: () =>
       apiCall<ReportSummary>(
-        `/api/reports/summary?period=${period}${branchId ? `&branchId=${branchId}` : ''}`,
+        `/api/reports/summary?period=${effectivePeriod}${branchId ? `&branchId=${branchId}` : ''}${rangeParams}`,
         {},
         token,
       ),

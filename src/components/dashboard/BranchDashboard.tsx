@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useReportSummary } from '@/lib/queries';
-import { businessDateStr } from '@mb/shared';
+import { businessDateStr, businessDayBounds } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
+import { formatDate } from '@/utils/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import dynamic from 'next/dynamic';
 import { RecentOrdersTable } from './RecentOrdersTable';
@@ -17,11 +19,17 @@ import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
 import { ShoppingCart, DollarSign, Receipt, TrendingUp, Percent } from 'lucide-react';
 import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
+// `date` is not a period the API knows — picking it sends an explicit business-day
+// window instead (see the summary query below). Its budget is the DAILY one: a
+// single chosen day is measured against the same target as today is.
+const SPECIFIC_DATE = 'date';
+
 const PERIODS = [
   { value: 'daily', label: 'Today', budgetKey: 'daily' as const },
   { value: 'weekly', label: 'This Week', budgetKey: 'weekly' as const },
   { value: 'monthly', label: 'This Month', budgetKey: 'monthly' as const },
   { value: 'yearly', label: 'This Year', budgetKey: null },
+  { value: SPECIFIC_DATE, label: 'Specific Date', budgetKey: 'daily' as const },
 ];
 
 // Charts pull in recharts; load lazily on the client to keep the initial bundle lean.
@@ -42,16 +50,31 @@ export function BranchDashboard() {
   // the card so it survives a re-render of the dashboard and can later drive
   // anything else that wants the same day.
   const [stockDate, setStockDate] = useState(businessDateStr());
+  // The day "Specific Date" reads. Separate from stockDate: the stock statement
+  // and the money figures are read for different reasons and should be movable
+  // independently, exactly as stockDays already is.
+  const [summaryDate, setSummaryDate] = useState(businessDateStr());
 
   const cur = settings?.currencySymbol || 'Rs.';
 
   // Server state via TanStack Query — cached (60s) & deduped, so switching periods
   // back and forth or revisiting the dashboard is instant with no refetch.
-  const summaryQ = useReportSummary(token, period, user?.branchId ?? null);
+  // One business day runs 02:00 -> next-day 01:59:59.999 Karachi, so a late-night
+  // sale counts against the right day — the same bounds the Sales page filters on.
+  const isSpecificDate = period === SPECIFIC_DATE;
+  const summaryQ = useReportSummary(
+    token,
+    period,
+    user?.branchId ?? null,
+    isSpecificDate ? businessDayBounds(summaryDate) : null,
+  );
   const summary = summaryQ.data ?? null;
   const loading = !token || summaryQ.isLoading;
 
   const periodMeta = PERIODS.find((p) => p.value === period);
+  // On a specific date the option's own label ("Specific Date") says nothing —
+  // the heading and the budget card should name the day being read.
+  const periodLabel = isSpecificDate ? formatDate(summaryDate) : (periodMeta?.label ?? '');
   const budgetForPeriod = periodMeta?.budgetKey && summary?.budget ? summary.budget[periodMeta.budgetKey] : 0;
   const actual = summary?.totalRevenue ?? 0;
   const budgetPct = budgetForPeriod > 0 ? Math.min(100, Math.round((actual / budgetForPeriod) * 100)) : 0;
@@ -64,14 +87,25 @@ export function BranchDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{user?.branchName || 'Branch Dashboard'}</h2>
-          <p className="text-sm text-muted-foreground">{periodMeta?.label} overview</p>
+          <p className="text-sm text-muted-foreground">{periodLabel} overview</p>
         </div>
-        <Select value={period} onValueChange={(v) => v && setPeriod(v)}>
-          <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {PERIODS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={period} onValueChange={(v) => v && setPeriod(v)}>
+            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {PERIODS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {isSpecificDate && (
+            <Input
+              type="date"
+              value={summaryDate}
+              max={businessDateStr()}
+              onChange={(e) => setSummaryDate(e.target.value || businessDateStr())}
+              className="h-9 w-full sm:w-40"
+            />
+          )}
+        </div>
       </div>
 
       {/* Renders nothing unless geofencing applies to this user, so the dashboard
@@ -92,7 +126,7 @@ export function BranchDashboard() {
       {/* Budget vs actual + Orders breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
-          <CardHeader className="pb-2"><CardTitle className="text-base">Budget vs Actual ({periodMeta?.label})</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Budget vs Actual ({periodLabel})</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {budgetForPeriod > 0 ? (
               <>

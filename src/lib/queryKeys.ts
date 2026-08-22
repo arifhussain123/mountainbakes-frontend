@@ -24,8 +24,8 @@ export const qk = {
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
   priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
-  reportSummary: (period: string, branchId?: string | null) =>
-    ['reportSummary', period, branchId ?? null] as const,
+  reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null) =>
+    ['reportSummary', period, branchId ?? null, from ?? null, to ?? null] as const,
   stock: (branchId?: string | null) => ['stock', branchId ?? 'me'] as const,
   // Admin → Branch Stock. A SEPARATE key from `stock` above because it is
   // date-scoped: the admin page reads any branch on any past business day, and
