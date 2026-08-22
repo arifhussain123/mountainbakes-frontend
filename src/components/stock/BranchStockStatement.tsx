@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useBranchStockDay } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
-import type { BranchStockHistoryRow } from '@mb/shared';
+import type { BranchStockHistoryRow, StockReconciliation, StockReconciliationCause } from '@mb/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
@@ -103,13 +103,103 @@ function endDifference(row: BranchStockHistoryRow): { qty: number; amount: numbe
   return { qty, amount, isZero: Math.abs(qty) < 0.5 && Math.abs(amount) < 1 };
 }
 
+/**
+ * Plain-language reason for a product's units landing in one figure and not the
+ * other. The cause codes come from the server (`reconcileBranchStockDay`); only
+ * the first is something a branch can act on — the rest mean the two
+ * derivations have drifted and are worded to say so.
+ */
+const RECONCILIATION_CAUSE_TEXT: Record<StockReconciliationCause, string> = {
+  'deleted-from-catalogue': 'held for a product removed from the catalogue, so the Stock page cannot list it',
+  discontinued: 'discontinued product counted here but not listed on the Stock page',
+  unlisted: 'active product carrying a balance the Stock page did not list',
+  mismatch: 'the two screens disagree about this product',
+};
+
+/**
+ * The cross-check against the Stock page, as statement lines.
+ *
+ * WHY THIS EXISTS: this total and the Stock page's Balance column are derived
+ * from the same ledger by two different paths, and for a long time they
+ * disagreed — silently, because nothing compared them. Both are plausible
+ * numbers; neither screen could tell you the other one differed. So the
+ * comparison is now stated here, on the figure people actually read, and it
+ * names what is responsible rather than only reporting a gap.
+ *
+ * On a healthy day this is one quiet line reading 0.
+ */
+function ReconciliationRows({
+  reconciliation,
+  date,
+  formatDate,
+  qty,
+  signedQty,
+}: {
+  reconciliation: StockReconciliation;
+  date: string;
+  formatDate: (d: string) => string;
+  qty: (n: number) => string;
+  signedQty: (n: number) => string;
+}) {
+  const agrees = reconciliation.difference === 0;
+  return (
+    <>
+      <tr className="bg-muted/30">
+        <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(date)}</td>
+        <td className="px-4 py-3 font-semibold">
+          Stock page check
+          <span className={cn('ml-2 text-xs font-normal', agrees ? 'text-muted-foreground' : 'text-destructive')}>
+            {agrees
+              ? 'agrees with the Stock page'
+              : `Stock page shows ${qty(reconciliation.itemsQty)}`}
+          </span>
+        </td>
+        <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', !agrees && 'text-destructive')}>
+          {agrees ? qty(0) : signedQty(reconciliation.difference)}
+        </td>
+        <td className="px-4 py-3" />
+      </tr>
+
+      {/* Only when they differ: one line per product responsible, then whatever
+          no product explains — which is the part that should worry someone. */}
+      {!agrees && reconciliation.reasons.map((r) => (
+        <tr key={r.productId} className="bg-muted/10">
+          <td className="px-4 py-2" />
+          <td className="px-4 py-2 pl-8 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{r.productName}</span>
+            {' — '}
+            {RECONCILIATION_CAUSE_TEXT[r.cause]}
+          </td>
+          <td className="px-4 py-2 text-right text-xs tabular-nums text-muted-foreground">{signedQty(r.qty)}</td>
+          <td className="px-4 py-2" />
+        </tr>
+      ))}
+
+      {!agrees && reconciliation.unexplained !== 0 && (
+        <tr className="bg-muted/10">
+          <td className="px-4 py-2" />
+          <td className="px-4 py-2 pl-8 text-xs text-destructive">
+            Unexplained — no product accounts for this. The two figures are derived differently and have drifted.
+          </td>
+          <td className="px-4 py-2 text-right text-xs font-semibold tabular-nums text-destructive">
+            {signedQty(reconciliation.unexplained)}
+          </td>
+          <td className="px-4 py-2" />
+        </tr>
+      )}
+    </>
+  );
+}
+
 export function BranchStockStatement({ date, branchId }: { date: string; branchId?: string | null }) {
   const { token } = useAuth();
   const { settings } = useSettings();
   const cur = settings?.currencySymbol || 'Rs.';
 
-  const { data: row, isPending, error } = useBranchStockDay(token ?? '', { date, branchId });
+  const { data, isPending, error } = useBranchStockDay(token ?? '', { date, branchId });
   useStockRealtime();
+  const row = data?.row;
+  const reconciliation = data?.reconciliation ?? null;
 
   const money = (n: number) => `${cur}${Math.round(n).toLocaleString()}`;
   const qty = (n: number) => Math.round(n).toLocaleString();
@@ -126,7 +216,7 @@ export function BranchStockStatement({ date, branchId }: { date: string; branchI
     );
   }
 
-  if (isPending) {
+  if (isPending || !row) {
     return (
       <div className="space-y-2 p-4">
         {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
@@ -188,6 +278,16 @@ export function BranchStockStatement({ date, branchId }: { date: string; branchI
               </tr>
             );
           })()}
+
+          {reconciliation && (
+            <ReconciliationRows
+              reconciliation={reconciliation}
+              date={row.date}
+              formatDate={formatStatementDate}
+              qty={qty}
+              signedQty={signedQty}
+            />
+          )}
         </tbody>
       </table>
     </div>

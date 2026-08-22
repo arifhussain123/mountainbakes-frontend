@@ -17,6 +17,7 @@ import type {
   ApproveBranchUserRequestInput,
   Branch,
   BranchStockHistoryRow,
+  StockReconciliation,
   BranchStockSummaryResult,
   BranchProductionOrder,
   BranchUserRequest,
@@ -421,13 +422,16 @@ export function useBranchStockDay(
     queryFn: () => {
       const params = new URLSearchParams({ date });
       if (branchId) params.set('branchId', branchId);
-      return apiCall<{ row: BranchStockHistoryRow; date: string }>(
+      return apiCall<{ row: BranchStockHistoryRow; date: string; reconciliation?: StockReconciliation }>(
         `/api/stock/history?${params.toString()}`,
         {},
         token,
       );
     },
-    select: (r) => r.row,
+    // The reconciliation rides along with the row rather than being fetched
+    // separately — it is the statement's own cross-check against the Stock page,
+    // and a check the caller has to remember to ask for is a check nobody runs.
+    select: (r) => ({ row: r.row, reconciliation: r.reconciliation ?? null }),
     enabled: !!token && !!date && (opts.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
     retry: false,
