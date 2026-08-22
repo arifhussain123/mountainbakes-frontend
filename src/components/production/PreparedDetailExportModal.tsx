@@ -18,9 +18,9 @@ export interface PreparedDetailExportModalProps {
 }
 
 /**
- * Pulls the "Prepared Items (Date-wise)" sheet — one row per product per day —
- * straight from the Production Stock page, so the export does not require a
- * detour through Production Reports.
+ * Pulls the "Prepared Items (Date-wise)" sheet — one row per product, totalled
+ * over the window — straight from the Production Stock page, so the export does
+ * not require a detour through Production Reports.
  *
  * It hits the same `prepared-detail` report the Reports page previews, so the
  * two can never disagree about what a window contains.
@@ -68,7 +68,7 @@ export function PreparedDetailExportModal({ open, onOpenChange, token, defaultDa
             <FileSpreadsheet className="h-5 w-5 text-primary" /> Prepared Detail
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            One row per product per day over the window you choose.
+            One row per product, totalled over the window you choose.
           </p>
         </div>
 

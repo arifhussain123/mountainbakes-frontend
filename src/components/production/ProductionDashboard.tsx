@@ -14,12 +14,7 @@ import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
 type CardColor = 'orange' | 'brown' | 'green' | 'blue' | 'red';
 
-function safeDay(date: string) {
-  try { return format(parseISO(date), 'MMM d'); } catch { return date; }
-}
-
 // Charts pull in recharts; load lazily on the client to keep the initial bundle lean.
-const DemandLineChart = dynamic(() => import('./ProductionCharts').then((m) => m.DemandLineChart), { ssr: false });
 const DemandBarChart = dynamic(() => import('./ProductionCharts').then((m) => m.DemandBarChart), { ssr: false });
 const BranchDemandChart = dynamic(() => import('./ProductionCharts').then((m) => m.BranchDemandChart), { ssr: false });
 const TopRequestedChart = dynamic(() => import('./ProductionCharts').then((m) => m.TopRequestedChart), { ssr: false });
@@ -43,11 +38,6 @@ export function ProductionDashboard() {
     { title: 'Total Demand Qty', value: c?.totalDemandQty ?? 0, icon: BarChart3, color: 'blue' },
     { title: 'Available Prod. Stock', value: c?.availableProductionStock ?? 0, icon: Boxes, color: 'green' },
   ];
-
-  const daily = useMemo(
-    () => (data?.demandByDay ?? []).slice(-14).map((d) => ({ label: safeDay(d.date), qty: d.qty })),
-    [data],
-  );
 
   const weekly = useMemo(() => {
     const map = new Map<string, number>();
@@ -85,10 +75,13 @@ export function ProductionDashboard() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DemandLineChart title="Daily Demand" data={daily} loading={isLoading} />
         <DemandBarChart title="Monthly Demand" data={monthly} loading={isLoading} />
         <DemandBarChart title="Weekly Demand" data={weekly} loading={isLoading} />
-        <BranchDemandChart data={data?.branchDemand ?? []} loading={isLoading} />
+        {/* Spans the row the Daily Demand chart used to share, so removing it
+            does not leave the grid ending on a half-empty row. */}
+        <div className="lg:col-span-2">
+          <BranchDemandChart data={data?.branchDemand ?? []} loading={isLoading} />
+        </div>
       </div>
 
       <TopRequestedChart data={data?.topProducts ?? []} loading={isLoading} />
