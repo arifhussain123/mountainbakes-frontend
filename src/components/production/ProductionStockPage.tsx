@@ -1,17 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { ProductionStockRow } from '@mb/shared';
+import { businessDateStr, type ProductionStockRow } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useProducts, useProductionStock, usePrepareProducts } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/shared/DataTable';
-import { Plus } from 'lucide-react';
-import { businessDateStr } from '@mb/shared';
+import { Plus, FileSpreadsheet } from 'lucide-react';
 import { formatDate } from '@/utils/date';
 import { PrepareProductsModal } from './PrepareProductsModal';
+import { PreparedDetailExportModal } from './PreparedDetailExportModal';
 
 const col = createColumnHelper<ProductionStockRow>();
 
@@ -27,6 +27,16 @@ export function ProductionStockPage() {
   const productsQ = useProducts(token, { isActive: true });
   const prepareMut = usePrepareProducts(token);
   const [modalOpen, setModalOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  // What today already holds per product, so the prepare form can show its
+  // entries as the ADDITIONS they are (+5 → 30) rather than as a fresh total.
+  // The table is date-scoped, but the form only opens on today (see below), so
+  // these figures are always the ones a save will add to.
+  const preparedTodayById = useMemo(
+    () => Object.fromEntries((stockQ.data ?? []).map((r) => [r.productId, r.preparedToday])),
+    [stockQ.data],
+  );
 
   const columns = [
     // The STK-###### the Help Desk needs to raise a query against this item —
@@ -82,6 +92,11 @@ export function ProductionStockPage() {
               className="h-9 w-full sm:w-40"
             />
           </div>
+          {/* Unlike the table, which can only ever show one day, this export spans
+              a From/To window — so it stays available whichever day is on screen. */}
+          <Button variant="outline" className="h-9" onClick={() => setExportOpen(true)}>
+            <FileSpreadsheet className="mr-1 h-4 w-4" /> Prepared Detail
+          </Button>
           {/* A prepare always books against the CURRENT business day (the server
               stamps it), so offering the button while a past day is on screen
               would save a figure the table cannot show. */}
@@ -99,6 +114,13 @@ export function ProductionStockPage() {
 
       <DataTable columns={columns} data={stockQ.data ?? []} loading={stockQ.isLoading} searchPlaceholder="Search products…" />
 
+      <PreparedDetailExportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        token={token}
+        defaultDate={date}
+      />
+
       <PrepareProductsModal
         open={modalOpen}
         onOpenChange={setModalOpen}
@@ -106,6 +128,7 @@ export function ProductionStockPage() {
         loadingProducts={productsQ.isLoading}
         submit={prepareMut.mutateAsync}
         submitting={prepareMut.isPending}
+        preparedTodayById={preparedTodayById}
       />
     </div>
   );

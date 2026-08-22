@@ -192,7 +192,7 @@ export function LoginHistoryCard() {
         <p className="text-xs text-muted-foreground">
           {isAdmin
             ? 'Every account · last 90 days · location is resolved from the login IP and is approximate'
-            : 'Your sign-ins · last 90 days · location is resolved from your IP and is approximate'}
+            : `Sign-ins for ${user?.email ?? 'this account'} · last 90 days · location is resolved from your IP and is approximate`}
         </p>
       </CardHeader>
       <CardContent className="p-0 sm:px-4 sm:pb-4">
@@ -201,10 +201,13 @@ export function LoginHistoryCard() {
           data={historyQ.data ?? []}
           loading={historyQ.isLoading}
           searchPlaceholder="Search logins…"
-          // Hidden rather than dropped for a non-admin: everyone's rows carry an
-          // email, but when they are all the SAME email the column is a wall of
-          // one repeated value. An admin, comparing accounts, needs it.
-          columnVisibility={{ userEmail: !!isAdmin }}
+          // Shown to EVERY role, admin or not. It was hidden for a non-admin on
+          // the grounds that their rows all carry the same address, but on a
+          // shared branch or production device "which account is this browser
+          // signed in as?" is exactly the question the history is opened to
+          // answer — and a repeated value answers it. The address is the real
+          // sign-in email off the verified JWT, including for finance, where the
+          // Finance User ID is resolved to an address before Supabase sees it.
           pageSize={10}
           empty={
             <div className="flex flex-col items-center gap-2 py-10 text-center">
