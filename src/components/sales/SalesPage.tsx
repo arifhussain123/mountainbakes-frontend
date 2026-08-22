@@ -16,6 +16,7 @@ import { useProducts, useProductionStock } from '@/lib/queries';import {
 } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
@@ -243,6 +244,40 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     return { totals, total, staff };
   }, [sales, methods]);
 
+  // Units that left the counter today, folded per product across every sale.
+  //
+  // UNLIKE the money above, this counts staff sales too. Their value is kept out
+  // of takings because nothing was collected, but the goods still went out the
+  // door — and "how much of each item did we move" is the question this answers.
+  // Folding by productId rather than by name also merges the case where one sale
+  // carries the same product on two lines.
+  // A busy day runs to 30+ distinct products; at two columns on a phone that
+  // would bury the sales table under the summary. Collapsed past this many, with
+  // the count on the toggle so nothing is hidden silently.
+  const ITEMS_COLLAPSED = 12;
+  // Left alone when the date changes: an expanded list is a preference, and
+  // re-collapsing it under someone stepping through days is the wrong default.
+  const [showAllItems, setShowAllItems] = useState(false);
+
+  const itemsSold = useMemo(() => {
+    const byProduct = new Map<string, { productId: string; name: string; qty: number }>();
+    let totalQty = 0;
+    for (const sale of sales) {
+      for (const item of sale.items ?? []) {
+        const qty = Number(item.qty) || 0;
+        if (!qty) continue;
+        const cur = byProduct.get(item.productId) ?? { productId: item.productId, name: item.productName, qty: 0 };
+        cur.qty += qty;
+        byProduct.set(item.productId, cur);
+        totalQty += qty;
+      }
+    }
+    // Busiest first: on a summary the useful reading is what moved most, not
+    // where a name happens to fall in the alphabet.
+    const rows = [...byProduct.values()].sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name));
+    return { rows, totalQty };
+  }, [sales]);
+
   const columns = [
     col.accessor('orderNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('createdAt', { header: 'Time', cell: (i) => <span className="text-sm">{i.getValue() ? karachiTimeStr(new Date(i.getValue())) : ''}</span> }),
@@ -362,6 +397,54 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
                 <p className="text-xs text-muted-foreground">Staff (unpaid)</p>
                 <p className="text-lg font-bold text-muted-foreground">{cur}{summary.staff.toLocaleString()}</p>
               </div>
+            )}
+          </div>
+
+          {/* Items sold — the goods side of the same day, under the money side.
+              Quantities only, deliberately: the production counter hides the
+              per-sale Amount column so a figure is not misread as takings, and
+              pricing this breakdown would put that number straight back. */}
+          <div className="mt-4 border-t pt-4">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Items Sold
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-sm font-bold tabular-nums text-foreground">{itemsSold.totalQty.toLocaleString()}</span>
+                {' '}units · {itemsSold.rows.length} {itemsSold.rows.length === 1 ? 'product' : 'products'}
+              </p>
+            </div>
+            {loading ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+              </div>
+            ) : itemsSold.rows.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">No items sold on this day.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                  {(showAllItems ? itemsSold.rows : itemsSold.rows.slice(0, ITEMS_COLLAPSED)).map((r) => (
+                    <div key={r.productId} className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 p-3">
+                      {/* Full name on hover: the tile truncates, so the tooltip is
+                          the only complete copy on a narrow column. */}
+                      <p className="min-w-0 truncate text-xs text-muted-foreground" title={r.name}>{r.name}</p>
+                      <p className="shrink-0 text-lg font-bold tabular-nums">{r.qty.toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+                {itemsSold.rows.length > ITEMS_COLLAPSED && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 h-8 text-xs"
+                    onClick={() => setShowAllItems((v) => !v)}
+                  >
+                    {showAllItems
+                      ? 'Show less'
+                      : `Show all ${itemsSold.rows.length} products (+${itemsSold.rows.length - ITEMS_COLLAPSED} more)`}
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </CardContent>
