@@ -233,15 +233,37 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   // to reports and the daily closing, so the two never disagree.
   const summary = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const m of methods) totals[m] = 0;
+    // Gross is listed BEFORE any discount — the plain qty x rate of what was
+    // rung up. Net (`totals`) is what was actually charged. They differ by the
+    // discount given, and both are worth seeing: the gap is the giveaway.
+    const grossTotals: Record<string, number> = {};
+    for (const m of methods) { totals[m] = 0; grossTotals[m] = 0; }
     let total = 0;
     let staff = 0;
+    let gross = 0;
+    let discount = 0;
     for (const s of sales) {
+      // Summed off the line items rather than from subtotal, because subtotal is
+      // already net of the discount — it cannot answer "at list price, what did
+      // this ring up to".
+      const saleGross = (s.items ?? []).reduce(
+        (sum, i) => sum + (Number(i.unitPrice) || 0) * (Number(i.qty) || 0),
+        0,
+      );
       totals[s.paymentMethod] = (totals[s.paymentMethod] ?? 0) + s.grandTotal;
-      if (s.paymentMethod === UNPAID_PAYMENT_METHOD) staff += s.grandTotal;
-      else total += s.grandTotal;
+      grossTotals[s.paymentMethod] = (grossTotals[s.paymentMethod] ?? 0) + saleGross;
+      if (s.paymentMethod === UNPAID_PAYMENT_METHOD) {
+        staff += s.grandTotal;
+      } else {
+        // Staff is excluded from all three headline figures for one reason: no
+        // money was taken. Keeping gross and discount on the same footing as
+        // `total` is what lets the three be read against each other.
+        total += s.grandTotal;
+        gross += saleGross;
+        discount += Number(s.discountTotal) || 0;
+      }
     }
-    return { totals, total, staff };
+    return { totals, grossTotals, total, staff, gross, discount };
   }, [sales, methods]);
 
   // Units that left the counter today, folded per product across every sale.
@@ -384,11 +406,42 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               <div key={m} className="rounded-lg border bg-muted/30 p-3">
                 <p className="text-xs text-muted-foreground">{PAYMENT_METHOD_LABELS[m]}</p>
                 <p className="text-lg font-bold">{cur}{summary.totals[m]!.toLocaleString()}</p>
+                {/* The gross behind the charged figure. Shown only when the two
+                    differ, so a method that gave no discount stays a clean single
+                    number instead of repeating itself. */}
+                {summary.grossTotals[m] !== summary.totals[m] && (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Gross {cur}{summary.grossTotals[m]!.toLocaleString()}
+                  </p>
+                )}
               </div>
             ))}
             <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
               <p className="text-xs text-primary">Total Sales</p>
               <p className="text-lg font-bold text-primary">{cur}{summary.total.toLocaleString()}</p>
+              <p className="mt-0.5 text-[11px] text-primary/70">Charged, after discount</p>
+            </div>
+            {/* Gross and Discount sit AFTER the total, not before it, and stay
+                visually quieter than it. Total Sales is the figure that has to
+                reconcile with the drawer, the daily closing and the finance
+                ledger; these two explain it, they do not compete with it. */}
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Gross (qty × rate)</p>
+              <p className="text-lg font-bold">{cur}{summary.gross.toLocaleString()}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Before discount</p>
+            </div>
+            <div className="rounded-lg border border-dashed p-3">
+              <p className="text-xs text-muted-foreground">Discount</p>
+              <p className="text-lg font-bold text-muted-foreground">
+                {summary.discount > 0 ? '−' : ''}{cur}{summary.discount.toLocaleString()}
+              </p>
+              {/* NOT labelled "Gross − Total". That identity holds only while
+                  delivery charges and tax are zero, which is true of every order
+                  today but is a settings change away from being false — at which
+                  point Total would carry charges that are not a discount. This
+                  is summed from each sale's own discountTotal, so it stays right
+                  either way. */}
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Off list price</p>
             </div>
             {/* Staff sits outside the payment tiles and after the total, because it is
                 not money taken — it is the value of what left the counter unpaid. */}
