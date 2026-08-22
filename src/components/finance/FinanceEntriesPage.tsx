@@ -85,14 +85,35 @@ export function FinanceEntriesPage() {
         </span>
       ),
     }),
-    col.accessor('description', { header: 'Description', meta: { mobileFull: true }, cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
+    // Free text, so it is capped and clipped to one line. TableCell is
+    // `whitespace-nowrap`: without a ceiling a long entry is laid out as one
+    // unbroken line, table-auto takes the width it needs off the columns beside
+    // it, and the outer wrapper is `overflow-hidden` — so the text reads as
+    // though it has spilled across Amount / Method / Status. The whole value is
+    // on hover and in the View dialog. Capped from `md:` up only — the phone
+    // card is a <dd>, not a table cell, so there it wraps in full as before.
+    col.accessor('description', {
+      header: 'Description',
+      meta: { mobileFull: true },
+      cell: (i) => {
+        const v = i.getValue();
+        return v ? <span title={v} className="block break-words text-sm md:max-w-[18rem] md:truncate">{v}</span> : null;
+      },
+    }),
     col.accessor('branchName', {
       header: 'Branch',
       cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() ?? 'Company-wide'}</span>,
     }),
+    // Capped and clipped for the same reason as Description above — this is the
+    // column that actually broke the row, because a note is the longest free
+    // text on the page.
     col.accessor('notes', {
       header: 'Notes',
-      cell: (i) => (i.getValue() ? <span className="text-sm text-muted-foreground">{i.getValue()}</span> : null),
+      meta: { mobileFull: true },
+      cell: (i) => {
+        const v = i.getValue();
+        return v ? <span title={v} className="block break-words text-sm text-muted-foreground md:max-w-[16rem] md:truncate">{v}</span> : null;
+      },
     }),
     col.accessor('amount', {
       header: 'Amount',
