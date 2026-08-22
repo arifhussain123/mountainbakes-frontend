@@ -272,33 +272,28 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
       ? []
       : [col.accessor('grandTotal', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> })]),
     col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
-    // Production only. A staff sale is unpaid, so its comment is the whole audit
-    // trail — leaving it to the View dialog would hide the one field that explains
-    // why the goods left. Branch sales keep their original column set.
-    ...(isProduction
-      ? [
-          col.accessor('notes', {
-            header: 'Comment',
-            // The whole audit trail for an unpaid staff sale — never squeeze it
-            // into half a card row.
-            meta: { mobileFull: true },
-            cell: (i) => {
-              const text = (i.getValue() ?? '').trim();
-              if (!text) return <span className="text-muted-foreground">—</span>;
-              const isUnpaidSale = i.row.original.paymentMethod === UNPAID_PAYMENT_METHOD;
-              return (
-                <span
-                  // Full text on hover: truncation must never be the only copy.
-                  title={text}
-                  className={cn('text-sm', isUnpaidSale ? 'font-medium' : 'text-muted-foreground')}
-                >
-                  {text.length > 40 ? text.slice(0, 40) + '…' : text}
-                </span>
-              );
-            },
-          }),
-        ]
-      : []),
+    // Shown on both surfaces. For a production staff sale the comment is unpaid
+    // goods' whole audit trail; on a branch row it is the only record of why a
+    // sale looks the way it does — leaving either to the View dialog hides it.
+    col.accessor('notes', {
+      header: 'Comment',
+      // Never squeeze a comment into half a card row.
+      meta: { mobileFull: true },
+      cell: (i) => {
+        const text = (i.getValue() ?? '').trim();
+        if (!text) return <span className="text-muted-foreground">—</span>;
+        const isUnpaidSale = i.row.original.paymentMethod === UNPAID_PAYMENT_METHOD;
+        return (
+          <span
+            // Full text on hover: truncation must never be the only copy.
+            title={text}
+            className={cn('text-sm', isUnpaidSale ? 'font-medium' : 'text-muted-foreground')}
+          >
+            {text.length > 40 ? text.slice(0, 40) + '…' : text}
+          </span>
+        );
+      },
+    }),
     col.display({
       id: 'actions',
       header: 'Actions',

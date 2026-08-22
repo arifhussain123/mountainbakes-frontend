@@ -568,11 +568,12 @@ export function SaleForm({
           </div>
         </div>
 
-        {/* Cash payments capture the tendered amount here; other methods keep Notes.
-            A staff sale collects nothing, so it never shows Received Cash — instead
-            its comment is mandatory, because that note is the only record of who
-            took the goods and why. */}
-        {isCash ? (
+        {/* Received Cash is cash-only — a staff sale collects nothing, and the other
+            methods are settled elsewhere. The comment box sits below it rather than
+            instead of it: it used to be the `else` of this branch, which left the
+            default (cash) sale with no way to record one at all, so the Comment
+            column on the sales table read '—' for nearly every branch row. */}
+        {isCash && (
           <div className="space-y-1">
             <Label>Received Cash</Label>
             <Input
@@ -594,21 +595,21 @@ export function SaleForm({
               })}
             />
           </div>
-        ) : (
-          <div className="space-y-1">
-            <Label>{isUnpaid ? 'Comment *' : 'Notes (optional)'}</Label>
-            <Textarea
-              placeholder={isUnpaid ? 'Who is taking this, and why? (required)' : 'Any notes…'}
-              aria-invalid={isUnpaid && !!form.formState.errors.notes}
-              {...form.register('notes')}
-            />
-            {isUnpaid && (
-              <p className={cn('text-xs', form.formState.errors.notes ? 'text-destructive' : 'text-muted-foreground')}>
-                {form.formState.errors.notes?.message ?? 'No payment is collected for a staff sale, so a comment is required.'}
-              </p>
-            )}
-          </div>
         )}
+
+        <div className="space-y-1">
+          <Label>{isUnpaid ? 'Comment *' : 'Notes (optional)'}</Label>
+          <Textarea
+            placeholder={isUnpaid ? 'Who is taking this, and why? (required)' : 'Any notes…'}
+            aria-invalid={isUnpaid && !!form.formState.errors.notes}
+            {...form.register('notes')}
+          />
+          {isUnpaid && (
+            <p className={cn('text-xs', form.formState.errors.notes ? 'text-destructive' : 'text-muted-foreground')}>
+              {form.formState.errors.notes?.message ?? 'No payment is collected for a staff sale, so a comment is required.'}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Sticky footer — totals + actions stay in view while the item list scrolls */}
