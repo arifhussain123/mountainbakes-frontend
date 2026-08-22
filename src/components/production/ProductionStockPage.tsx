@@ -4,16 +4,26 @@ import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { ProductionStockRow } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProducts, useProductionStock, usePrepareProducts } from '@/lib/queries';import { Button } from '@/components/ui/button';
+import { useProducts, useProductionStock, usePrepareProducts } from '@/lib/queries';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/shared/DataTable';
 import { Plus } from 'lucide-react';
+import { businessDateStr } from '@mb/shared';
+import { formatDate } from '@/utils/date';
 import { PrepareProductsModal } from './PrepareProductsModal';
 
 const col = createColumnHelper<ProductionStockRow>();
 
 export function ProductionStockPage() {
   const { token } = useAuth();
-  const stockQ = useProductionStock(token);
+  const today = businessDateStr();
+  // The pool's day-scoped figures (Prepared / Approved / Sold / Returned) are
+  // only ever computed for one business date, so the page needs to say which —
+  // and let it be moved back to read a closed day.
+  const [date, setDate] = useState(today);
+  const isToday = date === today;
+  const stockQ = useProductionStock(token, date);
   const productsQ = useProducts(token, { isActive: true });
   const prepareMut = usePrepareProducts(token);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,7 +37,7 @@ export function ProductionStockPage() {
     // Opening first among the figures, as on the branch Stock page — the day's
     // movement is only readable against where the day started.
     col.accessor('opening', { header: 'Opening Stock', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('preparedToday', { header: 'Prepared Today', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    col.accessor('preparedToday', { header: 'Prepared', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('totalStock', { header: 'Total Stock', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('approvedQty', { header: 'Approved Qty', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('soldToday', { header: 'Sold', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
@@ -54,14 +64,37 @@ export function ProductionStockPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Production Stock</h2>
-          <p className="text-sm text-muted-foreground">Central production pool — today</p>
+          <p className="text-sm text-muted-foreground">
+            Central production pool — {isToday ? 'today' : formatDate(date)}
+          </p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
-          <Plus className="mr-1 h-4 w-4" /> Today&apos;s Prepared Products
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Date</label>
+            <Input
+              type="date"
+              value={date}
+              max={today}
+              onChange={(e) => setDate(e.target.value || today)}
+              className="h-9 w-full sm:w-40"
+            />
+          </div>
+          {/* A prepare always books against the CURRENT business day (the server
+              stamps it), so offering the button while a past day is on screen
+              would save a figure the table cannot show. */}
+          {isToday ? (
+            <Button className="h-9" onClick={() => setModalOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" /> Today&apos;s Prepared Products
+            </Button>
+          ) : (
+            <Button variant="outline" className="h-9" onClick={() => setDate(today)}>
+              Back to today
+            </Button>
+          )}
+        </div>
       </div>
 
       <DataTable columns={columns} data={stockQ.data ?? []} loading={stockQ.isLoading} searchPlaceholder="Search products…" />

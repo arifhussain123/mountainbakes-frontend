@@ -12,15 +12,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ResponsiveMatrix } from '@/components/shared/ResponsiveMatrix';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { toast } from 'sonner';
-import { businessDateStr, type ProductionStockRow } from '@mb/shared';
-import { formatDate } from '@/utils/date';
-// This report is driven by a single date (see PREPARED_REPORT) rather than the
-// period dropdown, and is derived client-side from the production-stock pool.
-const PREPARED_REPORT = 'prepared-by-date';
+import { businessDateStr } from '@mb/shared';
+
+// This report is driven by a From/To date window (see PREPARED_REPORT) rather
+// than the period dropdown. It is built server-side off the production-stock
+// ledger, so the same rows the preview shows are what the exporters write.
+const PREPARED_REPORT = 'prepared-detail';
 
 const REPORTS = [
   { value: 'production', label: 'Production (Daily)' },
-  { value: PREPARED_REPORT, label: 'Prepared Items (By Date)' },
+  { value: PREPARED_REPORT, label: 'Prepared Items (Date-wise)' },
   { value: 'branch-demand', label: 'Branch Demand' },
   { value: 'approved-orders', label: 'Approved Orders' },
   { value: 'pending-balance', label: 'Pending Balance' },
@@ -42,63 +43,50 @@ interface ReportData {
   rows: (string | number)[][];
 }
 
-// Build the "all items with qty, for one date" table from the production-stock
-// pool rows. `preparedToday` reflects the queried Karachi day (see useProductionStock).
-// We list every item that had any prepared units that day, alphabetically, with a total.
-function buildPreparedReport(rows: ProductionStockRow[] | undefined, date: string): ReportData {
-  const prepared = (rows ?? [])
-    .filter((r) => r.preparedToday > 0)
-    .sort((a, b) => a.productName.localeCompare(b.productName));
-  const body: (string | number)[][] = prepared.map((r) => [r.productName, r.preparedToday]);
-  if (prepared.length > 0) {
-    body.push(['Total', prepared.reduce((sum, r) => sum + r.preparedToday, 0)]);
-  }
-  return {
-    title: `Prepared Items — ${formatDate(date)}`,
-    headers: ['Item', 'Qty Prepared'],
-    rows: body,
-  };
-}
-
 export function ProductionReportsPage() {
   const { token } = useAuth();
   const [report, setReport] = useState('production');
   const [period, setPeriod] = useState('monthly');
-  const [date, setDate] = useState(businessDateStr());
+  const today = businessDateStr();
+  // Both ends default to today, so opening the report answers "what did we
+  // prepare today?" before anything is touched.
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
 
   const isPrepared = report === PREPARED_REPORT;
 
-  // Period-based reports come pre-shaped from the backend.
-  const summaryQuery = useQuery({
-    queryKey: ['productionReport', report, period],
-    queryFn: () => apiCall<ReportData>(`/api/production-reports/summary?report=${report}&period=${period}`, {}, token),
-    enabled: !!token && !isPrepared,
+  // One endpoint for every report: period-driven ones send `period`, the
+  // date-wise one sends `from`/`to`. The server ignores whichever it doesn't use.
+  const rangeParams = isPrepared ? `&from=${from}&to=${to}` : '';
+  const query = useQuery({
+    queryKey: ['productionReport', report, period, isPrepared ? from : '', isPrepared ? to : ''],
+    queryFn: () =>
+      apiCall<ReportData>(`/api/production-reports/summary?report=${report}&period=${period}${rangeParams}`, {}, token),
+    enabled: !!token,
   });
 
-  // The "Prepared Items (By Date)" report reads the production-stock pool for one day.
-  const preparedQuery = useQuery({
-    queryKey: ['productionPreparedReport', date],
-    queryFn: () => apiCall<{ rows: ProductionStockRow[]; date: string }>(`/api/production-stock?date=${date}`, {}, token),
-    enabled: !!token && isPrepared,
-  });
-
-  const loading = isPrepared ? preparedQuery.isLoading : summaryQuery.isLoading;
+  const loading = query.isLoading;
   // Surface request failures so a 500 reads as an error (with retry), not as an
   // empty report — the two are very different and must not look the same.
-  const error = isPrepared ? preparedQuery.error : summaryQuery.error;
-  const refetch = () => (isPrepared ? preparedQuery.refetch() : summaryQuery.refetch());
-  const data: ReportData | undefined = isPrepared
-    ? buildPreparedReport(preparedQuery.data?.rows, date)
-    : summaryQuery.data;
+  const error = query.error;
+  const refetch = () => query.refetch();
+  const data: ReportData | undefined = query.data;
 
   async function handleExport(type: 'pdf' | 'excel' | 'csv') {
     try {
-      const blob = await apiCall<Blob>(`/api/production-reports/export?report=${report}&period=${period}&type=${type}`, {}, token);
+      const blob = await apiCall<Blob>(
+        `/api/production-reports/export?report=${report}&period=${period}${rangeParams}&type=${type}`,
+        {},
+        token,
+      );
       const ext = type === 'excel' ? 'xlsx' : type;
+      // Name the file after the window it covers — two exports pulled the same
+      // day for different date ranges must not collide in the Downloads folder.
+      const scope = isPrepared ? (from === to ? from : `${from}_to_${to}`) : period;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `mountain-bakes-${report}-${period}.${ext}`;
+      a.download = `mountain-bakes-${report}-${scope}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`${type.toUpperCase()} exported`);
@@ -122,10 +110,29 @@ export function ProductionReportsPage() {
             </Select>
           </div>
           {isPrepared ? (
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Date</label>
-              <Input type="date" value={date} max={businessDateStr()} onChange={(e) => setDate(e.target.value)} className="h-9 w-full sm:w-40" />
-            </div>
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">From</label>
+                <Input
+                  type="date"
+                  value={from}
+                  max={to || today}
+                  onChange={(e) => setFrom(e.target.value || today)}
+                  className="h-9 w-full sm:w-40"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">To</label>
+                <Input
+                  type="date"
+                  value={to}
+                  min={from}
+                  max={today}
+                  onChange={(e) => setTo(e.target.value || today)}
+                  className="h-9 w-full sm:w-40"
+                />
+              </div>
+            </>
           ) : (
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Period</label>
@@ -139,13 +146,9 @@ export function ProductionReportsPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!isPrepared && (
-            <>
-              <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('pdf')}>PDF</Button>
-              <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('excel')}>Excel</Button>
-              <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('csv')}>CSV</Button>
-            </>
-          )}
+          <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('pdf')}>PDF</Button>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('excel')}>Excel</Button>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => handleExport('csv')}>CSV</Button>
           <PrintButton variant="outline" size="sm" buttonClassName="h-9" />
         </div>
       </div>
