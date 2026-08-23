@@ -71,7 +71,9 @@ export function DemandLineChart({ title, data, loading }: { title: string; data:
         <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
         <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Qty']} />
-        <Line type="monotone" dataKey="qty" stroke="var(--chart-1)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+        {/* See SalesChart: the mount animation bakes a stroke-dasharray from the
+            width ResponsiveContainer reports before layout, and never recomputes it. */}
+        <Line type="monotone" dataKey="qty" stroke="var(--chart-1)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
       </LineChart>
     </ChartShell>
   );

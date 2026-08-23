@@ -82,6 +82,12 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
                   contentStyle={TOOLTIP}
                   formatter={(value: number) => [`Rs.${value.toLocaleString()}`, 'Revenue']}
                 />
+                {/* Animation off, and not for taste. Recharts derives the mount
+                    "draw-on" stroke-dasharray from the path length measured on the
+                    FIRST render, when ResponsiveContainer still reports a near-zero
+                    width. The path `d` is recomputed once the container is laid out;
+                    the dasharray is not — leaving a ~65px dash on an ~1130px line, so
+                    the series renders as a stub and reads as "the chart is broken". */}
                 <Line
                   type="monotone"
                   dataKey="Revenue"
@@ -89,6 +95,7 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
                   strokeWidth={2}
                   dot={dot}
                   activeDot={{ r: 4 }}
+                  isAnimationActive={false}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -122,6 +129,7 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
                   strokeWidth={2}
                   dot={dot}
                   activeDot={{ r: 4 }}
+                  isAnimationActive={false}
                 />
               </LineChart>
             </ResponsiveContainer>
