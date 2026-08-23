@@ -16,8 +16,8 @@ import {
 } from 'recharts';
 
 const TOOLTIP_STYLE = {
-  backgroundColor: 'hsl(var(--card))',
-  border: '1px solid hsl(var(--border))',
+  backgroundColor: 'var(--card)',
+  border: '1px solid var(--border)',
   borderRadius: '8px',
   fontSize: '12px',
 } as const;
@@ -52,11 +52,11 @@ export function DemandBarChart({ title, data, loading }: { title: string; data: 
   return (
     <ChartShell title={title} loading={loading} empty={data.length === 0}>
       <BarChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Qty']} />
-        <Bar dataKey="qty" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="qty" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ChartShell>
   );
@@ -67,11 +67,11 @@ export function DemandLineChart({ title, data, loading }: { title: string; data:
   return (
     <ChartShell title={title} loading={loading} empty={data.length === 0}>
       <LineChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Qty']} />
-        <Line type="monotone" dataKey="qty" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+        <Line type="monotone" dataKey="qty" stroke="var(--chart-1)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
       </LineChart>
     </ChartShell>
   );
@@ -83,9 +83,9 @@ export function BranchDemandChart({ data, loading }: { data: { branchName: strin
   return (
     <ChartShell title="Branch Demand Comparison" loading={loading} empty={chartData.length === 0}>
       <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-        <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Demand']} />
         <Bar dataKey="qty" radius={[4, 4, 0, 0]}>
           {chartData.map((_, i) => (
@@ -103,9 +103,9 @@ export function TopRequestedChart({ data, loading }: { data: { productName: stri
   return (
     <ChartShell title="Top 10 Requested Products" loading={loading} empty={chartData.length === 0} height={300}>
       <BarChart layout="vertical" data={chartData} margin={{ top: 5, right: 16, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-        <XAxis type="number" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} allowDecimals={false} />
-        <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+        <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Requested']} />
         <Bar dataKey="qty" radius={[0, 4, 4, 0]}>
           {chartData.map((_, i) => (

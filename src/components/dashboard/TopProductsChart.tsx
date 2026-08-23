@@ -40,7 +40,7 @@ export function TopProductsChart({ data, loading }: { data: TopProduct[]; loadin
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
                 formatter={(v: number) => [`Rs.${v.toLocaleString()}`, 'Revenue']}
               />
               <Legend
