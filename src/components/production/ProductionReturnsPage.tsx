@@ -6,6 +6,7 @@ import type { ProductionReturn, ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useProductionReturns, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import {
   Dialog,
@@ -15,21 +16,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { formatDate } from '@/utils/date';
+import { formatDate, formatDateTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Check, Undo2, X } from 'lucide-react';
+import { Check, Eye, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
  * Production → Product Returns: the queue of stock branches have sent back.
  *
- * IT IS A QUEUE NOW, not a log. Branch-raised returns used to arrive already
+ * IT IS A QUEUE, not a log. Branch-raised returns used to arrive already
  * `accepted` — `POST /api/stock/return` approved them on the branch's behalf and
  * credited the production pool before this screen ever saw them, so every row
- * here was a decision already taken and the Accept/Reject buttons only ever
- * appeared on the handful Production had recorded themselves. That auto-approval
- * is gone: a branch return now arrives `pending` and waits here.
+ * here was a decision already taken. A branch return now arrives `pending` and
+ * waits here.
+ *
+ * THE DECISION IS TAKEN IN THE DIALOG, NOT IN THE ROW. The three actions used to
+ * sit inline in the actions column. They are gone from the table: a row is a
+ * summary, and Approve/Reject/Send Back were three small targets crowded into
+ * the narrowest column on the densest screen in the app, each irreversible and
+ * two of them moving stock in a shop that is not looking. View opens the row and
+ * the decision is taken there, against the full record — the reason text in
+ * particular, which the table truncates and which is the whole basis for
+ * choosing Reject over Send Back.
  *
  * WHAT EACH ACTION MOVES, and why it depends on where the return came from. The
  * branch half of a branch-raised return has already happened — the units came
@@ -48,9 +57,10 @@ import { toast } from 'sonner';
  * there being no branch record to hand back otherwise; the server refuses it on
  * the rest with a 400 rather than trusting this to be the only guard.
  *
- * Every action is confirmed. They are three small buttons side by side in a
- * dense table, each irreversible from this screen, and two of them move stock in
- * a shop that is not looking.
+ * Picking an action does not fire it. The dialog turns over to a confirmation
+ * naming what moves, in the SAME dialog rather than a second one stacked on top
+ * — two overlapping modals to take one decision is how a mis-click becomes a
+ * stock movement nobody meant.
  */
 
 const STATUS_STYLES: Record<string, string> = {
@@ -74,6 +84,18 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
+
+/**
+ * The short reference shown in the ID column.
+ *
+ * The id is a uuid — unreadable at a glance and far too wide for a table that
+ * also has to fit on a phone. The first segment is enough to match a row against
+ * the one open in the dialog, which prints the id in full. Same helper, and the
+ * same reasoning, as the branch's Return Stock page.
+ */
+function shortRef(id: string): string {
+  return id.split('-')[0]?.toUpperCase() ?? id.slice(0, 8).toUpperCase();
+}
 
 /** The confirmation copy for each action — what it does, in stock terms. */
 function confirmCopy(r: ProductionReturn, status: ProductionReturnStatus): { title: string; body: string } {
@@ -108,18 +130,24 @@ export function ProductionReturnsPage() {
   const returnsQ = useProductionReturns(token);
   const reviewMut = useReviewReturn(token);
 
-  const [confirming, setConfirming] = useState<{ row: ProductionReturn; status: ProductionReturnStatus } | null>(null);
+  // The row open in the dialog, and — once one is picked — the action awaiting
+  // confirmation. `pendingAction` null means the dialog is showing the record;
+  // set, it has turned over to the confirmation for that action. Two pieces of
+  // state rather than one union because the row outlives the choice: backing out
+  // of a confirmation returns to the detail rather than closing the dialog.
+  const [viewRow, setViewRow] = useState<ProductionReturn | null>(null);
+  const [pendingAction, setPendingAction] = useState<ProductionReturnStatus | null>(null);
 
-  // The id being acted on, rather than `reviewMut.isPending` alone: that is one
-  // flag for the whole mutation, so disabling on it greys out every button in
-  // every row while one is in flight. Production works this queue at speed and a
-  // table that freezes whole is indistinguishable from one that has hung.
-  const [actingId, setActingId] = useState<string | null>(null);
+  function closeDialog() {
+    if (reviewMut.isPending) return;
+    setViewRow(null);
+    setPendingAction(null);
+  }
 
   async function submit() {
-    if (!confirming) return;
-    const { row, status } = confirming;
-    setActingId(row.id);
+    if (!viewRow || !pendingAction) return;
+    const row = viewRow;
+    const status = pendingAction;
     try {
       await reviewMut.mutateAsync({ id: row.id, status });
       toast.success(
@@ -129,18 +157,27 @@ export function ProductionReturnsPage() {
             ? `Rejected — ${row.qty} × ${row.productName} back with ${short(row.branchName)}`
             : `Sent back to ${short(row.branchName)} to correct`,
       );
-      setConfirming(null);
+      setViewRow(null);
+      setPendingAction(null);
     } catch (err) {
       // The API's message names the reason a review was refused ("Return already
       // reviewed" when someone else got there first), which is more use than a
       // generic failure — same handling as the branch's Return Stock page.
       toast.error(err instanceof ApiError || err instanceof Error ? err.message : 'Failed to review return');
-    } finally {
-      setActingId(null);
+      // Deliberately back to the detail, not closed: "already reviewed" means
+      // this row has changed under the operator and the record is what they need
+      // to see, while closing would drop them on a table they must find it in
+      // again.
+      setPendingAction(null);
     }
   }
 
   const columns = [
+    col.accessor('id', {
+      header: 'ID',
+      meta: { mobileLabel: 'Ref' },
+      cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
+    }),
     // The global filter only matches what it reaches through the accessor, so the
     // accessor carries both spellings — the ISO date and the displayed one — and
     // "15 Aug", "Aug 2026" and "2026-08-15" all find the row. Keeping the ISO date
@@ -153,10 +190,8 @@ export function ProductionReturnsPage() {
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('qty', { header: 'Qty', meta: { align: 'center' }, cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span> }),
-    // Which side raised it. Production has to know before deciding: approving a
-    // branch-raised return credits the pool only, while approving one of their
-    // own also takes the units off the branch — and Send Back applies to the
-    // first kind alone. It was invisible on this table until now.
+    // Which side raised it. It decides what Approve moves and whether Send Back
+    // is offered at all, so it belongs on the row rather than only in the dialog.
     col.accessor((r) => (r.source === 'branch' ? 'Branch' : 'Production'), {
       id: 'source',
       header: 'Raised By',
@@ -175,75 +210,143 @@ export function ProductionReturnsPage() {
     col.display({
       id: 'actions',
       header: '',
-      cell: ({ row }) => {
-        const r = row.original;
-        // Only `pending` is actionable. A row Production has sent back is waiting
-        // on the branch, and the server's check-and-set is guarded on `pending`
-        // too — so a button here would be one that 409s.
-        if (r.status !== 'pending') {
-          return (
-            <span className="text-muted-foreground text-xs">
-              {r.status === 'returned' ? 'With branch' : '—'}
-            </span>
-          );
-        }
-        const busy = actingId === r.id;
-        return (
-          <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" className="h-8" onClick={() => setConfirming({ row: r, status: 'accepted' })} disabled={busy}>
-              <Check className="mr-1 h-3.5 w-3.5" /> Approve
-            </Button>
-            <Button size="sm" variant="outline" className="h-8 text-red-600" onClick={() => setConfirming({ row: r, status: 'rejected' })} disabled={busy}>
-              <X className="mr-1 h-3.5 w-3.5" /> Reject
-            </Button>
-            {/* Branch-raised rows only — see the module comment. */}
-            {r.source === 'branch' && (
-              <Button size="sm" variant="outline" className="h-8" onClick={() => setConfirming({ row: r, status: 'returned' })} disabled={busy}>
-                <Undo2 className="mr-1 h-3.5 w-3.5" /> Send Back
-              </Button>
-            )}
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <Button variant="ghost" size="sm" onClick={() => setViewRow(row.original)}>
+          <Eye className="mr-1.5 h-4 w-4" /> View
+        </Button>
+      ),
     }),
   ];
 
-  const copy = confirming ? confirmCopy(confirming.row, confirming.status) : null;
+  const copy = viewRow && pendingAction ? confirmCopy(viewRow, pendingAction) : null;
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Product Returns</h2>
         <p className="text-sm text-muted-foreground">
-          Last 30 days · approve, reject or send a return back to the branch to correct
+          Last 30 days · open a return to approve it, reject it, or send it back to the branch to correct
         </p>
       </div>
 
       <DataTable columns={columns} data={returnsQ.data ?? []} loading={returnsQ.isLoading} searchPlaceholder="Search returns…" />
 
-      <Dialog open={!!confirming} onOpenChange={(o) => !o && !reviewMut.isPending && setConfirming(null)}>
-        <DialogContent className="md:max-w-md">
+      {/* ── View, and decide ────────────────────────────────────────────────
+          One dialog, two faces. It opens on the record; picking an action turns
+          it over to that action's confirmation, and Back returns to the record. */}
+      <Dialog open={!!viewRow} onOpenChange={(o) => !o && closeDialog()}>
+        <DialogContent className="md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{copy?.title}</DialogTitle>
-            <DialogDescription>{copy?.body}</DialogDescription>
+            <DialogTitle>{copy ? copy.title : 'Return Detail'}</DialogTitle>
+            {copy && <DialogDescription>{copy.body}</DialogDescription>}
           </DialogHeader>
+
+          {viewRow && !copy && (
+            <>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
+                <dt className="text-muted-foreground">Reference</dt>
+                {/* The id in full here — the table shows only its first segment. */}
+                <dd className="break-all text-right font-mono text-xs">{viewRow.id}</dd>
+
+                <dt className="text-muted-foreground">Branch</dt>
+                <dd className="text-right font-medium">{short(viewRow.branchName)}</dd>
+
+                <dt className="text-muted-foreground">Product</dt>
+                <dd className="text-right font-medium">{viewRow.productName}</dd>
+
+                <dt className="text-muted-foreground">Quantity</dt>
+                <dd className="text-right font-semibold tabular-nums">{viewRow.qty}</dd>
+
+                <dt className="text-muted-foreground">Status</dt>
+                <dd className="text-right">
+                  <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLES[viewRow.status] ?? 'bg-muted')}>
+                    {STATUS_LABELS[viewRow.status] ?? viewRow.status}
+                  </span>
+                </dd>
+
+                <dt className="text-muted-foreground">Business day</dt>
+                <dd className="text-right">{formatDate(viewRow.date)}</dd>
+
+                <dt className="text-muted-foreground">Recorded</dt>
+                <dd className="text-right">{formatDateTime(viewRow.createdAt)}</dd>
+
+                <dt className="text-muted-foreground">Reviewed</dt>
+                <dd className="text-right">{viewRow.reviewedAt ? formatDateTime(viewRow.reviewedAt) : '—'}</dd>
+
+                <dt className="text-muted-foreground">Raised by</dt>
+                <dd className="truncate text-right">{viewRow.createdByName || '—'}</dd>
+
+                <dt className="text-muted-foreground">Reviewed by</dt>
+                <dd className="truncate text-right">{viewRow.reviewedByName || '—'}</dd>
+
+                {/* Spelled out rather than left as "Branch"/"Production", because
+                    it is what decides whether Approve also moves branch stock. */}
+                <dt className="text-muted-foreground">Source</dt>
+                <dd className="text-right">
+                  {viewRow.source === 'branch' ? 'Raised by the branch' : 'Recorded by production'}
+                </dd>
+
+                {/* Full width and untruncated — the table clips it, and it is the
+                    basis for choosing Reject over Send Back. */}
+                <dt className="col-span-2 pt-1 text-muted-foreground">Reason</dt>
+                <dd className="col-span-2 rounded-md bg-muted/40 p-2.5">{viewRow.reason || '—'}</dd>
+              </dl>
+
+              {viewRow.status === 'pending' && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Decision</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" onClick={() => setPendingAction('accepted')}>
+                        <Check className="mr-1.5 h-4 w-4" /> Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 hover:text-red-600"
+                        onClick={() => setPendingAction('rejected')}
+                      >
+                        <X className="mr-1.5 h-4 w-4" /> Reject
+                      </Button>
+                      {/* Branch-raised rows only — see the module comment. */}
+                      {viewRow.source === 'branch' && (
+                        <Button size="sm" variant="outline" onClick={() => setPendingAction('returned')}>
+                          <Undo2 className="mr-1.5 h-4 w-4" /> Send Back
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(null)} disabled={reviewMut.isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant={confirming?.status === 'rejected' ? 'destructive' : 'default'}
-              onClick={submit}
-              disabled={reviewMut.isPending}
-            >
-              {reviewMut.isPending
-                ? 'Saving…'
-                : confirming?.status === 'accepted'
-                  ? 'Approve Return'
-                  : confirming?.status === 'rejected'
-                    ? 'Reject Return'
-                    : 'Send Back'}
-            </Button>
+            {copy ? (
+              <>
+                <Button variant="outline" onClick={() => setPendingAction(null)} disabled={reviewMut.isPending}>
+                  Back
+                </Button>
+                <Button
+                  variant={pendingAction === 'rejected' ? 'destructive' : 'default'}
+                  onClick={submit}
+                  disabled={reviewMut.isPending}
+                >
+                  {reviewMut.isPending
+                    ? 'Saving…'
+                    : pendingAction === 'accepted'
+                      ? 'Approve Return'
+                      : pendingAction === 'rejected'
+                        ? 'Reject Return'
+                        : 'Send Back'}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={closeDialog}>
+                Close
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
