@@ -12,7 +12,7 @@ import { useNotifications } from './useNotifications';
  * other than the page showing them:
  *
  *   - Production approves a demand      → `production_reviewed`  (New Stock ↑)
- *   - A branch return reaches Production→ `production_return`     (Returned ↑)
+ *   - Production reviews a branch return→ `production_return`     (Returned ↑/↓)
  *   - Admin corrects a stock or sale query from the Support Center
  *                                        → `support_resolved`     (any figure)
  *

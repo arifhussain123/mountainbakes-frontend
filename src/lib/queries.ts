@@ -29,6 +29,7 @@ import type {
   Product,
   ProductionBalanceDoc,
   ProductionReturn,
+  ProductionReturnStatus,
   LoginSession,
   ProductionStockRow,
   PriceHistoryDoc,
@@ -971,6 +972,25 @@ export function useWithdrawBranchReturn(token: string) {
   });
 }
 
+/**
+ * Send a return Production handed back ('returned') to them again, unchanged.
+ *
+ * Shares `invalidateAfterReturnChange` with its neighbours even though it is the
+ * one write here that moves NO stock — the units left the branch when the return
+ * was raised and the pool has never held them. The extra invalidations are a few
+ * refetches of already-correct figures, which is the cheaper mistake: this row
+ * has just moved onto Production's queue, and their board and overview counts
+ * are genuinely stale.
+ */
+export function useResubmitBranchReturn(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall<ProductionReturn>(`/api/stock/returns/${id}/resubmit`, { method: 'POST' }, token),
+    onSuccess: () => invalidateAfterReturnChange(qc),
+  });
+}
+
 export function useProductionReturns(token: string) {
   return useQuery({
     queryKey: qk.productionReturns(),
@@ -996,9 +1016,15 @@ export function useCreateReturn(token: string) {
 export function useReviewReturn(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'accepted' | 'rejected' }) =>
+    mutationFn: ({ id, status }: { id: string; status: ProductionReturnStatus }) =>
       apiCall(`/api/production-returns/${id}/review`, { method: 'PUT', body: JSON.stringify({ status }) }, token),
+    // ['stock'] as well as the Production keys, which the accept-only version did
+    // not need. Every outcome now touches a branch balance: accepting a
+    // Production-recorded return debits the branch, and rejecting a branch-raised
+    // one credits it back. Leaving the branch's Stock page out meant a branch with
+    // it open kept reading a figure the review had already changed.
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['productionReturns'] });
       qc.invalidateQueries({ queryKey: ['productionStock'] });
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });

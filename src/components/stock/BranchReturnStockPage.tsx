@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import { businessDateStr, type ProductionReturn } from '@mb/shared';
+import type { ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranchReturns, useReviseBranchReturn, useWithdrawBranchReturn } from '@/lib/queries';
+import {
+  useBranchReturns,
+  useResubmitBranchReturn,
+  useReviseBranchReturn,
+  useWithdrawBranchReturn,
+} from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { DataTable } from '@/components/shared/DataTable';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
@@ -24,7 +29,7 @@ import {
 import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Eye, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -35,32 +40,57 @@ import { toast } from 'sonner';
  * `production_user` router that 403s a branch role — so this page is served by
  * `GET /api/stock/returns`, which scopes to the caller's branch off the JWT.
  *
- * WHY THE ACTIONS ARE OFTEN ABSENT. A branch return is applied the moment it is
- * saved: the record is inserted already `accepted` and the units have moved
- * before the response comes back. There is no draft state, so Change and Delete
- * are not edits of a pending row — each one is a real compensating stock
- * movement in both directions (branch stock back up, production pool back down).
- * `isCorrectable` below is therefore narrow on purpose, and mirrors the server's
- * rule in `branch-returns.service.ts` exactly:
+ * WHEN THE ACTIONS ARE OFFERED — the approval rule this page exists to show.
+ * A branch return is no longer auto-approved. Raising one takes the units off
+ * the branch balance and files the record `pending`; the central pool is
+ * credited only when Production approves it. That gap is the editable window:
+ *
+ *   pending / returned   Change, Delete and (sent-back only) Resubmit
+ *   accepted / rejected  nothing — Production has decided and the row is final
+ *
+ * `isCorrectable` below mirrors the server's rule in `branch-returns.service.ts`
+ * exactly, and adds nothing to it:
  *
  *   - the branch raised it (`source === 'branch'`) — a Production-recorded return
  *     is Production's record and is corrected on their screen;
- *   - it stands (`status === 'accepted'`) — nothing to undo on a rejected one;
- *   - it belongs to the CURRENT business day — past days have been reported on,
- *     and restating one is a Help Desk correction, not a self-service edit.
+ *   - Production has not decided yet (`pending`, or `returned` — handed back to
+ *     be corrected, which is still open).
+ *
+ * Change is still not a draft edit even while open: the branch half of the
+ * movement has already happened, so saving a new quantity moves the difference
+ * on or off the shelf, and Delete puts every unit back.
  *
  * The client copy of that rule only decides which buttons render. The server
  * re-decides every request and answers a stale tab with a 409 naming the reason,
  * which is surfaced verbatim rather than replaced with a generic failure — the
- * message ("this return belongs to 21 Aug…", "only 3 × Vanilla Cake is left in
- * production stock") is the whole value of the refusal.
+ * message ("Production has approved this return…", "2026-08-21 has been
+ * closed…") is the whole value of the refusal.
  */
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
   accepted: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  returned: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400',
 };
+
+/**
+ * The badge wording, which is not just the status capitalised.
+ *
+ * `returned` would render as "Returned" on a page where every row is a return —
+ * saying nothing, and reading as "done" when it means the opposite. The label
+ * says who the row is waiting on instead, which is the only thing the operator
+ * scanning this column needs from it. `pending` gets the same treatment for the
+ * same reason: "Awaiting Production" is what "pending" means here.
+ */
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Awaiting Production',
+  accepted: 'Approved',
+  rejected: 'Rejected',
+  returned: 'Sent Back to Fix',
+};
+
+const statusLabel = (s: string) => STATUS_LABELS[s] ?? s;
 
 /**
  * The short reference shown in the ID column.
@@ -76,14 +106,15 @@ function shortRef(id: string): string {
 
 /** See the module comment — this is the client half of the server's rule. */
 function isCorrectable(r: ProductionReturn): boolean {
-  return r.source === 'branch' && r.status === 'accepted' && r.date === businessDateStr();
+  return r.source === 'branch' && (r.status === 'pending' || r.status === 'returned');
 }
 
 /** Why a row cannot be corrected, phrased for a tooltip. */
 function lockReason(r: ProductionReturn): string {
   if (r.source !== 'branch') return 'Recorded by Production — change it on their Returns screen.';
-  if (r.status !== 'accepted') return `A ${r.status} return cannot be changed.`;
-  return 'Only today’s returns can be changed. Raise a Help Desk query for a past day.';
+  if (r.status === 'accepted') return 'Production has approved this return, so it can no longer be changed or deleted.';
+  if (r.status === 'rejected') return 'Production rejected this return and the stock is back on your balance.';
+  return 'This return can no longer be changed.';
 }
 
 const col = createColumnHelper<ProductionReturn>();
@@ -93,6 +124,7 @@ export function BranchReturnStockPage() {
   const returnsQ = useBranchReturns(token);
   const reviseMut = useReviseBranchReturn(token);
   const withdrawMut = useWithdrawBranchReturn(token);
+  const resubmitMut = useResubmitBranchReturn(token);
 
   // A return moves stock, so the same notification stream that refreshes the
   // Stock page refreshes this list — `qk.branchReturns` sits under the ['stock']
@@ -150,6 +182,23 @@ export function BranchReturnStockPage() {
     }
   }
 
+  /**
+   * Send a handed-back return to Production again as it stands.
+   *
+   * No confirmation dialog, unlike Change and Delete, and no GeofenceGate: those
+   * two move units and are worth stopping someone over, while this moves none —
+   * it only puts the row back on Production's queue. A misfire is undone by
+   * changing or deleting the row, which are both still available.
+   */
+  async function resubmit(r: ProductionReturn) {
+    try {
+      await resubmitMut.mutateAsync(r.id);
+      toast.success(`Sent back to production — ${r.qty} × ${r.productName} awaiting review`);
+    } catch (err) {
+      fail(err, 'Could not resubmit the return');
+    }
+  }
+
   const columns = [
     col.accessor('id', {
       header: 'ID',
@@ -170,12 +219,14 @@ export function BranchReturnStockPage() {
       meta: { align: 'center' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
-    // Null for a Production-recorded return that nobody has reviewed yet; equal to
-    // the created time for a branch return, which is approved as it is saved.
+    // Null until Production decides — which now includes every branch return, so
+    // this column is a dash for anything still open. It used to be stamped with
+    // the branch user who raised the return, because the raise path reviewed
+    // itself; it means what it says now.
     col.accessor((r) => r.reviewedAt ?? '', {
-      id: 'approvedAt',
-      header: 'Approved Time',
-      meta: { align: 'center', mobileLabel: 'Approved' },
+      id: 'reviewedAt',
+      header: 'Reviewed',
+      meta: { align: 'center', mobileLabel: 'Reviewed' },
       cell: ({ row }) => (
         <span className="whitespace-nowrap tabular-nums text-muted-foreground">
           {row.original.reviewedAt ? formatTime(row.original.reviewedAt) : '—'}
@@ -196,8 +247,8 @@ export function BranchReturnStockPage() {
       header: 'Status',
       meta: { mobile: 'badge' },
       cell: (i) => (
-        <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize', STATUS_STYLES[i.getValue()] ?? 'bg-muted')}>
-          {i.getValue()}
+        <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLES[i.getValue()] ?? 'bg-muted')}>
+          {statusLabel(i.getValue())}
         </span>
       ),
     }),
@@ -225,6 +276,15 @@ export function BranchReturnStockPage() {
                 >
                   <Trash2 className="mr-1.5 h-4 w-4" /> Delete
                 </Button>
+                {/* Only on a row Production handed back. On a `pending` one it
+                    would resend a return that is already in their queue, which
+                    the server refuses anyway — this is the button not being
+                    there rather than the click failing. */}
+                {r.status === 'returned' && (
+                  <Button variant="ghost" size="sm" onClick={() => resubmit(r)} disabled={resubmitMut.isPending}>
+                    <Send className="mr-1.5 h-4 w-4" /> Resubmit
+                  </Button>
+                )}
               </>
             ) : (
               // A disabled button would say "you may do this, later"; the row is
@@ -251,7 +311,8 @@ export function BranchReturnStockPage() {
         <div>
           <h2 className="text-lg font-semibold">Return Stock</h2>
           <p className="text-sm text-muted-foreground">
-            Stock this branch has sent back to production · last 90 days
+            Stock this branch has sent back to production · last 90 days ·
+            {' '}change or delete a return until production reviews it
           </p>
         </div>
       </div>
@@ -294,8 +355,8 @@ export function BranchReturnStockPage() {
 
               <dt className="text-muted-foreground">Status</dt>
               <dd className="text-right">
-                <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize', STATUS_STYLES[viewRow.status] ?? 'bg-muted')}>
-                  {viewRow.status}
+                <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLES[viewRow.status] ?? 'bg-muted')}>
+                  {statusLabel(viewRow.status)}
                 </span>
               </dd>
 
@@ -305,13 +366,16 @@ export function BranchReturnStockPage() {
               <dt className="text-muted-foreground">Recorded</dt>
               <dd className="text-right">{formatDateTime(viewRow.createdAt)}</dd>
 
-              <dt className="text-muted-foreground">Approved</dt>
+              {/* "Reviewed", not "Approved" — the same two columns now also carry a
+                  rejection and a send-back, and labelling them Approved made a
+                  refused return read as an approved one. */}
+              <dt className="text-muted-foreground">Reviewed</dt>
               <dd className="text-right">{viewRow.reviewedAt ? formatDateTime(viewRow.reviewedAt) : '—'}</dd>
 
               <dt className="text-muted-foreground">Raised by</dt>
               <dd className="truncate text-right">{viewRow.createdByName || '—'}</dd>
 
-              <dt className="text-muted-foreground">Approved by</dt>
+              <dt className="text-muted-foreground">Reviewed by</dt>
               <dd className="truncate text-right">{viewRow.reviewedByName || '—'}</dd>
 
               <dt className="text-muted-foreground">Source</dt>
@@ -336,7 +400,9 @@ export function BranchReturnStockPage() {
           <DialogHeader>
             <DialogTitle>Change Return</DialogTitle>
             <DialogDescription>
-              {editRow ? `${editRow.productName} · returned today` : ''}
+              {editRow
+                ? `${editRow.productName} · ${editRow.status === 'returned' ? 'sent back by production — saving resubmits it' : 'awaiting production review'}`
+                : ''}
             </DialogDescription>
           </DialogHeader>
           <GeofenceGate action="Stock updates">
@@ -406,7 +472,7 @@ export function BranchReturnStockPage() {
             <DialogTitle>Withdraw this return?</DialogTitle>
             <DialogDescription>
               {deleteRow
-                ? `${deleteRow.qty} × ${deleteRow.productName} will come back into branch stock and out of the production pool. The record is removed; the stock movements stay in the ledger.`
+                ? `${deleteRow.qty} × ${deleteRow.productName} will come back into branch stock and production will no longer see this return. The record is removed; the stock movements stay in the ledger.`
                 : ''}
             </DialogDescription>
           </DialogHeader>

@@ -167,10 +167,15 @@ export function ReturnItemsModal({
         },
         token,
       );
+      // "sent … for approval", not "returned … to production". Since branch
+      // returns stopped being auto-approved this is a request, not a completed
+      // handover: the units come off the branch balance now but production has
+      // to accept them, and the branch can still change or delete the return
+      // from Return Stock until they do.
       toast.success(
         selected.length === 1
-          ? `Returned ${selected[0].qty} × ${selected[0].stock!.productName} to production`
-          : `Returned ${selected.length} products (${totalUnits} units) to production`,
+          ? `Sent ${selected[0].qty} × ${selected[0].stock!.productName} to production for approval`
+          : `Sent ${selected.length} products (${totalUnits} units) to production for approval`,
       );
       onOpenChange(false);
       onSaved();
