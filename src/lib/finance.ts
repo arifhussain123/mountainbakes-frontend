@@ -6,6 +6,8 @@ import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
   BranchShareBalance,
+  EmployeeAdvance,
+  EmployeeAdvanceSummary,
   FinanceAuditLog,
   FinanceDashboard,
   FinanceDayClosing,
@@ -220,6 +222,42 @@ export function useSalaryRevisions(employeeId: string | null) {
         {},
         token,
       )).revisions,
+  });
+}
+
+export function useEmployeeAdvances(filters: Record<string, unknown>) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeAdvances(filters),
+    enabled: Boolean(token),
+    queryFn: async () =>
+      (await apiCall<{ advances: EmployeeAdvance[] }>(
+        `/api/finance/payroll/advances${toQuery(filters)}`,
+        {},
+        token,
+      )).advances,
+  });
+}
+
+/**
+ * One employee's advance position — what they have been paid, what a payslip has
+ * already recovered, and what the next one still has to.
+ *
+ * Only fetches once an employee is actually chosen, and never goes stale on its
+ * own: creating a payslip or an advance invalidates the whole finance subtree,
+ * which is the only thing that can move these figures.
+ */
+export function useEmployeeAdvanceSummary(employeeId: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeAdvanceSummary(employeeId ?? ''),
+    enabled: Boolean(token) && Boolean(employeeId),
+    queryFn: async () =>
+      (await apiCall<{ summary: EmployeeAdvanceSummary }>(
+        `/api/finance/payroll/employees/${employeeId}/advance-summary`,
+        {},
+        token,
+      )).summary,
   });
 }
 

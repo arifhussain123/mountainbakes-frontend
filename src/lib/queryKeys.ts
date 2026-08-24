@@ -124,6 +124,8 @@ export const qk = {
   financeEmployees: (includeInactive?: boolean) =>
     ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,
   financeSalaryRevisions: (employeeId: string) => ['finance', 'salaryRevisions', employeeId] as const,
+  financeAdvances: (filters: Record<string, unknown>) => ['finance', 'advances', filters] as const,
+  financeAdvanceSummary: (employeeId: string) => ['finance', 'advanceSummary', employeeId] as const,
   financePartnerExpenses: (filters: Record<string, unknown>) =>
     ['finance', 'partnerExpenses', filters] as const,
   financePartners: (includeInactive?: boolean) =>

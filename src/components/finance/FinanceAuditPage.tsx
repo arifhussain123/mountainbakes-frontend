@@ -37,6 +37,7 @@ const ENTITIES = [
   { value: 'finance_transaction', label: 'Income / expense entry' },
   { value: 'income_approval', label: 'Branch income' },
   { value: 'salary_payment', label: 'Salary payment' },
+  { value: 'employee_advance', label: 'Employee advance' },
   { value: 'partner_expense', label: 'Partner expense' },
   { value: 'employee', label: 'Employee' },
   { value: 'day_closing', label: 'Day closing' },
