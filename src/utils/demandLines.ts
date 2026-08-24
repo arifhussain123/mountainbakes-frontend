@@ -1,4 +1,8 @@
-import type { BranchProductionOrderItem, BranchProductionOrderPackingItem } from '@mb/shared';
+import type {
+  BranchProductionOrder,
+  BranchProductionOrderItem,
+  BranchProductionOrderPackingItem,
+} from '@mb/shared';
 
 /**
  * Which quantity a demand line actually stands for, at whatever stage it is at.
@@ -66,4 +70,61 @@ export function livePackingItems<
   T extends Pick<BranchProductionOrderPackingItem, 'qty' | 'approvedQty'>,
 >(items: T[] | undefined): T[] {
   return (items ?? []).filter((it) => !isEmptyPackingLine(it));
+}
+
+// ---------------------------------------------------------------------------
+// Waiting demand — what the pool still owes
+// ---------------------------------------------------------------------------
+
+/**
+ * The two statuses in which a demand is still owed by the production pool.
+ *
+ * "Waiting" runs until the BRANCH verifies, not until Production reviews.
+ * `awaiting_verification` means the goods went out but nobody has counted them
+ * in yet, and stock only moves at verification (migration 58) — so the pool
+ * still holds those units and still owes them. `verified`, `approved`,
+ * `rejected` and `cancelled` are all settled as far as the pool is concerned.
+ *
+ * Shared rather than repeated, because two screens now subtract this from the
+ * same balance and a private copy of "waiting" on either one would let them
+ * quietly disagree about the same number.
+ */
+export const WAITING_ORDER_STATUSES = ['pending', 'awaiting_verification'] as const;
+
+export function isWaitingOrder(order: Pick<BranchProductionOrder, 'status'>): boolean {
+  return (WAITING_ORDER_STATUSES as readonly string[]).includes(order.status);
+}
+
+/**
+ * Waiting demand per productId, across every branch.
+ *
+ * SPECIAL ITEMS ARE INCLUDED HERE, which is the one place this differs from the
+ * Demand Summary's product pivot — and the difference is deliberate, not an
+ * oversight in either.
+ *
+ * A special item is a REAL, active product (migration 69 says so in as many
+ * words: "so that stock works"), it gets a row in the pool like any other, and
+ * `verify_production_order` returns every line with no special-case filter — so
+ * a special item draws the pool down exactly like an ordinary one. Anything
+ * subtracting demand from a pool BALANCE therefore has to count it, or the
+ * balance on a special product's row is short by a whole cake.
+ *
+ * The Demand Summary excludes them for an unrelated reason: it is a batching
+ * plan, and aggregating two "Name cake" lines into a row reading 2 destroys the
+ * instruction that makes them makeable. It lists them individually instead, so
+ * they are not missing there either — just not pivoted. No pivot row means no
+ * balance is stated for them there, so nothing is misreported on that page.
+ *
+ * Quantity is `effectiveQty`, so a line reviewed down to "sending none" counts
+ * as nothing rather than resurrecting the branch's original request.
+ */
+export function waitingDemandByProduct(orders: BranchProductionOrder[]): Map<string, number> {
+  const byProduct = new Map<string, number>();
+  for (const order of orders) {
+    if (!isWaitingOrder(order)) continue;
+    for (const it of liveItems(order.items)) {
+      byProduct.set(it.productId, (byProduct.get(it.productId) ?? 0) + effectiveQty(it));
+    }
+  }
+  return byProduct;
 }

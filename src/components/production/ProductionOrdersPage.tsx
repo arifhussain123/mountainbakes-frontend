@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { Eye, Sparkles } from 'lucide-react';
-import { effectivePackingQty, effectiveQty, liveItems, livePackingItems } from '@/utils/demandLines';
+import { effectivePackingQty, effectiveQty, isWaitingOrder, liveItems, livePackingItems } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -61,22 +61,17 @@ export function ProductionOrdersPage() {
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
 
-  // "Waiting" runs until the BRANCH verifies, not until Production reviews.
-  //
-  // 'awaiting_verification' means Production sent the goods out but nobody at the
-  // branch has counted them yet — and since migration 58 that step is also where
-  // stock actually moves. Dropping those orders off this card at review time hid
-  // exactly the demand still in flight: the floor could no longer see what had
-  // gone out and not been confirmed. Verification ('verified') is what closes it.
+  // "Waiting" runs until the BRANCH verifies, not until Production reviews —
+  // see isWaitingOrder, which the Production Stock page subtracts from the pool
+  // using the same definition. Dropping an order off this card at review time
+  // hid exactly the demand still in flight: the floor could no longer see what
+  // had gone out and not been confirmed.
   //
   // A demand the branch deleted is 'cancelled', so it falls out of here — and
   // therefore out of the whole Demand Summary — while its row stays in the
   // Orders table below carrying the reason. That is the deletion: it stops being
   // work to do without becoming something nobody can account for.
-  const waiting = useMemo(
-    () => orders.filter((o) => o.status === 'pending' || o.status === 'awaiting_verification'),
-    [orders],
-  );
+  const waiting = useMemo(() => orders.filter(isWaitingOrder), [orders]);
   const selected = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
 
   // Demand summary pivots: Product × Branch and Packing Material × Branch, both

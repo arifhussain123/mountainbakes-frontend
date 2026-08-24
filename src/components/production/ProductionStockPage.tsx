@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { businessDateStr, type ProductionStockRow } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProducts, useProductionStock, usePrepareProducts } from '@/lib/queries';
+import { useProducts, useProductionOrders, useProductionStock, usePrepareProducts } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/shared/DataTable';
 import { Plus, FileSpreadsheet } from 'lucide-react';
 import { formatDate } from '@/utils/date';
+import { waitingDemandByProduct } from '@/utils/demandLines';
 import { PrepareProductsModal } from './PrepareProductsModal';
 import { PreparedDetailExportModal } from './PreparedDetailExportModal';
 
@@ -25,6 +26,26 @@ export function ProductionStockPage() {
   const isToday = date === today;
   const stockQ = useProductionStock(token, date);
   const productsQ = useProducts(token, { isActive: true });
+
+  /**
+   * What the branches are still waiting on, per product.
+   *
+   * TODAY ONLY, and the two columns it feeds are hidden on any other date.
+   * The rest of this table is a snapshot of one business day and can be wound
+   * back to read a closed one; the demand queue has no history — it is whatever
+   * is unverified right now. Subtracting today's queue from a balance that
+   * closed last Tuesday would produce a figure describing no moment that ever
+   * existed, so the columns simply are not there to misread.
+   */
+  const ordersQ = useProductionOrders(token, { enabled: Boolean(token) && isToday });
+  const waitingByProduct = useMemo(
+    () => waitingDemandByProduct(ordersQ.data ?? []),
+    [ordersQ.data],
+  );
+  // Distinguishes "no demand" from "not fetched yet" — a 0 stated before the
+  // orders land would show After Demand equal to Balance and quietly say the
+  // pool is clear when it may not be.
+  const waitingLoaded = ordersQ.data !== undefined;
   const prepareMut = usePrepareProducts(token);
   const [modalOpen, setModalOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -56,6 +77,47 @@ export function ProductionStockPage() {
       meta: { align: 'center' },
       cell: (i) => <span className={`font-semibold tabular-nums ${i.getValue() < 0 ? 'text-red-500' : ''}`}>{i.getValue()}</span>,
     }),
+    // Placed immediately after Balance so the sum reads left to right —
+    // Balance − Waiting Demand = After Demand. Returned and Adjustment keep
+    // their order behind it; they explain how the day got here, while these two
+    // say where it is going.
+    //
+    // Both are `display` columns: neither figure is on ProductionStockRow. The
+    // demand comes from the live order queue, which is not day-scoped and so
+    // could not sensibly be served alongside a date's pool figures.
+    ...(isToday
+      ? [
+          col.display({
+            id: 'waitingDemand',
+            header: 'Waiting Demand',
+            meta: { align: 'center' },
+            cell: ({ row }) => {
+              if (!waitingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
+              const qty = waitingByProduct.get(row.original.productId) ?? 0;
+              return qty > 0 ? (
+                <span className="font-medium tabular-nums text-primary">{qty}</span>
+              ) : (
+                <span className="tabular-nums text-muted-foreground">—</span>
+              );
+            },
+          }),
+          col.display({
+            id: 'afterDemand',
+            header: 'After Demand',
+            meta: { align: 'center' },
+            cell: ({ row }) => {
+              if (!waitingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
+              const after = row.original.balance - (waitingByProduct.get(row.original.productId) ?? 0);
+              // Negative is production still to do before the waiting demands
+              // can go out — the same red, and the same meaning, as the Balance
+              // Stock column on the Demand Summary.
+              return (
+                <span className={`font-semibold tabular-nums ${after < 0 ? 'text-red-500' : ''}`}>{after}</span>
+              );
+            },
+          }),
+        ]
+      : []),
     col.accessor('returned', { header: 'Returned', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
     // Signed, and its own column: an admin correction can go either way, and
     // folding it into Prepared or Returned would report a correction as one of
