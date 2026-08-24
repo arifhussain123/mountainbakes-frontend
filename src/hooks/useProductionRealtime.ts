@@ -65,6 +65,19 @@ export function useProductionRealtime() {
         refreshStock = true;
         const approved = n.title.includes('Approved');
         toast(approved ? '✅ Production Order Approved' : '❌ Production Order Rejected');
+      } else if (n.type === 'production_order_verified') {
+        // The branch counted the goods in. This is where stock ACTUALLY moves
+        // (migration 58), so it has to refresh both: the pool balance behind the
+        // Production Stock / Balance columns, and the order list that decides
+        // whether the demand is still "waiting" at all.
+        //
+        // Previously unhandled, which left the Demand Summary showing a demand
+        // that was already settled — and, once that card started reading the
+        // pool, a balance computed against stock that had already left the
+        // building. It corrected itself on the next 2-minute app refresh, which
+        // is a long time to plan production against a number that has moved.
+        refreshOrders = true;
+        refreshStock = true;
       } else if (n.type === 'production_return') {
         refreshStock = true;
       }

@@ -5,7 +5,14 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
-import { useProductionOrders, useReviewProductionOrder, useMarkPrinted, useFinalApproveProductionOrder } from '@/lib/queries';import { Button } from '@/components/ui/button';
+import {
+  useProductionOrders,
+  useProductionStock,
+  useReviewProductionOrder,
+  useMarkPrinted,
+  useFinalApproveProductionOrder,
+} from '@/lib/queries';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { Eye, Sparkles } from 'lucide-react';
@@ -36,6 +43,11 @@ export function ProductionOrdersPage() {
   const { token } = useAuth();
   const { settings } = useSettings();
   const ordersQ = useProductionOrders(token);
+  // The central pool, for the Production Stock / Balance columns on the summary
+  // below. Same two roles guard this page and /api/production-stock
+  // (super_admin, production_user), so it can be fetched unconditionally here —
+  // unlike on a shared screen a branch manager can reach.
+  const stockQ = useProductionStock(token);
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);
   const finalApproveMut = useFinalApproveProductionOrder(token);
@@ -87,7 +99,7 @@ export function ProductionOrdersPage() {
   const demand = useMemo(() => {
     const branches = new Set<string>();
     type Row = { total: number; sent: number; byBranch: Record<string, number> };
-    const products = new Map<string, Row & { productName: string }>();
+    const products = new Map<string, Row & { productId: string; productName: string }>();
     const packing = new Map<string, Row & { materialName: string }>();
     const special: {
       orderId: string;
@@ -137,7 +149,7 @@ export function ProductionOrdersPage() {
         }
 
         let row = products.get(it.productId);
-        if (!row) { row = { productName: it.productName, total: 0, sent: 0, byBranch: {} }; products.set(it.productId, row); }
+        if (!row) { row = { productId: it.productId, productName: it.productName, total: 0, sent: 0, byBranch: {} }; products.set(it.productId, row); }
         row.total += qty;
         if (sent) row.sent += qty;
         row.byBranch[branch] = (row.byBranch[branch] ?? 0) + qty;
@@ -164,6 +176,48 @@ export function ProductionOrdersPage() {
       awaitingOrders,
     };
   }, [waiting]);
+
+  /**
+   * Pool balance per product, and whether it has arrived yet.
+   *
+   * `undefined` for a product means the query has not resolved; 0 means the
+   * pool genuinely holds none. The two must not be conflated — rendering an
+   * unloaded figure as 0 would print a full-width column of shortfalls for a
+   * second on every page load, which is the one thing this column must never
+   * cry wolf about.
+   */
+  const stockByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of stockQ.data ?? []) m.set(r.productId, r.balance);
+    return m;
+  }, [stockQ.data]);
+  const stockLoaded = stockQ.data !== undefined;
+
+  /**
+   * What the pool holds now, what the waiting demand will take out of it, and
+   * what is left.
+   *
+   *   balance = production stock − total waiting demand
+   *
+   * The pool figure ALREADY excludes everything a branch has verified: stock
+   * moves at verification (migration 58), not when Production sends the goods.
+   * Waiting demand is by definition not yet verified, so the two never
+   * double-count and the subtraction is the honest forward figure — what the
+   * pool will hold once every waiting demand has been counted in by its branch.
+   *
+   * That also makes Balance the column that does NOT jump when a branch
+   * verifies: the pool drops and the demand drops by the same amount, so the
+   * number holds still while the two beside it catch up with reality. It moves
+   * only when a branch verifies a CORRECTED quantity — fewer goods left the
+   * building than were planned to, so the balance rightly goes up.
+   *
+   * Negative is the whole point of the column: it is production still to do.
+   */
+  function poolFor(productId: string, totalDemand: number): { stock: number; balance: number } | null {
+    if (!stockLoaded) return null;
+    const stock = stockByProduct.get(productId) ?? 0;
+    return { stock, balance: stock - totalDemand };
+  }
 
   function openOrder(order: BranchProductionOrder) {
     setSelectedId(order.id);
@@ -341,18 +395,29 @@ export function ProductionOrdersPage() {
                   <thead>
                     <tr className="bg-muted/50 text-left">
                       <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
+                      {/* Pool → demand → what is left, in the order the sum reads,
+                          and ahead of the branch columns because it is the
+                          production decision. The branch split answers "who is
+                          this for"; these three answer "do we have it". */}
+                      <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Production Stock</th>
                       <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
+                      <th className="border-r px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Balance Stock</th>
                       {demand.branches.map((b) => (
                         <th key={b} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{b}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {demand.rows.map((r) => (
-                      <tr key={r.productName} className="border-t">
+                    {demand.rows.map((r) => {
+                      const pool = poolFor(r.productId, r.total);
+                      return (
+                      <tr key={r.productId} className="border-t">
                         {/* Only the name stays left. Every figure is centred under its
                             heading, headers included so the two never drift apart. */}
                         <td className="px-3 py-2 font-medium">{r.productName}</td>
+                        <td className="px-3 py-2 text-center tabular-nums">
+                          {pool ? pool.stock : <span className="text-muted-foreground">—</span>}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2 text-center font-bold tabular-nums text-primary">
                           {/* Part of that total is already out for delivery — without
                               this the row reads as work still to do. Inline and ahead
@@ -365,11 +430,23 @@ export function ProductionOrdersPage() {
                           )}
                           {r.total}
                         </td>
+                        {/* Red is not decoration here: a negative balance is the
+                            shortfall the floor has to bake before this demand can
+                            go out, and it is the one number on the card that is a
+                            job rather than a report. */}
+                        <td
+                          className={`border-r px-3 py-2 text-center font-semibold tabular-nums ${
+                            pool && pool.balance < 0 ? 'text-red-600 dark:text-red-400' : ''
+                          }`}
+                        >
+                          {pool ? pool.balance : <span className="font-normal text-muted-foreground">—</span>}
+                        </td>
                         {demand.branches.map((b) => (
                           <td key={b} className="px-3 py-2 text-center tabular-nums text-muted-foreground">{r.byBranch[b] ?? '—'}</td>
                         ))}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -386,8 +463,9 @@ export function ProductionOrdersPage() {
               <div className="space-y-3 md:hidden">
                 {demand.rows.map((r) => {
                   const ordering = demand.branches.filter((b) => (r.byBranch[b] ?? 0) > 0);
+                  const pool = poolFor(r.productId, r.total);
                   return (
-                    <div key={r.productName} className="rounded-lg border bg-card p-3">
+                    <div key={r.productId} className="rounded-lg border bg-card p-3">
                       <div className="flex items-center justify-between">
                         <p className="font-medium">{r.productName}</p>
                         <span className="text-right font-bold tabular-nums text-primary">
@@ -397,6 +475,28 @@ export function ProductionOrdersPage() {
                           )}
                         </span>
                       </div>
+                      {/* The same three figures as the desktop table, as a strip
+                          rather than columns — the sum has to survive the phone,
+                          because the floor reads this screen on one. */}
+                      {pool && (
+                        <div className="mt-2 flex items-center gap-3 rounded-md bg-muted/50 px-2 py-1.5 text-xs tabular-nums">
+                          <span className="text-muted-foreground">
+                            Stock <span className="font-medium text-foreground">{pool.stock}</span>
+                          </span>
+                          <span className="text-muted-foreground">−</span>
+                          <span className="text-muted-foreground">
+                            Demand <span className="font-medium text-foreground">{r.total}</span>
+                          </span>
+                          <span className="text-muted-foreground">=</span>
+                          <span
+                            className={`font-semibold ${
+                              pool.balance < 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground'
+                            }`}
+                          >
+                            {pool.balance}
+                          </span>
+                        </div>
+                      )}
                       {ordering.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                           {ordering.map((b) => (
@@ -410,7 +510,13 @@ export function ProductionOrdersPage() {
               </div>
 
               {/* Packing materials — same pivot, its own table. Absent entirely when
-                  no waiting demand asked for any, so an ordinary day is unchanged. */}
+                  no waiting demand asked for any, so an ordinary day is unchanged.
+
+                  NO stock columns here, and there never can be: packing materials
+                  carry no pool balance at all (migration 39 — Production approves
+                  a quantity and the request ends there, with no unmet demand
+                  carried forward). A Balance column would have nothing to
+                  subtract from. */}
               {demand.packingRows.length > 0 && (
                 <>
                   <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
