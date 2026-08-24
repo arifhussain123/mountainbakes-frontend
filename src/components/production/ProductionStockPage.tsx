@@ -8,7 +8,8 @@ import { useProducts, useProductionOrders, useProductionStock, usePrepareProduct
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/shared/DataTable';
-import { Plus, FileSpreadsheet } from 'lucide-react';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { Plus, FileSpreadsheet, PackageOpen } from 'lucide-react';
 import { formatDate } from '@/utils/date';
 import { waitingDemandByProduct } from '@/utils/demandLines';
 import { PrepareProductsModal } from './PrepareProductsModal';
@@ -174,7 +175,36 @@ export function ProductionStockPage() {
         </div>
       </div>
 
-      <DataTable columns={columns} data={stockQ.data ?? []} loading={stockQ.isLoading} searchPlaceholder="Search products…" />
+      {/* The API returns only products that carry a figure, so an empty table means
+          the pool is untouched for this day rather than "nothing matched". Passed
+          ONLY when the data itself is empty: with rows present, an empty table is a
+          search miss and DataTable's own "No results found" is the right message. */}
+      <DataTable
+        columns={columns}
+        data={stockQ.data ?? []}
+        loading={stockQ.isLoading}
+        searchPlaceholder="Search products…"
+        empty={
+          stockQ.data?.length === 0 ? (
+            <EmptyState
+              icon={PackageOpen}
+              title={isToday ? 'Nothing in the pool yet today' : `No stock movement on ${formatDate(date)}`}
+              description={
+                isToday
+                  ? 'Products appear here once they are prepared, returned into the pool, or carry a balance from yesterday.'
+                  : 'No product held a balance or moved on this day.'
+              }
+              action={
+                isToday ? (
+                  <Button onClick={() => setModalOpen(true)}>
+                    <Plus className="mr-1 h-4 w-4" /> Today&apos;s Prepared Products
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : undefined
+        }
+      />
 
       <PreparedDetailExportModal
         open={exportOpen}
