@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useStockRows } from '@/lib/queries';
+import { useProductionOrders, useStockRows } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { type StockRow, businessDateStr } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { ClipboardCheck, RotateCcw } from 'lucide-react';
 import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
+import { waitingDemandByProduct } from '@/utils/demandLines';
 import { ReturnItemsModal } from './ReturnItemsModal';
 import { StockCheckModal } from './StockCheckModal';
 
@@ -37,6 +38,30 @@ export function StockPage() {
   // stream; the ReturnItemsModal reuses the same refetch after saving.
   const { data: rows = [], isPending, error, refetch } = useStockRows(token ?? '', { date });
   useStockRealtime();
+
+  /**
+   * What this branch has ordered and not yet counted in.
+   *
+   * THE SIGN IS THE OPPOSITE OF THE PRODUCTION PAGES, and that is the whole
+   * reason these columns are named differently. The same unverified demand that
+   * the central pool still OWES is stock this branch is still OWED: it leaves
+   * the pool and arrives here, both at the moment the branch verifies
+   * (migration 58). So Production subtracts it from its balance and a branch
+   * ADDS it — Balance + Waiting Demand = Expected Balance, what will be on the
+   * shelf once everything on the way has been counted in.
+   *
+   * No branchId is passed: GET /api/production-orders scopes a branch role to
+   * its own branch server-side, so this cannot show another branch's demand
+   * even if someone asked it to.
+   */
+  const ordersQ = useProductionOrders(token ?? '', { enabled: Boolean(token) && isToday });
+  const incomingByProduct = useMemo(
+    () => waitingDemandByProduct(ordersQ.data ?? []),
+    [ordersQ.data],
+  );
+  // "Not fetched yet" must not render as 0 — an Expected Balance equal to
+  // Balance would say nothing is on the way, which is the opposite of unknown.
+  const incomingLoaded = ordersQ.data !== undefined;
 
   // Adjustment is its OWN column. It briefly folded into New Stock / Returned by
   // sign, but that was only ever a workaround for a bug underneath: a return
@@ -154,6 +179,64 @@ export function StockPage() {
         return <span className={cn('font-semibold tabular-nums', v < 0 && 'text-destructive')}>{v.toLocaleString()}</span>;
       },
     }),
+    // Behind Balance so the sum reads left to right: Balance + Waiting Demand =
+    // Expected Balance. Rendered in the same emerald and the same `+N` form as
+    // New Stock, because that is what this becomes — these units land in that
+    // column on the day the branch verifies them.
+    //
+    // TODAY ONLY. Every other figure in this row is the ledger for one business
+    // date and the page can be wound back to a closed one; what is unverified is
+    // only ever "now". Adding today's incoming to last Tuesday's closing balance
+    // would state a figure describing no moment that ever existed, so the
+    // columns are absent on any other date and the query is not even run.
+    //
+    // Both are `display` columns: neither figure is on StockRow, and the demand
+    // behind them is not day-scoped, so it could not be served alongside one.
+    ...(isToday
+      ? [
+          col.display({
+            id: 'waitingDemand',
+            header: 'Waiting Demand',
+            meta: { align: 'center' },
+            cell: ({ row }) => {
+              if (!incomingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
+              const qty = incomingByProduct.get(row.original.productId) ?? 0;
+              return (
+                <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {qty ? `+${qty}` : 0}
+                </span>
+              );
+            },
+            footer: (p) => {
+              if (!incomingLoaded) return <span className="tabular-nums font-semibold">—</span>;
+              const v = p.table
+                .getFilteredRowModel()
+                .rows.reduce((sum, r) => sum + (incomingByProduct.get(r.original.productId) ?? 0), 0);
+              return totalCell(v, 'text-emerald-600 dark:text-emerald-400', 'signed');
+            },
+          }),
+          col.display({
+            id: 'expectedBalance',
+            header: 'Expected Balance',
+            meta: { align: 'center' },
+            cell: ({ row }) => {
+              if (!incomingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
+              const v = row.original.balance + (incomingByProduct.get(row.original.productId) ?? 0);
+              return <span className={cn('font-semibold tabular-nums', v < 0 && 'text-destructive')}>{v}</span>;
+            },
+            footer: (p) => {
+              if (!incomingLoaded) return <span className="tabular-nums font-semibold">—</span>;
+              const v = p.table
+                .getFilteredRowModel()
+                .rows.reduce(
+                  (sum, r) => sum + r.original.balance + (incomingByProduct.get(r.original.productId) ?? 0),
+                  0,
+                );
+              return <span className={cn('font-semibold tabular-nums', v < 0 && 'text-destructive')}>{v.toLocaleString()}</span>;
+            },
+          }),
+        ]
+      : []),
   ];
 
   return (
@@ -177,7 +260,7 @@ export function StockPage() {
           <h2 className="text-lg font-semibold">Stock</h2>
           <p className="text-sm text-muted-foreground">
             {isToday
-              ? `${date} · opening carries over from yesterday, new stock added after Production approval, adjustments are admin corrections made today and clear tomorrow`
+              ? `${date} · opening carries over from yesterday, new stock lands when you verify a delivery, waiting demand is what Production has yet to hand over, adjustments are admin corrections made today and clear tomorrow`
               : `${date} · a past business day, read-only. Balances are that day's closing figures, not today's. Adjustments show on the day they were made.`}
           </p>
         </div>
