@@ -55,6 +55,34 @@ export function ProductionStockPage() {
   // entries as the ADDITIONS they are (+5 → 30) rather than as a fresh total.
   // The table is date-scoped, but the form only opens on today (see below), so
   // these figures are always the ones a save will add to.
+  /**
+   * The products this DAY is about.
+   *
+   * The API still returns every product carrying a running pool balance —
+   * deliberately, because the Demand Summary and the counter-sale check key a map
+   * off this same response and read a missing product as zero stock. Dropping
+   * rows server-side would tell those screens a product carried over from
+   * yesterday has none.
+   *
+   * The page cannot show them, though. Every column here is now the day alone, so
+   * a product that merely holds pool balance renders as a row of zeroes — and
+   * `production_stock.balance` is never reset, so before long that is most of the
+   * catalogue, burying the handful of lines that actually moved. Filtering here
+   * keeps both true: the response stays complete, the sheet stays the day's.
+   */
+  const dayRows = useMemo(
+    () =>
+      (stockQ.data ?? []).filter(
+        (r) =>
+          r.preparedToday !== 0 ||
+          r.returned !== 0 ||
+          r.approvedQty !== 0 ||
+          r.soldToday !== 0 ||
+          r.adjustment !== 0,
+      ),
+    [stockQ.data],
+  );
+
   const preparedTodayById = useMemo(
     () => Object.fromEntries((stockQ.data ?? []).map((r) => [r.productId, r.preparedToday])),
     [stockQ.data],
@@ -66,25 +94,32 @@ export function ProductionStockPage() {
     // the DataTable's filter, so an ID from a ticket finds its row here.
     col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    // No Opening column here, unlike the branch Stock page. The pool is read as
-    // what it can send out RIGHT NOW, not as a day reconciled against its start,
-    // and the figure carries forward into Balance either way — a product sitting
-    // on yesterday's stock with no movement today still lists, on its balance
-    // alone. `opening` stays on ProductionStockRow: the admin correction dialog
-    // reads it, and dropping a column is not a reason to stop serving a figure.
-    col.accessor('preparedToday', { header: 'Prepared', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('totalStock', { header: 'Total Stock', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    // THE WHOLE ROW IS THE DAY, with no opening balance anywhere in it.
+    //
+    // The pool used to carry yesterday forward: Total Stock was on-hand-now plus
+    // what had left today, and Balance was the running pool total. On a product
+    // whose pool sat negative, that reported the units made this morning as a
+    // negative — the floor prepared 50 and the sheet said -50. The bakery bakes
+    // fresh daily, so the day is read on its own and newly prepared stock lands
+    // on the positive figure it actually is.
+    //
+    // Total Stock and Balance are NOT columns here. Both are still derived and
+    // still served — After Demand below is built on `dayBalance`, and the Demand
+    // Summary reads it too — they are simply not what this sheet is for. It lists
+    // the movements: what was made, what came back, what went out, what was sold.
+    //
+    //     dayBalance = (prepared + returned) − approved − sold + adjustment
+    col.accessor('preparedToday', { header: 'Prepared', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{i.getValue()}</span> }),
+    col.accessor('returned', { header: 'Returned', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('approvedQty', { header: 'Approved Qty', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('soldToday', { header: 'Sold', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('balance', {
-      header: 'Balance',
-      meta: { align: 'center' },
-      cell: (i) => <span className={`font-semibold tabular-nums ${i.getValue() < 0 ? 'text-red-500' : ''}`}>{i.getValue()}</span>,
-    }),
-    // Placed immediately after Balance so the sum reads left to right —
-    // Balance − Waiting Demand = After Demand. Returned and Adjustment keep
-    // their order behind it; they explain how the day got here, while these two
-    // say where it is going.
+    // What is still owed, and what the day comes to once it has gone out.
+    // Adjustment keeps its place behind them: it explains how the day got here,
+    // while these two say where it is going.
+    //
+    // After Demand still reads today's balance − waiting demand. The balance
+    // itself is no longer a column, so this is where that figure surfaces — as
+    // the forward number it was always the more useful half of.
     //
     // Both are `display` columns: neither figure is on ProductionStockRow. The
     // demand comes from the live order queue, which is not day-scoped and so
@@ -111,7 +146,7 @@ export function ProductionStockPage() {
             meta: { align: 'center' },
             cell: ({ row }) => {
               if (!waitingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
-              const after = row.original.balance - (waitingByProduct.get(row.original.productId) ?? 0);
+              const after = row.original.dayBalance - (waitingByProduct.get(row.original.productId) ?? 0);
               // Negative is production still to do before the waiting demands
               // can go out — the same red, and the same meaning, as the Balance
               // Stock column on the Demand Summary.
@@ -122,11 +157,9 @@ export function ProductionStockPage() {
           }),
         ]
       : []),
-    col.accessor('returned', { header: 'Returned', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
     // Signed, and its own column: an admin correction can go either way, and
     // folding it into Prepared or Returned would report a correction as one of
-    // them. Day-scoped like the rest of this row — it reads 0 tomorrow, its
-    // effect already inside Balance.
+    // them. Day-scoped like the rest of this row — it reads 0 tomorrow.
     col.accessor('adjustment', {
       header: 'Adjustment',
       meta: { align: 'center' },
@@ -144,7 +177,9 @@ export function ProductionStockPage() {
         <div>
           <h2 className="text-lg font-semibold">Production Stock</h2>
           <p className="text-sm text-muted-foreground">
-            Central production pool — {isToday ? 'today' : formatDate(date)}
+            Central production pool — {isToday ? 'today' : formatDate(date)} · this day only,
+            with nothing carried over from yesterday. A negative balance is production
+            still to do.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -184,18 +219,18 @@ export function ProductionStockPage() {
           search miss and DataTable's own "No results found" is the right message. */}
       <DataTable
         columns={columns}
-        data={stockQ.data ?? []}
+        data={dayRows}
         loading={stockQ.isLoading}
         searchPlaceholder="Search products…"
         empty={
-          stockQ.data?.length === 0 ? (
+          dayRows.length === 0 ? (
             <EmptyState
               icon={PackageOpen}
               title={isToday ? 'Nothing in the pool yet today' : `No stock movement on ${formatDate(date)}`}
               description={
                 isToday
-                  ? 'Products appear here once they are prepared, returned into the pool, or carry a balance from yesterday.'
-                  : 'No product held a balance or moved on this day.'
+                  ? 'Products appear here once they are prepared, returned into the pool, sent out or sold today.'
+                  : 'Nothing was prepared, returned, sent out or sold on this day.'
               }
               action={
                 isToday ? (

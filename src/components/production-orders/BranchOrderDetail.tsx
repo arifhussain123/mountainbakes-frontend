@@ -82,6 +82,39 @@ export function BranchOrderDetail({
   const shownItems = useMemo(() => liveItems(order?.items), [order?.items]);
   const shownPackingItems = useMemo(() => livePackingItems(order?.packingItems), [order?.packingItems]);
 
+  /**
+   * What each column adds up to, recomputed as the counter types.
+   *
+   * The verified figure reads the SAME expression the inputs render — the typed
+   * value, falling back to `approvedQty ?? qty` for a line nobody has touched —
+   * so the total can never disagree with the boxes above it. `parseInt('')` is
+   * NaN and `|| 0` catches it, which is what makes a half-cleared box count as
+   * nothing rather than poisoning the whole sum.
+   *
+   * Staged additions are in the verified total (they are goods that arrived and
+   * will move stock) but not in requested or approved — nobody asked for them and
+   * nobody sent them on paper. That gap between the totals is exactly the thing
+   * worth seeing before pressing Verify.
+   */
+  const totals = useMemo(() => {
+    const num = (v: string) => parseInt(v, 10) || 0;
+    const requested = shownItems.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+    const approved = shownItems.reduce((sum, it) => sum + (Number(it.approvedQty ?? it.qty) || 0), 0);
+    const verified =
+      shownItems.reduce(
+        (sum, it) => sum + num(verifiedQtys[it.productId] ?? String(it.approvedQty ?? it.qty)),
+        0,
+      ) + newItems.reduce((sum, it) => sum + it.qty, 0);
+    const pending = shownItems.reduce((sum, it) => sum + (Number(it.remainingBalanceQty) || 0), 0);
+    return {
+      products: shownItems.length + newItems.length,
+      requested,
+      approved,
+      verified,
+      pending,
+    };
+  }, [shownItems, newItems, verifiedQtys]);
+
   function resetLocalState() {
     setVerifiedQtys({});
     setNewItems([]);
@@ -258,6 +291,44 @@ export function BranchOrderDetail({
                         </tr>
                       ))}
                     </tbody>
+                    {/* Totals — the answer to "how much is this demand", which
+                        nothing on this dialog said before. Suppressed when there
+                        is nothing to total: a row of zeroes under an empty table
+                        is not a summary of anything. */}
+                    {totals.products > 0 && (
+                      <tfoot className="border-t-2 bg-muted/40 font-semibold">
+                        <tr>
+                          <td className="px-3 py-2">
+                            Total
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              {totals.products} product{totals.products === 1 ? '' : 's'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums">{totals.requested}</td>
+                          <td className="px-3 py-2 text-center tabular-nums">{totals.approved}</td>
+                          {awaitingVerification ? (
+                            // Amber under, emerald over — the same reading as the
+                            // history table's Verified Qty column, so the two agree
+                            // about what a shortfall looks like.
+                            <td
+                              className={`px-3 py-2 text-center tabular-nums ${
+                                totals.verified < totals.approved
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : totals.verified > totals.approved
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : ''
+                              }`}
+                            >
+                              {totals.verified}
+                            </td>
+                          ) : (
+                            <td className="px-3 py-2 text-center tabular-nums">
+                              {totals.pending || '—'}
+                            </td>
+                          )}
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
 
@@ -326,6 +397,29 @@ export function BranchOrderDetail({
                           </tr>
                         ))}
                       </tbody>
+                      {/* Totalled separately from the products above, and never
+                          folded in with them: packing material is not stock and
+                          never reaches the branch's ledger, so one combined
+                          quantity would be a total of nothing in particular. */}
+                      <tfoot className="border-t-2 bg-muted/40 font-semibold">
+                        <tr>
+                          <td className="px-3 py-2">
+                            Total
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              {shownPackingItems.length} item{shownPackingItems.length === 1 ? '' : 's'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums">
+                            {shownPackingItems.reduce((sum, it) => sum + (Number(it.qty) || 0), 0)}
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums">
+                            {shownPackingItems.reduce(
+                              (sum, it) => sum + (Number(it.approvedQty ?? it.qty) || 0),
+                              0,
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>

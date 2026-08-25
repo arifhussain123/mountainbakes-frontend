@@ -128,3 +128,73 @@ export function waitingDemandByProduct(orders: BranchProductionOrder[]): Map<str
   }
   return byProduct;
 }
+
+// ---------------------------------------------------------------------------
+// Demand totals — how much a demand is, in one figure each
+// ---------------------------------------------------------------------------
+
+/** Products and quantity on one demand, at one point in its life. */
+export interface DemandTotals {
+  /** Distinct product lines with a quantity behind them. */
+  products: number;
+  /** Σ of those lines' quantities. */
+  qty: number;
+}
+
+/**
+ * What the BRANCH asked for — the demand as raised.
+ *
+ * Reads `qty`, not `effectiveQty`: this figure has to keep saying what was
+ * requested even after Production reviews the line down, or the two totals
+ * beside each other on the page both report the same number and neither answers
+ * "did we get what we asked for".
+ *
+ * Lines flagged `addedByProduction` are EXCLUDED. Production added them and the
+ * branch never demanded them (migration 83); counting them here would inflate
+ * the branch's own ask by goods nobody requested — which is the exact bug that
+ * flag was added to fix.
+ *
+ * The zero-line filter is deliberately not applied. A line the branch asked for
+ * and Production cut to nothing was still demanded, and this total is the record
+ * of the asking.
+ */
+export function requestedTotals(order: Pick<BranchProductionOrder, 'items'>): DemandTotals {
+  const lines = (order.items ?? []).filter((it) => !it.addedByProduction && Number(it.qty) > 0);
+  return {
+    products: lines.length,
+    qty: lines.reduce((sum, it) => sum + (Number(it.qty) || 0), 0),
+  };
+}
+
+/**
+ * What is actually moving — the current figure on every live line.
+ *
+ * `effectiveQty` walks the line through its own lifecycle: the branch's request
+ * until Production reviews it, Production's figure until the branch verifies,
+ * and the COUNTED figure after that — `verify_production_order` overwrites
+ * `approved_qty` with the verified quantity (migration 83), so on a verified
+ * demand this is the count taken at the door and nothing else.
+ *
+ * Which is why there is no separate "verified" reader: use {@link isVerified} to
+ * decide whether this total may be labelled as one.
+ */
+export function fulfilledTotals(order: Pick<BranchProductionOrder, 'items'>): DemandTotals {
+  const lines = liveItems(order.items);
+  return {
+    products: lines.length,
+    qty: lines.reduce((sum, it) => sum + effectiveQty(it), 0),
+  };
+}
+
+/**
+ * Has this demand been counted in at the door?
+ *
+ * Gated on `verifiedAt` rather than on the status, because that is the field the
+ * verification actually stamps. A demand approved before verification existed
+ * carries no timestamp and correctly reports false — its quantities are
+ * Production's, never a branch count, and labelling them "verified" would claim
+ * a check that never happened.
+ */
+export function isVerified(order: Pick<BranchProductionOrder, 'verifiedAt'>): boolean {
+  return Boolean(order.verifiedAt);
+}

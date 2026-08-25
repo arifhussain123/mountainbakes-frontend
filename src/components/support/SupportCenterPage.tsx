@@ -1632,7 +1632,9 @@ const PRODUCTION_FIELDS = [
  *
  * Two differences from the branch editor, both following the pool's own model:
  *   · There is no Opening. The pool carries one running balance and no per-day
- *     open/close, so the four movement figures plus Balance are the whole row.
+ *     open/close, so the four movement figures plus Pool Balance are the whole
+ *     row. Total Stock and Today's Balance are shown above them as derived
+ *     read-outs, matching what the Production Stock page reports for the day.
  *   · A negative Balance is ALLOWED — the pool is flagged when negative, never
  *     blocked, and a product already negative has to stay correctable. It is warned
  *     about rather than refused.
@@ -1753,12 +1755,17 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
         ) : (
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
-              {/* Opening first, matching the branch dialog: it is where the day
-                  starts, and the figures below are only readable against it. Not
-                  editable, for the same reason as the branch's — it is the
-                  previous day's closing. */}
-              <FigureRow label="Opening Stock" value={String(figures.opening)} hint="carried from yesterday" />
-              <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="balance + what left today" />
+              {/* No Opening row, unlike the branch dialog. The Production Stock
+                  page reads the pool as the day it had — nothing carried over —
+                  so a query raised from that page has to resolve against the same
+                  figures, and an opening balance here would not be one of them.
+                  Both rows are derived, so neither is editable. */}
+              <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="prepared + returned today" />
+              <FigureRow
+                label="Today's Balance"
+                value={String(figures.dayBalance)}
+                hint="what the Production Stock page shows"
+              />
               {figures.adjustment !== 0 && (
                 <FigureRow
                   label="Adjustment so far"
@@ -1787,7 +1794,10 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
 
             <div className="space-y-1">
               <div className="flex items-baseline justify-between gap-2">
-                <Label>Balance</Label>
+                {/* The RUNNING pool total, not the day figure above it. This is
+                    the one the pool actually stores and the one a correction
+                    writes to, so the two can legitimately differ. */}
+                <Label>Pool Balance</Label>
                 <span className="text-xs text-muted-foreground">
                   now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
                 </span>

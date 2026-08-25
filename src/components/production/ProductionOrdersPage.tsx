@@ -44,9 +44,10 @@ export function ProductionOrdersPage() {
   const { settings } = useSettings();
   const ordersQ = useProductionOrders(token);
   // The central pool, for the Production Stock / Balance columns on the summary
-  // below. Same two roles guard this page and /api/production-stock
-  // (super_admin, production_user), so it can be fetched unconditionally here —
-  // unlike on a shared screen a branch manager can reach.
+  // below — read as TODAY, matching the Production Stock page. Same two roles
+  // guard this page and /api/production-stock (super_admin, production_user), so
+  // it can be fetched unconditionally here — unlike on a shared screen a branch
+  // manager can reach.
   const stockQ = useProductionStock(token);
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);
@@ -173,40 +174,54 @@ export function ProductionOrdersPage() {
   }, [waiting]);
 
   /**
-   * Pool balance per product, and whether it has arrived yet.
+   * TODAY's pool position per product, and whether it has arrived yet.
+   *
+   * `dayBalance`, not `balance`: the running pool carries every previous day
+   * forward, and reading the demand against it said a product was covered on the
+   * strength of stock that was baked — and in most cases sent — days ago. The
+   * floor plans against what exists this morning, so the summary is read the same
+   * way the Production Stock page is.
    *
    * `undefined` for a product means the query has not resolved; 0 means the
    * pool genuinely holds none. The two must not be conflated — rendering an
    * unloaded figure as 0 would print a full-width column of shortfalls for a
    * second on every page load, which is the one thing this column must never
    * cry wolf about.
+   *
+   * NOTE the API still returns every product carrying a running balance, so a
+   * product that had no movement today is present here with dayBalance 0 rather
+   * than missing. `?? 0` in `poolFor` reads either the same way.
    */
   const stockByProduct = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of stockQ.data ?? []) m.set(r.productId, r.balance);
+    for (const r of stockQ.data ?? []) m.set(r.productId, r.dayBalance);
     return m;
   }, [stockQ.data]);
   const stockLoaded = stockQ.data !== undefined;
 
   /**
-   * What the pool holds now, what the waiting demand will take out of it, and
+   * What today's pool holds, what the waiting demand will take out of it, and
    * what is left.
    *
-   *   balance = production stock − total waiting demand
+   *   balance = today's production stock − total waiting demand
    *
-   * The pool figure ALREADY excludes everything a branch has verified: stock
-   * moves at verification (migration 58), not when Production sends the goods.
-   * Waiting demand is by definition not yet verified, so the two never
-   * double-count and the subtraction is the honest forward figure — what the
-   * pool will hold once every waiting demand has been counted in by its branch.
+   * The pool figure ALREADY excludes everything a branch has verified: the
+   * transfer out of the pool is written at verification (migration 58), not when
+   * Production sends the goods. Waiting demand is by definition not yet verified,
+   * so the two never double-count and the subtraction is the honest forward
+   * figure — what today's pool comes to once every waiting demand has been
+   * counted in by its branch.
    *
    * That also makes Balance the column that does NOT jump when a branch
-   * verifies: the pool drops and the demand drops by the same amount, so the
+   * verifies: today's pool drops and the demand drops by the same amount, so the
    * number holds still while the two beside it catch up with reality. It moves
    * only when a branch verifies a CORRECTED quantity — fewer goods left the
    * building than were planned to, so the balance rightly goes up.
    *
-   * Negative is the whole point of the column: it is production still to do.
+   * Negative is the whole point of the column, and reading the pool as today
+   * makes it more honest, not noisier: a demand raised yesterday and verified
+   * this morning debits today while the goods were made yesterday, so the
+   * shortfall it prints is real production still to do.
    */
   function poolFor(productId: string, totalDemand: number): { stock: number; balance: number } | null {
     if (!stockLoaded) return null;
@@ -394,7 +409,7 @@ export function ProductionOrdersPage() {
                           and ahead of the branch columns because it is the
                           production decision. The branch split answers "who is
                           this for"; these three answer "do we have it". */}
-                      <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Production Stock</th>
+                      <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Today&apos;s Stock</th>
                       <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
                       <th className="border-r px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Balance Stock</th>
                       {demand.branches.map((b) => (
@@ -476,7 +491,7 @@ export function ProductionOrdersPage() {
                       {pool && (
                         <div className="mt-2 flex items-center gap-3 rounded-md bg-muted/50 px-2 py-1.5 text-xs tabular-nums">
                           <span className="text-muted-foreground">
-                            Stock <span className="font-medium text-foreground">{pool.stock}</span>
+                            Today <span className="font-medium text-foreground">{pool.stock}</span>
                           </span>
                           <span className="text-muted-foreground">−</span>
                           <span className="text-muted-foreground">

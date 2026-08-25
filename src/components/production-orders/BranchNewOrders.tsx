@@ -18,13 +18,35 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { Eye, Plus, Trash2 } from 'lucide-react';
-import { liveItems, livePackingItems } from '@/utils/demandLines';
-import { createColumnHelper } from '@tanstack/react-table';
+import {
+  fulfilledTotals,
+  isVerified,
+  liveItems,
+  livePackingItems,
+  requestedTotals,
+} from '@/utils/demandLines';
+import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
+import { cn } from '@/lib/utils';
 import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 import { BranchOrderDetail } from './BranchOrderDetail';
 
 const col = createColumnHelper<BranchProductionOrder>();
+
+/**
+ * Sum a per-demand figure for the totals row.
+ *
+ * Over `getFilteredRowModel()`, not `getRowModel()`: the latter is ONE page, so
+ * on a history that spans pages the total would change as you paged through and
+ * read like a bug. Filtered means the total follows the search box, which is
+ * what someone typing in it is asking about.
+ */
+function sumRows(
+  table: TanstackTable<BranchProductionOrder>,
+  pick: (o: BranchProductionOrder) => number,
+): number {
+  return table.getFilteredRowModel().rows.reduce((sum, r) => sum + pick(r.original), 0);
+}
 
 /** Branch model has no `code` field — derive a short code from the branch name initials. */
 function deriveBranchCode(name: string | null, branchId: string | null): string {
@@ -128,7 +150,12 @@ export function BranchNewOrders() {
   // demand is approved its items are locked (Production owns quantity edits), so
   // there is nothing here for the branch to change, only to inspect.
   const columns = [
-    col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
+    col.accessor('date', {
+      header: 'Date',
+      cell: (i) => <span className="text-sm">{i.getValue()}</span>,
+      // Labels the totals row, at the far left where a total is looked for.
+      footer: () => <span className="text-xs font-semibold uppercase tracking-wide">Total</span>,
+    }),
     col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
     // The date the branch ASKED for, next to the date it asked ON. Blank on
     // demands raised before the field existed — rendered '—' rather than falling
@@ -150,17 +177,107 @@ export function BranchNewOrders() {
       meta: { mobile: 'title' },
       cell: (i) => <span className="font-mono font-medium">{i.getValue()}</span>,
     }),
+    // ── How much this demand is, twice ──────────────────────────────────────
+    //
+    // Asked vs counted, side by side. The first pair is the demand as RAISED and
+    // never moves again; the second is what is on the way, and becomes the figure
+    // counted at the door the moment the branch verifies (verification overwrites
+    // the approved quantity with the count — see `fulfilledTotals`). Reading them
+    // against each other is the whole point: the gap is what was cut, short-
+    // delivered or found extra in the crate.
+    //
+    // Footers sum the FILTERED rows, not the page — a total that changed as you
+    // paged through would read like a bug, and one that ignores the search box
+    // would not answer what someone typing in it is asking.
     col.display({
-      id: 'items',
-      header: 'Items',
+      id: 'demandProducts',
+      header: 'Products',
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums">{requestedTotals(i.row.original).products}</span>,
+      footer: (p) => (
+        <span className="tabular-nums font-semibold">
+          {sumRows(p.table, (o) => requestedTotals(o).products).toLocaleString()}
+        </span>
+      ),
+    }),
+    col.display({
+      id: 'demandQty',
+      header: 'Demand Qty',
+      meta: { align: 'center' },
+      cell: (i) => (
+        <span className="font-medium tabular-nums">{requestedTotals(i.row.original).qty.toLocaleString()}</span>
+      ),
+      footer: (p) => (
+        <span className="tabular-nums font-semibold">
+          {sumRows(p.table, (o) => requestedTotals(o).qty).toLocaleString()}
+        </span>
+      ),
+    }),
+    // Both verified columns read '—' until the demand is counted in. A 0 there
+    // would say "nothing arrived", which is a different statement from "nobody
+    // has counted this yet" — and on a pending demand it is the wrong one.
+    col.display({
+      id: 'verifiedProducts',
+      header: 'Verified Products',
+      meta: { align: 'center' },
       cell: (i) => {
         const o = i.row.original;
-        // Counts only lines with a quantity behind them, so the number here
-        // agrees with what the View dialog actually lists. A line Production
-        // reviewed down to zero is not an item on this demand any more.
-        const count = liveItems(o.items).length + livePackingItems(o.packingItems).length;
-        return <span className="text-sm text-muted-foreground">{count} item{count === 1 ? '' : 's'}</span>;
+        if (!isVerified(o)) return <span className="tabular-nums text-muted-foreground">—</span>;
+        return <span className="tabular-nums">{fulfilledTotals(o).products}</span>;
       },
+      footer: (p) => (
+        <span className="tabular-nums font-semibold">
+          {sumRows(p.table, (o) => (isVerified(o) ? fulfilledTotals(o).products : 0)).toLocaleString()}
+        </span>
+      ),
+    }),
+    col.display({
+      id: 'verifiedQty',
+      header: 'Verified Qty',
+      meta: { align: 'center' },
+      cell: (i) => {
+        const o = i.row.original;
+        if (!isVerified(o)) return <span className="tabular-nums text-muted-foreground">—</span>;
+        const { qty } = fulfilledTotals(o);
+        const asked = requestedTotals(o).qty;
+        return (
+          <span
+            className={cn(
+              'font-semibold tabular-nums',
+              qty < asked && 'text-amber-600 dark:text-amber-400',
+              qty > asked && 'text-emerald-600 dark:text-emerald-400',
+            )}
+          >
+            {qty.toLocaleString()}
+          </span>
+        );
+      },
+      footer: (p) => (
+        <span className="tabular-nums font-semibold">
+          {sumRows(p.table, (o) => (isVerified(o) ? fulfilledTotals(o).qty : 0)).toLocaleString()}
+        </span>
+      ),
+    }),
+    // Packing materials are counted apart from products and always have been —
+    // they are not stock and never reach a branch's stock ledger, so folding them
+    // into a product total would state a quantity of nothing in particular.
+    col.display({
+      id: 'packing',
+      header: 'Packing',
+      meta: { align: 'center' },
+      cell: (i) => {
+        const n = livePackingItems(i.row.original.packingItems).length;
+        return n ? (
+          <span className="tabular-nums">{n}</span>
+        ) : (
+          <span className="tabular-nums text-muted-foreground">—</span>
+        );
+      },
+      footer: (p) => (
+        <span className="tabular-nums font-semibold">
+          {sumRows(p.table, (o) => livePackingItems(o.packingItems).length).toLocaleString()}
+        </span>
+      ),
     }),
     col.accessor('status', { header: 'Status', meta: { mobile: 'badge' }, cell: (i) => <StatusPill status={i.getValue()} /> }),
     // The reason the demand was deleted, shown against the row it belongs to.
