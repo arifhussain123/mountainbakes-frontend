@@ -193,6 +193,20 @@ export function BranchOrderDetail({
 
               <div>
                 <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Products</h4>
+                {/**
+                  * Line items are the counting surface, so they are shown only
+                  * while there is counting to do.
+                  *
+                  * On an `awaiting_verification` demand every row carries an
+                  * editable "Verified Qty" and the add-missing-item flow below
+                  * writes into the same table — take the rows away and there is
+                  * nowhere to enter a per-product count. Once the demand is
+                  * processed nothing on it is editable and the per-product
+                  * breakdown is already on the History table behind this
+                  * dialog, so repeating it here is a wall of figures between
+                  * the reader and the one number they opened this for.
+                  */}
+                {awaitingVerification ? (
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
@@ -331,6 +345,39 @@ export function BranchOrderDetail({
                     )}
                   </table>
                 </div>
+                ) : (
+                  <div className="rounded-lg border">
+                    {totals.products > 0 ? (
+                      <>
+                        <dl className="grid grid-cols-3 divide-x text-center">
+                          <div className="px-3 py-3">
+                            <dt className="text-xs text-muted-foreground">Requested</dt>
+                            <dd className="text-base font-semibold tabular-nums">{totals.requested}</dd>
+                          </div>
+                          <div className="px-3 py-3">
+                            <dt className="text-xs text-muted-foreground">Approved</dt>
+                            <dd className="text-base font-semibold tabular-nums">{totals.approved}</dd>
+                          </div>
+                          <div className="px-3 py-3">
+                            <dt className="text-xs text-muted-foreground">Pending</dt>
+                            {/* '—' and 0 are different answers: nothing is
+                                outstanding vs nobody has counted it yet. */}
+                            <dd className="text-base font-semibold tabular-nums">{totals.pending || '—'}</dd>
+                          </div>
+                        </dl>
+                        <p className="border-t px-3 py-2 text-center text-xs text-muted-foreground">
+                          {totals.products} product{totals.products === 1 ? '' : 's'}
+                        </p>
+                      </>
+                    ) : (
+                      /* Same sentence the table gave, for the same reason: an
+                         empty demand is a fact, not a failed render. */
+                      <p className="px-3 py-6 text-center text-muted-foreground">
+                        No products were sent on this demand.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {awaitingVerification && (
                   <div className="mt-2">
