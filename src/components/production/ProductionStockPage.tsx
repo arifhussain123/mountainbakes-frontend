@@ -66,9 +66,12 @@ export function ProductionStockPage() {
     // the DataTable's filter, so an ID from a ticket finds its row here.
     col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    // Opening first among the figures, as on the branch Stock page — the day's
-    // movement is only readable against where the day started.
-    col.accessor('opening', { header: 'Opening Stock', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
+    // No Opening column here, unlike the branch Stock page. The pool is read as
+    // what it can send out RIGHT NOW, not as a day reconciled against its start,
+    // and the figure carries forward into Balance either way — a product sitting
+    // on yesterday's stock with no movement today still lists, on its balance
+    // alone. `opening` stays on ProductionStockRow: the admin correction dialog
+    // reads it, and dropping a column is not a reason to stop serving a figure.
     col.accessor('preparedToday', { header: 'Prepared', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('totalStock', { header: 'Total Stock', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
     col.accessor('approvedQty', { header: 'Approved Qty', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
