@@ -174,7 +174,7 @@ export function BranchStockHistoryCard({
 
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
+            <thead data-table-head>
               <tr>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</th>
                 <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Previous Stock</th>

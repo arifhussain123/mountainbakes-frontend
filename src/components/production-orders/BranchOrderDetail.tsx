@@ -209,7 +209,7 @@ export function BranchOrderDetail({
                 {awaitingVerification ? (
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                    <thead data-table-head className="text-left text-xs">
                       <tr>
                         {/* Every figure is centred under its heading, in both
                             states of this table — the editable "Verified Qty"
@@ -427,7 +427,7 @@ export function BranchOrderDetail({
                   <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Packing Materials</h4>
                   <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-sm">
-                      <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                      <thead data-table-head className="text-left text-xs">
                         <tr>
                           {/* Same centring as the products table above. */}
                           <th className="px-3 py-2 font-medium">Material</th>

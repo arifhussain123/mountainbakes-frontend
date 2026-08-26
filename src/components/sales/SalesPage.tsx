@@ -613,7 +613,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
               <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left">
+                  <thead data-table-head className="text-left">
                     <tr>
                       <th className="p-2 font-semibold">Product</th>
                       <th className="p-2 text-center font-semibold">Qty</th>

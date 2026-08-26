@@ -295,7 +295,7 @@ function ReportView({ report }: { report: FinanceReport }) {
           <div className="hidden overflow-x-auto rounded-lg border bg-card md:block print-table-wrap">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow data-table-head>
                   {report.columns.map((c) => (
                     <TableHead
                       key={c.key}

@@ -371,7 +371,7 @@ export function DailyLedgerPage() {
           <div className="hidden overflow-x-auto rounded-lg border bg-card md:block print-table-wrap">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow data-table-head>
                   {[
                     'Date', 'Voucher No', 'Ledger Head', 'Description', 'Photo', 'Branch',
                     'Debit', 'Credit', 'Balance', 'Status',

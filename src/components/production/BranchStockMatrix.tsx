@@ -35,7 +35,7 @@ export function BranchStockMatrix() {
       <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-muted/50 text-left">
+            <tr data-table-head className="text-left">
               <th className="sticky left-0 bg-muted/50 px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
               {branches.map((b) => (
                 <th key={b.branchId} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{short(b.branchName)}</th>

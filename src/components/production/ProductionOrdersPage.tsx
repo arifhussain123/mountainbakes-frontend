@@ -403,7 +403,7 @@ export function ProductionOrdersPage() {
               <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-muted/50 text-left">
+                    <tr data-table-head className="text-left">
                       <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
                       {/* Pool → demand → what is left, in the order the sum reads,
                           and ahead of the branch columns because it is the
@@ -536,7 +536,7 @@ export function ProductionOrdersPage() {
                   <div className="hidden overflow-x-auto rounded-lg border md:block">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-muted/50 text-left">
+                        <tr data-table-head className="text-left">
                           <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Packing Material</th>
                           <th className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">Total Demand</th>
                           {demand.branches.map((b) => (

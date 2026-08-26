@@ -39,7 +39,7 @@ export function ResponsiveMatrix({
       <div className="hidden overflow-x-auto rounded-lg border md:block print-table-wrap">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-muted/50 text-left">
+            <tr data-table-head className="text-left">
               {headers.map((h, i) => (
                 <th
                   key={h}

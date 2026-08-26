@@ -199,7 +199,7 @@ export function BranchClosingPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
+                <tr data-table-head className="border-b text-left text-xs">
                   <th className="py-2 pr-3 font-medium">Product</th>
                   <th className="py-2 px-3 text-right font-medium">Opening</th>
                   <th className="py-2 px-3 text-right font-medium">Received</th>

@@ -134,7 +134,7 @@ export function EventNotificationSchedule({ eventId }: { eventId?: string }) {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[34rem] text-sm">
                 <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
+                  <tr data-table-head className="border-b text-left text-xs">
                     <th className="p-3 font-medium">Send On</th>
                     <th className="p-3 font-medium">Audience</th>
                     <th className="p-3 font-medium">Reminder</th>

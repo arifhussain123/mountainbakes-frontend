@@ -135,7 +135,7 @@ export function BranchDemandPanel({
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-80 text-sm">
                 <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
+                  <tr data-table-head className="border-b text-left text-xs">
                     <th className="py-1 pr-2 font-medium">Product</th>
                     <th className="py-1 pr-2 text-right font-medium">Requested</th>
                     <th className="py-1 text-right font-medium">Approved</th>
@@ -202,7 +202,7 @@ export function ConsolidatedDemandPanel({ eventId }: { eventId: string }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-96 text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
+              <tr data-table-head className="border-b text-left text-xs">
                 <th className="py-2 pr-2 font-medium">Product</th>
                 <th className="py-2 pr-2 text-right font-medium">Branches</th>
                 <th className="py-2 pr-2 text-right font-medium">Requested</th>

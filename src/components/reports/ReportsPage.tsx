@@ -193,7 +193,7 @@ export function ReportsPage() {
                 {/* `print-doc-table` (display:table) rather than the block-level
                     `print-table-wrap` — this element is the table itself. */}
                 <table className="hidden w-full text-sm md:table print-doc-table">
-                  <thead className="bg-muted/50">
+                  <thead data-table-head>
                     <tr>
                       <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">#</th>
                       <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Product</th>

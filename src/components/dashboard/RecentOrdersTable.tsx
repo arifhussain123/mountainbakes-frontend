@@ -75,7 +75,7 @@ export function RecentOrdersTable({ branchId }: { branchId?: string }) {
 
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
+            <thead data-table-head>
               <tr>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Order</th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer</th>

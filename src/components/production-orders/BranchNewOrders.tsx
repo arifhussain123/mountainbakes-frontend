@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
-import { Eye, Plus, Trash2 } from 'lucide-react';
+import { Eye, Package, Plus, Trash2 } from 'lucide-react';
 import {
   fulfilledTotals,
   isVerified,
@@ -103,6 +103,8 @@ export function BranchNewOrders() {
   const [viewOpen, setViewOpen] = useState(false);
   const [deleting, setDeleting] = useState<BranchProductionOrder | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
+  /** The demand whose total is on screen. Null when the box is closed. */
+  const [demandFor, setDemandFor] = useState<BranchProductionOrder | null>(null);
 
   // Products/stock load lazily on first open; both are cached across reopens.
   const productsQ = useProducts(token, { isActive: true, enabled: openedOnce });
@@ -305,6 +307,13 @@ export function BranchNewOrders() {
             <Button variant="ghost" size="sm" onClick={() => openView(o)}>
               <Eye className="mr-1.5 h-4 w-4" /> View
             </Button>
+            {/* One number, deliberately. View opens the whole demand — every
+                line, every quantity, the photos — which is more than someone
+                glancing down the list wants when the question is just "how much
+                is this one". */}
+            <Button variant="ghost" size="sm" onClick={() => setDemandFor(o)}>
+              <Package className="mr-1.5 h-4 w-4" /> Demand
+            </Button>
             {/* Only while Production has not reviewed it. Past 'pending' the
                 goods are out of the door — and past verification stock has
                 already moved — so there is nothing left to take back. */}
@@ -408,6 +417,29 @@ export function BranchNewOrders() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Total-only demand box. Shows the quantity actually in play: the
+          branch's ask until the delivery is counted in, and the counted figure
+          after that — verification overwrites the approved quantity, so one
+          number stays correct at every stage without needing a second. */}
+      <Dialog open={!!demandFor} onOpenChange={(o) => !o && setDemandFor(null)}>
+        <DialogContent className="md:max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-base">{demandFor?.demandNumber}</DialogTitle>
+          </DialogHeader>
+          {demandFor && (
+            <div className="py-2 text-center">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                {isVerified(demandFor) ? 'Total verified' : 'Total demand'}
+              </p>
+              <p className="mt-1 text-4xl font-bold tabular-nums">
+                {fulfilledTotals(demandFor).qty.toLocaleString()}
+              </p>
+            </div>
+          )}
+          <Button variant="outline" onClick={() => setDemandFor(null)}>Close</Button>
         </DialogContent>
       </Dialog>
 

@@ -200,6 +200,41 @@
   --sidebar-ring: oklch(0.64 0.21 15);
 }
 
+/* ── Table heading rows ──────────────────────────────────────────────────────
+   Every on-screen table's first row carries the selected brand accent as a soft
+   tint, so the heading follows whichever accent the user picked.
+
+   DELIBERATELY UNLAYERED. Tailwind's `utilities` layer beats every earlier layer
+   regardless of specificity, so the same rule inside `@layer components` would
+   lose to the `text-muted-foreground` that most heading cells in this app carry.
+   An unlayered rule outranks all of them — which is what lets two dozen call
+   sites keep the classes they already have and opt in with one attribute.
+
+   A 10% tint, NOT a solid fill. Heading text is 12px uppercase, and white on the
+   default orange (--primary sits at L 0.702) lands near 2.9:1, well under AA. The
+   text is mixed toward --foreground for the same reason: pure --primary on its
+   own tint is about 3.3:1, so it is pulled darker in light mode and lighter in
+   dark mode, keeping the hue while clearing the threshold in both.
+
+   Wrapped in @supports because the build injects a naive fallback for browsers
+   without color-mix — and its fallback for BOTH declarations is plain
+   `var(--primary)`, i.e. accent text on an accent fill, which is invisible. The
+   guard means such a browser gets no rule at all and the heading renders plain
+   and perfectly readable, which is the right way to lose this.
+
+   Print views opt out by simply not carrying the attribute — a filled heading is
+   ink a delivery slip does not need, and browsers drop backgrounds when printing
+   anyway, which would leave the text colour alone on white. */
+@supports (background-color: color-mix(in oklab, red 10%, transparent)) {
+  [data-table-head] {
+    background-color: color-mix(in oklab, var(--primary) 10%, transparent);
+  }
+  [data-table-head] th,
+  [data-table-head] td {
+    color: color-mix(in oklab, var(--primary) 65%, var(--foreground));
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

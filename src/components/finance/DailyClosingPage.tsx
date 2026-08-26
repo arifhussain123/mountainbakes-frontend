@@ -136,7 +136,7 @@ export function DailyClosingPage() {
             <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableRow data-table-head>
                     {['Date', 'Opening', 'Income', 'Expenses', 'Net', 'Cash', 'Bank', 'Closing', 'Closed By'].map((h) => (
                       <TableHead
                         key={h}

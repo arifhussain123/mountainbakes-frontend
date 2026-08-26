@@ -131,7 +131,7 @@ function SaleItemsTable({ items }: { items: SupportSaleItem[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left">
+        <thead data-table-head className="text-left">
           <tr>
             <th className="p-2 font-semibold">Product</th>
             <th className="p-2 text-center font-semibold">Qty</th>

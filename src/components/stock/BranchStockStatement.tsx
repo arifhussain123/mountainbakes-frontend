@@ -227,7 +227,7 @@ export function BranchStockStatement({ date, branchId }: { date: string; branchI
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50">
+        <thead data-table-head>
           <tr>
             <th className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</th>
             <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detail</th>

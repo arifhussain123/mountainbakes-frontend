@@ -151,12 +151,12 @@ export function DataTable<TData>({
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id} className="bg-muted/50 hover:bg-muted/50">
+              <TableRow key={hg.id} data-table-head>
                 {hg.headers.map((h) => (
                   <TableHead
                     key={h.id}
                     className={cn(
-                      'font-semibold text-xs uppercase tracking-wide text-muted-foreground',
+                      'font-semibold text-xs uppercase tracking-wide',
                       alignClass(h.column.columnDef.meta?.align),
                     )}
                   >

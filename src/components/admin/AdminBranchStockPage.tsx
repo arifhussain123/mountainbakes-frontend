@@ -431,7 +431,7 @@ export function AdminBranchStockPage() {
           <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-muted/50 text-left">
+                <tr data-table-head className="text-left">
                   <th className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
                   {COLUMNS.map((c) => (
                     <th key={c.key} className="px-2 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">

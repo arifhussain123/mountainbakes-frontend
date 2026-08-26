@@ -396,7 +396,7 @@ function PartnerShareDetailTab() {
 
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left">
+          <thead data-table-head className="text-left">
             <tr>
               <th className="p-2 font-semibold">Partner</th>
               <th className="p-2 text-right font-semibold">25% Share</th>
@@ -473,7 +473,7 @@ function PartnerDetailTab({ abilities }: { abilities: ReturnType<typeof useFinan
 
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left">
+          <thead data-table-head className="text-left">
             <tr>
               <th className="p-2 font-semibold">Name</th>
               <th className="p-2 font-semibold">Father Name</th>
