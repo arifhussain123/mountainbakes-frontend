@@ -41,8 +41,21 @@ export const LEDGER_TYPE_OPTIONS: ProductionLedgerType[] = [
   'ADJUSTMENT_OUT',
 ];
 
-export function LedgerTypeChip({ type }: { type: ProductionLedgerType }) {
-  const meta = LEDGER_TYPE_META[type];
+/**
+ * Defensive for the same reason as the status chip: the ledger vocabulary is
+ * decided server-side, so a client one release ahead of the API can be handed a
+ * type it has no entry for. An unknown type renders as itself rather than
+ * throwing and taking the page down.
+ */
+export function LedgerTypeChip({ type }: { type: ProductionLedgerType | undefined }) {
+  const meta = type ? LEDGER_TYPE_META[type] : undefined;
+  if (!meta) {
+    return (
+      <span className="inline-flex whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        {type ?? '—'}
+      </span>
+    );
+  }
   return (
     <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', meta.className)}>
       {meta.label}

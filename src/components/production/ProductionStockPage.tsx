@@ -44,8 +44,22 @@ const STATUS_STYLE: Record<ProductionStockStatus, { label: string; className: st
   shortage: { label: 'Shortage',  className: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' },
 };
 
-function StatusChip({ status }: { status: ProductionStockStatus }) {
-  const s = STATUS_STYLE[status];
+/**
+ * DEFENSIVE ON PURPOSE.
+ *
+ * `status` is computed server-side, so a client running against an API that has
+ * not been deployed yet receives rows without it — and a bare
+ * `STATUS_STYLE[status].className` on an undefined status throws, taking the
+ * whole page down with it. During any deploy the two halves of this app are
+ * briefly different versions (they are separate repos with separate deploys), so
+ * "the API is one release behind" is a state this page must survive rather than
+ * white-screen on.
+ *
+ * A dash is the honest rendering: the status genuinely is not known.
+ */
+function StatusChip({ status }: { status: ProductionStockStatus | undefined }) {
+  const s = status ? STATUS_STYLE[status] : undefined;
+  if (!s) return <span className="text-xs text-muted-foreground">—</span>;
   return <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', s.className)}>{s.label}</span>;
 }
 
@@ -115,7 +129,44 @@ export function ProductionStockPage() {
    * on yesterday's balance with nothing happening today is genuinely part of the
    * pool and belongs on the sheet.
    */
-  const dayRows = useMemo(() => stockQ.data ?? [], [stockQ.data]);
+  /**
+   * Rows, with every figure coerced to a number at the boundary.
+   *
+   * The API owns these values and normally sends all of them. But the two halves
+   * of this app deploy separately, so a browser can hold a build that is ahead of
+   * the API for a few minutes — and an absent figure would otherwise propagate
+   * `undefined` into the summary cards as NaN and into the status chip as a
+   * crash. `n()` makes a missing figure read as 0, which is what a table of
+   * numbers should do when a number is not there.
+   */
+  const dayRows = useMemo(() => {
+    const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    return (stockQ.data ?? []).map((r) => ({
+      ...r,
+      opening: n(r.opening),
+      preparedToday: n(r.preparedToday),
+      totalStock: n(r.totalStock),
+      branchDemand: n(r.branchDemand),
+      demandFulfilled: n(r.demandFulfilled),
+      soldToday: n(r.soldToday),
+      returned: n(r.returned),
+      adjustment: n(r.adjustment),
+      balance: n(r.balance),
+      available: n(r.available),
+    }));
+  }, [stockQ.data]);
+
+  /**
+   * True when the API is answering with a shape this build does not understand —
+   * in practice, the server half of a deploy not having landed yet.
+   *
+   * Detected on `status`, which every row from a current API carries. Reported as
+   * a banner rather than left as a table of zeroes, because "every product reads
+   * 0" and "the API is a version behind" look identical on screen and lead
+   * somewhere very different.
+   */
+  const staleApi =
+    (stockQ.data?.length ?? 0) > 0 && stockQ.data!.every((r) => r.status === undefined);
 
   const preparedTodayById = useMemo(
     () => Object.fromEntries((stockQ.data ?? []).map((r) => [r.productId, r.preparedToday])),
@@ -287,6 +338,22 @@ export function ProductionStockPage() {
           )}
         </div>
       </div>
+
+      {staleApi && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-800 dark:text-amber-300">
+              The API has not been updated yet
+            </p>
+            <p className="mt-0.5 text-amber-800/80 dark:text-amber-300/80">
+              This page is showing what it can, but Opening, Balance and Status will read
+              zero until the server release goes out. The figures below are not the real
+              pool position — do not plan production against them.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Summary cards (§26) ────────────────────────────────────────────
           Folded from `dayRows`, the same rows the table renders, so a card can
