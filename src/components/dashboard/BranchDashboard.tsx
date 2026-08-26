@@ -12,7 +12,6 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import dynamic from 'next/dynamic';
-import { RecentOrdersTable } from './RecentOrdersTable';
 import { BranchStockHistoryCard } from './BranchStockHistoryCard';
 import { BranchDailyStockCard } from './BranchDailyStockCard';
 import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
@@ -179,7 +178,12 @@ export function BranchDashboard() {
 
       <SalesVsExpensesChart data={summary?.dailyData ?? []} loading={loading} />
 
-      <RecentOrdersTable branchId={user?.branchId ?? undefined} />
+      {/* No Recent Orders table here. The branch's sale history lives on the
+          Sales page, which lists it in full with its own date filter and
+          search — repeating a truncated copy on the dashboard gave two places
+          to look for one thing, and the shorter one was never the answer.
+          The Admin dashboard keeps its copy: an admin has no per-branch Sales
+          page to be sent to instead. */}
 
       {/* Login History. On every dashboard, but not showing the same thing on
           each: the API gives a super admin every account's sessions and pins
