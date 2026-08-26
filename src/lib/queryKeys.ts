@@ -75,6 +75,14 @@ export const qk = {
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   productionOverview: () => ['productionOverview'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
+  // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })
+  // after a prepare or an adjustment refreshes the table, the ledger and any open
+  // product detail together — they are three views of one thing and must never
+  // repaint out of step.
+  productionStockLedger: (params: Record<string, unknown>) =>
+    ['productionStock', 'ledger', params] as const,
+  productionStockDetail: (productId: string, date: string) =>
+    ['productionStock', 'detail', productId, date] as const,
   productionBranchStock: () => ['productionBranchStock'] as const,
   productionReturns: () => ['productionReturns'] as const,
   // Special Events. The list key carries its filters so switching year/category

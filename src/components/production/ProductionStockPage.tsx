@@ -2,20 +2,69 @@
 
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import { businessDateStr, type ProductionStockRow } from '@mb/shared';
+import { businessDateStr, type ProductionStockRow, type ProductionStockStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProducts, useProductionOrders, useProductionStock, usePrepareProducts } from '@/lib/queries';
+import { useProducts, useProductionStock, usePrepareProducts, useProductionAdjustment } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { Plus, FileSpreadsheet, PackageOpen } from 'lucide-react';
+import { Plus, FileSpreadsheet, PackageOpen, AlertTriangle, History, SlidersHorizontal } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
-import { waitingDemandByProduct } from '@/utils/demandLines';
 import { PrepareProductsModal } from './PrepareProductsModal';
 import { PreparedDetailExportModal } from './PreparedDetailExportModal';
+import { StockAdjustmentModal } from './StockAdjustmentModal';
+import { StockLedgerPanel } from './StockLedgerPanel';
+import { ProductStockDetail } from './ProductStockDetail';
 
 const col = createColumnHelper<ProductionStockRow>();
+
+/** A movement figure: dashes when nothing happened, so real numbers stand out. */
+function Signed({ v, tone }: { v: number; tone: 'emerald' }) {
+  if (!v) return <span className="tabular-nums text-muted-foreground">—</span>;
+  return (
+    <span className={cn('tabular-nums', tone === 'emerald' && 'text-emerald-600 dark:text-emerald-400')}>
+      {v > 0 ? `+${v}` : v}
+    </span>
+  );
+}
+
+/**
+ * Where the product stands (§16) — the comparison the floor plans on, stated in
+ * words rather than left as arithmetic between two columns.
+ *
+ * The classification itself lives in `productionStockStatus` in @mb/shared and is
+ * computed server-side, so this only chooses the colours.
+ */
+const STATUS_STYLE: Record<ProductionStockStatus, { label: string; className: string }> = {
+  healthy:  { label: 'Healthy',   className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' },
+  low:      { label: 'Low',       className: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' },
+  out:      { label: 'Out',       className: 'bg-muted text-muted-foreground' },
+  shortage: { label: 'Shortage',  className: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' },
+};
+
+function StatusChip({ status }: { status: ProductionStockStatus }) {
+  const s = STATUS_STYLE[status];
+  return <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', s.className)}>{s.label}</span>;
+}
+
+/** One summary card (§26). Every figure is a fold over the rows below it. */
+function StatCard({ label, value, tone }: { label: string; value: number; tone?: 'good' | 'bad' | 'muted' }) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={cn(
+        'mt-1 text-xl font-semibold tabular-nums',
+        tone === 'good' && 'text-emerald-600 dark:text-emerald-400',
+        tone === 'bad' && 'text-red-600 dark:text-red-400',
+        tone === 'muted' && 'text-muted-foreground',
+      )}>
+        {value > 0 && tone === 'good' ? `+${value}` : value}
+      </p>
+    </div>
+  );
+}
 
 export function ProductionStockPage() {
   const { token } = useAuth();
@@ -28,146 +77,164 @@ export function ProductionStockPage() {
   const stockQ = useProductionStock(token, date);
   const productsQ = useProducts(token, { isActive: true });
 
-  /**
-   * What the branches are still waiting on, per product.
-   *
-   * TODAY ONLY, and the two columns it feeds are hidden on any other date.
-   * The rest of this table is a snapshot of one business day and can be wound
-   * back to read a closed one; the demand queue has no history — it is whatever
-   * is unverified right now. Subtracting today's queue from a balance that
-   * closed last Tuesday would produce a figure describing no moment that ever
-   * existed, so the columns simply are not there to misread.
-   */
-  const ordersQ = useProductionOrders(token, { enabled: Boolean(token) && isToday });
-  const waitingByProduct = useMemo(
-    () => waitingDemandByProduct(ordersQ.data ?? []),
-    [ordersQ.data],
-  );
-  // Distinguishes "no demand" from "not fetched yet" — a 0 stated before the
-  // orders land would show After Demand equal to Balance and quietly say the
-  // pool is clear when it may not be.
-  const waitingLoaded = ordersQ.data !== undefined;
+  // The demand queue is no longer fetched here. `branchDemand` arrives ON the
+  // stock row, computed server-side from the same order statuses — which is what
+  // stops this page and the Demand Summary from each deriving "what branches are
+  // owed" their own way and disagreeing about it.
   const prepareMut = usePrepareProducts(token);
+  const adjustMut = useProductionAdjustment(token);
   const [modalOpen, setModalOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustProductId, setAdjustProductId] = useState<string | null>(null);
+  /** The row whose full movement trail is open. Null when the dialog is closed. */
+  const [detailRow, setDetailRow] = useState<ProductionStockRow | null>(null);
+
+  const balanceById = useMemo(
+    () => new Map((stockQ.data ?? []).map((r) => [r.productId, r.balance])),
+    [stockQ.data],
+  );
+
+  function openAdjust(productId?: string) {
+    setAdjustProductId(productId ?? null);
+    setAdjustOpen(true);
+  }
 
   // What today already holds per product, so the prepare form can show its
   // entries as the ADDITIONS they are (+5 → 30) rather than as a fresh total.
   // The table is date-scoped, but the form only opens on today (see below), so
   // these figures are always the ones a save will add to.
   /**
-   * The products this DAY is about.
+   * The products this sheet is about.
    *
-   * The API still returns every product carrying a running pool balance —
-   * deliberately, because the Demand Summary and the counter-sale check key a map
-   * off this same response and read a missing product as zero stock. Dropping
-   * rows server-side would tell those screens a product carried over from
-   * yesterday has none.
+   * The API already drops everything that neither moved nor carries a figure, so
+   * this is belt-and-braces rather than the load-bearing filter it once was. Left
+   * in place because it costs nothing and states the page's rule locally.
    *
-   * The page cannot show them, though. Every column here is now the day alone, so
-   * a product that merely holds pool balance renders as a row of zeroes — and
-   * `production_stock.balance` is never reset, so before long that is most of the
-   * catalogue, burying the handful of lines that actually moved. Filtering here
-   * keeps both true: the response stays complete, the sheet stays the day's.
+   * NOTE it tests the MOVEMENTS and the claim, not `opening` — a product resting
+   * on yesterday's balance with nothing happening today is genuinely part of the
+   * pool and belongs on the sheet.
    */
-  const dayRows = useMemo(
-    () =>
-      (stockQ.data ?? []).filter(
-        (r) =>
-          r.preparedToday !== 0 ||
-          r.returned !== 0 ||
-          r.approvedQty !== 0 ||
-          r.soldToday !== 0 ||
-          r.adjustment !== 0,
-      ),
-    [stockQ.data],
-  );
+  const dayRows = useMemo(() => stockQ.data ?? [], [stockQ.data]);
 
   const preparedTodayById = useMemo(
     () => Object.fromEntries((stockQ.data ?? []).map((r) => [r.productId, r.preparedToday])),
     [stockQ.data],
   );
 
+  /**
+   * The summary cards (§26), totalled from the SAME rows the table renders.
+   *
+   * Deliberately not a second query. A card fed by its own endpoint is a second
+   * definition of the same number, and the first time the two disagree nobody can
+   * tell which one is lying — so the cards are a fold over `dayRows` and cannot
+   * drift from the table beneath them by construction.
+   */
+  const totals = useMemo(
+    () =>
+      dayRows.reduce(
+        (t, r) => ({
+          opening: t.opening + r.opening,
+          prepared: t.prepared + r.preparedToday,
+          total: t.total + r.totalStock,
+          demand: t.demand + r.branchDemand,
+          sold: t.sold + r.soldToday,
+          returned: t.returned + r.returned,
+          adjustment: t.adjustment + r.adjustment,
+          balance: t.balance + r.balance,
+        }),
+        { opening: 0, prepared: 0, total: 0, demand: 0, sold: 0, returned: 0, adjustment: 0, balance: 0 },
+      ),
+    [dayRows],
+  );
+
+  const shortages = useMemo(() => dayRows.filter((r) => r.status === 'shortage'), [dayRows]);
+
   const columns = [
-    // The STK-###### the Help Desk needs to raise a query against this item —
-    // same column, same place as the branch Stock page. It is searchable through
-    // the DataTable's filter, so an ID from a ticket finds its row here.
+    // Card layout below md (§25) is DataTable's own: 'title' + 'subtitle' head the
+    // card, 'badge' sits top-right, everything left as the default 'meta' role
+    // becomes the two-column figure grid, and the `actions` column becomes the
+    // footer — which is what makes the card tappable through to the full history.
     col.accessor('stockCode', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    // THE WHOLE ROW IS THE DAY, with no opening balance anywhere in it.
+    // ── The nine figures, left to right as the ledger reads ──────────────────
     //
-    // The pool used to carry yesterday forward: Total Stock was on-hand-now plus
-    // what had left today, and Balance was the running pool total. On a product
-    // whose pool sat negative, that reported the units made this morning as a
-    // negative — the floor prepared 50 and the sheet said -50. The bakery bakes
-    // fresh daily, so the day is read on its own and newly prepared stock lands
-    // on the positive figure it actually is.
+    //     totalStock = opening + prepared
+    //     balance    = opening + prepared + returned + adjustment
+    //                  − demandFulfilled − sold
     //
-    // Total Stock and Balance are NOT columns here. Both are still derived and
-    // still served — After Demand below is built on `dayBalance`, and the Demand
-    // Summary reads it too — they are simply not what this sheet is for. It lists
-    // the movements: what was made, what came back, what went out, what was sold.
-    //
-    //     dayBalance = (prepared + returned) − approved − sold + adjustment
-    col.accessor('preparedToday', { header: 'Prepared', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{i.getValue()}</span> }),
-    col.accessor('returned', { header: 'Returned', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    col.accessor('approvedQty', { header: 'Approved Qty', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    col.accessor('soldToday', { header: 'Sold', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums">{i.getValue()}</span> }),
-    // What is still owed, and what the day comes to once it has gone out.
-    // Adjustment keeps its place behind them: it explains how the day got here,
-    // while these two say where it is going.
-    //
-    // After Demand still reads today's balance − waiting demand. The balance
-    // itself is no longer a column, so this is where that figure surfaces — as
-    // the forward number it was always the more useful half of.
-    //
-    // Both are `display` columns: neither figure is on ProductionStockRow. The
-    // demand comes from the live order queue, which is not day-scoped and so
-    // could not sensibly be served alongside a date's pool figures.
-    ...(isToday
-      ? [
-          col.display({
-            id: 'waitingDemand',
-            header: 'Waiting Demand',
-            meta: { align: 'center' },
-            cell: ({ row }) => {
-              if (!waitingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
-              const qty = waitingByProduct.get(row.original.productId) ?? 0;
-              return qty > 0 ? (
-                <span className="font-medium tabular-nums text-primary">{qty}</span>
-              ) : (
-                <span className="tabular-nums text-muted-foreground">—</span>
-              );
-            },
-          }),
-          col.display({
-            id: 'afterDemand',
-            header: 'After Demand',
-            meta: { align: 'center' },
-            cell: ({ row }) => {
-              if (!waitingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
-              const after = row.original.dayBalance - (waitingByProduct.get(row.original.productId) ?? 0);
-              // Negative is production still to do before the waiting demands
-              // can go out — the same red, and the same meaning, as the Balance
-              // Stock column on the Demand Summary.
-              return (
-                <span className={`font-semibold tabular-nums ${after < 0 ? 'text-red-500' : ''}`}>{after}</span>
-              );
-            },
-          }),
-        ]
-      : []),
-    // Signed, and its own column: an admin correction can go either way, and
-    // folding it into Prepared or Returned would report a correction as one of
-    // them. Day-scoped like the rest of this row — it reads 0 tomorrow.
+    // Branch Demand is DISPLAYED, not subtracted. A branch asking for goods does
+    // not consume them — the units stay on the shelf until the branch verifies
+    // the delivery, and that verified quantity is already inside `balance`. The
+    // relationship between the two is what the Status column is for.
+    col.accessor('opening', { header: 'Opening', meta: { align: 'center' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    col.accessor('preparedToday', { header: 'Prepared', meta: { align: 'center' }, cell: (i) => <Signed v={i.getValue()} tone="emerald" /> }),
+    col.accessor('totalStock', { header: 'Total Stock', meta: { align: 'center' }, cell: (i) => <span className="font-medium tabular-nums">{i.getValue()}</span> }),
+    col.accessor('branchDemand', {
+      header: 'Branch Demand',
+      meta: { align: 'center' },
+      cell: ({ row, getValue }) => {
+        const qty = getValue();
+        if (!qty) return <span className="tabular-nums text-muted-foreground">—</span>;
+        // Red only when the pool cannot cover it: an outstanding demand is normal,
+        // an uncoverable one is the thing someone has to act on.
+        return (
+          <span className={cn('font-medium tabular-nums', row.original.balance < qty && 'text-red-600 dark:text-red-400')}>
+            {qty}
+          </span>
+        );
+      },
+    }),
+    col.accessor('soldToday', { header: 'Sale', meta: { align: 'center', mobileLabel: 'Production sale' }, cell: (i) => <span className="tabular-nums">{i.getValue() || '—'}</span> }),
+    col.accessor('returned', { header: 'Return', meta: { align: 'center', mobileLabel: 'Return stock' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('adjustment', {
       header: 'Adjustment',
       meta: { align: 'center' },
       cell: (i) => {
         const v = i.getValue();
-        if (!v) return <span className="tabular-nums">0</span>;
+        if (!v) return <span className="tabular-nums text-muted-foreground">—</span>;
         return <span className="tabular-nums text-sky-600 dark:text-sky-400">{v > 0 ? `+${v}` : v}</span>;
       },
+    }),
+    col.accessor('balance', {
+      header: 'Balance',
+      meta: { align: 'center' },
+      cell: (i) => <span className={cn('font-semibold tabular-nums', i.getValue() < 0 && 'text-red-600 dark:text-red-400')}>{i.getValue()}</span>,
+    }),
+    // 'badge' puts the status chip top-right of the mobile card, beside the
+    // product name, which is where the eye lands first — a shortage should be
+    // visible without reading the eight figures underneath it.
+    col.accessor('status', {
+      header: 'Status',
+      meta: { align: 'center', mobile: 'badge' },
+      cell: (i) => <StatusChip status={i.getValue()} />,
+    }),
+    // Adjustment is reachable from the row it applies to, so the product is
+    // already chosen when the dialog opens — picking it again from a list of a
+    // hundred is where the wrong product gets adjusted.
+    col.display({
+      id: 'actions',
+      header: '',
+      cell: ({ row }) => (
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={(e) => { e.stopPropagation(); setDetailRow(row.original); }}
+          >
+            <History className="mr-1 h-3.5 w-3.5" /> History
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={(e) => { e.stopPropagation(); openAdjust(row.original.productId); }}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
     }),
   ];
 
@@ -177,9 +244,9 @@ export function ProductionStockPage() {
         <div>
           <h2 className="text-lg font-semibold">Production Stock</h2>
           <p className="text-sm text-muted-foreground">
-            Central production pool — {isToday ? 'today' : formatDate(date)} · this day only,
-            with nothing carried over from yesterday. A negative balance is production
-            still to do.
+            Central production pool — {isToday ? 'today' : formatDate(date)}. Opening is
+            the previous day&apos;s closing balance, carried forward automatically. Every
+            figure is folded out of the stock ledger; nothing here is editable by hand.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -198,6 +265,14 @@ export function ProductionStockPage() {
           <Button variant="outline" className="h-9" onClick={() => setExportOpen(true)}>
             <FileSpreadsheet className="mr-1 h-4 w-4" /> Prepared Detail
           </Button>
+          {/* Adjustments always book against the CURRENT business day (the server
+              stamps it), so offering this while a past day is on screen would
+              write a movement the table cannot show. */}
+          {isToday && (
+            <Button variant="outline" className="h-9" onClick={() => openAdjust()}>
+              <SlidersHorizontal className="mr-1 h-4 w-4" /> Adjustment
+            </Button>
+          )}
           {/* A prepare always books against the CURRENT business day (the server
               stamps it), so offering the button while a past day is on screen
               would save a figure the table cannot show. */}
@@ -213,6 +288,42 @@ export function ProductionStockPage() {
         </div>
       </div>
 
+      {/* ── Summary cards (§26) ────────────────────────────────────────────
+          Folded from `dayRows`, the same rows the table renders, so a card can
+          never disagree with the column it sits above. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+        <StatCard label="Opening" value={totals.opening} tone="muted" />
+        <StatCard label="Prepared" value={totals.prepared} tone="good" />
+        <StatCard label="Total Stock" value={totals.total} />
+        <StatCard label="Branch Demand" value={totals.demand} />
+        <StatCard label="Sale" value={totals.sold} />
+        <StatCard label="Return" value={totals.returned} />
+        <StatCard label="Adjustment" value={totals.adjustment} tone={totals.adjustment < 0 ? 'bad' : 'muted'} />
+        <StatCard label="Balance" value={totals.balance} tone={totals.balance < 0 ? 'bad' : undefined} />
+      </div>
+
+      {/* A shortage is the one state on this page that needs someone to DO
+          something, so it is stated above the table rather than left to be found
+          by scanning a status column. Today only: a shortage against a closed day
+          is not actionable, and the demand queue it is measured against is live. */}
+      {isToday && shortages.length > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/40">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold text-red-700 dark:text-red-400">
+              Insufficient production stock for {shortages.length} {shortages.length === 1 ? 'product' : 'products'}
+            </p>
+            <p className="mt-0.5 text-red-700/80 dark:text-red-400/80">
+              {shortages
+                .slice(0, 4)
+                .map((r) => `${r.productName} — need ${r.branchDemand}, have ${r.balance} (short ${r.branchDemand - r.balance})`)
+                .join(' · ')}
+              {shortages.length > 4 && ` · and ${shortages.length - 4} more`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* The API returns only products that carry a figure, so an empty table means
           the pool is untouched for this day rather than "nothing matched". Passed
           ONLY when the data itself is empty: with rows present, an empty table is a
@@ -226,11 +337,11 @@ export function ProductionStockPage() {
           dayRows.length === 0 ? (
             <EmptyState
               icon={PackageOpen}
-              title={isToday ? 'Nothing in the pool yet today' : `No stock movement on ${formatDate(date)}`}
+              title={isToday ? 'Nothing in the pool yet' : `No stock on ${formatDate(date)}`}
               description={
                 isToday
-                  ? 'Products appear here once they are prepared, returned into the pool, sent out or sold today.'
-                  : 'Nothing was prepared, returned, sent out or sold on this day.'
+                  ? 'Products appear here once they carry an opening balance or are prepared, returned, sent out or sold.'
+                  : 'No product carried a balance or moved on this day.'
               }
               action={
                 isToday ? (
@@ -242,6 +353,27 @@ export function ProductionStockPage() {
             />
           ) : undefined
         }
+      />
+
+      {/* The ledger sits under the sheet: the table answers "where does each
+          product stand", this answers "how did it get there". */}
+      <StockLedgerPanel date={date} />
+
+      <ProductStockDetail
+        open={detailRow !== null}
+        onOpenChange={(o) => { if (!o) setDetailRow(null); }}
+        row={detailRow}
+        date={date}
+      />
+
+      <StockAdjustmentModal
+        open={adjustOpen}
+        onOpenChange={setAdjustOpen}
+        products={productsQ.data ?? []}
+        defaultProductId={adjustProductId}
+        balanceOf={(id) => balanceById.get(id)}
+        submit={adjustMut.mutateAsync}
+        submitting={adjustMut.isPending}
       />
 
       <PreparedDetailExportModal

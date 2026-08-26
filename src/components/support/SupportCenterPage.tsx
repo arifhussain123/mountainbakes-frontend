@@ -1618,7 +1618,7 @@ interface ProductionCorrectionResult {
 
 const PRODUCTION_FIELDS = [
   { key: 'preparedToday', label: 'Prepared Today', hint: 'units made today' },
-  { key: 'approvedQty', label: 'Approved Qty', hint: 'units sent out on demands' },
+  { key: 'demandFulfilled', label: 'Demand Fulfilled', hint: 'units verified out to branches' },
   { key: 'soldToday', label: 'Sold', hint: 'units sold at the counter' },
   { key: 'returned', label: 'Returned', hint: 'units taken back from branches' },
 ] as const;
@@ -1631,16 +1631,17 @@ const PRODUCTION_FIELDS = [
  * server sizes one compensating movement per figure.
  *
  * Two differences from the branch editor, both following the pool's own model:
- *   · There is no Opening. The pool carries one running balance and no per-day
- *     open/close, so the four movement figures plus Pool Balance are the whole
- *     row. Total Stock and Today's Balance are shown above them as derived
- *     read-outs, matching what the Production Stock page reports for the day.
- *   · A negative Balance is ALLOWED — the pool is flagged when negative, never
- *     blocked, and a product already negative has to stay correctable. It is warned
- *     about rather than refused.
+ *   · There is no Opening, and no running pool total either. The pool is
+ *     day-scoped — nothing carries forward — so the four movement figures plus
+ *     Today's Balance are the whole row, and every one of them is about the
+ *     business day the ticket was raised on.
+ *   · A negative Today's Balance is ALLOWED — it is the shortfall the floor still
+ *     has to bake, flagged in red on the Production Stock page and never blocked,
+ *     and a product already negative has to stay correctable. It is warned about
+ *     rather than refused.
  *
- * Total Stock is shown but not editable: it is balance + approved + sold, so it
- * follows the figures above it and has no movement of its own to correct.
+ * Total Stock is shown but not editable: it is prepared + returned, so it follows
+ * the figures above it and has no movement of its own to correct.
  */
 function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const { token } = useAuth();
@@ -1660,25 +1661,26 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
     ...(figures
       ? {
           preparedToday: String(figures.preparedToday),
-          approvedQty: String(figures.approvedQty),
+          approvedQty: String(figures.demandFulfilled),
           soldToday: String(figures.soldToday),
           returned: String(figures.returned),
         }
       : {}),
     ...edited,
   };
-  // Until the admin edits Balance themselves, it tracks the four figures above it.
+  // Until the admin edits Today's Balance themselves, it tracks the four figures
+  // above it.
   const balanceTouched = edited['balance'] !== undefined;
 
   /**
-   * Balance implied by the figures as typed. Prepared and returned add to the pool;
-   * approved and sold take from it — the same arithmetic the server applies, so the
-   * preview and the write agree.
+   * Today's balance implied by the figures as typed. Prepared and returned add to
+   * the day; approved and sold take from it — the same arithmetic the server
+   * applies (migration 88), so the preview and the write agree.
    */
   const implied = figures
     ? figures.balance +
       (num(t['preparedToday']) - figures.preparedToday) -
-      (num(t['approvedQty']) - figures.approvedQty) +
+      (num(t['approvedQty']) - figures.demandFulfilled) +
       (num(t['returned']) - figures.returned) -
       (num(t['soldToday']) - figures.soldToday)
     : 0;
@@ -1698,7 +1700,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
       const v = num(t[f.key]);
       return t[f.key] === '' || !Number.isFinite(v) || v < 0;
     }) ||
-    // A cleared Balance is not "zero" — it is no figure at all.
+    // A cleared Today's Balance is not "zero" — it is no figure at all.
     (balanceTouched && (t['balance'] === '' || !Number.isFinite(num(t['balance']))));
 
   /**
@@ -1728,7 +1730,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
       );
       toast.success(
         res.productionStock?.applied
-          ? `Production stock corrected — balance ${res.productionStock.before.balance} → ${res.productionStock.after.balance}`
+          ? `Production stock corrected — today's balance ${res.productionStock.before.balance} → ${res.productionStock.after.balance}`
           : 'Production stock already matched — query resolved',
       );
       onDone();
@@ -1755,17 +1757,12 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
         ) : (
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
-              {/* No Opening row, unlike the branch dialog. The Production Stock
-                  page reads the pool as the day it had — nothing carried over —
-                  so a query raised from that page has to resolve against the same
-                  figures, and an opening balance here would not be one of them.
-                  Both rows are derived, so neither is editable. */}
+              {/* No Opening row, unlike the branch dialog, and no running pool
+                  total. The Production Stock page reads the pool as the day it had
+                  — nothing carried over — so a query raised from that page has to
+                  resolve against the same figures, and a carried-forward balance
+                  here would not be one of them. Derived, so not editable. */}
               <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="prepared + returned today" />
-              <FigureRow
-                label="Today's Balance"
-                value={String(figures.dayBalance)}
-                hint="what the Production Stock page shows"
-              />
               {figures.adjustment !== 0 && (
                 <FigureRow
                   label="Adjustment so far"
@@ -1794,10 +1791,10 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
 
             <div className="space-y-1">
               <div className="flex items-baseline justify-between gap-2">
-                {/* The RUNNING pool total, not the day figure above it. This is
-                    the one the pool actually stores and the one a correction
-                    writes to, so the two can legitimately differ. */}
-                <Label>Pool Balance</Label>
+                {/* THE pool figure — there is no running total behind it. It is
+                    the residual of the four above, so setting it by hand books the
+                    one adjustment that closes the gap to what the shelf says. */}
+                <Label>Today&apos;s Balance</Label>
                 <span className="text-xs text-muted-foreground">
                   now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
                 </span>
@@ -1815,8 +1812,9 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
               )}
               {finalBalance < 0 && (
                 <p className="text-xs text-amber-600">
-                  This leaves the pool negative. Allowed — the Production Stock page flags
-                  it in red — but check it is really what the shelf says.
+                  This leaves the day negative — production still to do before what has
+                  already gone out is covered. Allowed, and flagged in red on the
+                  Production Stock page, but check it is really what the shelf says.
                 </p>
               )}
             </div>

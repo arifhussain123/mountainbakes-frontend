@@ -176,11 +176,15 @@ export function ProductionOrdersPage() {
   /**
    * TODAY's pool position per product, and whether it has arrived yet.
    *
-   * `dayBalance`, not `balance`: the running pool carries every previous day
-   * forward, and reading the demand against it said a product was covered on the
-   * strength of stock that was baked — and in most cases sent — days ago. The
-   * floor plans against what exists this morning, so the summary is read the same
-   * way the Production Stock page is.
+   * `balance` is the pool's closing position for the day: opening carried in,
+   * plus what was prepared and returned, less what was fulfilled and sold. It is
+   * the same figure the Production Stock page prints, so the two screens cannot
+   * quote different stock for the same product.
+   *
+   * It is the RAW balance, NOT `available` — `available` has already had the whole
+   * outstanding demand queue subtracted from it, and `poolFor` below subtracts
+   * this product's waiting demand itself. Using `available` here would take the
+   * same demand off twice.
    *
    * `undefined` for a product means the query has not resolved; 0 means the
    * pool genuinely holds none. The two must not be conflated — rendering an
@@ -188,13 +192,14 @@ export function ProductionOrdersPage() {
    * second on every page load, which is the one thing this column must never
    * cry wolf about.
    *
-   * NOTE the API still returns every product carrying a running balance, so a
-   * product that had no movement today is present here with dayBalance 0 rather
-   * than missing. `?? 0` in `poolFor` reads either the same way.
+   * NOTE the API returns only products that MOVED today, so one that did not is
+   * absent from this map rather than present with 0. With the pool day-scoped the
+   * two mean the same thing — nothing was made and nothing is on the shelf — and
+   * `?? 0` in `poolFor` reads them identically.
    */
   const stockByProduct = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of stockQ.data ?? []) m.set(r.productId, r.dayBalance);
+    for (const r of stockQ.data ?? []) m.set(r.productId, r.balance);
     return m;
   }, [stockQ.data]);
   const stockLoaded = stockQ.data !== undefined;

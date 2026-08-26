@@ -145,10 +145,22 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     else loadBranchStock();
   }, [isProduction, refetchPool, loadBranchStock]);
 
-  // One shape for SaleForm regardless of which ledger backs it.
+  /**
+   * One shape for SaleForm regardless of which ledger backs it.
+   *
+   * `available`, NOT the raw `balance`. What the counter may sell is what the pool
+   * holds LESS what branches have already been promised: goods sitting on the
+   * shelf against an unverified demand are spoken for, and selling them leaves a
+   * branch short with nothing having said so at the till.
+   *
+   * This is the same figure the server blocks on (migration 90 —
+   * `balance − outstanding demand`), so the form and a 409 cannot disagree. A
+   * product missing from the response has no movement and no claim, and correctly
+   * reads 0.
+   */
   const poolStockById = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const row of poolQ.data ?? []) m[row.productId] = row.balance;
+    for (const row of poolQ.data ?? []) m[row.productId] = row.available;
     return m;
   }, [poolQ.data]);
 

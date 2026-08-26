@@ -32,6 +32,8 @@ import type {
   ProductionReturnStatus,
   LoginSession,
   ProductionStockRow,
+  ProductionStockLedgerRow,
+  ProductionStockFigures,
   PriceHistoryDoc,
   PackingMaterial,
   PackingMaterialUsageRow,
@@ -758,6 +760,18 @@ export function useProductionOverview(token: string) {
 /**
  * Central production-pool table for a Karachi day (defaults to today).
  *
+ * Every figure on a row is scoped to the requested business date, with ONE
+ * carry-forward: `opening` is the previous day's closing balance, so `balance` is
+ * the ledger's running position rather than the day's net.
+ *
+ * `branchDemand` is what branches are still owed and is NOT subtracted from
+ * `balance` — compare them via `status`, or read `available` for the difference.
+ *
+ * A product with no opening balance and no movement on the day is ABSENT rather
+ * than present with zeroes. Callers keying a map off this (the Demand Summary,
+ * the counter sale form) read a missing product as 0, which is what an omitted
+ * row means.
+ *
  * `enabled` matters here: /api/production-stock is requireRole('super_admin',
  * 'production_user'), so a branch manager mounting a component that calls this
  * unconditionally would just collect 403s.
@@ -774,6 +788,94 @@ export function useProductionStock(token: string, date?: string | null, opts?: {
     select: (r) => r.rows ?? [],
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The Stock Ledger (§13), server-filtered and paged.
+ *
+ * The whole filter object is in the key, so changing any one of them is a new
+ * cache entry rather than a refetch that briefly shows the previous filter's rows
+ * under the new heading. `placeholderData` keeps the old page visible while the
+ * next one loads — a table that empties on every keystroke of a search box reads
+ * as "no results" when it means "still asking".
+ */
+export function useProductionLedger(
+  token: string,
+  params: {
+    from?: string; to?: string; productId?: string; categoryId?: string;
+    branchId?: string; movementType?: string; search?: string;
+    limit?: number; offset?: number;
+  },
+  opts?: { enabled?: boolean },
+) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  }
+  const query = qs.toString();
+  return useQuery({
+    queryKey: qk.productionStockLedger(params),
+    queryFn: () =>
+      apiCall<{ rows: ProductionStockLedgerRow[]; total: number; limit: number; offset: number }>(
+        `/api/production-stock/movements${query ? `?${query}` : ''}`,
+        {},
+        token,
+      ),
+    enabled: !!token && (opts?.enabled ?? true),
+    placeholderData: (prev) => prev,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/** One product on one business day: its nine figures and its full movement trail (§14). */
+export function useProductionStockDetail(
+  token: string,
+  productId: string | null,
+  date: string,
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.productionStockDetail(productId ?? '', date),
+    queryFn: () =>
+      apiCall<{
+        productId: string;
+        date: string;
+        figures: ProductionStockFigures;
+        movements: ProductionStockLedgerRow[];
+      }>(`/api/production-stock/movements/${productId}?date=${date}`, {}, token),
+    enabled: !!token && !!productId && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Book an authorised stock adjustment (§11).
+ *
+ * Invalidates the whole `productionStock` prefix, not just the table: an
+ * adjustment moves the balance, so the ledger, any open product detail and the
+ * summary cards are all stale the moment it lands.
+ */
+export function useProductionAdjustment(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      productId: string;
+      adjustmentType: string;
+      qty: number;
+      reason: string;
+      remarks?: string;
+      approvedBy?: string;
+    }) =>
+      apiCall<{ before: number; after: number; delta: number; duplicate: boolean }>(
+        '/api/production-stock/adjustment',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
   });
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
+import { rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
 import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -151,7 +151,17 @@ function PreviewBody({
   const createReturnMut = useCreateReturn(token);
   const prevBalanceQ = usePreviousOrderBalance(token, order.id);
 
-  const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
+  /**
+   * FALLBACK ONLY. The rate a printed challan bills at is the SNAPSHOT on the
+   * order line (`unitPrice`, §18) — this map covers lines raised before that
+   * column existed, and lines Production added at review, which never went
+   * through order creation and so were never snapshotted.
+   *
+   * It must not be the primary source. Pricing a challan from the live list means
+   * reprinting a six-week-old delivery note produces a different total than the
+   * one the branch was given, silently, every time Admin edits a rate.
+   */
+  const livePriceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
   const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
   const sym = settings?.currencySymbol || 'Rs.';
 
@@ -179,7 +189,12 @@ function PreviewBody({
     const approved = frozen
       ? (it.approvedQty ?? approvalDefault)
       : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : approvalDefault);
-    const unitPrice = priceById.get(it.productId) ?? 0;
+    // Snapshot first, live price only where there is no snapshot — see
+    // `livePriceById`. `rateOf` returns null rather than 0 for a missing
+    // snapshot, so `??` falls through on absence but NOT on a genuine zero: a
+    // line legitimately priced at 0 (a special item) stays at 0 instead of
+    // picking up whatever the catalogue says today.
+    const unitPrice = rateOf(it) ?? livePriceById.get(it.productId) ?? 0;
     const amount = approved * unitPrice;
     return { newDemand, approved, unitPrice, amount, isAdded };
   }
