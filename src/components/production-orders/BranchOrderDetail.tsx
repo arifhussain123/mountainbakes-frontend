@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { type Attachment, type BranchProductionOrder, amountOf, rateOf, totalsFor } from '@mb/shared';
+import { useCallback, useMemo, useState } from 'react';
+import { type Attachment, type BranchProductionOrder, rateOf } from '@mb/shared';
 import { liveItems, livePackingItems } from '@/utils/demandLines';
 import { formatCurrency as money } from '@/utils/currency';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -60,7 +60,39 @@ export function BranchOrderDetail({
   token: string;
 }) {
   const awaitingVerification = order?.status === 'awaiting_verification';
-  const productsQ = useProducts(token, { enabled: awaitingVerification });
+  // Loaded whenever a demand is open, not only while verifying: the live price
+  // list is the fallback rate for lines that carry no snapshot (see `rateFor`).
+  const productsQ = useProducts(token, { enabled: !!order });
+
+  /**
+   * The rate to bill a line at.
+   *
+   * SNAPSHOT FIRST. `unitPrice` is what the branch actually agreed to when the
+   * demand was raised, and it is the only figure that keeps a historical order
+   * worth what it was worth after Admin edits a price.
+   *
+   * Falling back to the LIVE price is a display convenience for lines that have
+   * no snapshot — demands raised before the column existed, lines Production
+   * added at verification, and (right now) any response from an API that has not
+   * been deployed yet. Without it the amount column reads "Rs. 0", which is worse
+   * than an estimate: it looks like a real figure that says the goods were free.
+   *
+   * `?? ` and not `||` — a genuine rate of 0 (a special item) is a real answer and
+   * must not fall through to the catalogue price.
+   */
+  const priceById = useMemo(
+    () => new Map((productsQ.data ?? []).map((pr) => [pr.id, Number(pr.price) || 0])),
+    [productsQ.data],
+  );
+  const rateFor = useCallback(
+    (it: { productId: string; unitPrice?: number }): { rate: number | null; estimated: boolean } => {
+      const snapshot = rateOf(it);
+      if (snapshot !== null) return { rate: snapshot, estimated: false };
+      const live = priceById.get(it.productId);
+      return live === undefined ? { rate: null, estimated: false } : { rate: live, estimated: true };
+    },
+    [priceById],
+  );
   const verifyMut = useVerifyProductionOrder(token);
 
   const [verifiedQtys, setVerifiedQtys] = useState<Record<string, string>>({});
@@ -125,9 +157,16 @@ export function BranchOrderDetail({
      * not toward money, and the UI says the total is partial rather than quietly
      * understating what is owed.
      */
-    const money = totalsFor(shownItems, (it) =>
-      num(verifiedQtys[it.productId] ?? String(it.approvedQty ?? it.qty)),
-    );
+    let amount = 0;
+    let priced = 0;
+    let estimated = false;
+    for (const it of shownItems) {
+      const { rate, estimated: est } = rateFor(it);
+      if (rate === null) continue;
+      if (est) estimated = true;
+      priced += 1;
+      amount += rate * num(verifiedQtys[it.productId] ?? String(it.approvedQty ?? it.qty));
+    }
 
     return {
       products: shownItems.length + newItems.length,
@@ -135,10 +174,13 @@ export function BranchOrderDetail({
       approved,
       verified,
       pending,
-      amount: money.amount,
-      hasCompleteRates: money.hasCompleteRates,
+      amount,
+      /** How many lines contributed a figure. 0 means the total is meaningless. */
+      priced,
+      /** At least one line was priced from the live list rather than its snapshot. */
+      estimated,
     };
-  }, [shownItems, newItems, verifiedQtys]);
+  }, [shownItems, newItems, verifiedQtys, rateFor]);
 
   function resetLocalState() {
     setVerifiedQtys({});
@@ -286,7 +328,15 @@ export function BranchOrderDetail({
                             )}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                            {rateOf(it) === null ? '—' : money(rateOf(it)!)}
+                            {(() => {
+                              const { rate, estimated } = rateFor(it);
+                              if (rate === null) return '—';
+                              return (
+                                <span title={estimated ? 'Current price — this line has no recorded rate' : undefined}>
+                                  {money(rate)}{estimated && <span className="text-amber-600">*</span>}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{it.approvedQty ?? '—'}</td>
@@ -319,8 +369,10 @@ export function BranchOrderDetail({
                           <td className="px-3 py-2 text-right font-medium tabular-nums">
                             {(() => {
                               const qty = parseInt(verifiedQtys[it.productId] ?? String(it.approvedQty ?? it.qty), 10) || 0;
-                              const amt = amountOf(it, qty);
-                              return amt === null ? <span className="text-muted-foreground">—</span> : money(amt);
+                              const { rate } = rateFor(it);
+                              return rate === null
+                                ? <span className="text-muted-foreground">—</span>
+                                : money(rate * qty);
                             })()}
                           </td>
                         </tr>
@@ -398,20 +450,44 @@ export function BranchOrderDetail({
                               is owed without saying so is the one thing a total
                               must never do. */}
                           <td className="px-3 py-2 text-right tabular-nums">
-                            {money(totals.amount)}
-                            {!totals.hasCompleteRates && (
-                              <span
-                                className="ml-1 text-xs font-normal text-amber-600"
-                                title="Some lines have no recorded rate and are not included in this total."
-                              >
-                                *
-                              </span>
+                            {/* A dash, NOT "Rs. 0", when nothing could be priced.
+                                Zero is a real figure meaning the goods were free;
+                                "we cannot price this" is a different statement and
+                                has to look different. */}
+                            {totals.priced === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <>
+                                {money(totals.amount)}
+                                {totals.estimated && (
+                                  <span
+                                    className="ml-1 text-xs font-normal text-amber-600"
+                                    title="Includes lines priced at the current rate because no rate was recorded on the order."
+                                  >
+                                    *
+                                  </span>
+                                )}
+                              </>
                             )}
                           </td>
                         </tr>
                       </tfoot>
                     )}
                   </table>
+                  {/* Spelled out, not left as a bare asterisk. A symbol next to a
+                      money total that nobody can decode is worse than no symbol —
+                      it makes the figure look wrong without saying how. */}
+                  {totals.estimated && (
+                    <p className="px-3 py-2 text-xs text-amber-600">
+                      * Some lines had no rate recorded on the order, so they are priced at the
+                      product&apos;s current rate. The figure is an estimate for those lines.
+                    </p>
+                  )}
+                  {totals.priced === 0 && totals.products > 0 && (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      No rates could be resolved for this demand, so no amount is shown.
+                    </p>
+                  )}
                 </div>
                 ) : (
                   <div className="rounded-lg border">
@@ -446,16 +522,22 @@ export function BranchOrderDetail({
                           <div className="text-right">
                             <p className="text-xs text-muted-foreground">Total verified amount</p>
                             <p className="text-lg font-bold tabular-nums">
-                              {money(totals.amount)}
-                              {!totals.hasCompleteRates && (
-                                <span className="ml-1 text-xs font-normal text-amber-600">*</span>
+                              {totals.priced === 0 ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <>
+                                  {money(totals.amount)}
+                                  {totals.estimated && (
+                                    <span className="ml-1 text-xs font-normal text-amber-600">*</span>
+                                  )}
+                                </>
                               )}
                             </p>
                           </div>
                         </div>
                         <p className="border-t px-3 py-2 text-center text-xs text-muted-foreground">
                           {totals.products} product{totals.products === 1 ? '' : 's'}
-                          {!totals.hasCompleteRates && ' · * some lines have no recorded rate'}
+                          {totals.estimated && ' · * priced at the current rate'}
                         </p>
                       </>
                     ) : (
