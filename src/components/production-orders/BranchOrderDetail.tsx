@@ -328,14 +328,12 @@ export function BranchOrderDetail({
                             )}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            {/* Just the rate. A marker on EVERY row is noise that
+                                gets trained away — where the figure came from is
+                                said once, in words, under the table. */}
                             {(() => {
-                              const { rate, estimated } = rateFor(it);
-                              if (rate === null) return '—';
-                              return (
-                                <span title={estimated ? 'Current price — this line has no recorded rate' : undefined}>
-                                  {money(rate)}{estimated && <span className="text-amber-600">*</span>}
-                                </span>
-                              );
+                              const { rate } = rateFor(it);
+                              return rate === null ? '—' : money(rate);
                             })()}
                           </td>
                           <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
@@ -422,7 +420,11 @@ export function BranchOrderDetail({
                               {totals.products} product{totals.products === 1 ? '' : 's'}
                             </span>
                           </td>
-                          <td className="px-3 py-2" />
+                          {/* Rates do not sum — a total of two different unit
+                              prices is not a number that means anything. An
+                              explicit dash says "deliberately blank"; an empty
+                              cell just looks like the column failed to render. */}
+                          <td className="px-3 py-2 text-right text-muted-foreground">—</td>
                           <td className="px-3 py-2 text-center tabular-nums">{totals.requested}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{totals.approved}</td>
                           {awaitingVerification ? (
@@ -457,17 +459,7 @@ export function BranchOrderDetail({
                             {totals.priced === 0 ? (
                               <span className="text-muted-foreground">—</span>
                             ) : (
-                              <>
-                                {money(totals.amount)}
-                                {totals.estimated && (
-                                  <span
-                                    className="ml-1 text-xs font-normal text-amber-600"
-                                    title="Includes lines priced at the current rate because no rate was recorded on the order."
-                                  >
-                                    *
-                                  </span>
-                                )}
-                              </>
+                              money(totals.amount)
                             )}
                           </td>
                         </tr>
@@ -478,9 +470,11 @@ export function BranchOrderDetail({
                       money total that nobody can decode is worse than no symbol —
                       it makes the figure look wrong without saying how. */}
                   {totals.estimated && (
-                    <p className="px-3 py-2 text-xs text-amber-600">
-                      * Some lines had no rate recorded on the order, so they are priced at the
-                      product&apos;s current rate. The figure is an estimate for those lines.
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      Rates come from the Admin product price. Some lines have no rate stored
+                      against this order, so they use the current price — if Admin has changed
+                      it since, those amounts reflect today&apos;s rate rather than the one
+                      agreed when the demand was raised.
                     </p>
                   )}
                   {totals.priced === 0 && totals.products > 0 && (
@@ -525,19 +519,14 @@ export function BranchOrderDetail({
                               {totals.priced === 0 ? (
                                 <span className="text-muted-foreground">—</span>
                               ) : (
-                                <>
-                                  {money(totals.amount)}
-                                  {totals.estimated && (
-                                    <span className="ml-1 text-xs font-normal text-amber-600">*</span>
-                                  )}
-                                </>
+                                money(totals.amount)
                               )}
                             </p>
                           </div>
                         </div>
                         <p className="border-t px-3 py-2 text-center text-xs text-muted-foreground">
                           {totals.products} product{totals.products === 1 ? '' : 's'}
-                          {totals.estimated && ' · * priced at the current rate'}
+                          {totals.estimated && ' · rates from the current Admin price'}
                         </p>
                       </>
                     ) : (
