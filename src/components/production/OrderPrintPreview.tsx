@@ -263,7 +263,6 @@ function PreviewBody({
   const returnRows = prevBal?.returnItems ?? [];
   const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
   const deliveredValue = prevBal?.deliveredValue ?? 0;
-  const companySharePct = prevBal?.companySharePct ?? 0;
   const companyShareValue = prevBal?.companyShareValue ?? 0;
   const returnsAmount = prevBal?.returnsValue ?? 0;
   const collectionAmount = prevBal?.amountToCollect ?? 0;
@@ -743,7 +742,7 @@ function PreviewBody({
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-5">
                 <Field label="Previous Order" value={`${previousRef!.demandNumber} · ${previousRef!.date}`} />
                 <Field label="Delivered Value" value={money(deliveredValue, sym)} />
-                <Field label={`Company Share (${companySharePct}%)`} value={money(companyShareValue, sym)} />
+                <Field label="Company Share" value={money(companyShareValue, sym)} />
                 <Field label="Less Returns" value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
                 <Field label="Amount to Collect" value={money(collectionAmount, sym)} strong />
               </div>
@@ -809,7 +808,7 @@ function PreviewBody({
               logo={logo} companyName={companyName} sym={sym} order={order}
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
-              companySharePct={companySharePct} companyShareValue={companyShareValue}
+              companyShareValue={companyShareValue}
               returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
             />
             <PrintCopy
@@ -817,7 +816,7 @@ function PreviewBody({
               logo={logo} companyName={companyName} sym={sym} order={order}
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
-              companySharePct={companySharePct} companyShareValue={companyShareValue}
+              companyShareValue={companyShareValue}
               returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
             />
           </div>
@@ -958,7 +957,7 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
  */
 function PrintCopy({
   copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
-  previousRef, deliveredValue, companySharePct, companyShareValue,
+  previousRef, deliveredValue, companyShareValue,
   returnRows, returnsQty, returnsAmount, collectionAmount,
 }: {
   copyLabel: string;
@@ -975,8 +974,7 @@ function PrintCopy({
   previousRef: { demandNumber: string; date: string } | null;
   /** That order's delivered goods value (approved qty × unit price). */
   deliveredValue: number;
-  companySharePct: number;
-  /** deliveredValue × companySharePct. */
+  /** deliveredValue × the branch's agreed company-share rate, computed server-side. */
   companyShareValue: number;
   /** Accepted returns received since the order being billed, itemised by the server. */
   returnRows: { productName: string; qty: number; amount: number }[];
@@ -1052,7 +1050,7 @@ function PrintCopy({
                 <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
                 <MetaKV k="Previous Demand Date" v={previousRef!.date} />
                 <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
-                <MetaKV k={`Company Share (${companySharePct}%)`} v={money(companyShareValue, sym)} />
+                <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
                 <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
                 <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
               </div>
