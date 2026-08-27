@@ -8,6 +8,7 @@ import { useProductionReturns, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import {
   Dialog,
   DialogContent,
@@ -197,7 +198,7 @@ export function ProductionReturnsPage() {
       header: 'Raised By',
       cell: (i) => <span className="text-muted-foreground text-xs">{i.getValue()}</span>,
     }),
-    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <span className="text-muted-foreground">{i.getValue()}</span> }),
+    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-muted-foreground" /> }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },

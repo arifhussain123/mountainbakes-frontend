@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Eye, Package, Plus, Trash2 } from 'lucide-react';
 import {
   fulfilledTotals,
@@ -324,12 +325,7 @@ export function BranchNewOrders() {
       id: 'reason',
       header: 'Reason',
       meta: { mobileFull: true },
-      cell: (i) =>
-        i.getValue() ? (
-          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
-        ) : (
-          <span className="text-sm text-muted-foreground/50">—</span>
-        ),
+      cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" />,
     }),
     col.display({
       id: 'actions',

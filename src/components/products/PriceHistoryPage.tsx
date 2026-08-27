@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePriceHistory } from '@/lib/queries';import { exportPriceHistory, formatBusinessDate } from '@/utils/productPrice';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
 import type { PriceHistoryDoc } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -74,7 +75,7 @@ export function PriceHistoryPage() {
         </span>
       ),
     }),
-    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" /> }),
   ];
 
   return (

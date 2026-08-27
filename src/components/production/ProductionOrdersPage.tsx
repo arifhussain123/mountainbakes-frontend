@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Eye, Sparkles } from 'lucide-react';
 import { effectivePackingQty, effectiveQty, isWaitingOrder, liveItems, livePackingItems } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
@@ -276,12 +277,7 @@ export function ProductionOrdersPage() {
       id: 'reason',
       header: 'Reason',
       meta: { mobileFull: true },
-      cell: (i) =>
-        i.getValue() ? (
-          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
-        ) : (
-          <span className="text-sm text-muted-foreground/50">—</span>
-        ),
+      cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" />,
     }),
     col.display({
       id: 'actions',
