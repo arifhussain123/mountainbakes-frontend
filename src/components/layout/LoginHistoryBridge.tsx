@@ -24,8 +24,9 @@ import { startLoginSession } from '@/lib/loginHistory';
  * lets a genuine account switch open a new session rather than resume the old
  * one.
  *
- * Renders nothing. The ping lives on AppRefreshProvider's existing 2-minute
- * tick and the close in AuthProvider's logout — neither belongs to a component.
+ * Renders nothing. The ping lives on AppRefreshProvider's tick — on its
+ * 2-minute session beat, NOT the 2-second data beat — and the close in
+ * AuthProvider's logout; neither belongs to a component.
  */
 export function LoginHistoryBridge() {
   const { user } = useAuth();

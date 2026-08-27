@@ -67,7 +67,7 @@ export const qk = {
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and
-  // it is refetched by the ordinary 2-minute active-query refresh.
+  // it is refetched by the ordinary active-query refresh tick.
   loginHistory: (scope?: string | null, days?: number | null) =>
     ['loginHistory', scope ?? 'all', days ?? 90] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,

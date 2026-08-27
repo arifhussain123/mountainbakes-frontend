@@ -74,7 +74,7 @@ export function useProductionRealtime() {
         // Previously unhandled, which left the Demand Summary showing a demand
         // that was already settled — and, once that card started reading the
         // pool, a balance computed against stock that had already left the
-        // building. It corrected itself on the next 2-minute app refresh, which
+        // building. It corrected itself on the next app refresh, which
         // is a long time to plan production against a number that has moved.
         refreshOrders = true;
         refreshStock = true;

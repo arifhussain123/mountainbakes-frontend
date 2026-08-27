@@ -25,7 +25,7 @@ import { AppRefreshProvider } from '@/hooks/useAppRefresh';
  * ticker — and re-prompt for permission — on every navigation.
  *
  * AppRefreshProvider is here rather than in the root layout on the same
- * principle — one 2-minute refresh timer for the session — and because there is
+ * principle — one refresh timer for the session — and because there is
  * nothing to refresh on the login screen. It must sit above Topbar, whose
  * Refresh button reads it.
  */
