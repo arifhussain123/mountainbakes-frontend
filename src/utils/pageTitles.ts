@@ -40,6 +40,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.BRANCH_SALES]: 'Sales',
   [ROUTES.BRANCH_STOCK]: 'Stock',
   [ROUTES.BRANCH_RETURN_STOCK]: 'Return Stock',
+  [ROUTES.BRANCH_DISCOUNTS]: 'Discounts',
   [ROUTES.BRANCH_EXPENSES]: 'Shop Expenses',
   [ROUTES.BRANCH_ORDERS]: 'Orders',
   [ROUTES.BRANCH_CUSTOMERS]: 'Customers',

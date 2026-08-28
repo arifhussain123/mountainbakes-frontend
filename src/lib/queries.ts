@@ -1153,10 +1153,7 @@ export function useReviewReturn(token: string) {
 // be revisited first.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useBranchDiscounts(
-  token: string,
-  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
-) {
+export function useBranchDiscounts(token: string, opts?: { branchId?: string | null; days?: number }) {
   const days = opts?.days ?? 90;
   return useQuery({
     queryKey: qk.branchDiscounts(opts?.branchId ?? null, days),
@@ -1168,11 +1165,7 @@ export function useBranchDiscounts(
       return apiCall<{ discounts: BranchDiscount[] }>(`/api/branch-discounts?${params.toString()}`, {}, token);
     },
     select: (r) => r.discounts ?? [],
-    // Gated, unlike its Production twin: the modal that reads this is mounted on
-    // every New Orders page load but opened on few of them, and an ungated fetch
-    // would put a request on the busiest branch screen for a popup nobody asked
-    // for. `useProducts`/`useStock` on the same page are lazy for this reason.
-    enabled: !!token && (opts?.enabled ?? true),
+    enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });
 }

@@ -95,6 +95,7 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Sales',         href: ROUTES.BRANCH_SALES,       icon: ShoppingCart },
   { label: 'Stock',         href: ROUTES.BRANCH_STOCK,       icon: Boxes },
   { label: 'Return Stock',  href: ROUTES.BRANCH_RETURN_STOCK, icon: Undo2 },
+  { label: 'Discounts',     href: ROUTES.BRANCH_DISCOUNTS,    icon: BadgePercent },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
   { label: 'Branch Closing',href: ROUTES.BRANCH_CLOSING,     icon: CalendarCheck },
@@ -117,18 +118,20 @@ export const BRANCH_NAV: NavItem[] = [
  * account that types /branch-reports gets bounced by the guard and would get a
  * 403 from the reports router regardless.
  */
-/* Return Stock is the one addition to the six: a shift account can already
- * CREATE a return (the Return Items button on its Stock page, and the API's
- * BRANCH_ROLES), so withholding this screen would let it make an end-of-day
- * return and then leave it with no way to correct its own mistake inside the
- * same business day — which is the entire window in which a correction is
- * possible. Adding it here also grants the route: RouteGuard derives the
- * branch_user allowlist from this list. */
+/* Return Stock and Discounts are the two additions to the six, on one argument:
+ * a shift account can already CREATE both (the Return Items and Discount buttons
+ * on its New Orders page, and the API's BRANCH_ROLES), so withholding these
+ * screens would let it raise a return or a claim and then leave it with no way to
+ * correct its own mistake — for a return, inside the same business day, which is
+ * the entire window in which a correction is possible; for a claim, before
+ * Production decides. Adding them here also grants the routes: RouteGuard derives
+ * the branch_user allowlist from this list. */
 export const BRANCH_USER_NAV: NavItem[] = [
   { label: 'New Orders',     href: ROUTES.BRANCH_NEW_ORDERS, icon: ClipboardList },
   { label: 'Sales',          href: ROUTES.BRANCH_SALES,      icon: ShoppingCart },
   { label: 'Stock',          href: ROUTES.BRANCH_STOCK,      icon: Boxes },
   { label: 'Return Stock',   href: ROUTES.BRANCH_RETURN_STOCK, icon: Undo2 },
+  { label: 'Discounts',      href: ROUTES.BRANCH_DISCOUNTS,   icon: BadgePercent },
   { label: 'Shop Expenses',  href: ROUTES.BRANCH_EXPENSES,   icon: Receipt },
   { label: 'Events',         href: ROUTES.BRANCH_EVENTS,     icon: CalendarDays },
   { label: 'Branch Closing', href: ROUTES.BRANCH_CLOSING,    icon: CalendarCheck },

@@ -76,6 +76,17 @@ export const ROUTES = {
    * the same table and are not interchangeable.
    */
   BRANCH_RETURN_STOCK: '/branch-return-stock',
+  /**
+   * Branch → Discounts. This branch's own claims for money back against a
+   * demand, and the only place it can correct one.
+   *
+   * The '/branch-' prefix is load-bearing, not naming: RouteGuard's prefix rule
+   * is what guards this screen, exactly as it does BRANCH_RETURN_STOCK above.
+   * Note the sibling it is NOT — '/production-discounts' is Production's board of
+   * every branch's claims, behind a production-only router. The two read the same
+   * table and are not interchangeable.
+   */
+  BRANCH_DISCOUNTS: '/branch-discounts',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
