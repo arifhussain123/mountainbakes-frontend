@@ -43,6 +43,18 @@ export const ROUTES = {
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',
+  /**
+   * Production → Discounts. The board of money branches are claiming back
+   * against demands, reviewed exactly as returns are.
+   *
+   * The '/production-' prefix is doing real work here, not naming: RouteGuard
+   * maps it to production_user, so this screen is guarded by being called this
+   * and would be open to every role under any other name — the same rule
+   * ROUTES.BRANCH_LOCATIONS documents from the other direction. There is no
+   * branch sibling to confuse it with; a branch raises and corrects its claims
+   * inside the New Orders page rather than on a page of their own.
+   */
+  PRODUCTION_DISCOUNTS: '/production-discounts',
   PRODUCTION_REPORTS: '/production-reports',
   PRODUCTION_HELP_DESK: '/production-help-desk',
   PRODUCTION_EVENTS: '/production-events',

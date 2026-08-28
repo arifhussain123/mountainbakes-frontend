@@ -327,7 +327,7 @@ export function BranchReturnStockPage() {
             <Undo2 className="h-8 w-8 text-muted-foreground/50" />
             <p className="text-sm font-medium">Nothing returned yet</p>
             <p className="text-sm text-muted-foreground">
-              Returns are raised from the Stock page with the Return Items button.
+              Returns are raised from the New Orders page with the Return Items button.
             </p>
           </div>
         }

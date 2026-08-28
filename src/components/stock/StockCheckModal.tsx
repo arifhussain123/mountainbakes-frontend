@@ -374,8 +374,8 @@ function ResultPanel({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Not saved. To correct a real difference, use Return Items or ask an admin for a stock
-        adjustment.
+        Not saved. To correct a real difference, use Return Items on the New Orders page or ask an
+        admin for a stock adjustment.
       </p>
     </div>
   );

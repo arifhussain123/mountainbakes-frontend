@@ -9,18 +9,16 @@ import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ClipboardCheck, RotateCcw } from 'lucide-react';
+import { ClipboardCheck } from 'lucide-react';
 import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import { waitingDemandByProduct } from '@/utils/demandLines';
-import { ReturnItemsModal } from './ReturnItemsModal';
 import { StockCheckModal } from './StockCheckModal';
 
 const col = createColumnHelper<StockRow>();
 
 export function StockPage() {
   const { token, user } = useAuth();
-  const [returnOpen, setReturnOpen] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
 
   // Which business day the table is showing. Defaults to today, which is the
@@ -33,9 +31,10 @@ export function StockPage() {
 
   // On TanStack Query (per the project convention) rather than a one-shot fetch,
   // so an invalidation can reach it — that is what makes the page pick up stock
-  // moved elsewhere: a Production approval, or an admin correcting a Help Desk
-  // query. `useStockRealtime` fires those invalidations off the notifications
-  // stream; the ReturnItemsModal reuses the same refetch after saving.
+  // moved elsewhere: a Production approval, an admin correcting a Help Desk
+  // query, or a return raised from the New Orders page, which shares this cache
+  // entry under `qk.stock`. `useStockRealtime` fires those invalidations off the
+  // notifications stream.
   const { data: rows = [], isPending, error, refetch } = useStockRows(token ?? '', { date });
   useStockRealtime();
 
@@ -243,15 +242,14 @@ export function StockPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="order-2 flex flex-wrap gap-2 sm:order-1">
-          {/* Both act on LIVE stock — a return moves units now, and a stock check
-              diffs a physical count against the current balance. Neither means
-              anything against a past day's figures, and Return Items in
-              particular would validate today's shelf against last week's
-              numbers. So they are disabled off-today rather than left to fail
-              confusingly at save. */}
-          <Button onClick={() => setReturnOpen(true)} disabled={!isToday}>
-            <RotateCcw className="h-4 w-4 mr-1.5" /> Return Items
-          </Button>
+          {/* Stock Check alone now. RETURN ITEMS MOVED to the New Orders page —
+              it was filed here because it touches the shelf, but what it does is
+              hand goods back to Production, and it belongs with the demands it
+              answers rather than next to a physical count.
+
+              This one acts on LIVE stock: it diffs a count against the current
+              balance, which means nothing against a past day's figures. Disabled
+              off-today rather than left to fail confusingly at save. */}
           <Button onClick={() => setCheckOpen(true)} disabled={!isToday}>
             <ClipboardCheck className="h-4 w-4 mr-1.5" /> Stock Check
           </Button>
@@ -305,14 +303,6 @@ export function StockPage() {
             />
           </div>
         }
-      />
-
-      <ReturnItemsModal
-        open={returnOpen}
-        onOpenChange={setReturnOpen}
-        rows={rows}
-        branchName={user?.branchName ?? ''}
-        onSaved={refetch}
       />
 
       <StockCheckModal

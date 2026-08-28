@@ -10,6 +10,7 @@ import {
   useProducts,
   useProductionOrders,
   useStock,
+  useStockRows,
   useSubmitProductionOrder,
 } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
-import { Eye, Package, Plus, Trash2 } from 'lucide-react';
+import { BadgePercent, Eye, Package, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import {
   fulfilledTotals,
   isVerified,
@@ -31,6 +32,8 @@ import { cn } from '@/lib/utils';
 import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 import { BranchOrderDetail } from './BranchOrderDetail';
+import { DiscountModal } from './DiscountModal';
+import { ReturnItemsModal } from '@/components/stock/ReturnItemsModal';
 
 const col = createColumnHelper<BranchProductionOrder>();
 
@@ -106,11 +109,29 @@ export function BranchNewOrders() {
   const [deleteReason, setDeleteReason] = useState('');
   /** The demand whose total is on screen. Null when the box is closed. */
   const [demandFor, setDemandFor] = useState<BranchProductionOrder | null>(null);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  /**
+   * Whether the Return Items popup has ever been opened.
+   *
+   * Separate from `openedOnce`, which gates the New Order popup's data, because
+   * the two popups want different things: the order form needs the product
+   * catalogue, and the return form needs the stock ROWS (code, name, balance) it
+   * validates a return against. Keeping the flags apart means opening one does
+   * not fetch for the other, on a page most branches open to read the table and
+   * nothing else.
+   */
+  const [returnOpenedOnce, setReturnOpenedOnce] = useState(false);
 
   // Products/stock load lazily on first open; both are cached across reopens.
   const productsQ = useProducts(token, { isActive: true, enabled: openedOnce });
   const stockQ = useStock(token, { enabled: openedOnce });
   const ordersQ = useProductionOrders(token);
+  // TODAY's rows, deliberately undated: a return moves live stock, so validating
+  // one against a past day's balances is the mistake the Stock page's own date
+  // picker had to be guarded from. There is no date to pick here at all.
+  const stockRowsQ = useStockRows(token, { enabled: returnOpenedOnce });
   const submitMut = useSubmitProductionOrder(token);
   const cancelMut = useCancelProductionOrder(token);
 
@@ -118,6 +139,20 @@ export function BranchNewOrders() {
     setOpenedOnce(true);
     setModalOpen(true);
     // Refresh current stock each open (products stay cached).
+    qc.invalidateQueries({ queryKey: ['stock'] });
+  }
+
+  function openDiscount() {
+    setDiscountOpenedOnce(true);
+    setDiscountOpen(true);
+  }
+
+  function openReturn() {
+    setReturnOpenedOnce(true);
+    setReturnOpen(true);
+    // Same refresh-on-open as the order popup, and it matters more here: the
+    // modal refuses a return larger than the balance, so a stale figure is the
+    // difference between a clear error and a rejected save.
     qc.invalidateQueries({ queryKey: ['stock'] });
   }
 
@@ -368,12 +403,30 @@ export function BranchNewOrders() {
 
   return (
     <div className="space-y-4">
-      {/* New Order button (top-left) + section heading */}
+      {/* ── The three things a branch does with Production ──────────────────
+          Raise a demand, send stock back, ask for money back. All three are
+          about the same relationship and all three are about the demands in the
+          table below, which is why Return Items moved here off the Stock page:
+          it was filed with the SHELF, next to a stock check, when what it
+          actually is is the branch handing goods back to Production.
+
+          New Order keeps its `lg` size and the other two do not. It is the daily
+          action; the other two are exceptions, and sizing all three alike would
+          make a return look as routine as an order. On mobile New Order is the
+          FAB at the bottom of this component and drops out of this row, leaving
+          the two exceptions to share the width. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Mobile gets this as the FAB at the bottom of this component. */}
-        <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
-          <Plus className="mr-1.5 h-4 w-4" /> New Order
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
+            <Plus className="mr-1.5 h-4 w-4" /> New Order
+          </Button>
+          <Button variant="outline" onClick={openReturn}>
+            <RotateCcw className="mr-1.5 h-4 w-4" /> Return Items
+          </Button>
+          <Button variant="outline" onClick={openDiscount}>
+            <BadgePercent className="mr-1.5 h-4 w-4" /> Discount
+          </Button>
+        </div>
         <div className="text-right">
           <h3 className="text-base font-semibold">Production Orders</h3>
           <p className="text-xs text-muted-foreground">Last 7 days</p>
@@ -525,6 +578,30 @@ export function BranchNewOrders() {
           <Button variant="outline" onClick={() => setDemandFor(null)}>Close</Button>
         </DialogContent>
       </Dialog>
+
+      {/* Return Items — moved here from the Stock page. It loads today's stock
+          rows on first open and validates every line against the balance. */}
+      <ReturnItemsModal
+        open={returnOpen}
+        onOpenChange={setReturnOpen}
+        rows={stockRowsQ.data ?? []}
+        branchName={user?.branchName ?? ''}
+        // The modal saved a return, which moved branch stock — refetch the rows
+        // it validates against so a second return in the same visit is checked
+        // against the balance the first one left behind.
+        onSaved={() => stockRowsQ.refetch()}
+      />
+
+      {/* Discount claims: raise one against a demand, and manage the ones
+          already raised. Fed the same order list the table above is showing, so
+          the demand picker offers exactly what the branch can see. */}
+      <DiscountModal
+        open={discountOpen}
+        onOpenChange={setDiscountOpen}
+        openedOnce={discountOpenedOnce}
+        orders={ordersQ.data ?? []}
+        loadingOrders={ordersQ.isLoading}
+      />
 
       <Fab onClick={openModal} icon={Plus} label="New production order" />
     </div>

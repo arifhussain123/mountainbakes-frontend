@@ -30,6 +30,8 @@ import type {
   ProductionBalanceDoc,
   ProductionReturn,
   ProductionReturnStatus,
+  BranchDiscount,
+  BranchDiscountStatus,
   LoginSession,
   ProductionStockRow,
   ProductionStockLedgerRow,
@@ -1132,6 +1134,109 @@ export function useReviewReturn(token: string) {
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
     },
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Discounts
+//
+// Two endpoints, two audiences, exactly as returns are split: a branch reads and
+// writes its OWN claims at /api/branch-discounts, and /api/production-discounts
+// is Production's board of every branch's — it 403s a branch role outright, so
+// the two are not interchangeable however similar the rows look.
+//
+// EVERY MUTATION HERE INVALIDATES ONLY ['discounts']. That is the whole list, and
+// the restraint is deliberate: a discount moves no stock, credits no pool and
+// changes no balance, so the sweeping invalidation `invalidateAfterReturnChange`
+// performs would be several refetches of figures that cannot have changed. If a
+// discount ever starts settling against a ledger, this is the comment that has to
+// be revisited first.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchDiscounts(
+  token: string,
+  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
+) {
+  const days = opts?.days ?? 90;
+  return useQuery({
+    queryKey: qk.branchDiscounts(opts?.branchId ?? null, days),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      // Only an admin may name a branch; the API ignores it for a branch role and
+      // reads the JWT instead, so sending it is harmless either way.
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      return apiCall<{ discounts: BranchDiscount[] }>(`/api/branch-discounts?${params.toString()}`, {}, token);
+    },
+    select: (r) => r.discounts ?? [],
+    // Gated, unlike its Production twin: the modal that reads this is mounted on
+    // every New Orders page load but opened on few of them, and an ungated fetch
+    // would put a request on the busiest branch screen for a popup nobody asked
+    // for. `useProducts`/`useStock` on the same page are lazy for this reason.
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+export function useCreateBranchDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { productionOrderId: string; amount: number; reason: string }) =>
+      apiCall<BranchDiscount>('/api/branch-discounts', { method: 'POST', body: JSON.stringify(body) }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
+/**
+ * Correct a claim that is still open — 'pending' or 'returned'.
+ *
+ * Both fields are required, unlike `useReviseBranchReturn`'s optional reason: a
+ * corrected claim goes back to Production to be read again, and the amount is
+ * only reviewable next to the reason for it.
+ */
+export function useReviseBranchDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, reason }: { id: string; amount: number; reason: string }) =>
+      apiCall<BranchDiscount>(
+        `/api/branch-discounts/${id}`,
+        { method: 'PUT', body: JSON.stringify({ amount, reason }) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
+export function useWithdrawBranchDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall<{ success: boolean }>(`/api/branch-discounts/${id}`, { method: 'DELETE' }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
+export function useProductionDiscounts(token: string) {
+  return useQuery({
+    queryKey: qk.productionDiscounts(),
+    queryFn: () => apiCall<{ discounts: BranchDiscount[] }>('/api/production-discounts', {}, token),
+    select: (r) => r.discounts ?? [],
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+export function useReviewDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, reviewNote }: { id: string; status: BranchDiscountStatus; reviewNote?: string }) =>
+      apiCall<BranchDiscount>(
+        `/api/production-discounts/${id}/review`,
+        { method: 'PUT', body: JSON.stringify({ status, ...(reviewNote ? { reviewNote } : {}) }) },
+        token,
+      ),
+    // Both lists, not just Production's: the branch that raised the claim is very
+    // likely looking at it, and the ['discounts'] prefix reaches its copy too.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
   });
 }
 
