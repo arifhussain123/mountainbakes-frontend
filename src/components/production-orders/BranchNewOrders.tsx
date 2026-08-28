@@ -110,6 +110,7 @@ export function BranchNewOrders() {
   /** The demand whose total is on screen. Null when the box is closed. */
   const [demandFor, setDemandFor] = useState<BranchProductionOrder | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   /**
    * Whether the Return Items popup has ever been opened.
@@ -139,6 +140,11 @@ export function BranchNewOrders() {
     setModalOpen(true);
     // Refresh current stock each open (products stay cached).
     qc.invalidateQueries({ queryKey: ['stock'] });
+  }
+
+  function openDiscount() {
+    setDiscountOpenedOnce(true);
+    setDiscountOpen(true);
   }
 
   function openReturn() {
@@ -417,7 +423,7 @@ export function BranchNewOrders() {
           <Button variant="outline" onClick={openReturn}>
             <RotateCcw className="mr-1.5 h-4 w-4" /> Return Items
           </Button>
-          <Button variant="outline" onClick={() => setDiscountOpen(true)}>
+          <Button variant="outline" onClick={openDiscount}>
             <BadgePercent className="mr-1.5 h-4 w-4" /> Discount
           </Button>
         </div>
@@ -586,13 +592,15 @@ export function BranchNewOrders() {
         onSaved={() => stockRowsQ.refetch()}
       />
 
-      {/* Raise a discount claim against a demand. Fed the same order list the
-          table above is showing, so the picker offers exactly what the branch can
-          see. The claims themselves live on Branch → Discounts, the way returns
-          are raised here and managed on Branch → Return Stock. */}
+      {/* Raise a discount claim, and manage the ones already raised. Fed the
+          same order list the table above is showing, so the picker offers exactly
+          what the branch can see. Branch → Discounts carries the same claims in
+          full; the rules the two share live in `discountShared.tsx` so they
+          cannot drift. */}
       <DiscountModal
         open={discountOpen}
         onOpenChange={setDiscountOpen}
+        openedOnce={discountOpenedOnce}
         orders={ordersQ.data ?? []}
         loadingOrders={ordersQ.isLoading}
       />

@@ -1153,7 +1153,10 @@ export function useReviewReturn(token: string) {
 // be revisited first.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useBranchDiscounts(token: string, opts?: { branchId?: string | null; days?: number }) {
+export function useBranchDiscounts(
+  token: string,
+  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
+) {
   const days = opts?.days ?? 90;
   return useQuery({
     queryKey: qk.branchDiscounts(opts?.branchId ?? null, days),
@@ -1165,7 +1168,12 @@ export function useBranchDiscounts(token: string, opts?: { branchId?: string | n
       return apiCall<{ discounts: BranchDiscount[] }>(`/api/branch-discounts?${params.toString()}`, {}, token);
     },
     select: (r) => r.discounts ?? [],
-    enabled: !!token,
+    // `enabled` exists for the New Orders popup, which is mounted on every visit
+    // to that page and opened on few of them — an ungated query there would put a
+    // request on the busiest branch screen for a popup nobody asked for. The
+    // Discounts page passes nothing and fetches straight away, which is the point
+    // of being that page.
+    enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
   });
 }

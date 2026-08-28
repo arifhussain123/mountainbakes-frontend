@@ -9,9 +9,6 @@ import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount 
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
@@ -27,6 +24,15 @@ import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
 import { BadgePercent, Eye, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DISCOUNT_STATUS_STYLES,
+  DiscountFormFields,
+  discountStatusLabel,
+  isDiscountInputValid,
+  lockReason,
+  parseAmount,
+  shortRef,
+} from './discountShared';
 
 /**
  * Branch → Discounts: every claim this branch has made against a demand.
@@ -71,48 +77,6 @@ import { toast } from 'sonner';
  * the app-wide refresh tick instead.
  */
 
-const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
-  approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
-  rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
-  returned: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400',
-};
-
-/**
- * The badge wording, which is not the status capitalised — the same rule Return
- * Stock follows. The label says WHOSE MOVE IT IS, because on this page the answer
- * is sometimes the branch's, and 'returned' rendered as "Returned" would read as
- * "done" when it means the opposite.
- */
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Awaiting Production',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  returned: 'Sent Back to Fix',
-};
-
-const statusLabel = (s: string) => STATUS_LABELS[s] ?? s;
-
-/** First uuid segment — a label to read out, not a key to type. As Return Stock. */
-function shortRef(id: string): string {
-  return id.split('-')[0]?.toUpperCase() ?? id.slice(0, 8).toUpperCase();
-}
-
-/** Why a row can no longer be touched, phrased for a tooltip. */
-function lockReason(d: BranchDiscount): string {
-  if (d.status === 'approved') return 'Production approved this discount, so it can no longer be changed or withdrawn.';
-  if (d.status === 'rejected') return 'Production rejected this discount. Raise a new one if the claim still stands.';
-  return 'This discount can no longer be changed.';
-}
-
-/** Digits and at most one dot, at most two decimals — money, typed. */
-function sanitizeAmount(raw: string): string {
-  const cleaned = raw.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
-  const [whole = '', frac] = cleaned.split('.');
-  const w = whole.replace(/^0+(?=\d)/, '');
-  return frac === undefined ? w : `${w}.${frac.slice(0, 2)}`;
-}
-
 const col = createColumnHelper<BranchDiscount>();
 
 export function BranchDiscountsPage() {
@@ -146,10 +110,7 @@ export function BranchDiscountsPage() {
 
   async function submitEdit() {
     if (!editRow) return;
-    // Rounded to the paisa before it leaves: the schema refuses anything finer,
-    // and a float arriving as 250.49999 would be rejected for a figure nobody
-    // typed. Same guard as the raise form.
-    const amount = Math.round(Number(editAmount) * 100) / 100;
+    const amount = parseAmount(editAmount);
     try {
       await reviseMut.mutateAsync({ id: editRow.id, amount, reason: editReason.trim() });
       toast.success(`Discount on ${editRow.demandNumber} updated — back with Production for review`);
@@ -221,8 +182,8 @@ export function BranchDiscountsPage() {
       header: 'Status',
       meta: { mobile: 'badge' },
       cell: (i) => (
-        <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLES[i.getValue()] ?? 'bg-muted')}>
-          {statusLabel(i.getValue())}
+        <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', DISCOUNT_STATUS_STYLES[i.getValue()] ?? 'bg-muted')}>
+          {discountStatusLabel(i.getValue())}
         </span>
       ),
     }),
@@ -267,11 +228,9 @@ export function BranchDiscountsPage() {
     }),
   ];
 
-  const parsedAmount = Number(editAmount);
-  const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
-  const amountChanged = !!editRow && Math.round(parsedAmount * 100) / 100 !== editRow.amount;
+  const inputValid = isDiscountInputValid(editAmount, editReason);
+  const amountChanged = !!editRow && parseAmount(editAmount) !== editRow.amount;
   const reasonChanged = !!editRow && editReason.trim() !== (editRow.reason ?? '');
-  const reasonValid = editReason.trim().length >= 3;
 
   return (
     <div className="space-y-6">
@@ -321,8 +280,8 @@ export function BranchDiscountsPage() {
 
               <dt className="text-muted-foreground">Status</dt>
               <dd className="text-right">
-                <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', STATUS_STYLES[viewRow.status] ?? 'bg-muted')}>
-                  {statusLabel(viewRow.status)}
+                <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', DISCOUNT_STATUS_STYLES[viewRow.status] ?? 'bg-muted')}>
+                  {discountStatusLabel(viewRow.status)}
                 </span>
               </dd>
 
@@ -395,38 +354,14 @@ export function BranchDiscountsPage() {
               </p>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="discount-edit-amount">Amount</Label>
-              <Input
-                id="discount-edit-amount"
-                // Text with inputMode="decimal", not type="number": a number input
-                // on Android accepts an 'e' and reports empty for it, and its
-                // spinners are a hazard on a figure read off a delivery note.
-                type="text"
-                inputMode="decimal"
-                value={editAmount}
-                onChange={(e) => setEditAmount(sanitizeAmount(e.target.value))}
-                placeholder="0.00"
-              />
-              {!amountValid && editAmount !== '' && (
-                <p className="text-xs text-destructive">Enter an amount greater than 0.</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="discount-edit-reason">Reason</Label>
-              <Textarea
-                id="discount-edit-reason"
-                rows={3}
-                maxLength={500}
-                value={editReason}
-                onChange={(e) => setEditReason(e.target.value)}
-                placeholder="What is the discount for? Production reads this to decide."
-              />
-              {!reasonValid && editReason !== '' && (
-                <p className="text-xs text-destructive">Say what the discount is for.</p>
-              )}
-            </div>
+            <DiscountFormFields
+              idPrefix="discount-edit"
+              amount={editAmount}
+              onAmountChange={setEditAmount}
+              reason={editReason}
+              onReasonChange={setEditReason}
+              disabled={reviseMut.isPending}
+            />
 
             <Separator />
 
@@ -436,9 +371,7 @@ export function BranchDiscountsPage() {
               </Button>
               <Button
                 onClick={submitEdit}
-                disabled={
-                  reviseMut.isPending || !amountValid || !reasonValid || (!amountChanged && !reasonChanged)
-                }
+                disabled={reviseMut.isPending || !inputValid || (!amountChanged && !reasonChanged)}
               >
                 {reviseMut.isPending ? 'Saving…' : 'Save & Resend'}
               </Button>
