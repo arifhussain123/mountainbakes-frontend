@@ -30,7 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
-import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
+import { AlertTriangle, BadgePercent, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, RotateCcw, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
 import { formatCurrency as money } from '@/utils/currency';
@@ -73,6 +73,21 @@ export interface NewOrderModalProps {
     requiredDate: string;
   }) => Promise<unknown>;
   submitting: boolean;
+  /**
+   * Open the Return Items / Discount popups, which the branch reaches from this
+   * form's header.
+   *
+   * Callbacks rather than the popups themselves, so the OWNER of those dialogs
+   * stays BranchNewOrders. Two things follow from that and both matter: the
+   * stock rows the return form validates against are fetched once by the page
+   * and shared, rather than by whichever screen happened to open first; and the
+   * popups are siblings of this one in the tree, so they layer over a
+   * half-entered order and leave every quantity in it untouched.
+   *
+   * Optional — the modal renders without them and simply shows no buttons.
+   */
+  onOpenReturn?: () => void;
+  onOpenDiscount?: () => void;
 }
 
 /**
@@ -189,6 +204,8 @@ export function NewOrderModal({
   userName,
   submit,
   submitting,
+  onOpenReturn,
+  onOpenDiscount,
 }: NewOrderModalProps) {
   const [qtyById, setQtyById] = useState<Record<string, string>>({});
   const [now, setNow] = useState<Date | null>(null);
@@ -538,10 +555,46 @@ export function NewOrderModal({
         >
           {/* ---------- Sticky header ---------- */}
           <div className="shrink-0 border-b bg-card px-5 py-4">
-            <div className="pr-10">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pr-10">
               <h2 className="flex items-center gap-2 font-heading text-base font-semibold sm:text-lg">
                 <PackageCheck className="h-5 w-5 text-primary" /> Create New Production Order
               </h2>
+
+              {/* ── The other two things a branch sends Production ────────────
+                  Both open over this form and leave it exactly as it was, so a
+                  half-entered order survives being interrupted — which is the
+                  whole reason they are here rather than back on the page: the
+                  branch is already in this screen when it remembers there is
+                  stock to send back or money to claim.
+
+                  In the STICKY header, not the footer: the footer already
+                  carries Clear, Save Draft, Submit and three totals, and these
+                  two are not actions on this order — burying them among the
+                  buttons that submit it would invite exactly that misreading.
+                  Sticky means they stay reachable down a hundred-product list.
+
+                  Layering a second dialog over this one is not new here: the
+                  submit confirmation below already opens while this modal stays
+                  open, and has shipped that way for a long time. These two use
+                  the same mechanism — a sibling Dialog whose portal mounts later
+                  and therefore paints on top, both at z-50.
+
+                  Rendered only when the handlers are passed, so the modal still
+                  works standalone. */}
+              {(onOpenReturn || onOpenDiscount) && (
+                <div className="flex flex-wrap gap-2">
+                  {onOpenReturn && (
+                    <Button size="sm" variant="outline" onClick={onOpenReturn} disabled={submitting}>
+                      <RotateCcw className="mr-1.5 h-4 w-4" /> Return Items
+                    </Button>
+                  )}
+                  {onOpenDiscount && (
+                    <Button size="sm" variant="outline" onClick={onOpenDiscount} disabled={submitting}>
+                      <BadgePercent className="mr-1.5 h-4 w-4" /> Discount
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
             <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2.5 text-sm sm:grid-cols-3">
               <Meta icon={Store} label="Branch" value={branchName || '—'} />

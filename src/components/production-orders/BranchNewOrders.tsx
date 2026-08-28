@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
-import { BadgePercent, Eye, Package, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Eye, Package, Plus, Trash2 } from 'lucide-react';
 import {
   fulfilledTotals,
   isVerified,
@@ -403,30 +403,21 @@ export function BranchNewOrders() {
 
   return (
     <div className="space-y-4">
-      {/* ── The three things a branch does with Production ──────────────────
-          Raise a demand, send stock back, ask for money back. All three are
-          about the same relationship and all three are about the demands in the
-          table below, which is why Return Items moved here off the Stock page:
-          it was filed with the SHELF, next to a stock check, when what it
-          actually is is the branch handing goods back to Production.
+      {/* New Order button (top-left) + section heading.
 
-          New Order keeps its `lg` size and the other two do not. It is the daily
-          action; the other two are exceptions, and sizing all three alike would
-          make a return look as routine as an order. On mobile New Order is the
-          FAB at the bottom of this component and drops out of this row, leaving
-          the two exceptions to share the width. */}
+          RETURN ITEMS AND DISCOUNT ARE NOT HERE — they are in the New Order
+          form's own header, reached by opening it. The branch is already inside
+          that screen when it remembers there is stock to send back or money to
+          claim, and both popups layer over it without disturbing a half-entered
+          order. The two dialogs are still mounted HERE, at the bottom of this
+          component: the page owns the stock rows the return form validates
+          against, and being siblings of the order form rather than children of
+          it is what lets them open over it. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
-            <Plus className="mr-1.5 h-4 w-4" /> New Order
-          </Button>
-          <Button variant="outline" onClick={openReturn}>
-            <RotateCcw className="mr-1.5 h-4 w-4" /> Return Items
-          </Button>
-          <Button variant="outline" onClick={openDiscount}>
-            <BadgePercent className="mr-1.5 h-4 w-4" /> Discount
-          </Button>
-        </div>
+        {/* Mobile gets this as the FAB at the bottom of this component. */}
+        <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
+          <Plus className="mr-1.5 h-4 w-4" /> New Order
+        </Button>
         <div className="text-right">
           <h3 className="text-base font-semibold">Production Orders</h3>
           <p className="text-xs text-muted-foreground">Last 7 days</p>
@@ -507,6 +498,8 @@ export function BranchNewOrders() {
         userName={userName}
         submit={(payload) => submitMut.mutateAsync(payload)}
         submitting={submitMut.isPending}
+        onOpenReturn={openReturn}
+        onOpenDiscount={openDiscount}
       />
 
       {/* Delete a demand Production has not started on. The reason is mandatory
@@ -579,8 +572,10 @@ export function BranchNewOrders() {
         </DialogContent>
       </Dialog>
 
-      {/* Return Items — moved here from the Stock page. It loads today's stock
-          rows on first open and validates every line against the balance. */}
+      {/* Return Items — off the Stock page, opened from the New Order form's
+          header. Loads today's stock rows on first open and validates every line
+          against the balance. Mounted here rather than inside that form so the
+          rows are fetched once by the page and so it can layer over it. */}
       <ReturnItemsModal
         open={returnOpen}
         onOpenChange={setReturnOpen}
