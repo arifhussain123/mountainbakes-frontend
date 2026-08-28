@@ -617,6 +617,17 @@ export interface PreviousOrderBalance {
   returnsValue: number;
   /** The exact accepted returns that returnsValue was built from. */
   returnItems: { productName: string; qty: number; amount: number }[];
+  /**
+   * Approved discount claims in the same billing window as the returns above.
+   *
+   * A second deduction from the company share, netted the same way — the only
+   * difference is that a return is goods coming back and a discount is money
+   * agreed off, so this carries no quantity. Absent on a server older than the
+   * release that added it, hence the `?? 0` at every read site.
+   */
+  discountsValue: number;
+  /** The exact approved claims that discountsValue was built from. */
+  discountItems: { demandNumber: string; amount: number }[];
   amountToCollect: number;
 }
 

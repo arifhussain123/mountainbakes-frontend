@@ -265,6 +265,10 @@ function PreviewBody({
   const deliveredValue = prevBal?.deliveredValue ?? 0;
   const companyShareValue = prevBal?.companyShareValue ?? 0;
   const returnsAmount = prevBal?.returnsValue ?? 0;
+  // The second deduction from the company share, netted server-side exactly as
+  // returns are. No quantity: a claim is an amount, not units.
+  const discountRows = prevBal?.discountItems ?? [];
+  const discountsAmount = prevBal?.discountsValue ?? 0;
   const collectionAmount = prevBal?.amountToCollect ?? 0;
   const previousRef = prevBal?.previous ?? null;
   const hasPrevBalance = !!previousRef;
@@ -739,11 +743,15 @@ function PreviewBody({
             ) : hasPrevBalance ? (
               // Every step is shown, not just the total: this is collected in
               // cash at the counter, so the figure has to be checkable by hand.
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-5">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-6">
                 <Field label="Previous Order" value={`${previousRef!.demandNumber} · ${previousRef!.date}`} />
                 <Field label="Delivered Value" value={money(deliveredValue, sym)} />
                 <Field label="Company Share" value={money(companyShareValue, sym)} />
                 <Field label="Less Returns" value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+                {/* Beside Less Returns, and before the total, because the two are
+                    the same kind of thing: deductions from the company share.
+                    Money only — there are no units behind a discount. */}
+                <Field label="Less Discount" value={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
                 <Field label="Amount to Collect" value={money(collectionAmount, sym)} strong />
               </div>
             ) : (
@@ -768,6 +776,34 @@ function PreviewBody({
                         <td className="py-1.5 pr-2 font-medium">{r.productName}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.qty)}</td>
                         <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Which claims made up the deduction. Rendered only when there are
+                any, so an ordinary slip is unchanged — the same rule the return
+                table above follows. Two columns, not three: a discount has no
+                quantity behind it. */}
+            {discountRows.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-y border-neutral-300 text-left">
+                      <th className="py-1.5 pr-2 font-semibold">Discount Against (Since Last Order)</th>
+                      <th className="py-1.5 pl-2 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {discountRows.map((d, i) => (
+                      // Keyed by index alongside the demand number: a branch can
+                      // raise more than one approved claim against the same
+                      // demand, so the number alone is not unique.
+                      <tr key={`${d.demandNumber}-${i}`} className="border-b border-neutral-200">
+                        <td className="py-1.5 pr-2 font-medium">{d.demandNumber}</td>
+                        <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">{money(d.amount, sym)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -809,7 +845,8 @@ function PreviewBody({
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
               companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
+              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
+              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             />
             <PrintCopy
               copyLabel="Company Copy"
@@ -817,7 +854,8 @@ function PreviewBody({
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
               companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
+              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
+              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             />
           </div>
         ) : (
@@ -958,7 +996,7 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
 function PrintCopy({
   copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
   previousRef, deliveredValue, companyShareValue,
-  returnRows, returnsQty, returnsAmount, collectionAmount,
+  returnRows, returnsQty, returnsAmount, discountRows, discountsAmount, collectionAmount,
 }: {
   copyLabel: string;
   logo?: string;
@@ -980,7 +1018,11 @@ function PrintCopy({
   returnRows: { productName: string; qty: number; amount: number }[];
   returnsQty: number;
   returnsAmount: number;
-  /** companyShareValue less returnsAmount — what the rider actually collects. */
+  /** Approved discount claims in the same window — the second deduction. */
+  discountRows: { demandNumber: string; amount: number }[];
+  discountsAmount: number;
+  /** companyShareValue less returnsAmount AND discountsAmount — what the rider
+   *  actually collects. */
   collectionAmount: number;
 }) {
   const items = printRows.filter((r) => r.approved > 0);
@@ -1052,6 +1094,7 @@ function PrintCopy({
                 <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
                 <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
                 <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+                <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
                 <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
               </div>
             ) : (
@@ -1089,6 +1132,37 @@ function PrintCopy({
                     <td className="pt-0.5">Total</td>
                     <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(returnsQty)}</td>
                     <td className="pt-0.5 pl-1 text-right tabular-nums">{money(returnsAmount, sym)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Discounts, itemised the way returns are — this is counted out in
+              cash at the counter, so every line of the deduction has to be
+              checkable by hand rather than appearing as one total. */}
+          {discountRows.length > 0 && (
+            <div className="avoid-break mt-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Discounts (Since Last Order)</p>
+              <table className="w-full border-collapse text-[9px] leading-tight">
+                <thead>
+                  <tr className="border-y border-neutral-400 text-left">
+                    <th className="py-0.5 pr-1 font-semibold">Against Demand</th>
+                    <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discountRows.map((d, i) => (
+                    <tr key={`${d.demandNumber}-${i}`} className="border-b border-neutral-200">
+                      <td className="py-0.5 pr-1 font-medium">{d.demandNumber}</td>
+                      <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(d.amount, sym)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-neutral-400 font-bold">
+                    <td className="pt-0.5">Total</td>
+                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(discountsAmount, sym)}</td>
                   </tr>
                 </tfoot>
               </table>
