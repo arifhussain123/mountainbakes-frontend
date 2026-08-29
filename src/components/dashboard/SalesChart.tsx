@@ -126,12 +126,22 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
                   activeDot={{ r: 4 }}
                   isAnimationActive={false}
                 />
+                {/* Dashed, and it is doing real work. Orders drive Revenue, so the
+                    two series are strongly correlated — and two auto-ranged axes
+                    each stretch their series across the same vertical band, so the
+                    lines land almost exactly on top of each other and read as one
+                    line with a shadow. Colour alone does not separate them (in
+                    light mode --chart-2 is a dark brown a hair from --chart-1's
+                    orange; in dark mode it inverts to near-white). The dash pattern
+                    survives both themes, the accent-colour overrides, and a
+                    colour-blind reader. Recharts draws it in the legend swatch too. */}
                 <Line
                   yAxisId="orders"
                   type="monotone"
                   dataKey="Orders"
                   stroke={ORDERS}
                   strokeWidth={2}
+                  strokeDasharray="5 4"
                   dot={dot}
                   activeDot={{ r: 4 }}
                   isAnimationActive={false}
