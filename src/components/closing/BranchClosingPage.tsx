@@ -5,13 +5,16 @@ import { Banknote, Boxes, Receipt, ShoppingCart, TrendingUp } from 'lucide-react
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useBranchClosing } from '@/lib/queries';
-import { businessDateStr, businessDaysAgoStr } from '@mb/shared';
+import { businessDateStr, businessDaysAgoStr, computeClosingTotals } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
 import { PrintButton } from '@/components/shared/PrintButton';
+import { Button } from '@/components/ui/button';
+import { ClosingExportModal } from './ClosingExportModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { FileSpreadsheet } from 'lucide-react';
 
 /**
  * The shop's end-of-day sheet.
@@ -36,6 +39,7 @@ export function BranchClosingPage() {
   const { token, user } = useAuth();
   const { settings } = useSettings();
   const [date, setDate] = useState(() => businessDateStr());
+  const [exportOpen, setExportOpen] = useState(false);
 
   const { data, isLoading } = useBranchClosing(token, date);
   const cur = settings?.currencySymbol || 'Rs.';
@@ -53,9 +57,11 @@ export function BranchClosingPage() {
     // never as revenue.
     const paid = live.filter((o) => o.paymentMethod !== 'staff');
 
-    const sales = paid.reduce((s, o) => s + (o.grandTotal || 0), 0);
-    const discounts = live.reduce((s, o) => s + (o.discountTotal || 0), 0);
-    const expenses = (data?.expenses ?? []).reduce((s, e) => s + (e.amount || 0), 0);
+    // The money figures come from @mb/shared rather than being summed here, so
+    // this screen and the Excel export of the same window cannot disagree about
+    // a number that has to reconcile with the drawer. The breakdowns below stay
+    // local — they are how this page displays the day, not what it owes.
+    const figures = computeClosingTotals(orders, data?.expenses ?? []);
 
     const byMethod = PAID_METHODS.map((m) => ({
       method: m,
@@ -70,28 +76,7 @@ export function BranchClosingPage() {
       }, {}),
     ).sort((a, b) => b[1] - a[1]);
 
-    // Cash in the drawer: cash taken in, less what was paid out of it. Card and
-    // wallet takings never touch the till, so they are not in this number.
-    const cashSales = paid
-      .filter((o) => o.paymentMethod === 'cash')
-      .reduce((s, o) => s + (o.grandTotal || 0), 0);
-    const cashExpenses = (data?.expenses ?? [])
-      .filter((e) => e.paymentMethod === 'cash')
-      .reduce((s, e) => s + (e.amount || 0), 0);
-
-    return {
-      sales,
-      discounts,
-      expenses,
-      net: sales - expenses,
-      orderCount: live.length,
-      cancelled: orders.length - live.length,
-      byMethod,
-      byCategory,
-      cashSales,
-      cashExpenses,
-      cashInHand: cashSales - cashExpenses,
-    };
+    return { ...figures, byMethod, byCategory };
   }, [data]);
 
   const stock = data?.stock ?? [];
@@ -134,6 +119,12 @@ export function BranchClosingPage() {
               className="h-9 w-40"
             />
           </div>
+          {/* Beside Print, because both answer "get this off the screen" — one
+              for the folder on the wall, one for a spreadsheet. Print is the
+              single day on show; this one takes a window. */}
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setExportOpen(true)}>
+            <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Excel
+          </Button>
           <PrintButton onPrint={() => window.print()} printLabel="Print" saveLabel="Save PDF" size="sm" />
         </div>
       </div>
@@ -267,6 +258,15 @@ export function BranchClosingPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Seeded with the day on screen, so "export this day" is one click and a
+          wider window is a deliberate widening rather than a default. */}
+      <ClosingExportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        token={token}
+        defaultDate={date}
+      />
     </div>
   );
 }
