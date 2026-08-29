@@ -325,12 +325,25 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         </div>
       ),
     }),
-    col.accessor('items', {
+    // Accessed as the joined NAMES, not as `items`. The search box is a global
+    // filter, and TanStack's default `getColumnCanGlobalFilter` admits a column
+    // only if its value is a string or a number — an array of item objects is
+    // neither, so this column was silently skipped and typing a product name
+    // matched nothing, with the Products column visible the whole time. Returning
+    // the string both fixes the search and is what the cell wanted anyway.
+    col.accessor((o) => o.items.map((it) => it.productName).join(', '), {
+      id: 'items',
       header: 'Products',
       meta: { mobileFull: true },
       cell: (i) => {
-        const names = i.getValue().map((it) => it.productName).join(', ');
-        return <span className="text-sm">{names.length > 40 ? names.slice(0, 40) + '…' : names}</span>;
+        const names = i.getValue();
+        return (
+          // Full list on hover: the cell truncates at 40 characters and a sale of
+          // six products is past that, so the tooltip is the only complete copy.
+          <span className="text-sm" title={names}>
+            {names.length > 40 ? names.slice(0, 40) + '…' : names}
+          </span>
+        );
       },
     }),
     col.display({ id: 'qty', header: 'Qty', cell: ({ row }) => <span>{row.original.items.reduce((s, it) => s + it.qty, 0)}</span> }),
@@ -519,7 +532,15 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
       )}
 
-      <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
+      {/* Placeholder names the fields, following ProductionOrdersPage: "Search
+          sales…" gave no reason to think a product name would work, so nobody
+          tried it. */}
+      <DataTable
+        columns={columns}
+        data={sales}
+        loading={loading}
+        searchPlaceholder="Search product, customer, ID…"
+      />
 
       {/* New Sale dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
