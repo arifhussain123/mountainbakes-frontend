@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DailySalesData } from '@mb/shared';
 import { format, parseISO } from 'date-fns';
@@ -24,10 +24,10 @@ const TOOLTIP = {
   fontSize: '12px',
 } as const;
 
-// Both plots must share one left gutter or their x positions drift apart and the
-// pair stops reading as a single time axis.
+// One gutter each side, equal, so the plot area sits centred under the card and
+// the two scales look like peers rather than one being an afterthought.
 const Y_WIDTH = 48;
-const MARGIN = { top: 8, right: 16, left: 0, bottom: 0 };
+const MARGIN = { top: 8, right: 0, left: 0, bottom: 0 };
 
 const compact = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v));
 
@@ -58,30 +58,58 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
             No sales in this period
           </div>
         ) : (
-          /* Revenue and Orders differ by three orders of magnitude — plotted on one
-             scale the Orders line sits flat on the baseline. Two stacked plots
-             sharing a date axis, rather than a second y-scale, which would make the
-             crossing point of the two lines mean nothing. */
           <div className="space-y-1">
-            <div className="flex items-baseline justify-between px-1 text-xs">
-              <span className="font-medium text-muted-foreground">Revenue</span>
-              {latest && <span className="tabular-nums text-foreground">Rs.{latest.Revenue.toLocaleString()}</span>}
-            </div>
-            <ResponsiveContainer width="100%" height={150}>
-              <LineChart data={chartData} margin={MARGIN} syncId="daily-sales">
+            {/* Latest day, spelled out. The two lines share an x axis but not a
+                scale, so their heights are not comparable by eye — the figures
+                are what answer "how did today go", and the graph is the shape
+                around them. */}
+            {latest && (
+              <div className="flex flex-wrap items-baseline justify-end gap-x-4 px-1 text-xs">
+                <span className="text-muted-foreground">{latest.date}</span>
+                <span className="tabular-nums" style={{ color: REVENUE }}>Rs.{latest.Revenue.toLocaleString()}</span>
+                <span className="tabular-nums" style={{ color: ORDERS }}>{latest.Orders.toLocaleString()} orders</span>
+              </div>
+            )}
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={chartData} margin={MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                <XAxis dataKey="date" hide />
-                <YAxis
-                  width={Y_WIDTH}
+                <XAxis
+                  dataKey="date"
                   tick={{ fontSize: 11, fill: AXIS }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                {/* Revenue and Orders differ by three orders of magnitude — on one
+                    scale the Orders line lies flat on the baseline. Two y axes keep
+                    both readable in a single plot; each axis is tinted with its
+                    series colour, because with independent scales the only thing
+                    saying which line belongs to which numbers is that pairing. The
+                    crossing point of the lines means nothing — do not read it. */}
+                <YAxis
+                  yAxisId="revenue"
+                  width={Y_WIDTH}
+                  tick={{ fontSize: 11, fill: REVENUE }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={compact}
+                />
+                <YAxis
+                  yAxisId="orders"
+                  orientation="right"
+                  width={Y_WIDTH}
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: ORDERS }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={compact}
                 />
                 <Tooltip
                   contentStyle={TOOLTIP}
-                  formatter={(value: number) => [`Rs.${value.toLocaleString()}`, 'Revenue']}
+                  formatter={(value: number, name: string) =>
+                    name === 'Revenue' ? [`Rs.${value.toLocaleString()}`, name] : [value.toLocaleString(), name]
+                  }
                 />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
                 {/* Animation off, and not for taste. Recharts derives the mount
                     "draw-on" stroke-dasharray from the path length measured on the
                     FIRST render, when ResponsiveContainer still reports a near-zero
@@ -89,6 +117,7 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
                     the dasharray is not — leaving a ~65px dash on an ~1130px line, so
                     the series renders as a stub and reads as "the chart is broken". */}
                 <Line
+                  yAxisId="revenue"
                   type="monotone"
                   dataKey="Revenue"
                   stroke={REVENUE}
@@ -97,32 +126,8 @@ export function SalesChart({ data, loading }: { data: DailySalesData[]; loading?
                   activeDot={{ r: 4 }}
                   isAnimationActive={false}
                 />
-              </LineChart>
-            </ResponsiveContainer>
-
-            <div className="flex items-baseline justify-between px-1 pt-2 text-xs">
-              <span className="font-medium text-muted-foreground">Orders</span>
-              {latest && <span className="tabular-nums text-foreground">{latest.Orders.toLocaleString()}</span>}
-            </div>
-            <ResponsiveContainer width="100%" height={110}>
-              <LineChart data={chartData} margin={MARGIN} syncId="daily-sales">
-                <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: AXIS }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  width={Y_WIDTH}
-                  allowDecimals={false}
-                  tick={{ fontSize: 11, fill: AXIS }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={compact}
-                />
-                <Tooltip contentStyle={TOOLTIP} formatter={(value: number) => [value, 'Orders']} />
                 <Line
+                  yAxisId="orders"
                   type="monotone"
                   dataKey="Orders"
                   stroke={ORDERS}
