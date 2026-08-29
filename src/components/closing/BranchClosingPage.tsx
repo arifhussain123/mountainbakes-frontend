@@ -95,9 +95,24 @@ export function BranchClosingPage() {
   }, [data]);
 
   const stock = data?.stock ?? [];
-  const stockOnHand = stock.reduce((s, r) => s + (r.balance || 0), 0);
-  const soldUnits = stock.reduce((s, r) => s + (r.sold || 0), 0);
-  const returnedUnits = stock.reduce((s, r) => s + (r.returned || 0), 0);
+
+  // Every stock column totalled in one pass. The footer row, the caption above the
+  // table and the Stock on Hand card all read from this — three places that must
+  // agree, and did not have to when each summed the rows for itself.
+  const stockTotals = useMemo(
+    () =>
+      (data?.stock ?? []).reduce(
+        (t, r) => ({
+          opening: t.opening + (r.opening || 0),
+          newQty: t.newQty + (r.newQty || 0),
+          sold: t.sold + (r.sold || 0),
+          returned: t.returned + (r.returned || 0),
+          balance: t.balance + (r.balance || 0),
+        }),
+        { opening: 0, newQty: 0, sold: 0, returned: 0, balance: 0 },
+      ),
+    [data],
+  );
 
   return (
     <div className="space-y-6">
@@ -128,7 +143,7 @@ export function BranchClosingPage() {
         <StatCard title="Expenses" value={isLoading ? '…' : money(totals.expenses)} icon={Receipt} color="red" loading={isLoading} />
         <StatCard title="Net" value={isLoading ? '…' : money(totals.net)} icon={TrendingUp} color="orange" loading={isLoading} />
         <StatCard title="Cash in Hand" value={isLoading ? '…' : money(totals.cashInHand)} icon={Banknote} color="brown" loading={isLoading} />
-        <StatCard title="Stock on Hand" value={isLoading ? '…' : stockOnHand.toLocaleString()} icon={Boxes} color="blue" loading={isLoading} />
+        <StatCard title="Stock on Hand" value={isLoading ? '…' : stockTotals.balance.toLocaleString()} icon={Boxes} color="blue" loading={isLoading} />
       </div>
 
       {expensesOutOfRange && (
@@ -193,8 +208,8 @@ export function BranchClosingPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-xs text-muted-foreground">
-            {soldUnits.toLocaleString()} units sold · {returnedUnits.toLocaleString()} returned to production ·{' '}
-            {stockOnHand.toLocaleString()} left on the shelf
+            {stockTotals.sold.toLocaleString()} units sold · {stockTotals.returned.toLocaleString()} returned to production ·{' '}
+            {stockTotals.balance.toLocaleString()} left on the shelf
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -226,6 +241,28 @@ export function BranchClosingPage() {
                   </tr>
                 ))}
               </tbody>
+              {/* Only when there are rows to total. A Total line under "No stock
+                  rows for this date" would be five zeroes dressed up as a
+                  finding. In <tfoot>, so a printed sheet that runs to a second
+                  page repeats it — this page has a Print button and the sheet is
+                  what a shift hands over on. */}
+              {!isLoading && stock.length > 0 && (
+                <tfoot>
+                  <tr data-table-foot className="border-t-2 font-semibold">
+                    <td className="py-2 pr-3">
+                      Total
+                      <span className="ml-1 font-normal text-xs text-muted-foreground">
+                        ({stock.length} product{stock.length === 1 ? '' : 's'})
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.opening.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.newQty.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.sold.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.returned.toLocaleString()}</td>
+                    <td className="py-2 pl-3 text-right tabular-nums">{stockTotals.balance.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </CardContent>

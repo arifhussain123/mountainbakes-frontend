@@ -224,13 +224,20 @@
 
    Print views opt out by simply not carrying the attribute — a filled heading is
    ink a delivery slip does not need, and browsers drop backgrounds when printing
-   anyway, which would leave the text colour alone on white. */
+   anyway, which would leave the text colour alone on white.
+
+   `data-table-foot` is the same band on a totals row, so a table that opens with a
+   tinted heading closes with one. Same treatment deliberately: a totals row is a
+   heading for the column beneath it, read the same way and worth the same weight. */
 @supports (background-color: color-mix(in oklab, red 10%, transparent)) {
-  [data-table-head] {
+  [data-table-head],
+  [data-table-foot] {
     background-color: color-mix(in oklab, var(--primary) 10%, transparent);
   }
   [data-table-head] th,
-  [data-table-head] td {
+  [data-table-head] td,
+  [data-table-foot] th,
+  [data-table-foot] td {
     color: color-mix(in oklab, var(--primary) 65%, var(--foreground));
   }
 }
