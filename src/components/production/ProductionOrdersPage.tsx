@@ -16,9 +16,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
-import { Eye, Sparkles } from 'lucide-react';
+import { Eye, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { effectivePackingQty, effectiveQty, isWaitingOrder, liveItems, livePackingItems } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
+import { CollectionsExportModal } from './CollectionsExportModal';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
@@ -60,6 +61,7 @@ export function ProductionOrdersPage() {
   // the dialog showing what View originally captured.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
 
@@ -602,7 +604,17 @@ export function ProductionOrdersPage() {
 
       {/* Orders list */}
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Orders</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Orders</h2>
+          {/* Not wired to DataTable's `onExport`: that exports the table you are
+              looking at, and this is a different question — a window of
+              deliveries and what is owed on them, which needs its own branch and
+              date range. Kept beside the table it relates to rather than buried
+              in Production Reports. */}
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setExportOpen(true)}>
+            <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Collections
+          </Button>
+        </div>
         <DataTable
           columns={columns}
           data={orders}
@@ -611,6 +623,8 @@ export function ProductionOrdersPage() {
           columnVisibility={{ contents: false }}
         />
       </div>
+
+      <CollectionsExportModal open={exportOpen} onOpenChange={setExportOpen} token={token} />
 
       <OrderPrintPreview
         open={modalOpen}
