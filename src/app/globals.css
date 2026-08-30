@@ -298,6 +298,18 @@
     width: 100%;
   }
   .no-print, .no-print * { display: none !important; }
+  /* `visibility: hidden` above makes the app invisible but NOT absent — it still
+     takes up flow, so the screen behind the print dialog paginates into trailing
+     blank pages after the document (measured: two blank A4 sheets per delivery
+     challan, and on an 80mm roll it is blank paper fed and cut after every
+     receipt). Take it out of the flow instead.
+
+     `.print-area` is portalled to <body> on the surfaces that print a document
+     (see PrintPortal), so hiding body's other children is safe. The `:has()`
+     clause is what keeps the surfaces that mark a `.print-area` *inside* the
+     page — ReportsPage, ProductionReportsPage — printing at all: their body
+     child is kept because it contains the print target. */
+  body > *:not(.print-area):not(:has(.print-area)) { display: none !important; }
   /* Production slip: always print the full table, never the mobile card layout,
      regardless of the on-screen viewport width. */
   .print-doc-table { display: table !important; }
@@ -361,16 +373,6 @@
     /* 80mm roll less the 3mm page margins. Printers vary by a millimetre or two,
        so the receipt is sized in mm and centred rather than stretched to 100%. */
     width: 74mm;
-  }
-  /* A roll has no page edge to absorb the rest of the document. `body *` above
-     only makes the app *invisible*, not absent — it still takes up flow — so on
-     a sheet that costs a trailing blank page or two, and on a continuous roll it
-     is blank paper fed and cut after every receipt. Drop it from the flow while
-     POS is armed. Safe because the receipt is portalled to <body> (see
-     PrintPortal); the `:has()` clause keeps any future POS surface that nests
-     `.print-area` inside the page from printing nothing at all. */
-  html[data-print-paper='pos'] body > *:not(.print-area):not(:has(.print-area)) {
-    display: none !important;
   }
   /* A receipt is one continuous strip: the roll is cut at the end of the job, so
      a forced page break after the document only feeds and cuts blank paper. */
