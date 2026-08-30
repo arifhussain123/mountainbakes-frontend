@@ -114,3 +114,80 @@ export function usePrintCapability(): PrintCapability {
   const mode: PrintMode = preference === 'auto' ? detected : preference;
   return { mode, canPrint: mode === 'print', preference, detected, setPreference };
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Paper size — A4 sheet vs POS (thermal roll)
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** Which paper the print surface should lay itself out for. */
+export type PaperMode = 'a4' | 'pos';
+
+/** Device preference: `auto` defers to detection, the others pin the answer. */
+export type PaperPreference = 'auto' | PaperMode;
+
+const PAPER_KEY = 'mb.printPaper';
+
+/**
+ * IMPORTANT — the same limitation as `detectMode`, only harder: a browser cannot
+ * name the selected printer, let alone its paper width. `window.print()` hands
+ * off to the OS dialog and reports nothing back. So there is no honest way to
+ * *detect* a thermal roll, and `auto` deliberately resolves to **A4** — the
+ * layout every device has always printed.
+ *
+ * That is the safe default on purpose: a shop that plugs in a POS printer sets
+ * this once (`setPaperPreference('pos')`) and the choice sticks in that device's
+ * localStorage, so every later print picks the receipt layout with no further
+ * clicks. Every other device — the office A4 laser, a phone saving a PDF — is
+ * left on `auto`, never sees the 80mm layout, and prints exactly what it printed
+ * before. A wrong guess here would cost a ruined delivery challan, so nothing is
+ * guessed.
+ */
+function detectPaper(): PaperMode {
+  return 'a4';
+}
+
+function getPaperPreference(): PaperPreference {
+  try {
+    const raw = localStorage.getItem(PAPER_KEY);
+    return raw === 'a4' || raw === 'pos' ? raw : 'auto';
+  } catch {
+    return 'auto'; // Private mode / storage disabled — fall back to detection.
+  }
+}
+
+export interface PaperCapability {
+  /** Resolved paper — the preference when set, otherwise detection (A4). */
+  paper: PaperMode;
+  /** `true` when this device should print the 80mm receipt layout. */
+  isPos: boolean;
+  /** What this device was told, `auto` if it has never been told anything. */
+  paperPreference: PaperPreference;
+  /** Pin (or un-pin, with `auto`) the paper for this device. */
+  setPaperPreference: (pref: PaperPreference) => void;
+}
+
+/**
+ * Decides whether a print surface lays out for an A4 sheet or a POS roll.
+ *
+ * Split from `usePrintCapability` because the two answers are independent: a
+ * device can have a printer and still be A4, or be pinned to POS while the
+ * button reads "Save as PDF". Only surfaces that actually *have* a receipt
+ * layout should read this — everything else keeps printing A4 unconditionally.
+ */
+export function usePaperCapability(): PaperCapability {
+  const paperPreference = useSyncExternalStore(subscribe, getPaperPreference, () => 'auto' as const);
+
+  const setPaperPreference = useCallback((pref: PaperPreference) => {
+    try {
+      if (pref === 'auto') localStorage.removeItem(PAPER_KEY);
+      else localStorage.setItem(PAPER_KEY, pref);
+    } catch {
+      // Storage unavailable: nothing persists, but still notify so the current
+      // view does not look frozen — it reverts to detection on the next load.
+    }
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  }, []);
+
+  const paper: PaperMode = paperPreference === 'auto' ? detectPaper() : paperPreference;
+  return { paper, isPos: paper === 'pos', paperPreference, setPaperPreference };
+}

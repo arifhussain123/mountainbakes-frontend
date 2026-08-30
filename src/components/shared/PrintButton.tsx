@@ -12,13 +12,24 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Printer, Download, ChevronDown } from 'lucide-react';
-import { usePrintCapability, type PrintPreference } from '@/hooks/usePrintCapability';
+import {
+  usePrintCapability,
+  usePaperCapability,
+  type PrintPreference,
+  type PaperPreference,
+} from '@/hooks/usePrintCapability';
 import { cn } from '@/lib/utils';
 
 const OPTIONS: { value: PrintPreference; label: string; hint: string }[] = [
   { value: 'auto', label: 'Detect automatically', hint: 'Guess from the device' },
   { value: 'print', label: 'This device has a printer', hint: 'Always offer Print' },
   { value: 'save', label: 'No printer on this device', hint: 'Always offer Save as PDF' },
+];
+
+const PAPER_OPTIONS: { value: PaperPreference; label: string; hint: string }[] = [
+  { value: 'auto', label: 'Detect automatically', hint: 'Falls back to A4' },
+  { value: 'a4', label: 'A4 sheet printer', hint: 'Full-page delivery challan' },
+  { value: 'pos', label: 'POS receipt printer', hint: '80mm thermal roll' },
 ];
 
 export interface PrintButtonProps {
@@ -30,6 +41,16 @@ export interface PrintButtonProps {
   saveLabel?: string;
   /** Drop the "which device is this?" menu when there is no room for it. */
   showMenu?: boolean;
+  /**
+   * Offer the A4 / POS-roll choice as well.
+   *
+   * Off by default and it must stay that way: the setting is per *device*, not
+   * per screen, so exposing it somewhere that has no receipt layout would let
+   * someone pin a shared till to POS and quietly reformat the page box of every
+   * report printed from it afterwards. Turn it on only where a POS layout
+   * actually exists to render.
+   */
+  showPaper?: boolean;
   disabled?: boolean;
   variant?: ComponentProps<typeof Button>['variant'];
   size?: ComponentProps<typeof Button>['size'];
@@ -62,6 +83,7 @@ export function PrintButton({
   printLabel = 'Print',
   saveLabel = 'Save as PDF',
   showMenu = true,
+  showPaper = false,
   disabled,
   variant = 'default',
   size = 'default',
@@ -69,6 +91,7 @@ export function PrintButton({
   buttonClassName,
 }: PrintButtonProps) {
   const { mode, preference, setPreference } = usePrintCapability();
+  const { paperPreference, setPaperPreference } = usePaperCapability();
   const save = mode === 'save';
 
   function run() {
@@ -122,6 +145,27 @@ export function PrintButton({
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+
+            {showPaper && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Paper on this device</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={paperPreference}
+                  onValueChange={(v) => setPaperPreference(v as PaperPreference)}
+                >
+                  {PAPER_OPTIONS.map((o) => (
+                    <DropdownMenuRadioItem key={o.value} value={o.value} className="py-1.5">
+                      <span className="flex flex-col">
+                        <span>{o.label}</span>
+                        <span className="text-xs text-muted-foreground">{o.hint}</span>
+                      </span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

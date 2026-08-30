@@ -345,6 +345,42 @@
 
   /* Copy watermark must actually ink on paper (browsers drop backgrounds/greys otherwise). */
   .copy-watermark { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── POS (thermal roll) ───────────────────────────────────────────────────
+     Only ever active while `data-print-paper="pos"` is on <html>, which
+     `applyPrintPaper()` (src/lib/printPaper.ts) sets immediately before
+     window.print() and drops again on afterprint. Nothing here can reach an A4
+     print: with the attribute absent every rule above applies exactly as it did
+     before this block existed.
+
+     The matching `@page { size: 80mm auto }` is injected by that same helper —
+     @page takes no selector, so it is the one part that cannot live here. */
+  html[data-print-paper='pos'] .print-area {
+    /* 80mm roll less the 3mm page margins. Printers vary by a millimetre or two,
+       so the receipt is sized in mm and centred rather than stretched to 100%. */
+    width: 74mm;
+  }
+  /* A receipt is one continuous strip: the roll is cut at the end of the job, so
+     a forced page break after the document only feeds and cuts blank paper. */
+  html[data-print-paper='pos'] .print-sheet,
+  html[data-print-paper='pos'] .print-page {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  /* The half-page geometry is an A4 idea — two copies sharing one sheet. On a
+     roll there is one document, so the height floor would just pad it out. */
+  html[data-print-paper='pos'] .print-half {
+    min-height: 0;
+  }
+  html[data-print-paper='pos'] .print-half + .print-half {
+    border-top: 0;
+    padding-top: 0;
+  }
+  /* 74mm cannot carry side-by-side columns; any multi-column print layout
+     collapses to a single stack. */
+  html[data-print-paper='pos'] .print-cols {
+    display: block !important;
+  }
 }
 
 /* Hidden on screen; revealed inside the @media print block above. */
