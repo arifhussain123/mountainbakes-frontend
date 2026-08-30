@@ -353,12 +353,24 @@
      print: with the attribute absent every rule above applies exactly as it did
      before this block existed.
 
-     The matching `@page { size: 80mm auto }` is injected by that same helper —
-     @page takes no selector, so it is the one part that cannot live here. */
+     The matching `@page { size: auto }`, which is what releases the A4 page box
+     above so the driver's own roll geometry applies, is injected by that same
+     helper — @page takes no selector, so it is the one part that cannot live
+     here. printPaper.ts explains why the width is not named there. */
   html[data-print-paper='pos'] .print-area {
     /* 80mm roll less the 3mm page margins. Printers vary by a millimetre or two,
        so the receipt is sized in mm and centred rather than stretched to 100%. */
     width: 74mm;
+  }
+  /* A roll has no page edge to absorb the rest of the document. `body *` above
+     only makes the app *invisible*, not absent — it still takes up flow — so on
+     a sheet that costs a trailing blank page or two, and on a continuous roll it
+     is blank paper fed and cut after every receipt. Drop it from the flow while
+     POS is armed. Safe because the receipt is portalled to <body> (see
+     PrintPortal); the `:has()` clause keeps any future POS surface that nests
+     `.print-area` inside the page from printing nothing at all. */
+  html[data-print-paper='pos'] body > *:not(.print-area):not(:has(.print-area)) {
+    display: none !important;
   }
   /* A receipt is one continuous strip: the roll is cut at the end of the job, so
      a forced page break after the document only feeds and cuts blank paper. */

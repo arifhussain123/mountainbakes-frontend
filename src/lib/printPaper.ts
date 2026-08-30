@@ -3,11 +3,27 @@ import type { PaperMode } from '@/hooks/usePrintCapability';
 const STYLE_ID = 'mb-print-paper';
 
 /**
- * 80mm roll less 3mm of margin either side. Height is `auto` — a receipt printer
- * feeds and cuts at the end of the content, so pinning a height would either
- * clip a long demand or spit blank paper after a short one.
+ * The POS page box: whatever the roll printer says it is, less 3mm of margin
+ * either side.
+ *
+ * `size: auto`, NOT `80mm auto`. The height has to be automatic — a receipt
+ * printer feeds and cuts at the end of the content, so pinning a height would
+ * either clip a long demand or spit blank paper after a short one — but CSS has
+ * no way to say "this width, that height automatic": `size` takes `auto` alone,
+ * one length, two lengths, or a page-size keyword. `80mm auto` is a **parse
+ * error**, so the browser dropped the declaration and left `size: A4` (from the
+ * base `@page` in globals.css) in force — an A4 page box asked of a printer that
+ * only has an 80mm roll, which is what produced "Print preview failed" with the
+ * Print button greyed out. The margins in the same rule parsed fine, which is
+ * why this looked like it was working at all.
+ *
+ * `size: auto` hands the page box to the driver, the only party that knows the
+ * roll is 80mm and continuous. No width is lost by not naming one:
+ * `html[data-print-paper='pos'] .print-area` in globals.css lays the receipt out
+ * at a hard 74mm, so it comes out receipt-width on the roll — and on a device
+ * saving a PDF instead, the same 74mm strip on that device's default sheet.
  */
-const POS_PAGE = '@page { size: 80mm auto; margin: 3mm 3mm 8mm; }';
+const POS_PAGE = '@page { size: auto; margin: 3mm 3mm 8mm; }';
 
 /**
  * Switches the printed page box to a POS roll for the next `window.print()`.
