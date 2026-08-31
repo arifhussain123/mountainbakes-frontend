@@ -454,6 +454,37 @@ export function useFinanceTickets(filters: Record<string, unknown> = {}) {
 }
 
 /**
+ * One query in full — the View popup (§5).
+ *
+ * A second endpoint rather than picking the row out of `useFinanceTickets`: the
+ * list deliberately carries no conversation, no amendments and no photos,
+ * because a queue of 500 queries does not need 500 threads. Reading the popup
+ * from the list would show an empty thread on every query.
+ *
+ * `liveRecord` comes back only for an Admin, and it is what the Amend dialog
+ * reads its current values from — the snapshot on the query is how the record
+ * looked when it was raised, which is exactly the figure NOT to write back.
+ */
+export function useFinanceTicket(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTicket(id ?? ''),
+    enabled: Boolean(token) && Boolean(id),
+    // The conversation is the one part of this module people watch in real time
+    // — an admin asks a question and waits for the answer.
+    staleTime: 15_000,
+    queryFn: async () =>
+      (
+        await apiCall<{ ticket: FinanceTicket & { liveRecord?: Record<string, unknown> | null } }>(
+          `/api/finance/tickets/${id}`,
+          {},
+          token,
+        )
+      ).ticket,
+  });
+}
+
+/**
  * Resolve a reference number to the finance record it names.
  *
  * A plain function rather than a hook: the lookup fires when someone presses

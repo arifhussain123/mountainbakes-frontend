@@ -167,6 +167,16 @@ export const qk = {
   // not serve the first one's figures under the new heading.
   financeTickets: (filters: Record<string, unknown>) => ['finance', 'tickets', filters] as const,
   financeTicketLookup: (referenceNo: string) => ['finance', 'ticketLookup', referenceNo] as const,
+  /**
+   * One query in full — its conversation, its amendments, its photos and (for an
+   * admin) the live record behind it.
+   *
+   * Its own key rather than reading the row out of the queue's cached list: the
+   * list endpoint deliberately does not carry any of those, so serving the View
+   * popup from it would show an empty thread on every query until the queue
+   * happened to refetch.
+   */
+  financeTicket: (id: string) => ['finance', 'ticket', id] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

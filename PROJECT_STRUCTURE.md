@@ -168,12 +168,17 @@ src/components/
 │                           LedgerHeadsPage · SalaryLedgerPage · SalaryForms
 │                           PartnerExpensesPage · CompanyTransactionForms
 │                           FinanceReportsPage · FinanceAuditPage
-│                           FinanceSettingsPage · FinanceHelpDeskPage
-│                           finance-actions · finance-ui
+│                           FinanceSettingsPage · finance-actions · finance-ui
+│                           FinanceHelpDeskPage · FinanceQueryDetail · help-desk-ui
+│                             ↳ Finance reports → ADMIN acts (migration 94).
+│                               FinanceHelpDeskPage also renders, with
+│                               `embedded`, the Support Center's Finance
+│                               Queries tab — one component, both surfaces.
 │
 ├── reports/                ReportsPage · PackingUsageReport
 ├── settings/               SettingsPage · NotificationRecipientsPage
-├── support/                SupportCenterPage · HelpDeskPage
+├── support/                SupportCenterPage (two tabs: branches/production, and
+│                           the Finance Help Desk) · HelpDeskPage
 ├── users/                  UsersPage · EditUserDialog · UserDetailsDialog
 │                           ResetPasswordDialog · UserActivity
 │

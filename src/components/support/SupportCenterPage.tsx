@@ -23,6 +23,9 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
+import { useFinanceTickets } from '@/lib/finance';
 import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
@@ -203,6 +206,16 @@ export function SupportCenterPage() {
 
   const openCount = useMemo(() => tickets.filter((t) => t.status === 'open').length, [tickets]);
 
+  // Just for the tab's badge. The tab's own content fetches the queue again with
+  // its filters; this is the unfiltered count, which is what a badge should show
+  // — a "(3)" that changes when you filter inside the tab would be wrong.
+  const { data: financeTickets = [] } = useFinanceTickets({});
+  const financeOpenCount = useMemo(
+    () =>
+      financeTickets.filter((t) => !['resolved', 'rejected', 'closed'].includes(t.status)).length,
+    [financeTickets],
+  );
+
   const columns = [
     col.accessor('ticketNumber', {
       header: 'Ticket',
@@ -317,12 +330,48 @@ export function SupportCenterPage() {
         <div>
           <h2 className="text-lg font-semibold">Support Center</h2>
           <p className="text-sm text-muted-foreground">
-            {openCount} open · {tickets.length} total — resolve queries raised from branches & production.
+            Queries raised from branches, production and Finance — all of them land here.
           </p>
         </div>
       </div>
 
-      <DataTable columns={columns} data={tickets} loading={loading} searchPlaceholder="Search tickets…" />
+      {/* Two queues, deliberately not merged.
+          
+          They share a shape and nothing else: an operations ticket corrects a
+          sale or a demand and is resolved by an admin OR a manager, while a
+          finance query corrects the BOOKS and can only be resolved by an admin —
+          with a reason, an amendment record and a Query ID on every change
+          (§21). Merging them would mean one table whose Action column means two
+          different things depending on the row, and one delete button with two
+          sets of consequences. The tab is what satisfies "the query must be
+          directly available in the Admin Support Center" without that. */}
+      <Tabs defaultValue="operations">
+        <TabsList>
+          <TabsTrigger value="operations">
+            Branches &amp; Production{openCount > 0 ? ` (${openCount})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="finance">
+            Finance Queries{financeOpenCount > 0 ? ` (${financeOpenCount})` : ''}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="operations" className="mt-4 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {openCount} open · {tickets.length} total — resolve queries raised from branches &amp;
+            production.
+          </p>
+          <DataTable columns={columns} data={tickets} loading={loading} searchPlaceholder="Search tickets…" />
+        </TabsContent>
+
+        {/* The Finance Help Desk itself, not a copy of it. The page already
+            renders the admin half of the queue for anyone `financeHelpDeskCan`
+            says may respond, so embedding it here gives the admin the same
+            controls in both places rather than a second implementation that
+            drifts. `embedded` drops its own page heading; nothing else differs. */}
+        <TabsContent value="finance" className="mt-4">
+          <FinanceHelpDeskPage embedded />
+        </TabsContent>
+      </Tabs>
 
       {active && mode === 'view' && <ViewDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
       {active && mode === 'edit' && <EditDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
