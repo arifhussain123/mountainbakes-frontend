@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
 import { DataTable } from '@/components/shared/DataTable';
 import { StatCard } from '@/components/shared/StatCard';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +30,7 @@ import {
   Inbox,
   Loader2,
   Plus,
+  RotateCcw,
   Search,
   ShieldAlert,
   Timer,
@@ -45,6 +47,7 @@ import {
   FINANCE_TICKET_PREFIXES,
   FINANCE_TICKET_STATUSES,
   FINANCE_TICKET_STATUS_LABELS,
+  isFinanceTicketLive,
   type Attachment,
   type FinanceQueryPriority,
   type FinanceQueryType,
@@ -97,7 +100,7 @@ function NewQueryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const mutation = useFinanceMutation();
 
   const [queryType, setQueryType] = useState<FinanceQueryType>('other');
-  const [priority, setPriority] = useState<FinanceQueryPriority>('medium');
+  const [priority, setPriority] = useState<FinanceQueryPriority>('normal');
   const [referenceNo, setReferenceNo] = useState('');
   const [voucherRef, setVoucherRef] = useState('');
   const [reference, setReference] = useState<FinanceTicketReferenceLookup | null>(null);
@@ -319,12 +322,16 @@ function NewQueryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 function DashboardCards({ tickets, isAdmin }: { tickets: FinanceTicket[]; isAdmin: boolean }) {
   const counts = useMemo(() => {
     const by = (s: FinanceTicketStatus) => tickets.filter((t) => t.status === s).length;
-    const live = tickets.filter((t) => !['resolved', 'rejected', 'closed'].includes(t.status));
+    // `isFinanceTicketLive` rather than an inline list of the terminal three:
+    // that list was written out here and in two other places, and every one of
+    // them would have silently excluded `reopened` when migration 95 added it.
+    const live = tickets.filter((t) => isFinanceTicketLive(t.status));
     const newest = tickets.reduce((max, t) => Math.max(max, new Date(t.updatedAt).getTime()), 0);
     return {
       open: by('open'),
       underReview: by('under_review'),
-      waiting: by('waiting_for_information'),
+      waiting: by('waiting_for_finance'),
+      reopened: by('reopened'),
       resolved: by('resolved'),
       closed: by('closed'),
       highPriority: live.filter((t) => t.priority === 'high' || t.priority === 'urgent').length,
@@ -356,12 +363,13 @@ function DashboardCards({ tickets, isAdmin }: { tickets: FinanceTicket[]; isAdmi
       <StatCard title="Open" value={counts.open} icon={CircleDot} color="blue" />
       <StatCard title="Under Review" value={counts.underReview} icon={Timer} color="orange" />
       <StatCard title="High Priority" value={counts.highPriority} icon={ShieldAlert} color="red" />
-      <StatCard title="Waiting for Information" value={counts.waiting} icon={Clock} color="brown" />
+      <StatCard title="Waiting for Finance" value={counts.waiting} icon={Clock} color="brown" />
       <StatCard title="Resolved" value={counts.resolved} icon={CheckCircle2} color="green" />
       <StatCard title="Closed" value={counts.closed} icon={Archive} color="brown" />
 
       {isAdmin && (
         <>
+          <StatCard title="Reopened" value={counts.reopened} icon={RotateCcw} color="red" />
           <StatCard title="All Queries" value={counts.all} icon={Inbox} color="blue" />
           <StatCard title="Unassigned" value={counts.unassigned} icon={FileQuestion} color="orange" />
           <StatCard title="Urgent" value={counts.urgent} icon={AlertOctagon} color="red" />
@@ -376,7 +384,24 @@ function DashboardCards({ tickets, isAdmin }: { tickets: FinanceTicket[]; isAdmi
 // The page
 // ---------------------------------------------------------------------------
 
-export function FinanceHelpDeskPage({ embedded = false }: { embedded?: boolean }) {
+export function FinanceHelpDeskPage({
+  embedded = false,
+  sourceTag = false,
+}: {
+  embedded?: boolean;
+  /**
+   * Renders §5's FINANCE badge beside every Query ID.
+   *
+   *     FINANCE
+   *     FIN-HD-20260901-00001
+   *
+   * Off on the finance module's own page, where every row is a finance query and
+   * the badge would be noise on all of them; on inside the Admin Support Center,
+   * where this table sits beside the branch and production queue and the tag is
+   * how a row says which desk it came from.
+   */
+  sourceTag?: boolean;
+}) {
   const abilities = useHelpDeskAbilities();
 
   const [status, setStatus] = useState<FinanceTicketStatus | 'all'>('all');
@@ -418,12 +443,40 @@ export function FinanceHelpDeskPage({ embedded = false }: { embedded?: boolean }
     [tickets],
   );
 
+  /**
+   * §4's columns: Query ID · Date · Subject · Category · Priority · Status ·
+   * Admin · Last Update · Action.
+   *
+   * `meta.mobile` is what makes the same definition render as a full table above
+   * md and as one card per query below it (§20) — DataTable reads these
+   * annotations and needs no second implementation. `title`/`subtitle`/`badge`
+   * are the card's head; `mobileFull` puts a field on its own row; `hidden`
+   * drops a field from the card entirely, which is how the card stays the six
+   * lines §20 asks for rather than a table turned sideways.
+   */
   const columns = useMemo(
     () => [
       col.accessor('queryNo', {
         header: 'Query ID',
         meta: { mobile: 'title' },
-        cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+        cell: ({ row }) => (
+          <div className="flex flex-col items-start gap-0.5">
+            {sourceTag && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300"
+              >
+                Finance
+              </Badge>
+            )}
+            <span className="font-mono text-xs">{row.original.queryNo}</span>
+            {row.original.reopenCount > 0 && (
+              <span className="text-[10px] text-fuchsia-700 dark:text-fuchsia-400">
+                Reopened {row.original.reopenCount}×
+              </span>
+            )}
+          </div>
+        ),
       }),
       col.accessor('createdAt', {
         header: 'Date',
@@ -439,14 +492,19 @@ export function FinanceHelpDeskPage({ embedded = false }: { embedded?: boolean }
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{row.original.subject}</p>
             <p className="text-xs text-muted-foreground">
-              {FINANCE_QUERY_TYPE_LABELS[row.original.queryType]} · {row.original.raisedByName}
+              {row.original.raisedByName}
+              {row.original.referenceNo ? ` · ${row.original.referenceNo}` : ''}
             </p>
           </div>
         ),
       }),
-      col.accessor((t) => t.referenceNo ?? '', {
-        id: 'reference',
-        header: 'Reference',
+      col.accessor((t) => FINANCE_QUERY_TYPE_LABELS[t.queryType], {
+        id: 'category',
+        header: 'Category',
+        // Hidden on the card: §20's card leads with the ID, the subject, the
+        // priority and the status, and the category is already the first thing
+        // the View popup shows.
+        meta: { mobile: 'hidden' },
         cell: ({ row }) => <QueryReference ticket={row.original} />,
       }),
       col.accessor('priority', {
@@ -459,16 +517,35 @@ export function FinanceHelpDeskPage({ embedded = false }: { embedded?: boolean }
         meta: { mobile: 'badge', align: 'center' },
         cell: (info) => <QueryStatusBadge status={info.getValue()} />,
       }),
-      col.accessor((t) => t.adminResponse ?? t.resolutionNote ?? '', {
-        id: 'adminResponse',
-        header: 'Admin Response',
-        meta: { mobileFull: true, mobileLabel: 'Admin response' },
+      col.accessor((t) => t.assignedToName ?? '', {
+        id: 'admin',
+        header: 'Admin',
+        meta: { mobile: 'hidden' },
         cell: ({ row }) => {
-          const text = row.original.adminResponse ?? row.original.resolutionNote;
-          if (!text) {
-            return <span className="text-xs text-muted-foreground">Awaiting Admin</span>;
-          }
-          return <span className="line-clamp-2 max-w-[18rem] text-sm">{text}</span>;
+          const t = row.original;
+          if (t.assignedToName) return <span className="text-sm">{t.assignedToName}</span>;
+          // An answered-but-unassigned query is normal: an admin can respond
+          // without taking the query, and saying "Unassigned" there would read
+          // as "nobody has looked at this".
+          if (t.respondedByName) return <span className="text-sm">{t.respondedByName}</span>;
+          return <span className="text-xs text-muted-foreground">Unassigned</span>;
+        },
+      }),
+      col.accessor('updatedAt', {
+        id: 'lastUpdate',
+        header: 'Last Update',
+        meta: { mobileFull: true, mobileLabel: 'Last update' },
+        cell: ({ row }) => {
+          const t = row.original;
+          const answer = t.adminResponse ?? t.resolutionNote;
+          return (
+            <div className="min-w-0">
+              <p className="whitespace-nowrap text-sm">{formatQueryDate(t.updatedAt)}</p>
+              <p className="line-clamp-2 max-w-[16rem] text-xs text-muted-foreground">
+                {answer ?? 'Awaiting Admin'}
+              </p>
+            </div>
+          );
         },
       }),
       col.display({
@@ -488,7 +565,7 @@ export function FinanceHelpDeskPage({ embedded = false }: { embedded?: boolean }
         ),
       }),
     ],
-    [],
+    [sourceTag],
   );
 
   const filterControls = (

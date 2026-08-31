@@ -23,12 +23,64 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
 import { useFinanceTickets } from '@/lib/finance';
+import { isBranchRole, isFinanceTicketLive } from '@mb/shared';
 import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
+
+/**
+ * §5's Source filter — WHERE a query came from, which is the axis an admin
+ * working this desk actually filters on. "The branches are complaining about
+ * stock" and "Finance has three unanswered queries" are two different jobs, and
+ * before this the desk could only be read as one list of everything.
+ *
+ * Source is not the same thing as the reference type. A stock query and a sale
+ * query both come from a branch; a demand comes from a branch but is worked by
+ * Production. It is derived from `raisedByRole`, which is who actually raised it.
+ */
+type SupportSource = 'all' | 'finance' | 'branch' | 'production';
+
+const SOURCE_LABELS: Record<SupportSource, string> = {
+  all: 'All',
+  finance: 'Finance',
+  branch: 'Branch',
+  production: 'Production',
+};
+
+const SOURCES = ['all', 'finance', 'branch', 'production'] as const satisfies readonly SupportSource[];
+
+/**
+ * A ticket's source, from the role that raised it.
+ *
+ * 'system' tickets — opened by an unattended job that failed, with no human
+ * raiser — have no role and no source. They surface under All and under no
+ * narrower filter, which is right: they belong to nobody's queue but the
+ * admin's, and hiding them behind a source that does not describe them would be
+ * worse than showing them only in the unfiltered view.
+ */
+function sourceOfTicket(ticket: SupportTicket): Exclude<SupportSource, 'all'> | null {
+  const role = ticket.raisedByRole;
+  if (isBranchRole(role)) return 'branch';
+  if (role === 'production_user') return 'production';
+  return null;
+}
+
+/** The badge that makes §5's "FINANCE / FIN-HD-…" identification literal. */
+const SOURCE_BADGE: Record<Exclude<SupportSource, 'all'>, string> = {
+  finance: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+  branch: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+  production: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+};
+
+export function SourceBadge({ source }: { source: Exclude<SupportSource, 'all'> }) {
+  return (
+    <Badge variant="secondary" className={cn('text-[10px] uppercase tracking-wide', SOURCE_BADGE[source])}>
+      {SOURCE_LABELS[source]}
+    </Badge>
+  );
+}
 
 const STATUS_VARIANT: Record<SupportTicket['status'], 'default' | 'secondary' | 'destructive'> = {
   open: 'default',
@@ -171,6 +223,7 @@ interface StockCorrectionResult {
 }
 
 export function SupportCenterPage() {
+  const [source, setSource] = useState<SupportSource>('all');
   const { token } = useAuth();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,15 +257,35 @@ export function SupportCenterPage() {
     }
   }
 
-  const openCount = useMemo(() => tickets.filter((t) => t.status === 'open').length, [tickets]);
+  // Which queues the chosen source shows. 'all' shows both, stacked under their
+  // own headings; every other value shows exactly one.
+  const showFinance = source === 'all' || source === 'finance';
+  const showOperations = source !== 'finance';
 
-  // Just for the tab's badge. The tab's own content fetches the queue again with
-  // its filters; this is the unfiltered count, which is what a badge should show
-  // — a "(3)" that changes when you filter inside the tab would be wrong.
+  const visibleTickets = useMemo(
+    () =>
+      source === 'all' || source === 'finance'
+        ? tickets
+        : tickets.filter((t) => sourceOfTicket(t) === source),
+    [tickets, source],
+  );
+
+  const branchOpenCount = useMemo(
+    () => tickets.filter((t) => t.status === 'open' && sourceOfTicket(t) === 'branch').length,
+    [tickets],
+  );
+  const productionOpenCount = useMemo(
+    () => tickets.filter((t) => t.status === 'open' && sourceOfTicket(t) === 'production').length,
+    [tickets],
+  );
+
+  // Just for the Finance button's badge. The Finance section fetches the queue
+  // again with its own filters; this is the UNFILTERED count, which is what a
+  // badge should show — a "(3)" that moved when you filtered inside the section
+  // would be telling you about a different list than the one you were reading.
   const { data: financeTickets = [] } = useFinanceTickets({});
   const financeOpenCount = useMemo(
-    () =>
-      financeTickets.filter((t) => !['resolved', 'rejected', 'closed'].includes(t.status)).length,
+    () => financeTickets.filter((t) => isFinanceTicketLive(t.status)).length,
     [financeTickets],
   );
 
@@ -236,12 +309,20 @@ export function SupportCenterPage() {
     }),
     col.accessor('branchName', {
       header: 'From',
-      cell: ({ row }) => (
-        <div className="text-sm">
-          <p>{row.original.branchName || '—'}</p>
-          <p className="text-xs text-muted-foreground capitalize">{(row.original.raisedByRole || '').replace('_', ' ')}</p>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const src = sourceOfTicket(row.original);
+        return (
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center gap-2">
+              {src ? <SourceBadge source={src} /> : <Badge variant="outline">System</Badge>}
+              <span>{row.original.branchName || '—'}</span>
+            </div>
+            <p className="text-xs text-muted-foreground capitalize">
+              {(row.original.raisedByRole || '').replace('_', ' ')}
+            </p>
+          </div>
+        );
+      },
     }),
     col.accessor('message', {
       header: 'Issue',
@@ -335,43 +416,88 @@ export function SupportCenterPage() {
         </div>
       </div>
 
-      {/* Two queues, deliberately not merged.
+      {/* §5's Source filter.
           
-          They share a shape and nothing else: an operations ticket corrects a
-          sale or a demand and is resolved by an admin OR a manager, while a
-          finance query corrects the BOOKS and can only be resolved by an admin —
-          with a reason, an amendment record and a Query ID on every change
-          (§21). Merging them would mean one table whose Action column means two
-          different things depending on the row, and one delete button with two
-          sets of consequences. The tab is what satisfies "the query must be
-          directly available in the Admin Support Center" without that. */}
-      <Tabs defaultValue="operations">
-        <TabsList>
-          <TabsTrigger value="operations">
-            Branches &amp; Production{openCount > 0 ? ` (${openCount})` : ''}
-          </TabsTrigger>
-          <TabsTrigger value="finance">
-            Finance Queries{financeOpenCount > 0 ? ` (${financeOpenCount})` : ''}
-          </TabsTrigger>
-        </TabsList>
+          It replaces a two-tab layout, and it is a filter rather than four tabs
+          because "All" has to mean all: an admin opening this desk in the
+          morning wants everything outstanding, from every source, without
+          picking a tab first.
+          
+          What it does NOT do is merge the two queues into one table, and that
+          restraint is deliberate. They share a shape and nothing else: an
+          operations ticket corrects a sale or a demand and is resolved by an
+          admin OR a manager, while a finance query corrects the BOOKS, can only
+          be resolved by an admin, and carries a reason, an amendment record and
+          a Query ID on every change. One table would mean an Action column that
+          means two different things depending on the row, and one Delete button
+          with two sets of consequences. Under "All" they are two sections with
+          two headings, each keeping its own controls — which is what §5 asks for
+          ("Finance queries must be clearly identified") rather than what it
+          would forbid. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Source</span>
+        {/* flex-wrap on the group, not just its container: four labels with
+            counts overflow a narrow phone in one row, and §20 asks that this
+            desk stay operable there. */}
+        <div className="inline-flex flex-wrap rounded-md border p-0.5" role="group" aria-label="Filter by source">
+          {SOURCES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={source === s}
+              onClick={() => setSource(s)}
+              className={cn(
+                'h-9 rounded px-3 text-sm transition-colors',
+                source === s
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              {SOURCE_LABELS[s]}
+              {s === 'finance' && financeOpenCount > 0 ? ` (${financeOpenCount})` : ''}
+              {s === 'branch' && branchOpenCount > 0 ? ` (${branchOpenCount})` : ''}
+              {s === 'production' && productionOpenCount > 0 ? ` (${productionOpenCount})` : ''}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <TabsContent value="operations" className="mt-4 space-y-4">
+      {showOperations && (
+        <section className="space-y-3">
+          {source === 'all' && (
+            <h3 className="text-sm font-semibold">Branches &amp; Production</h3>
+          )}
           <p className="text-sm text-muted-foreground">
-            {openCount} open · {tickets.length} total — resolve queries raised from branches &amp;
-            production.
+            {visibleTickets.filter((t) => t.status === 'open').length} open ·{' '}
+            {visibleTickets.length} total — queries raised from{' '}
+            {source === 'branch'
+              ? 'branches'
+              : source === 'production'
+                ? 'production'
+                : 'branches & production'}
+            .
           </p>
-          <DataTable columns={columns} data={tickets} loading={loading} searchPlaceholder="Search tickets…" />
-        </TabsContent>
+          <DataTable
+            columns={columns}
+            data={visibleTickets}
+            loading={loading}
+            searchPlaceholder="Search tickets…"
+          />
+        </section>
+      )}
 
-        {/* The Finance Help Desk itself, not a copy of it. The page already
-            renders the admin half of the queue for anyone `financeHelpDeskCan`
-            says may respond, so embedding it here gives the admin the same
-            controls in both places rather than a second implementation that
-            drifts. `embedded` drops its own page heading; nothing else differs. */}
-        <TabsContent value="finance" className="mt-4">
-          <FinanceHelpDeskPage embedded />
-        </TabsContent>
-      </Tabs>
+      {/* The Finance Help Desk itself, not a copy of it. The page already renders
+          the admin half of the queue for anyone `financeHelpDeskCan` says may
+          respond, so embedding it here gives the admin the same controls in both
+          places rather than a second implementation that drifts. `embedded`
+          drops its own page heading; `sourceTag` adds the FINANCE badge §5 asks
+          for beside every Query ID. */}
+      {showFinance && (
+        <section className="space-y-3">
+          {source === 'all' && <h3 className="text-sm font-semibold">Finance Queries</h3>}
+          <FinanceHelpDeskPage embedded sourceTag />
+        </section>
+      )}
 
       {active && mode === 'view' && <ViewDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
       {active && mode === 'edit' && <EditDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}

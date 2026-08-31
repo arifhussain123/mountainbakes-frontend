@@ -69,14 +69,21 @@ export function useHelpDeskAbilities(): HelpDeskAbilities {
  *   blue    — raised, nobody has it yet
  *   amber   — being worked on
  *   violet  — the ball is back in the raiser's court
+ *   fuchsia — answered once, and the answer was disputed
  *   emerald — dealt with
  *   red     — not an error, or refused
  *   slate   — filed; nothing further will happen
+ *
+ * Reopened gets its own colour rather than borrowing Open's blue. A reopened
+ * query is not a new one: it arrives with a resolution behind it that somebody
+ * has already rejected, and an admin scanning the queue needs to see that
+ * before opening it, not after.
  */
 const STATUS_STYLES: Record<FinanceTicketStatus, string> = {
   open: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
   under_review: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-  waiting_for_information: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+  waiting_for_finance: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+  reopened: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-300',
   resolved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   rejected: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
   closed: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -109,7 +116,7 @@ export function QueryStatusBadge({
  */
 const PRIORITY_STYLES: Record<FinanceQueryPriority, string> = {
   low: 'bg-muted text-muted-foreground',
-  medium: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300',
+  normal: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300',
   high: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300',
   urgent: 'bg-red-600 text-white dark:bg-red-700',
 };
