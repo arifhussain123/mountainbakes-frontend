@@ -18,6 +18,7 @@ import {
   type PrintPreference,
   type PaperPreference,
 } from '@/hooks/usePrintCapability';
+import { printDocument } from '@/lib/print/browser/documentPrint';
 import { cn } from '@/lib/utils';
 
 const OPTIONS: { value: PrintPreference; label: string; hint: string }[] = [
@@ -68,10 +69,21 @@ export interface PrintButtonProps {
  * Print action that names itself after the device: **Print** where a printer is
  * set up, **Save as PDF** where none is.
  *
- * Both do the same thing — `window.print()`, or `onPrint` — because that single
+ * Both do the same thing — `printDocument()`, or `onPrint` — because that single
  * dialog is both the printer picker and the PDF writer, and on a machine with no
  * printer installed "Save as PDF" is the only destination it can offer. Only the
  * promise made to the user changes.
+ *
+ * **This is the DOCUMENT button, not the receipt button.** It opens the browser
+ * dialog by design, which is right for an A4 challan or a report and wrong for a
+ * thermal receipt; those use `PosPrintButton`, which never opens it.
+ *
+ * The default action goes through `printDocument` rather than `window.print()`
+ * directly, and that is the fix for the reported "Print preview failed": a bare
+ * `window.print()` leaves the global `@page { size: A4 }` from globals.css in
+ * force, and an 80mm roll driver handed an A4 page box is exactly what Chrome
+ * cannot generate a preview for. `printDocument` applies this device's paper
+ * first and takes it back off on `afterprint`.
  *
  * The device is *guessed*, never known — see `usePrintCapability`. The attached
  * menu is not a nicety: it is how a wrong guess gets corrected, and the choice
@@ -91,12 +103,12 @@ export function PrintButton({
   buttonClassName,
 }: PrintButtonProps) {
   const { mode, preference, setPreference } = usePrintCapability();
-  const { paperPreference, setPaperPreference } = usePaperCapability();
+  const { paper, paperPreference, setPaperPreference } = usePaperCapability();
   const save = mode === 'save';
 
   function run() {
     if (onPrint) onPrint();
-    else window.print();
+    else printDocument({ paper });
   }
 
   return (

@@ -8,6 +8,7 @@ import { useBranchClosing } from '@/lib/queries';
 import { businessDateStr, businessDaysAgoStr, computeClosingTotals } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
 import { PrintButton } from '@/components/shared/PrintButton';
+import { printDocument } from '@/lib/print/browser/documentPrint';
 import { Button } from '@/components/ui/button';
 import { ClosingExportModal } from './ClosingExportModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -125,7 +126,7 @@ export function BranchClosingPage() {
           <Button variant="outline" size="sm" className="h-9" onClick={() => setExportOpen(true)}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Excel
           </Button>
-          <PrintButton onPrint={() => window.print()} printLabel="Print" saveLabel="Save PDF" size="sm" />
+          <PrintButton onPrint={() => printDocument()} printLabel="Print" saveLabel="Save PDF" size="sm" />
         </div>
       </div>
 

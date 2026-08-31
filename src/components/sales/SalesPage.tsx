@@ -23,6 +23,12 @@ import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import { Fab } from '@/components/shared/Fab';
 import { PrintButton } from '@/components/shared/PrintButton';
+import { PosPrintButton } from '@/components/print/PosPrintButton';
+import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
+import { usePosPrinter } from '@/hooks/usePosPrinter';
+import { printSaleReceipt } from '@/lib/print/pos/printerService';
+import { printDocument } from '@/lib/print/browser/documentPrint';
+import { usePaperCapability } from '@/hooks/usePrintCapability';
 import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
@@ -37,7 +43,55 @@ import {
   UNPAID_PAYMENT_METHOD,
 } from '@/utils/constants';
 
+import type { SaleReceiptDoc } from '@/lib/print/pos/receiptFormatter';
+
 const col = createColumnHelper<Order>();
+
+/**
+ * An invoice as the thermal receipt document.
+ *
+ * Every figure is taken from the saved sale and none is recomputed: `subtotal` on
+ * `InvoiceData` is already the GROSS (see `orderToInvoice`), `discountTotal` and
+ * `grandTotal` are the stored ones, and the receipt formatter refuses to print if
+ * they do not reconcile. Doing the arithmetic again here is how a printed total
+ * comes to differ from the record by a rupee, which is an argument at the counter
+ * that nobody can settle.
+ *
+ * The payment method is humanised here rather than in the formatter, because
+ * `PAYMENT_METHOD_LABELS` is where this app's method vocabulary lives — including
+ * the legacy values still sitting on old orders — and the printing layer should
+ * not grow a second copy of it.
+ */
+function invoiceToReceipt(
+  inv: InvoiceData,
+  opts: { branchName?: string | null; companyName?: string | null; currencySymbol: string },
+): SaleReceiptDoc {
+  const created = new Date(inv.createdAt);
+  return {
+    saleId: inv.orderNumber,
+    dateText: karachiDateStr(created),
+    timeText: karachiTimeStr(created),
+    customerName: inv.customerName,
+    customerPhone: inv.customerPhone,
+    branchName: opts.branchName ?? null,
+    companyName: opts.companyName ?? null,
+    currencySymbol: opts.currencySymbol,
+    items: inv.items.map((it) => ({
+      productName: it.productName,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      lineTotal: it.lineTotal,
+    })),
+    grossTotal: inv.subtotal,
+    discountTotal: inv.discountTotal,
+    taxAmount: inv.taxAmount,
+    grandTotal: inv.grandTotal,
+    paymentMethodLabel: PAYMENT_METHOD_LABELS[inv.paymentMethod] ?? inv.paymentMethod,
+    ...(inv.paymentMethod === 'cash' && inv.receivedCash != null
+      ? { receivedCash: inv.receivedCash, cashReturned: inv.cashReturned ?? 0 }
+      : {}),
+  };
+}
 
 /** Map a stored order to the invoice shape. `subtotal` is the gross (Σ qty×rate). */
 function orderToInvoice(o: Order): InvoiceData {
@@ -98,6 +152,12 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   const isToday = date === today;
 
   const cur = settings?.currencySymbol || 'Rs.';
+
+  // The POS printer this device is set up with, and the A4/roll page box for the
+  // browser path. Two independent answers: a till can have a thermal printer AND
+  // still print an A4 report from the same screen.
+  const posPrinter = usePosPrinter();
+  const { paper } = usePaperCapability();
 
   // A price change — from this browser or another device — refreshes the product
   // list backing the New Sale form, so the cashier never quotes a stale rate.
@@ -202,13 +262,20 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   }
   useEffect(loadSales, [token, date, isProduction]);
 
-  // Auto-open the browser print dialog when a sale is saved with "Save & Print"
-  useEffect(() => {
-    if (invoiceOpen) {
-      const id = setTimeout(() => window.print(), 350);
-      return () => clearTimeout(id);
-    }
-  }, [invoiceOpen]);
+  /*
+   * "Save & Print" used to call `window.print()` on a timer here, which is what
+   * put Chrome's preview — and, on a device pinned to an 80mm roll, its "Print
+   * preview failed" — in front of the counter after every sale.
+   *
+   * It now goes straight to the POS printer instead. The receipt dialog opens
+   * with `autoPrint` on its Print button (see below), so the press the cashier
+   * already made on the sale form is the only press there is, and the state,
+   * duplicate guards and failure panel are the same ones a manual press gets.
+   *
+   * `autoPrintInvoice` distinguishes a fresh sale from a reprint: reopening an
+   * old receipt from the table must show it, not fire a copy at the printer.
+   */
+  const [autoPrintInvoice, setAutoPrintInvoice] = useState(false);
 
   function handleSaved(inv: InvoiceData, shouldPrint: boolean) {
     setShowForm(false);
@@ -224,6 +291,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     loadStock(); // reflect the just-deducted balances
     if (shouldPrint) {
       setInvoice(inv);
+      setAutoPrintInvoice(posPrinter.configured);
       setInvoiceOpen(true);
     }
   }
@@ -231,6 +299,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   // Re-open the original invoice for printing. Read-only — no new sale, no stock change.
   function handleReprint(o: Order) {
     setInvoice(orderToInvoice(o));
+    // A reprint is a deliberate act with its own press. Firing automatically here
+    // would put a receipt on the roll every time someone opened one to look at it.
+    setAutoPrintInvoice(false);
     setInvoiceOpen(true);
   }
 
@@ -395,6 +466,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           <p className="text-sm text-muted-foreground">
             {isToday ? 'Today’s sales' : `Sales on ${date}`} · {sales.length} recorded
           </p>
+          {/* Live indicator and the way in to Printer Settings. Never blocks the
+              page — see PosPrinterStatus. */}
+          <PosPrinterStatus className="mt-1" role={user?.role} />
         </div>
         <div className="flex items-end gap-2">
           <div className="flex-1 space-y-1 sm:flex-none">
@@ -598,7 +672,31 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               </PrintPortal>
             </>
           )}
-          <PrintButton className="w-full" />
+          {/* The receipt goes straight to the thermal printer — no browser
+              preview, no destination picker. `PrintButton` (which opens the OS
+              dialog) is what a device with no POS printer falls back to, and the
+              A4 layout it prints is the portalled InvoiceView above. */}
+          {invoice && posPrinter.configured ? (
+            <PosPrintButton
+              className="w-full"
+              label="Print Receipt"
+              role={user?.role}
+              autoPrint={autoPrintInvoice}
+              print={() =>
+                printSaleReceipt(
+                  invoiceToReceipt(invoice, {
+                    branchName: branch?.name ?? (isProduction ? 'Production' : null),
+                    companyName: settings?.companyName,
+                    currencySymbol: cur,
+                  }),
+                  posPrinter.context,
+                )
+              }
+              onBrowserPrint={() => printDocument({ paper })}
+            />
+          ) : (
+            <PrintButton className="w-full" onPrint={() => printDocument({ paper })} />
+          )}
         </DialogContent>
       </Dialog>
 

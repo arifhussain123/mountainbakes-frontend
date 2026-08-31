@@ -12,7 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
 import { usePaperCapability } from '@/hooks/usePrintCapability';
-import { applyPrintPaper, resetPrintPaper } from '@/lib/printPaper';
+import { printDocument } from '@/lib/print/browser/documentPrint';
+import { PosPrintButton } from '@/components/print/PosPrintButton';
+import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
+import { usePosPrinter } from '@/hooks/usePosPrinter';
+import { useAuth } from '@/hooks/useAuth';
+import { printProductionOrder } from '@/lib/print/pos/printerService';
+import type { ProductionOrderDoc } from '@/lib/print/pos/receiptFormatter';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -47,6 +53,13 @@ function digits(raw: string): string {
 }
 
 const fmt = (n: number) => n.toLocaleString();
+
+/** `YYYY-MM-DD` as `DD/MM/YYYY`. String work, not Date work — these are already Karachi dates,
+ *  and parsing them into a Date would reintroduce the timezone shift they were stored to avoid. */
+function compactDate(iso: string): string {
+  const [y, m, d] = (iso || '').split('-');
+  return y && m && d ? `${d}/${m}/${y}` : (iso || '—');
+}
 const money = (n: number, sym: string) => `${sym}${Math.round(n).toLocaleString()}`;
 
 /** Split into `parts` roughly-equal, contiguous chunks (drops empty tail chunks). */
@@ -150,6 +163,8 @@ function PreviewBody({
   // A4 sheet or 80mm roll — pinned per device, `auto` resolves to A4. Nothing is
   // sniffed from the printer; see usePaperCapability for why that is impossible.
   const { paper } = usePaperCapability();
+  const posPrinter = usePosPrinter();
+  const { user } = useAuth();
 
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
@@ -352,29 +367,15 @@ function PreviewBody({
     }
   }
 
-  // Wait for the browser's own 'afterprint' signal before closing the dialog,
-  // instead of closing right after calling window.print(). window.print() does
-  // NOT reliably block script execution across browsers — closing immediately
-  // can unmount the print-only content (and the dialog itself) before the
-  // browser has actually captured it, which is what made the preview look
-  // empty. 'afterprint' fires once the print dialog is dismissed either way
-  // (printed or cancelled), so the content is guaranteed to still be in the
-  // DOM while printing happens.
-  //
-  // The paper switch rides on the same signal. `applyPrintPaper` mounts a global
-  // `@page` rule, so it MUST come back off once the dialog is dismissed —
-  // 'afterprint' fires whether the job printed or was cancelled, which is the
-  // only handler that holds in both cases. Leaving it mounted would print the
-  // next report from any screen in the app onto an 80mm page box.
+  // The A4 challan — a real document on a real sheet, so the browser dialog is
+  // the right tool and stays. The 80mm production slip is a different document
+  // with a different reader and goes through the POS path below, which never
+  // opens a dialog at all.
   function printAndClose() {
-    function done() {
-      window.removeEventListener('afterprint', done);
-      resetPrintPaper();
-      onClose();
-    }
-    window.addEventListener('afterprint', done);
-    applyPrintPaper(paper);
-    window.print();
+    // `printDocument` owns the paper switch and the afterprint cleanup that used
+    // to be written out here — see its header for why the reset is not optional
+    // and why the close has to wait for the browser's own signal.
+    printDocument({ paper, onAfterPrint: onClose });
   }
 
   // Print only prints — it no longer submits a pending demand as a side effect.
@@ -396,6 +397,51 @@ function PreviewBody({
     setEditing(false);
     setPrintMode('check');
     setTimeout(printAndClose, 300);
+  }
+
+  /**
+   * The demand as the 80mm production slip.
+   *
+   * Built from `printRows` and `totals` — the very rows and total the review
+   * table on screen is showing — rather than re-derived from `order.items`.
+   * That is the point: a slip the floor packs from must be the sheet the
+   * screen agreed to, and recomputing it at print time is how the two come to
+   * differ after someone edits a quantity.
+   *
+   * `requiredDate` is rendered as an em dash where the demand predates the field
+   * (migration 81) rather than falling back to `date`. Printing the raise date as
+   * a delivery commitment would put a promise on paper that nobody made.
+   */
+  function productionDoc(): ProductionOrderDoc {
+    return {
+      orderNumber: order.demandNumber || slipReference(order),
+      // Compact numeric dates, not the app's `dd MMM yyyy`: the header packs two
+      // label/value pairs onto a 48-character line, and "31 Aug 2026" twice does
+      // not fit beside its labels where "31/08/2026" does.
+      dateText: compactDate(order.date),
+      timeText: order.time || printTime,
+      requiredDateText: order.requiredDate ? compactDate(order.requiredDate) : '—',
+      branchName: branch?.name || order.branchName || '—',
+      companyName: settings?.companyName ?? COMPANY_NAME,
+      currencySymbol: sym,
+      items: printRows.map((r) => ({
+        productName: r.productName,
+        qty: r.approved,
+        unitPrice: r.unitPrice,
+        amount: r.amount,
+      })),
+      grandTotal: totals.amount,
+    };
+  }
+
+  async function printPos() {
+    setEditing(false);
+    const result = await printProductionOrder(productionDoc(), posPrinter.context);
+    // Same flag the A4 slip sets, and set the same way — fire and forget, because
+    // a failed bookkeeping call must not turn a receipt that DID print into an
+    // error the counter has to interpret.
+    markPrinted(order.id).catch(() => {});
+    return result;
   }
 
   const logo = settings?.logoUrl ?? undefined;
@@ -946,8 +992,37 @@ function PreviewBody({
             <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
           </Button>
         )}
-        {/* Says "Print" or "Save as PDF" depending on the device — same action either way. */}
-        <PrintButton variant="secondary" onPrint={print} disabled={reviewing} showPaper />
+        {/* Two printers, two documents.
+
+            The POS button sends the 80mm production slip straight to the thermal
+            printer — no browser preview, no destination to pick. It is only shown
+            where a printer has actually been set up on the device, because on the
+            office machine there is nothing for it to reach and it would be a
+            button that can only fail.
+
+            The A4 challan keeps the browser dialog, which is right for it: it is a
+            delivery document on a sheet, it paginates, and it is signed. Neither
+            button falls back to the other on its own. */}
+        {/* Also the only way in to Printer Settings from this screen, which is
+            what a production till needs before it can print anything at all. */}
+        <PosPrinterStatus className="mr-auto self-center" role={user?.role} />
+        {posPrinter.configured && (
+          <PosPrintButton
+            label="Print Order"
+            role={user?.role}
+            print={printPos}
+            disabled={reviewing}
+            onBrowserPrint={print}
+          />
+        )}
+        <PrintButton
+          variant="secondary"
+          onPrint={print}
+          disabled={reviewing}
+          showPaper
+          printLabel={posPrinter.configured ? 'A4 Challan' : 'Print'}
+          saveLabel={posPrinter.configured ? 'Save A4 PDF' : 'Save as PDF'}
+        />
       </div>
     </>
   );

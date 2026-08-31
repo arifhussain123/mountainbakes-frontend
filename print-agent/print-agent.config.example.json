@@ -1,0 +1,21 @@
+{
+  "port": 9110,
+  "allowedOrigins": [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://mountainbakes-dfc2c.web.app",
+    "https://mountainbakes-dfc2c.firebaseapp.com"
+  ],
+  "token": "",
+  "defaultPrinter": "blackcopper-80mm-series",
+  "printers": [
+    {
+      "id": "counter-lan",
+      "name": "Counter LAN printer",
+      "transport": "tcp",
+      "host": "192.168.1.50",
+      "port": 9100
+    }
+  ],
+  "verbose": true
+}
