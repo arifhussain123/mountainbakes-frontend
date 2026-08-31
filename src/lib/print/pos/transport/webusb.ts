@@ -332,6 +332,31 @@ export const webUsbTransport: PosTransport = {
    * and an `await` before this call is enough to lose one — hence the check in
    * `printerService` that no work happens between the press and here.
    */
+  /**
+   * Every USB device this origin already holds a grant for.
+   *
+   * `getDevices()` needs no gesture and shows nothing — Chrome answers straight
+   * from the permission store — which is what lets Printer Settings show a
+   * *Detected Printers* list on load rather than after a click, and what lets an
+   * unconfigured till adopt its printer with nobody choosing anything.
+   *
+   * The list is grants, not hardware: an entry can be a printer that is currently
+   * unplugged (the grant outlives the cable), so `discovery.ts` re-checks each one
+   * against what is attached rather than trusting the presence of a row.
+   */
+  async discover(): Promise<DeviceIdentity[]> {
+    const usb = usbManager();
+    if (!usb) return [];
+    try {
+      return (await usb.getDevices()).map(identityOf);
+    } catch {
+      // A revoked permission store, or a browser that has `navigator.usb` but
+      // refuses to enumerate under this policy. Neither is worth an error at
+      // someone who only opened the settings dialog.
+      return [];
+    }
+  },
+
   async request(): Promise<DeviceIdentity> {
     const usb = usbManager();
     if (!usb) throw new PosPrintError('not-supported', this.support().reason ?? 'This browser cannot open USB devices.');

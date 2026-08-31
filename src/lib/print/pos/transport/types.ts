@@ -94,6 +94,23 @@ export interface PosTransport {
   support(): TransportSupport;
   /** Re-adopt an already-authorised device. Never prompts. `null` if there is none. */
   restore(target: TransportTarget): Promise<DeviceIdentity | null>;
+  /**
+   * Every device this origin has already been granted, without prompting.
+   *
+   * This is the closest a browser gets to enumerating printers, and the
+   * difference from what an operating system would answer is the whole reason
+   * `discovery.ts` exists: the list is the devices *a person authorised for this
+   * app on this machine*, not the machine's installed printers. A printer nobody
+   * has granted is invisible here however plainly it appears in Windows, and
+   * nothing in the list carries an OS "default" flag, because no browser API
+   * reports one.
+   *
+   * What it is genuinely good for is skipping the chooser: a till that granted a
+   * printer once has it in this list on every later load, so setup does not have
+   * to ask again. Prompting here would defeat that — this runs on page load, and
+   * a device picker nobody asked for is worse than no detection at all.
+   */
+  discover(): Promise<DeviceIdentity[]>;
   /** Show the browser's device chooser. MUST be called from a user gesture. */
   request(target: TransportTarget): Promise<DeviceIdentity>;
   /** Open the link and prove it works, without printing. Drives Test Connection. */

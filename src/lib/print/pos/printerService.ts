@@ -216,6 +216,19 @@ function documentKey(type: PrintDocumentType, id: string | null): string {
   return `${type}:${id ?? 'none'}`;
 }
 
+/**
+ * How many jobs are on the wire right now.
+ *
+ * Exists so `discovery.ts` can report *Printing* honestly. No device API answers
+ * "are you busy" — a bulk endpoint takes bytes or it does not — so the only true
+ * statement available is that this app has a write outstanding, and this is where
+ * that is known. Reading the set rather than adding a second counter is what
+ * keeps the two from disagreeing.
+ */
+export function activePrintCount(): number {
+  return IN_FLIGHT.size;
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    Printing
    ──────────────────────────────────────────────────────────────────────────── */

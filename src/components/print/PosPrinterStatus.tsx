@@ -6,8 +6,8 @@ import { usePosPrinter } from '@/hooks/usePosPrinter';
 import { cn } from '@/lib/utils';
 
 /**
- * `● POS Printer Connected` / `● POS Printer Not Connected`, and the way in to
- * Printer Setup.
+ * `● POS Printer Ready` / `● POS Printer Offline`, and the way in to Printer
+ * Setup.
  *
  * ---------------------------------------------------------------------------
  * It is an indicator, never a gate
@@ -18,13 +18,20 @@ import { cn } from '@/lib/utils';
  * waiting.
  *
  * ---------------------------------------------------------------------------
- * Four states, because they need four different actions
+ * The states are the actions
  * ---------------------------------------------------------------------------
- * Not set up (neutral, a prompt), unsupported browser (neutral, and permanent —
- * a red dot would suggest something on this machine can be fixed), not connected
- * (red: plug it in), connected (green). The old two-state pill collapsed the
- * middle two into "Offline", which sent tills hunting for a cable when the real
- * answer was "open this in Chrome".
+ * *Ready* (green), *Printing* (amber, a job is on the wire), *Offline* (red: plug
+ * it in), *Error* (red, and something other than a cable — usually Windows
+ * holding the interface), *Unavailable* (neutral and permanent: this browser
+ * cannot do it, so a red dot would wrongly suggest a fixable fault on this
+ * machine), and *not set up* (neutral, a prompt). The old two-state pill
+ * collapsed several of these into "Offline", which sent tills hunting for a cable
+ * when the real answer was "open this in Chrome".
+ *
+ * A till that has never been set up but *has* an authorised printer skips the
+ * prompt entirely — `usePosPrinter` adopts it on load, so the pill goes green
+ * with nobody choosing anything. See `discovery.ts` for what "detected" can and
+ * cannot mean in a browser.
  *
  * ---------------------------------------------------------------------------
  * Why it also shows when nothing is set up
@@ -37,31 +44,37 @@ import { cn } from '@/lib/utils';
  * phone) should not wear a permanent error.
  */
 export function PosPrinterStatus({ className, role }: { className?: string; role?: string }) {
-  const { status, checking, configured } = usePosPrinter();
+  const { status, checking, configured, availability, availabilityLabel, printer, detection } = usePosPrinter();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const state = status?.state ?? (configured ? 'not-connected' : 'not-configured');
   const first = checking && !status;
+  // Nothing saved *and* nothing detected. A detected-but-unsaved printer is not
+  // this state: it is about to be adopted, and prompting for setup would ask for
+  // a choice the app has already made.
+  const blank = !configured && !printer;
+  const unsupported = availability === 'unavailable' && (status?.supported === false || detection?.supported === false);
 
   const label = first
     ? 'Checking POS printer…'
-    : state === 'unsupported'
+    : unsupported
       ? 'Printing not supported here'
-      : state === 'not-configured'
+      : blank
         ? 'Set up POS printer'
-        : state === 'connected'
-          ? 'POS Printer Connected'
-          : 'POS Printer Not Connected';
+        : `POS Printer ${availabilityLabel}`;
+
+  const name = printer?.name ?? status?.deviceLabel ?? 'the POS printer';
 
   const title = first
     ? 'Looking for the POS printer'
-    : state === 'unsupported'
-      ? status?.reason ?? 'This browser cannot print directly to a POS printer.'
-      : state === 'not-configured'
+    : unsupported
+      ? status?.reason ?? detection?.reason ?? 'This browser cannot print directly to a POS printer.'
+      : blank
         ? 'Connect the thermal printer attached to this computer'
-        : state === 'connected'
-          ? `Receipts print straight to ${status?.deviceLabel ?? 'the POS printer'}. Click to change.`
-          : status?.reason ?? 'The POS printer is not connected. Click to reconnect it.';
+        : availability === 'ready'
+          ? `Receipts print straight to ${name}. Click to change.`
+          : availability === 'printing'
+            ? `Sending a receipt to ${name}.`
+            : printer?.reason ?? status?.reason ?? 'The POS printer is not connected. Click to reconnect it.';
 
   return (
     <>
@@ -70,7 +83,7 @@ export function PosPrinterStatus({ className, role }: { className?: string; role
         onClick={() => setSettingsOpen(true)}
         className={cn(
           'no-print inline-flex items-center gap-1.5 rounded text-xs font-medium underline-offset-2 hover:underline',
-          state === 'connected' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
+          !first && !blank && availability === 'ready' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
           className,
         )}
         // The dot alone is not an accessible status and the colour alone is not
@@ -84,11 +97,15 @@ export function PosPrinterStatus({ className, role }: { className?: string; role
             'h-2 w-2 rounded-full',
             first
               ? 'bg-amber-400'
-              : state === 'connected'
-                ? 'bg-emerald-500'
-                : state === 'not-connected'
-                  ? 'bg-red-500'
-                  : 'bg-neutral-400',
+              : blank || unsupported
+                ? 'bg-neutral-400'
+                : availability === 'ready'
+                  ? 'bg-emerald-500'
+                  : availability === 'printing'
+                    ? 'bg-amber-400 animate-pulse'
+                    : availability === 'offline' || availability === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-neutral-400',
           )}
         />
         {label}

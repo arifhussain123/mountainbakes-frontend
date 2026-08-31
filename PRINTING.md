@@ -60,6 +60,7 @@ all.
 | `profiles.ts` | Paper widths and how many characters fit across them (80mm → 48, 58mm → 32). |
 | `receiptFormatter.ts` | The sale receipt, the production slip, the test page — and the validation that runs before any of them is composed. |
 | `printerConfig.ts` | Which printer this device uses. localStorage, keyed by branch. |
+| `discovery.ts` | Finding it without being asked. Enumerates the devices this origin was granted, adopts one when the branch has none, and states in the type system what a browser cannot know about the OS default. |
 | `transport/` | How the bytes leave the browser. WebUSB, Web Serial, raw TCP. |
 | `printerService.ts` | The one entry point. Validate → compose → send → log. |
 | `printLog.ts` | The last 200 jobs on this device, for diagnosing a POS complaint. |
@@ -114,6 +115,65 @@ honest alternatives, for whoever asks: point USB at the same printer, or use a
 printer's own "server print" polling mode, which is an API change rather than a
 browser one.
 
+### Automatic detection, and the printer this app cannot see
+
+`src/lib/print/pos/discovery.ts`
+
+A till does not choose its printer every morning, and after this it does not
+choose one on a fresh branch login either. On load, `usePosPrinter` runs
+`detectPrinters()` alongside its reconnect: every device this origin already holds
+a grant for is enumerated, each is checked against what is attached, and — **only
+when the branch has no printer configured** — the best one is adopted and written
+to the config. Nothing prompts, nothing appears on screen, and no gesture is
+needed, because `getDevices()` / `getPorts()` answer from the browser's own
+permission store.
+
+That is what makes the grant, rather than the config, the thing that persists. A
+printer authorised once in the life of the machine is found for every account that
+signs into it afterwards.
+
+**It is not the operating system's printer list, and it cannot become one.** There
+is no `navigator.getDefaultPrinter()`, no `listSystemPrinters()`, and nothing in
+any shipping or proposed standard that reports which printer Windows calls
+default. The only browser API that touches the OS print stack is `window.print()`,
+which *shows a dialog* rather than telling the page anything. So `DetectedPrinter`
+carries `isSystemDefault`, typed `null` — not `boolean | null`, not optional —
+because a field that can only hold one value cannot later be quietly upgraded to a
+guess, and the type is what enforces that. `SYSTEM_DEFAULT_NOTICE` is the sentence
+shown on screen in its place.
+
+Worth stating plainly, because it is the thing people ask for and it is not a
+missing feature: **on Windows, "the system default printer" and "printed to
+silently" are mutually exclusive.** Install the unit through *Printers & scanners*
+and `usbprint.sys` owns its interface, so `claimInterface` fails with `device-busy`
+— the printer the OS calls default is precisely the one this app cannot open, and
+the only route left to it is the browser print dialog. Bind it to WinUSB instead
+and this app writes to it directly with no dialog and no driver, but it is then not
+an installed printer and nothing anywhere reports it as default. A till picks one
+or the other; this app is built for the second. Closing that gap needs a native
+wrapper (Electron's `getPrintersAsync()` returns `isDefault` and
+`webContents.print({ silent: true, deviceName })` prints without a preview), which
+is a desktop build and a distribution story rather than a change in this folder.
+
+The priority chain in `discovery.ts` is:
+
+1. **The branch's configured printer** — a decision, never overruled by detection,
+   and kept even when it is offline. Silently switching a till to the spare is how
+   a receipt ends up on a roll in another room.
+2. **The OS default printer** — the rung a native layer would fill. It is a comment
+   there rather than dead code, because an `if` that never runs documents nothing.
+3. **An authorised device on this machine** — the automatic case. Attached beats
+   remembered; two attached printers are adopted by first, with `ambiguous` set so
+   Printer Settings says which was chosen rather than leaving it a mystery.
+4. **The chooser** — only when the three above found nothing, and only from a click.
+
+`PrinterAvailability` is the counter's vocabulary — `ready`, `printing`, `offline`,
+`unavailable`, `error` — and is deliberately not `LinkState`. The two differ where
+it matters most: a device held by the Windows driver is `disconnected` to the
+transport and `error` here, because a cable is not the fix. `printing` is layered
+on from `activePrintCount()`, since no device API reports "busy" — a bulk endpoint
+takes bytes or it does not.
+
 ### Printer setup
 
 *POS Printer Setup* opens from the `● POS Printer …` indicator on the Sales page
@@ -123,6 +183,13 @@ The form is a **draft** until Save: Connect and Test Print run against what is o
 screen, so a printer can be tried before the till commits to it, and closing
 without saving leaves the previous printer untouched. Save marks it the default
 printer for this device and this branch — after which nothing asks again.
+
+`Refresh Printers` re-runs detection: it re-reads the permission store, re-checks
+each device, and adopts one if this branch still has none. It prompts for nothing
+— that is the whole difference between it and Connect — so it is the button for a
+printer switched on after the page loaded. The *Detected Printers* list appears
+only when there is more than one, and picking from it edits the draft like any
+other field.
 
 `Connect Printer` opens the *browser's* device chooser. The app never sees the
 list and cannot pre-select from it; the grant is made by a person, to one device,

@@ -17,13 +17,21 @@ import {
   type PrintContext,
 } from '@/lib/print/pos/printerService';
 import { CONNECTION_LABELS, profileOf, type PosPrinterConfig, type PrinterConnection } from '@/lib/print/pos/printerConfig';
+import {
+  adoptionPatch,
+  AVAILABILITY_LABELS,
+  SYSTEM_DEFAULT_NOTICE,
+  type DetectedPrinter,
+  type PrinterAvailability,
+  type PrinterDetection,
+} from '@/lib/print/pos/discovery';
 import { connectionOptions, DEFAULT_BAUD_RATE, DEFAULT_PRINTER_PORT, SERIAL_BAUD_RATES } from '@/lib/print/pos/transport';
 import { PRINTER_PROFILES, type PrinterProfile } from '@/lib/print/pos/profiles';
 import { clearPrintLog, readPrintLog, subscribeToPrintLog, type PrintLogEntry } from '@/lib/print/pos/printLog';
 import { preview } from '@/lib/print/pos/escpos';
 import { testPageBlocks } from '@/lib/print/pos/receiptFormatter';
 import { formatDateTime } from '@/utils/date';
-import { AlertTriangle, Loader2, Plug, Printer, Save, Wifi } from 'lucide-react';
+import { AlertTriangle, Check, Info, Loader2, Plug, Printer, RefreshCw, Save, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -75,7 +83,8 @@ export interface PrinterSettingsDialogProps {
 }
 
 export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSettingsDialogProps) {
-  const { config, update, status, refreshStatus, context } = usePosPrinter();
+  const { config, update, status, refreshStatus, context, detection, refreshPrinters } = usePosPrinter();
+  const [scanning, setScanning] = useState(false);
   const [draft, setDraft] = useState<PosPrinterConfig>(config);
   const [phase, setPhase] = useState<Phase>('idle');
   const [linked, setLinked] = useState(false);
@@ -195,6 +204,50 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
     }
   }
 
+  /**
+   * `Refresh Printers` — re-ask the browser what it has been granted.
+   *
+   * It prompts for nothing, which is the difference between this and Connect: it
+   * re-reads the permission store, re-checks each device against what is
+   * attached, and adopts one only if this branch has none. A till whose printer
+   * was switched on after the page loaded presses this and it appears.
+   */
+  async function rescan() {
+    setScanning(true);
+    try {
+      const found = await refreshPrinters();
+      if (!found.selected) {
+        toast.message('No POS printer found', {
+          description: found.reason ?? 'Press Connect Printer and choose it once.',
+        });
+      } else if (!draft.printerId && found.selected.available) {
+        // Nothing chosen in the draft yet, so detection's answer becomes the
+        // draft's — the till gets its printer without touching the list.
+        const next = adoptionPatch(found.selected, draft);
+        if (next) {
+          patch(next);
+          setLinked(found.selected.status === 'ready' || found.selected.status === 'printing');
+          toast.success(`Detected ${found.selected.name}.`);
+        }
+      } else {
+        toast.success(`${found.printers.length} printer${found.printers.length === 1 ? '' : 's'} detected.`);
+      }
+    } catch {
+      toast.error('Could not check for printers on this computer.');
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  /** Pick a detected printer by hand — the tie-break when a till has two. */
+  function choose(printer: DetectedPrinter) {
+    const next = adoptionPatch(printer, draft);
+    if (!next) return;
+    patch(next);
+    setLinked(printer.status === 'ready' || printer.status === 'printing');
+    setProblem(null);
+  }
+
   function save() {
     update({ ...draft, isDefault: true });
     void refreshStatus();
@@ -245,6 +298,17 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               <span>{problem}</span>
             </p>
           )}
+
+          <Separator />
+
+          {/* ── Detected printers ───────────────────────────────────────── */}
+          <DetectedPrinters
+            detection={detection}
+            scanning={scanning}
+            selectedId={draft.printerId}
+            onRefresh={rescan}
+            onChoose={choose}
+          />
 
           {/* ── Printer ─────────────────────────────────────────────────── */}
           <section className="space-y-3">
@@ -483,6 +547,170 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
  * while a screen full of it is exactly what makes someone stop reading the
  * message that would have helped.
  */
+/**
+ * What this computer has, and which of it Mountain Bakes will print to.
+ *
+ * ---------------------------------------------------------------------------
+ * This list is grants, not the machine's printers
+ * ---------------------------------------------------------------------------
+ * Everything here comes from the browser's own permission store — the devices
+ * somebody authorised for Mountain Bakes on this machine — which is the only
+ * printer list a web page can obtain. A printer installed in Windows and never
+ * granted to this app does not appear, however plainly it shows in *Printers &
+ * scanners*, and nothing in the list carries the operating system's "default"
+ * flag because no browser reports one.
+ *
+ * That is stated on screen rather than left to be inferred, because the gap is
+ * invisible: a list that looks like the machine's printers and is not would have
+ * a till concluding the printer is broken when it was simply never granted.
+ *
+ * What the list *does* buy is the thing that was actually asked for. The grant
+ * outlives the session, so a printer chosen once is found on every load after —
+ * including by a different branch account signing into the same till — and the
+ * chooser never appears again.
+ */
+function DetectedPrinters({
+  detection,
+  scanning,
+  selectedId,
+  onRefresh,
+  onChoose,
+}: {
+  detection: PrinterDetection | null;
+  scanning: boolean;
+  selectedId: string;
+  onRefresh: () => void;
+  onChoose: (printer: DetectedPrinter) => void;
+}) {
+  const printers = detection?.printers ?? [];
+  const selected = detection?.selected ?? null;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">POS Printer</p>
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={scanning} className="h-7 text-xs">
+          {scanning ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+          Refresh Printers
+        </Button>
+      </div>
+
+      {/* The headline answer, so the common case is read without scanning a list. */}
+      <div className="rounded-md border bg-muted/40 p-3">
+        {selected ? (
+          <>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Detected printer</p>
+            <p className="mt-0.5 truncate font-medium">{selected.name}</p>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <StatusDot status={selected.status} />
+              <span className={statusTone(selected.status)}>{AVAILABILITY_LABELS[selected.status]}</span>
+              <span className="text-muted-foreground">· {CONNECTION_LABELS[selected.connectionType]}</span>
+            </p>
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span>{sourceSentence(detection?.source)}</span>
+            </p>
+            {selected.reason && <p className="mt-1 text-xs text-muted-foreground">{selected.reason}</p>}
+          </>
+        ) : (
+          <>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Detected printer</p>
+            <p className="mt-0.5 font-medium text-muted-foreground">
+              {scanning || !detection ? 'Checking this computer…' : 'None'}
+            </p>
+            {detection?.reason && <p className="mt-1 text-xs text-muted-foreground">{detection.reason}</p>}
+          </>
+        )}
+      </div>
+
+      {/*
+        The full list only when it adds something. One printer that is already the
+        headline is not a list worth reading, and a till with exactly one is the
+        overwhelmingly common case.
+      */}
+      {printers.length > 1 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Detected printers</p>
+          {detection?.ambiguous && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              More than one printer is connected to this computer. Mountain Bakes chose the first — pick another below if
+              that is the wrong roll.
+            </p>
+          )}
+          <ul className="divide-y rounded-md border">
+            {printers.map((printer) => {
+              const isSelected = printer.deviceId === (selectedId || selected?.deviceId);
+              return (
+                <li key={printer.deviceId}>
+                  <button
+                    type="button"
+                    onClick={() => onChoose(printer)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted/60"
+                    aria-pressed={isSelected}
+                  >
+                    <Check
+                      className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'invisible'}`}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{printer.name}</span>
+                      <span className="text-muted-foreground">{CONNECTION_LABELS[printer.connectionType]}</span>
+                    </span>
+                    <StatusDot status={printer.status} />
+                    <span className={`shrink-0 ${statusTone(printer.status)}`}>{AVAILABILITY_LABELS[printer.status]}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/*
+        The limitation, in the place someone looks for the thing it is about. It
+        is not an error and must not read as one — the printing works; it is the
+        *word* "system default" that this app cannot honestly use.
+      */}
+      <p className="flex items-start gap-2 rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>{SYSTEM_DEFAULT_NOTICE}</span>
+      </p>
+    </section>
+  );
+}
+
+/** How the selected printer came to be selected. Mirrors `SelectionSource`. */
+function sourceSentence(source: PrinterDetection['source'] | undefined): string {
+  switch (source) {
+    case 'branch-config':
+      return 'Set up for this branch on this computer. Every Print button uses it.';
+    case 'configured-offline':
+      return 'Set up for this branch, but not attached at the moment.';
+    case 'auto-detected':
+      return 'Detected automatically on this computer — nobody had to choose it.';
+    default:
+      return 'No printer chosen yet.';
+  }
+}
+
+const STATUS_DOT: Record<PrinterAvailability, string> = {
+  ready: 'bg-emerald-500',
+  printing: 'bg-amber-400 animate-pulse',
+  offline: 'bg-red-500',
+  error: 'bg-red-500',
+  unavailable: 'bg-neutral-400',
+};
+
+function statusTone(status: PrinterAvailability): string {
+  if (status === 'ready') return 'text-emerald-600 dark:text-emerald-400';
+  if (status === 'offline' || status === 'error') return 'text-red-600 dark:text-red-400';
+  return 'text-muted-foreground';
+}
+
+function StatusDot({ status }: { status: PrinterAvailability }) {
+  return <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[status]}`} />;
+}
+
 function DebugPanel({
   debug,
   onToggle,

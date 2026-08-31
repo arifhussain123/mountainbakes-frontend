@@ -168,6 +168,24 @@ export const networkTransport: PosTransport = {
     };
   },
 
+  /**
+   * Nothing to discover. A LAN has no roll-call, and scanning it would be a lie.
+   *
+   * The other two transports enumerate a *permission store* — a list the browser
+   * already holds and answers instantly. There is no equivalent here: finding a
+   * printer on the network would mean probing every address on the subnet, which
+   * an ordinary web page cannot do at all (see `support()`), and which would be a
+   * port scan rather than a detection even where it could.
+   *
+   * So this answers with the empty list and lets Printer Settings say a network
+   * printer is typed in, not found. An address someone has already saved is not
+   * returned either: it is a setting, not a discovery, and dressing it up as one
+   * would put an unreachable printer at the top of a *Detected Printers* list.
+   */
+  async discover(): Promise<DeviceIdentity[]> {
+    return [];
+  },
+
   /** There is no chooser for an IP address — the address IS the request. So this proves it. */
   async request(target): Promise<DeviceIdentity> {
     return this.probe(target);

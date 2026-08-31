@@ -174,6 +174,25 @@ export const webSerialTransport: PosTransport = {
     return identityOf(port);
   },
 
+  /**
+   * Every serial port this origin already holds a grant for.
+   *
+   * Thinner than its WebUSB twin by necessity: `getInfo()` returns the bridge
+   * chip's USB ids and nothing else — no product string, no serial number — so a
+   * detected port can be listed and adopted but never *named*. That is why the
+   * label here is built from ids, and why a shop that wants a readable name types
+   * one in Printer Settings.
+   */
+  async discover(): Promise<DeviceIdentity[]> {
+    const serial = serialManager();
+    if (!serial) return [];
+    try {
+      return (await serial.getPorts()).map(identityOf);
+    } catch {
+      return [];
+    }
+  },
+
   async request(): Promise<DeviceIdentity> {
     const serial = serialManager();
     if (!serial) throw new PosPrintError('not-supported', this.support().reason ?? 'This browser cannot open serial ports.');
