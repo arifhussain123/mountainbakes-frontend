@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PrinterSettingsDialog } from '@/components/print/PrinterSettingsDialog';
 import { usePosPrinter } from '@/hooks/usePosPrinter';
 import { PosPrintError } from '@/lib/print/pos/printerService';
-import { isRetryable, needsSettings, type PrintErrorCode } from '@/lib/print/pos/errors';
+import { canReconnect, isRetryable, needsSettings, type PrintErrorCode } from '@/lib/print/pos/errors';
 import type { PrintResult } from '@/lib/print/pos/printerService';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, Check, Loader2, Printer, RefreshCw, Settings } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Plug, Printer, RefreshCw, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -29,13 +29,21 @@ import { toast } from 'sonner';
  * only as a labelled button a person decides to press.
  *
  * ---------------------------------------------------------------------------
- * Double-press protection is here and in two other places
+ * Double-press protection is here and in one other place
  * ---------------------------------------------------------------------------
- * This button disables itself for the duration, the print service refuses a
- * second print of the same document while one is in flight, and the local agent
- * ignores a job id it has already run. Three layers because they catch different
- * things: an impatient double-click, two different buttons aimed at one sale, and
- * a request retried after its response was lost.
+ * This button disables itself for the duration, and `printerService` refuses a
+ * second print of the same document while one is in flight. Two layers because
+ * they catch different things: an impatient double-click, and two different
+ * buttons aimed at one sale (a reprint from the sales table while the invoice
+ * dialog's own Print is still running).
+ *
+ * ---------------------------------------------------------------------------
+ * A printer that is merely unplugged gets a one-press fix
+ * ---------------------------------------------------------------------------
+ * The failure panel offers **Reconnect** for exactly the failures that mean "the
+ * device is not open right now" — it re-adopts the already-authorised printer
+ * with no chooser and retries. It is not offered for a browser that cannot print
+ * at all, where the only honest next step is Printer Settings.
  */
 
 type PrintState = 'idle' | 'printing' | 'printed' | 'failed';
@@ -82,7 +90,7 @@ export function PosPrintButton({
   size = 'default',
   className,
 }: PosPrintButtonProps) {
-  const { configured } = usePosPrinter();
+  const { configured, reconnect } = usePosPrinter();
   const [state, setState] = useState<PrintState>('idle');
   const [error, setError] = useState<{ code: PrintErrorCode; message: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -100,10 +108,7 @@ export function PosPrintButton({
     try {
       const result = await print();
       setState('printed');
-      // `duplicate` means the agent recognised the job and did NOT print again.
-      // Saying "Printed" would be a lie that costs someone a reprint they think
-      // they already have.
-      toast.success(result.duplicate ? 'Already printed — no second copy sent.' : 'Printed successfully');
+      toast.success('Printed successfully');
       onPrinted?.(result);
       revert.current = setTimeout(() => setState('idle'), 2500);
     } catch (caught) {
@@ -139,7 +144,7 @@ export function PosPrintButton({
       <Button
         variant={state === 'failed' ? 'destructive' : variant}
         size={size}
-        // Disabled while in flight, which is the first of the three duplicate
+        // Disabled while in flight, which is the first of the two duplicate
         // guards. Not disabled when the printer is unconfigured: pressing it then
         // is how someone discovers they need to set one up, and the failure panel
         // takes them straight there.
@@ -161,13 +166,26 @@ export function PosPrintButton({
             <DialogTitle>Could not print</DialogTitle>
           </DialogHeader>
 
-          {/* The service's own sentence, which names the printer or the port where
-              it can. No stack, no status code, no URL — those are in the debug
-              panel, for the one role that can act on them. */}
+          {/* The transport's own sentence, which names the device or the port
+              where it can. No stack, no error number, no vendor id — those are in
+              the debug panel, for the one role that can act on them. */}
           <p className="text-sm text-muted-foreground">{error?.message}</p>
 
           <div className="grid gap-2">
-            {error && isRetryable(error.code) && (
+            {error && canReconnect(error.code) && (
+              <Button
+                onClick={async () => {
+                  setError(null);
+                  // Re-adopt first, then print. Reconnecting without printing
+                  // would leave someone pressing two buttons for one receipt.
+                  await reconnect();
+                  void run();
+                }}
+              >
+                <Plug className="mr-1.5 h-4 w-4" /> Reconnect
+              </Button>
+            )}
+            {error && isRetryable(error.code) && !canReconnect(error.code) && (
               <Button onClick={() => { setError(null); void run(); }}>
                 <RefreshCw className="mr-1.5 h-4 w-4" /> Retry
               </Button>
@@ -178,6 +196,9 @@ export function PosPrintButton({
             >
               <Settings className="mr-1.5 h-4 w-4" /> Printer Settings
             </Button>
+            {/* Never automatic. This is a different document on a different kind
+                of paper, and it appears only where the surface passed one in and
+                only as a labelled button a person decides to press. */}
             {onBrowserPrint && (
               <Button
                 variant="ghost"

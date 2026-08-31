@@ -1,5 +1,5 @@
 import type { Block } from './escpos';
-import { renderBlocks, toBase64 } from './escpos';
+import { renderBlocks, toBytes } from './escpos';
 import type { PrinterProfile } from './profiles';
 import { DEFAULT_PROFILE } from './profiles';
 import { amountRow, columnLayout, pairRow, tableHeader, tableRow, type TableCells } from './table';
@@ -248,7 +248,7 @@ export function saleReceiptBlocks(doc: SaleReceiptDoc, profile: PrinterProfile =
   blocks.push({ kind: 'rule' });
   blocks.push({
     kind: 'text',
-    text: `Payment Method: ${doc.paymentMethodLabel.toUpperCase()}`,
+    text: `PAYMENT METHOD: ${doc.paymentMethodLabel.toUpperCase()}`,
     style: { bold: true },
   });
 
@@ -357,7 +357,7 @@ export function testPageBlocks(doc: TestPageDoc, profile: PrinterProfile = DEFAU
       align: 'center',
       style: { bold: true, doubleHeight: true },
     },
-    { kind: 'text', text: 'PRINTER TEST', align: 'center', style: { bold: true } },
+    { kind: 'text', text: 'TEST PRINT', align: 'center', style: { bold: true } },
     { kind: 'rule' },
     amountRow('Printer', doc.printerName, columns),
     amountRow('Connection', doc.connectionLabel, columns),
@@ -376,8 +376,8 @@ export function testPageBlocks(doc: TestPageDoc, profile: PrinterProfile = DEFAU
     { kind: 'text', text: 'Wide', style: { doubleWidth: true } },
     { kind: 'rule' },
     { kind: 'text', text: 'Latin text only. Urdu and other non-Latin names print as question marks.' },
-    { kind: 'feed', lines: 1 },
-    { kind: 'text', text: 'TEST PRINT SUCCESSFUL', align: 'center', style: { bold: true } },
+    { kind: 'rule' },
+    { kind: 'text', text: 'Printer connection successful.', align: 'center', style: { bold: true } },
   ];
 }
 
@@ -401,14 +401,14 @@ function ruler(columns: number): string {
    Bytes
    ──────────────────────────────────────────────────────────────────────────── */
 
-export function saleReceiptBase64(doc: SaleReceiptDoc, profile: PrinterProfile): string {
-  return toBase64(renderBlocks(saleReceiptBlocks(doc, profile), profile.charactersPerLine));
+export function saleReceiptBytes(doc: SaleReceiptDoc, profile: PrinterProfile): Uint8Array {
+  return toBytes(renderBlocks(saleReceiptBlocks(doc, profile), profile.charactersPerLine));
 }
 
-export function productionOrderBase64(doc: ProductionOrderDoc, profile: PrinterProfile): string {
-  return toBase64(renderBlocks(productionOrderBlocks(doc, profile), profile.charactersPerLine));
+export function productionOrderBytes(doc: ProductionOrderDoc, profile: PrinterProfile): Uint8Array {
+  return toBytes(renderBlocks(productionOrderBlocks(doc, profile), profile.charactersPerLine));
 }
 
-export function testPageBase64(doc: TestPageDoc, profile: PrinterProfile): string {
-  return toBase64(renderBlocks(testPageBlocks(doc, profile), profile.charactersPerLine));
+export function testPageBytes(doc: TestPageDoc, profile: PrinterProfile): Uint8Array {
+  return toBytes(renderBlocks(testPageBlocks(doc, profile), profile.charactersPerLine));
 }

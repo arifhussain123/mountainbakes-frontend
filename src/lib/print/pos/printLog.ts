@@ -45,8 +45,6 @@ export interface PrintLogEntry {
   errorMessage?: string;
   durationMs?: number;
   bytes?: number;
-  /** `true` when the agent recognised the job id and did not print a second copy. */
-  duplicate?: boolean;
 }
 
 const KEY = 'mb.posPrintLog';

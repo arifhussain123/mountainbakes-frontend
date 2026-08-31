@@ -11,8 +11,10 @@
  * (an A4 `@page` asked of an 80mm roll). A thermal printer already knows how to
  * set text; it wants the text, not a picture of it.
  *
- * So the receipt is composed here as bytes and handed to the local print agent,
- * which spools them raw. No layout engine, no page box, no dialog.
+ * So the receipt is composed here as bytes and handed to a transport in
+ * `transport/`, which writes them straight to the device over WebUSB, Web Serial
+ * or a socket. No layout engine, no page box, no dialog — and, since this work,
+ * no local print service in the middle either.
  *
  * ---------------------------------------------------------------------------
  * Its sibling on mobile
@@ -23,7 +25,9 @@
  * tablet and one printed from the till read identically. They are separate files
  * rather than a shared module because the runtimes disagree about primitives
  * this low: Hermes has no `btoa`, the browser has no `Buffer`. Keep them in step
- * by hand when either changes; there is nothing mechanical enforcing it.
+ * by hand when either changes; there is nothing mechanical enforcing it. (Mobile
+ * still ends in base64 because its native Bluetooth bridge takes a string; the
+ * web side hands a `Uint8Array` to the device API and needs none.)
  *
  * A command is a byte sequence. `[0x1B, 0x40]` is "reset". Nothing here is
  * device-specific — these are the standard Epson commands the BlackCopper 80mm
@@ -297,32 +301,21 @@ export function renderBlocks(blocks: readonly Block[], columns: number): number[
   return bytes;
 }
 
-const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
 /**
- * Bytes as base64, which is how they cross to the print agent.
+ * The command list as the bytes that go down the wire.
  *
- * `btoa` is used where it exists and this loop is the fallback — not the other
- * way round, and not `btoa` alone. `btoa` throws on any code unit above 0xFF, so
- * it can only be fed a binary string built one `String.fromCharCode` at a time,
- * and that intermediate is both an allocation per byte and an easy place for a
- * future edit to hand it real text by mistake. Encoding from the number array
- * directly cannot go wrong that way. Input is masked to a byte — a value out of
- * range is a bug in a command builder above, and truncating it quietly would
- * send the printer a byte nobody wrote.
+ * This used to be `toBase64`, because the bytes crossed to a local print agent
+ * inside a JSON body and JSON has no way to carry a byte. There is no agent any
+ * more — `transport/` hands a `Uint8Array` straight to WebUSB, Web Serial or a
+ * socket — so the base64 round trip, and the 33% it added to every job, is gone
+ * with it.
+ *
+ * Input is masked to a byte: a value out of range is a bug in a command builder
+ * above, and `Uint8Array` would truncate it silently, sending the printer a byte
+ * nobody wrote.
  */
-export function toBase64(bytes: readonly number[]): string {
-  let out = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = (bytes[i] ?? 0) & 0xff;
-    const b1 = (bytes[i + 1] ?? 0) & 0xff;
-    const b2 = (bytes[i + 2] ?? 0) & 0xff;
-    const triple = (b0 << 16) | (b1 << 8) | b2;
-
-    out += BASE64_ALPHABET[(triple >> 18) & 0x3f];
-    out += BASE64_ALPHABET[(triple >> 12) & 0x3f];
-    out += i + 1 < bytes.length ? BASE64_ALPHABET[(triple >> 6) & 0x3f] : '=';
-    out += i + 2 < bytes.length ? BASE64_ALPHABET[triple & 0x3f] : '=';
-  }
+export function toBytes(bytes: readonly number[]): Uint8Array {
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) out[i] = (bytes[i] ?? 0) & 0xff;
   return out;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -9,39 +9,63 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { usePosPrinter } from '@/hooks/usePosPrinter';
-import { connectionFromTransport, listPrinters, printTestPage, PosPrintError, type AgentPrinter } from '@/lib/print/pos/printerService';
-import { CONNECTION_LABELS, profileOf } from '@/lib/print/pos/printerConfig';
+import {
+  connectPrinter,
+  printTestPage,
+  testConnection,
+  PosPrintError,
+  type PrintContext,
+} from '@/lib/print/pos/printerService';
+import { CONNECTION_LABELS, profileOf, type PosPrinterConfig, type PrinterConnection } from '@/lib/print/pos/printerConfig';
+import { connectionOptions, DEFAULT_BAUD_RATE, DEFAULT_PRINTER_PORT, SERIAL_BAUD_RATES } from '@/lib/print/pos/transport';
 import { PRINTER_PROFILES, type PrinterProfile } from '@/lib/print/pos/profiles';
 import { clearPrintLog, readPrintLog, subscribeToPrintLog, type PrintLogEntry } from '@/lib/print/pos/printLog';
 import { preview } from '@/lib/print/pos/escpos';
 import { testPageBlocks } from '@/lib/print/pos/receiptFormatter';
 import { formatDateTime } from '@/utils/date';
-import { Loader2, Printer, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Loader2, Plug, Printer, Save, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
- * Where a till is told which printer it has.
+ * POS Printer Setup — where a till is told which printer it has, and proves it.
  *
  * ---------------------------------------------------------------------------
- * The list is discovered, never hardcoded
+ * There is no printer list any more, and that is the improvement
  * ---------------------------------------------------------------------------
- * Every printer offered here comes from the local print agent asking the
- * machine's own spooler what is installed. "BlackCopper 80mm Series" appears
- * because that computer has it, not because the name is in the source — so a shop
- * that replaces the unit re-picks from this list instead of waiting for a
- * release. There is no fallback list and there should not be one: an option that
- * is not really there is worse than an empty list, because the empty list is
- * true and points at the real problem.
+ * The old dialog listed printers by asking a local print service to read the
+ * machine's spooler. It was a good list and it cost a whole second program on
+ * every till, which had to be installed, started and kept running — and when it
+ * was not, this dialog could only say "start the print service", which is not
+ * something a cashier can do.
+ *
+ * Now the *browser* shows the chooser. Pressing Connect opens Chrome's own device
+ * picker, the person picks the printer, and the grant is remembered against this
+ * origin. The app never sees the list and never needs to: what it gets back is a
+ * device it can write to, today and every morning after.
  *
  * ---------------------------------------------------------------------------
- * The setting is per device (and per branch), on purpose
+ * Nothing here claims a connection it has not made
  * ---------------------------------------------------------------------------
- * See the header of `lib/print/pos/printerConfig.ts`. Nothing here is written to
- * the API.
+ * Every state on this screen is evidence-backed. "Connected" appears after a
+ * device has actually been opened, not after a form has been filled in.
+ * Unsupported connections are shown greyed with the reason rather than hidden,
+ * and a browser that cannot do this at all says so in one sentence at the top
+ * instead of offering a Connect button that can only fail.
+ *
+ * ---------------------------------------------------------------------------
+ * Edits are a draft until Save
+ * ---------------------------------------------------------------------------
+ * The old dialog wrote every keystroke straight to storage. Here the form is a
+ * draft: Connect and Test Print run against the draft, so a printer can be tried
+ * before the till commits to it, and Save is what makes it the default this
+ * device prints to. Closing without saving leaves the previous printer exactly as
+ * it was.
  */
 
-/** Only these ever need to see payload sizes and agent error detail. */
+/** Only these ever need to see payload sizes and device detail. */
 const DEBUG_ROLES = new Set(['super_admin']);
+
+type Phase = 'idle' | 'connecting' | 'printing';
 
 export interface PrinterSettingsDialogProps {
   open: boolean;
@@ -51,173 +75,317 @@ export interface PrinterSettingsDialogProps {
 }
 
 export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSettingsDialogProps) {
-  const { config, update, status, checking, refreshStatus, context } = usePosPrinter();
-  const [printers, setPrinters] = useState<AgentPrinter[] | null>(null);
-  const [loadingPrinters, setLoadingPrinters] = useState(false);
-  const [testing, setTesting] = useState(false);
+  const { config, update, status, refreshStatus, context } = usePosPrinter();
+  const [draft, setDraft] = useState<PosPrinterConfig>(config);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [linked, setLinked] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const canDebug = role ? DEBUG_ROLES.has(role) : false;
 
-  const loadPrinters = useCallback(async () => {
-    setLoadingPrinters(true);
-    try {
-      setPrinters(await listPrinters(config));
-    } catch (error) {
-      setPrinters([]);
-      toast.error(error instanceof PosPrintError ? error.message : 'Could not read the printer list.');
-    } finally {
-      setLoadingPrinters(false);
-    }
-  }, [config]);
+  const options = useMemo(() => connectionOptions(), []);
+  const chosen = options.find((o) => o.type === draft.connection);
+  const supported = chosen?.support.supported ?? false;
 
-  // Refresh on open rather than on mount: the dialog lives inside the print
-  // button, so it is mounted on every sales screen and would otherwise poll the
-  // agent for a list nobody is looking at.
-  //
-  // Both rules are suppressed deliberately. `set-state-in-effect` fires because
-  // this is a fetch-on-open and every fetch-on-open ends in a setState; there is
-  // no render-time way to ask a local HTTP service what printers exist.
-  // `exhaustive-deps` wants `loadPrinters`, which closes over the config — adding
-  // it would re-list the printers on every keystroke in the agent URL field.
+  /*
+   * The draft is seeded when the dialog opens, not on every config change.
+   *
+   * Re-seeding while it is open would throw away what someone is halfway through
+   * typing the moment the 30-second status poll wrote anything — and the printer
+   * name field is exactly where that would be noticed.
+   */
   useEffect(() => {
     if (!open) return;
-    void refreshStatus();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadPrinters();
+    setDraft(config);
+    setLinked(status?.state === 'connected');
+    setProblem(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  function choose(printerId: string | null) {
-    const printer = printers?.find((p) => p.id === printerId);
-    if (!printer) return;
-    update({
-      printerId: printer.id,
-      printerName: printer.name,
-      connection: connectionFromTransport(printer.transport),
-    });
-  }
+  const patch = useCallback((next: Partial<PosPrinterConfig>) => {
+    setDraft((current) => ({ ...current, ...next }));
+  }, []);
 
-  async function test() {
-    setTesting(true);
+  /** The draft as a print context, so Test Print exercises the printer being set up. */
+  const draftContext: PrintContext = { ...context, config: draft };
+
+  /**
+   * Opens the browser's device chooser.
+   *
+   * Called straight from the click with no `await` before it — a device chooser
+   * opened outside a user gesture is refused by every browser that has one.
+   */
+  async function connect() {
+    setPhase('connecting');
+    setProblem(null);
     try {
-      const result = await printTestPage(context);
-      toast.success(`Test page sent to ${result.printerName || config.printerName}.`);
+      const device = await connectPrinter(draft);
+      const named = draft.printerName.trim() || device.label;
+      setDraft((current) => ({
+        ...current,
+        printerId: device.deviceId,
+        printerName: named,
+        usb:
+          current.connection === 'usb' && device.vendorId != null && device.productId != null
+            ? { vendorId: device.vendorId, productId: device.productId, serialNumber: device.serialNumber ?? null }
+            : current.usb,
+        serial:
+          current.connection === 'serial'
+            ? {
+                usbVendorId: device.vendorId ?? null,
+                usbProductId: device.productId ?? null,
+                baudRate: current.serial?.baudRate ?? DEFAULT_BAUD_RATE,
+              }
+            : current.serial,
+      }));
+      setLinked(true);
+      toast.success(`Connected to ${named}.`);
     } catch (error) {
-      toast.error(error instanceof PosPrintError ? error.message : 'The test page could not be printed.');
+      setLinked(false);
+      const failure = error instanceof PosPrintError ? error : null;
+      // Closing the chooser is not a failure and must not be dressed as one.
+      if (failure?.code === 'cancelled') {
+        setPhase('idle');
+        return;
+      }
+      const message = failure?.message ?? 'Connection failed.';
+      setProblem(message);
+      toast.error(message);
     } finally {
-      setTesting(false);
+      setPhase('idle');
     }
   }
 
-  const profile = profileOf(config);
-  const reachable = Boolean(status?.reachable);
+  /** For a LAN printer there is no chooser — the address is the printer, so prove it. */
+  async function verify() {
+    setPhase('connecting');
+    setProblem(null);
+    try {
+      const device = await testConnection({ ...draft, printerId: draft.printerId || 'pending' });
+      setDraft((current) => ({
+        ...current,
+        printerId: device.deviceId,
+        printerName: current.printerName.trim() || device.label,
+      }));
+      setLinked(true);
+      toast.success('The printer answered.');
+    } catch (error) {
+      setLinked(false);
+      const message = error instanceof PosPrintError ? error.message : 'Connection failed.';
+      setProblem(message);
+      toast.error(message);
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  async function test() {
+    setPhase('printing');
+    setProblem(null);
+    try {
+      await printTestPage(draftContext, { name: draft.printerName, connection: draft.connection });
+      setLinked(true);
+      toast.success('Printed successfully');
+    } catch (error) {
+      const message = error instanceof PosPrintError ? error.message : 'The test page could not be printed.';
+      setProblem(message);
+      toast.error(message);
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  function save() {
+    update({ ...draft, isDefault: true });
+    void refreshStatus();
+    toast.success(`${draft.printerName || 'Printer'} saved as the default printer for this device.`);
+    onOpenChange(false);
+  }
+
+  const profile = profileOf(draft);
+  const busy = phase !== 'idle';
+  const hasDevice = Boolean(draft.printerId);
+  const statusText = busy
+    ? phase === 'printing'
+      ? 'Printing…'
+      : 'Connecting…'
+    : linked
+      ? 'Connected'
+      : hasDevice
+        ? 'Not connected'
+        : 'No printer connected';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="md:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Printer Settings</DialogTitle>
+          <DialogTitle>POS Printer Setup</DialogTitle>
         </DialogHeader>
 
         <div className="max-h-[70dvh] space-y-5 overflow-y-auto pr-1 text-sm">
-          {/* ── Service ─────────────────────────────────────────────────── */}
-          <section className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-medium">Local print service</p>
-              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${reachable ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                <span aria-hidden className={`h-2 w-2 rounded-full ${checking && !status ? 'bg-amber-400' : reachable ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                {checking && !status ? 'Checking…' : reachable ? 'Running' : 'Not running'}
-              </span>
-            </div>
-
-            {!reachable && (
-              <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-                Receipts print through a small service that runs on this computer. Start it, then
-                press Retry. Setup instructions are in <code className="font-mono">print-agent/README.md</code>.
-              </p>
+          {/* ── Status ──────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 font-medium">
+              <span
+                aria-hidden
+                className={`h-2.5 w-2.5 rounded-full ${
+                  busy ? 'bg-amber-400' : linked ? 'bg-emerald-500' : hasDevice ? 'bg-red-500' : 'bg-neutral-400'
+                }`}
+              />
+              <span aria-live="polite">{statusText}</span>
+            </span>
+            {status?.deviceLabel && !busy && (
+              <span className="truncate text-xs text-muted-foreground">{status.deviceLabel}</span>
             )}
+          </div>
 
+          {problem && (
+            <p className="flex items-start gap-2 rounded-md bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{problem}</span>
+            </p>
+          )}
+
+          {/* ── Printer ─────────────────────────────────────────────────── */}
+          <section className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Printer</p>
             <div className="grid gap-2">
-              <Label htmlFor="mb-agent-url" className="text-xs">Service address</Label>
+              <Label htmlFor="mb-printer-name" className="text-xs">Printer name</Label>
               <Input
-                id="mb-agent-url"
-                value={config.agentUrl}
-                onChange={(e) => update({ agentUrl: e.target.value })}
-                spellCheck={false}
+                id="mb-printer-name"
+                value={draft.printerName}
+                placeholder="BlackCopper 80mm"
+                onChange={(e) => patch({ printerName: e.target.value })}
                 autoComplete="off"
               />
+              <p className="text-xs text-muted-foreground">
+                Your own name for this machine&rsquo;s printer. It prints on the test page and shows on the sales screen.
+              </p>
             </div>
-
-            {/* Only offered when the service says it wants one — a password box on
-                a till that needs no password is a box someone will fill in. */}
-            {status?.requiresToken && (
-              <div className="grid gap-2">
-                <Label htmlFor="mb-agent-token" className="text-xs">Service key</Label>
-                <Input
-                  id="mb-agent-token"
-                  type="password"
-                  value={config.agentToken}
-                  onChange={(e) => update({ agentToken: e.target.value })}
-                  placeholder="Set on this computer only"
-                  autoComplete="off"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Stored in this browser on this computer. It is never sent to Mountain Bakes.
-                </p>
-              </div>
-            )}
-
-            <Button variant="outline" size="sm" onClick={() => { void refreshStatus(); void loadPrinters(); }}>
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry connection
-            </Button>
           </section>
 
           <Separator />
 
-          {/* ── Printer ─────────────────────────────────────────────────── */}
+          {/* ── Connection ──────────────────────────────────────────────── */}
           <section className="space-y-3">
-            <p className="font-medium">POS printer</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connection</p>
 
-            {loadingPrinters ? (
-              <p className="text-xs text-muted-foreground">Reading the printers on this computer…</p>
-            ) : printers && printers.length > 0 ? (
+            <div className="grid gap-2">
+              <Label htmlFor="mb-connection" className="text-xs">How the printer is attached</Label>
+              <Select
+                value={draft.connection}
+                onValueChange={(value) => {
+                  const connection = value as PrinterConnection;
+                  // Switching connection invalidates the device: a USB grant is not
+                  // an IP address. Clearing it here is what stops Save writing a
+                  // printer id that the new transport could never open.
+                  patch({
+                    connection,
+                    printerId: '',
+                    network: connection === 'network' ? draft.network ?? { host: '', port: DEFAULT_PRINTER_PORT } : draft.network,
+                    serial:
+                      connection === 'serial'
+                        ? draft.serial ?? { usbVendorId: null, usbProductId: null, baudRate: DEFAULT_BAUD_RATE }
+                        : draft.serial,
+                  });
+                  setLinked(false);
+                  setProblem(null);
+                }}
+              >
+                <SelectTrigger id="mb-connection" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {options.map((option) => (
+                    // Selectable even when unsupported. A disabled row can only
+                    // say "not available"; a selected one gets the panel below,
+                    // which says WHY and what would work instead.
+                    <SelectItem key={option.type} value={option.type}>
+                      {option.label}
+                      {!option.support.supported && <span className="ml-2 text-xs text-muted-foreground">not available here</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{chosen?.hint}</p>
+            </div>
+
+            {/* The honest message. Not a toast, not hidden behind a failed press:
+                a browser that cannot do this needs to say so where the choice is
+                being made. */}
+            {chosen && !supported && (
+              <p className="rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                {chosen.support.reason}
+              </p>
+            )}
+
+            {draft.connection === 'serial' && supported && (
               <div className="grid gap-2">
-                <Label htmlFor="mb-printer" className="text-xs">Printer on this computer</Label>
-                <Select value={config.printerId || undefined} onValueChange={choose}>
-                  <SelectTrigger id="mb-printer"><SelectValue placeholder="Choose a printer" /></SelectTrigger>
+                <Label htmlFor="mb-baud" className="text-xs">Speed (baud)</Label>
+                <Select
+                  value={String(draft.serial?.baudRate ?? DEFAULT_BAUD_RATE)}
+                  onValueChange={(value) =>
+                    patch({
+                      serial: {
+                        usbVendorId: draft.serial?.usbVendorId ?? null,
+                        usbProductId: draft.serial?.usbProductId ?? null,
+                        baudRate: Number(value) || DEFAULT_BAUD_RATE,
+                      },
+                    })
+                  }
+                >
+                  <SelectTrigger id="mb-baud" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {printers.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {CONNECTION_LABELS[connectionFromTransport(p.transport)]}
-                        </span>
-                      </SelectItem>
+                    {SERIAL_BAUD_RATES.map((rate) => (
+                      <SelectItem key={rate} value={String(rate)}>{rate}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Printed on the printer&rsquo;s self-test page. 9600 unless the printer says otherwise — the wrong
+                  speed prints unreadable characters rather than nothing.
+                </p>
               </div>
-            ) : (
-              <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-                {reachable
-                  ? 'The print service found no printers installed on this computer. Install the POS printer driver, then press Retry connection.'
-                  : 'Start the local print service to see the printers on this computer.'}
-              </p>
             )}
 
-            {/* Named even while the agent is down, so someone can see what this
-                till was set to without first fixing the service. */}
-            {config.printerName && (
-              <p className="text-xs text-muted-foreground">
-                Currently set to <span className="font-medium text-foreground">{config.printerName}</span>
-                {' · '}{CONNECTION_LABELS[config.connection]}
-              </p>
+            {draft.connection === 'network' && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 grid gap-2">
+                  <Label htmlFor="mb-host" className="text-xs">Printer IP</Label>
+                  <Input
+                    id="mb-host"
+                    value={draft.network?.host ?? ''}
+                    placeholder="192.168.1.100"
+                    inputMode="decimal"
+                    spellCheck={false}
+                    disabled={!supported}
+                    onChange={(e) => patch({ network: { host: e.target.value, port: draft.network?.port ?? DEFAULT_PRINTER_PORT } })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="mb-port" className="text-xs">Port</Label>
+                  <Input
+                    id="mb-port"
+                    value={draft.network?.port ?? DEFAULT_PRINTER_PORT}
+                    inputMode="numeric"
+                    disabled={!supported}
+                    onChange={(e) =>
+                      patch({ network: { host: draft.network?.host ?? '', port: Number(e.target.value.trim()) || 0 } })
+                    }
+                  />
+                </div>
+              </div>
             )}
+          </section>
 
+          <Separator />
+
+          {/* ── Paper ───────────────────────────────────────────────────── */}
+          <section className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Paper</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
                 <Label htmlFor="mb-paper" className="text-xs">Paper width</Label>
-                <Select value={config.paperWidth} onValueChange={(v) => update({ paperWidth: v === '58mm' ? '58mm' : '80mm' })}>
-                  <SelectTrigger id="mb-paper"><SelectValue /></SelectTrigger>
+                <Select value={draft.paperWidth} onValueChange={(v) => patch({ paperWidth: v === '58mm' ? '58mm' : '80mm' })}>
+                  <SelectTrigger id="mb-paper" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PRINTER_PROFILES.map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
@@ -227,8 +395,8 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="mb-copies" className="text-xs">Copies per print</Label>
-                <Select value={String(config.copies)} onValueChange={(v) => update({ copies: Number(v) || 1 })}>
-                  <SelectTrigger id="mb-copies"><SelectValue /></SelectTrigger>
+                <Select value={String(draft.copies)} onValueChange={(v) => patch({ copies: Number(v) || 1 })}>
+                  <SelectTrigger id="mb-copies" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {[1, 2, 3].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
                   </SelectContent>
@@ -244,33 +412,59 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               <Input
                 id="mb-columns"
                 inputMode="numeric"
-                value={config.charactersPerLine ?? ''}
-                placeholder={`${profile.charactersPerLine} (standard for ${config.paperWidth})`}
+                value={draft.charactersPerLine ?? ''}
+                placeholder={`${profile.charactersPerLine} (standard for ${draft.paperWidth})`}
                 onChange={(e) => {
                   const raw = e.target.value.trim();
-                  update({ charactersPerLine: raw === '' ? null : Number(raw) });
+                  patch({ charactersPerLine: raw === '' ? null : Number(raw) });
                 }}
               />
               <p className="text-xs text-muted-foreground">
                 Only change this if the test page&apos;s ruler line wraps instead of ending at the edge of the roll.
               </p>
             </div>
+          </section>
 
-            <Button onClick={test} disabled={testing || !config.printerId} className="w-full">
-              {testing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
-              {testing ? 'Printing test page…' : 'Print test page'}
+          <Separator />
+
+          {/* ── Actions ─────────────────────────────────────────────────── */}
+          <section className="grid gap-2">
+            {draft.connection === 'network' ? (
+              <Button onClick={verify} disabled={busy || !supported || !draft.network?.host?.trim()}>
+                {phase === 'connecting' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Wifi className="mr-1.5 h-4 w-4" />}
+                Test Connection
+              </Button>
+            ) : (
+              <Button onClick={connect} disabled={busy || !supported}>
+                {phase === 'connecting' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plug className="mr-1.5 h-4 w-4" />}
+                {hasDevice ? 'Connect a different printer' : 'Connect Printer'}
+              </Button>
+            )}
+
+            <Button variant="outline" onClick={test} disabled={busy || !supported || !hasDevice}>
+              {phase === 'printing' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
+              Test Print
             </Button>
+
+            <Button variant="secondary" onClick={save} disabled={busy || !hasDevice}>
+              <Save className="mr-1.5 h-4 w-4" /> Save Printer
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Saved for this computer and this branch only. Every Print button then uses it with nothing further to
+              choose.
+            </p>
           </section>
 
           {canDebug && (
             <>
               <Separator />
               <DebugPanel
-                debug={config.debug}
-                onToggle={(debug) => update({ debug })}
+                debug={draft.debug}
+                onToggle={(debug) => patch({ debug })}
                 profile={profile}
-                printerName={config.printerName}
-                connectionLabel={CONNECTION_LABELS[config.connection]}
+                printerName={draft.printerName}
+                connectionLabel={CONNECTION_LABELS[draft.connection]}
+                deviceId={draft.printerId}
               />
             </>
           )}
@@ -284,10 +478,10 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
  * The developer view: what the printer would actually receive, and what the last
  * few jobs did.
  *
- * Gated to super admin because it is the one place raw agent detail (a Win32
- * error number, a byte count, a refused port) is shown, and none of that helps a
- * cashier — while a screen full of it is exactly what makes someone stop reading
- * the message that would have helped.
+ * Gated to super admin because it is the one place raw device detail (a vendor
+ * id, a byte count, a claim failure) is shown, and none of that helps a cashier —
+ * while a screen full of it is exactly what makes someone stop reading the
+ * message that would have helped.
  */
 function DebugPanel({
   debug,
@@ -295,12 +489,14 @@ function DebugPanel({
   profile,
   printerName,
   connectionLabel,
+  deviceId,
 }: {
   debug: boolean;
   onToggle: (value: boolean) => void;
   profile: PrinterProfile;
   printerName: string;
   connectionLabel: string;
+  deviceId: string;
 }) {
   const log = useSyncExternalStore(subscribeToPrintLog, readPrintLog, () => EMPTY_LOG);
 
@@ -324,6 +520,10 @@ function DebugPanel({
 
       {debug && (
         <>
+          <p className="text-xs text-muted-foreground">
+            Device: <span className="font-mono">{deviceId || 'none'}</span>
+          </p>
+
           <div>
             <p className="mb-1 text-xs font-medium">Test page, exactly as it will print</p>
             <pre className="max-h-52 overflow-auto rounded-md bg-neutral-950 p-3 font-mono text-[10px] leading-tight text-neutral-100">

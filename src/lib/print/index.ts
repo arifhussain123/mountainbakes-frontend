@@ -1,7 +1,8 @@
 /**
  * The printing surface, in two halves that never call each other.
  *
- *   pos/      → ESC/POS bytes to the local print agent. No browser dialog, ever.
+ *   pos/      → ESC/POS bytes straight to the device (WebUSB / Web Serial /
+ *               a socket). No browser dialog, ever, and no local service.
  *   browser/  → `window.print()`, for documents that genuinely want a sheet.
  *
  * Import from here rather than reaching into the folders, so which half a screen
@@ -11,20 +12,24 @@
 export { printDocument } from './browser/documentPrint';
 
 export {
-  checkAgent,
-  listPrinters,
+  connectPrinter,
+  printerStatus,
   printProductionOrder,
   printSaleReceipt,
   printTestPage,
+  reconnectPrinter,
+  releasePrinter,
+  testConnection,
   PosPrintError,
-  connectionFromTransport,
-  type AgentPrinter,
-  type AgentStatus,
+  type DeviceIdentity,
+  type PrinterState,
+  type PrinterStatus,
   type PrintContext,
   type PrintResult,
 } from './pos/printerService';
 
 export {
+  canReconnect,
   isRetryable,
   needsSettings,
   printErrorMessage,
@@ -33,17 +38,25 @@ export {
 
 export {
   CONNECTION_LABELS,
-  DEFAULT_AGENT_URL,
   DEFAULT_CONFIG,
   clearConfig,
   isConfigured,
   profileOf,
   readConfig,
   subscribeToConfig,
+  targetOf,
   writeConfig,
   type PosPrinterConfig,
   type PrinterConnection,
 } from './pos/printerConfig';
+
+export {
+  connectionOptions,
+  subscribeToDevices,
+  transportFor,
+  DEFAULT_PRINTER_PORT,
+  type ConnectionType,
+} from './pos/transport';
 
 export {
   PRINTER_PROFILES,

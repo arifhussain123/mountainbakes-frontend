@@ -198,6 +198,11 @@ src/lib/
 ├── geo/position.ts
 ├── maps/loader.ts
 ├── attachments.ts          normalise every capture to ATTACHMENT_STORED_DIMENSION
+├── print/
+│   ├── pos/                ESC/POS receipts — escpos · table · profiles ·
+│   │                       receiptFormatter · printerConfig · printerService · printLog
+│   │   └── transport/      WebUSB / Web Serial / raw TCP. No local print service.
+│   └── browser/            window.print() for the A4 documents
 ├── printPaper.ts
 ├── loginHistory.ts
 ├── finance.ts

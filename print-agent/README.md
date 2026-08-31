@@ -1,3 +1,16 @@
+> ## ⚠️ RETIRED — the app no longer uses this
+>
+> Mountain Bakes prints **directly from the browser** now: `frontend/src/lib/print/pos/transport/`
+> opens the printer over WebUSB, Web Serial or a raw socket, with nothing running
+> on the till. Nothing in the app starts, contacts, health-checks or requires this
+> service, and the "POS printing service is not running" message it produced no
+> longer exists in the codebase.
+>
+> It is kept as a reference implementation of raw spooling per platform (Windows
+> spooler, CUPS, raw TCP, device node). **Do not reintroduce it as a dependency** —
+> requiring a second program on every till, started at boot and kept reachable, is
+> the problem this was removed to solve. See `frontend/PRINTING.md`.
+
 # Mountain Bakes Print Agent
 
 The local service that puts a receipt on the thermal printer without Chrome's
@@ -9,9 +22,13 @@ Mountain Bakes web app  ──HTTP──▶  print agent (127.0.0.1:9110)  ─�
 
 ## Why this exists
 
-The web app is a static export served over HTTPS. A browser cannot open a USB
-port, cannot enumerate installed printers, and cannot spool a job — `window.print()`
-is the only printing a page gets, and it always shows the preview. Worse, asking a
+*(Historical — this was the reasoning at the time.)*
+
+The web app is a static export served over HTTPS. A browser could not open a USB
+port, enumerate installed printers or spool a job — `window.print()` was the only
+printing a page got, and it always showed the preview. **WebUSB and Web Serial
+changed the first of those**, which is what made this service unnecessary; the
+other two are still true, and the app no longer needs them. Worse, asking a
 roll printer to lay out the app's A4 `@page` box is what produced **"Print preview
 failed"** in the first place.
 
