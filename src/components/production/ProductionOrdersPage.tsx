@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { createColumnHelper } from '@tanstack/react-table';
+import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
 import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -17,7 +17,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Eye, FileSpreadsheet, Sparkles } from 'lucide-react';
-import { effectivePackingQty, effectiveQty, isWaitingOrder, liveItems, livePackingItems } from '@/utils/demandLines';
+import {
+  effectivePackingQty,
+  effectiveQty,
+  fulfilledTotals,
+  isWaitingOrder,
+  liveItems,
+  livePackingItems,
+  requestedTotals,
+} from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 import { CollectionsExportModal } from './CollectionsExportModal';
 
@@ -40,6 +48,21 @@ const STATUS_LABELS: Record<string, string> = {
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 const col = createColumnHelper<BranchProductionOrder>();
+
+/**
+ * Sum a per-demand figure for the totals row.
+ *
+ * Over `getFilteredRowModel()`, not `getRowModel()`: the latter is ONE page, so
+ * on a list that spans pages the total would change as you paged through and
+ * read like a bug. Filtered means the total follows the search box, which is
+ * what someone typing in it is asking about.
+ */
+function sumRows(
+  table: TanstackTable<BranchProductionOrder>,
+  pick: (o: BranchProductionOrder) => number,
+): number {
+  return table.getFilteredRowModel().rows.reduce((sum, r) => sum + pick(r.original), 0);
+}
 
 export function ProductionOrdersPage() {
   const { token } = useAuth();
@@ -263,6 +286,38 @@ export function ProductionOrdersPage() {
       },
     }),
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
+    // How big this demand is, in one figure, so the size of an order is legible
+    // from the list instead of only after opening it.
+    //
+    // The headline is what the BRANCH asked for (`requestedTotals` — the raised
+    // request, excluding lines Production added itself), because that is what
+    // "demand" names. When review has since moved the figure, what is actually
+    // going out is shown under it rather than quietly replacing the ask: on this
+    // screen the gap between the two IS the review, and one number cannot say it.
+    col.display({
+      id: 'demandQty',
+      header: 'Demand Qty',
+      meta: { align: 'center' },
+      cell: ({ row }) => {
+        const asked = requestedTotals(row.original).qty;
+        const moving = fulfilledTotals(row.original).qty;
+        return (
+          <div className="flex flex-col items-center leading-tight">
+            <span className="font-medium tabular-nums">{asked.toLocaleString()}</span>
+            {moving !== asked && (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                &rarr; {moving.toLocaleString()}
+              </span>
+            )}
+          </div>
+        );
+      },
+      footer: (p) => (
+        <span className="tabular-nums font-semibold">
+          {sumRows(p.table, (o) => requestedTotals(o).qty).toLocaleString()}
+        </span>
+      ),
+    }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
