@@ -480,7 +480,11 @@ export function FinanceHelpDeskPage({
       }),
       col.accessor('createdAt', {
         header: 'Date',
-        meta: { mobile: 'hidden' },
+        // §20's card names Date explicitly ("Date: 01 Sep 2026"), so it stays on
+        // the card as its own row rather than being dropped with the columns the
+        // card has no room for. Date-only there — the time belongs on the full
+        // table and in the View popup, and a card is read at arm's length.
+        meta: { mobileFull: true, mobileLabel: 'Date' },
         cell: (info) => (
           <span className="whitespace-nowrap text-sm">{formatQueryDate(info.getValue(), false)}</span>
         ),

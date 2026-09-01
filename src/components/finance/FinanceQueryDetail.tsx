@@ -20,6 +20,7 @@ import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  History,
   Loader2,
   MessageSquare,
   Pencil,
@@ -41,15 +42,18 @@ import {
   FINANCE_TICKET_REFERENCE_LABELS,
   FINANCE_TICKET_STATUS_LABELS,
   financeHelpDeskCan,
+  isFinanceRecordAmendable,
   type Attachment,
   type FinanceAmendableField,
   type FinanceQueryPriority,
   type FinanceQueryType,
   type FinanceResolutionType,
   type FinanceTicket,
+  type FinanceTicketAuditEntry,
   type FinanceTicketMessage,
   type FinanceTicketStatus,
 } from '@mb/shared';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { useFinanceMutation, useFinanceTicket } from '@/lib/finance';
@@ -104,6 +108,113 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="truncate text-sm font-medium">{children}</dd>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audit History (§14)
+// ---------------------------------------------------------------------------
+
+/**
+ * Colour by consequence, matching the vocabulary the Audit Trail page uses so
+ * the same action is the same colour on both screens.
+ */
+const AUDIT_ACTION_STYLES: Record<string, string> = {
+  created: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+  resolved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  rejected: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+  deleted: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+  reopened: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-300',
+  reopen_requested: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-300',
+  amend: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  overwrite: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  edit: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+};
+
+/**
+ * §14's Audit History — every change this query has been through, oldest first.
+ *
+ *     01 Sep 2026 03:10   Query Created           Finance User
+ *     01 Sep 2026 03:15   Admin Opened Query      Admin
+ *     01 Sep 2026 03:20   Amount Amended          50,000 → 55,000
+ *                         Reason: Finance correction
+ *
+ * The entries arrive already built and already redacted (see
+ * `financeTicketAuditTrail` on the server) — this renders them and decides
+ * nothing. That split is the point: what a Finance raiser may read is settled
+ * at the API boundary, not by a component choosing what to draw.
+ *
+ * Rendered for BOTH sides. §19 makes the trail the thing that survives every
+ * edit, and a history the raiser cannot see is a history that only reassures
+ * the people doing the editing.
+ */
+function AuditHistory({ entries }: { entries: FinanceTicketAuditEntry[] }) {
+  if (!entries.length) return null;
+
+  return (
+    <section className="space-y-2">
+      <h4 className="flex items-center gap-2 text-sm font-semibold">
+        <History className="h-4 w-4" /> Audit History
+        <Badge variant="outline">{entries.length}</Badge>
+      </h4>
+
+      {/* The rail is drawn on the list, not per row, so it runs unbroken between
+          entries of different heights. */}
+      <ol className="ml-1 space-y-3 border-l pl-4">
+        {entries.map((e) => (
+          <li key={e.id} className="relative">
+            <span
+              className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-border ring-2 ring-background"
+              aria-hidden
+            />
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Badge
+                variant="secondary"
+                className={cn('text-[10px]', AUDIT_ACTION_STYLES[e.action] ?? '')}
+              >
+                {e.summary}
+              </Badge>
+              {/* Which trail the line came from. A correction to the BOOKS and a
+                  correction to the QUERY are different acts with different
+                  consequences, and §8 is about telling them apart afterwards. */}
+              {e.source === 'record' && (
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                  Record
+                </Badge>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {formatQueryDate(e.at)} · {e.actorName}
+              </span>
+            </div>
+
+            {e.changes.length > 0 && (
+              <ul className="mt-1 space-y-0.5">
+                {e.changes.map((c, i) => (
+                  <li key={`${e.id}-${i}`} className="text-sm">
+                    <span className="text-muted-foreground">{c.field}: </span>
+                    {/* A field that had no previous value is printed as a value,
+                        not as an arrow from nothing — every line of "— → Income"
+                        on a freshly created query is noise around the one thing
+                        it says. */}
+                    {c.from !== null && (
+                      <>
+                        <span className="tabular-nums text-muted-foreground line-through decoration-muted-foreground/50">
+                          {c.from}
+                        </span>
+                        <span className="text-muted-foreground"> → </span>
+                      </>
+                    )}
+                    <span className="font-medium tabular-nums">{c.to ?? '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {e.reason && <p className="mt-1 text-xs text-muted-foreground">Reason: {e.reason}</p>}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -1201,11 +1312,27 @@ export function FinanceQueryDetailDialog({
   const live = (ticket as (FinanceTicket & { liveRecord?: Record<string, unknown> | null }) | undefined)
     ?.liveRecord;
 
+  /**
+   * Amend and Delete-record act on the FINANCE RECORD, so they need a record
+   * that this desk may write to.
+   *
+   * `isFinanceRecordAmendable` is the third half of that test and the one most
+   * easily forgotten: a sale (MB-…) resolves and snapshots like every other
+   * reference but is INFORMATIONAL here — it is corrected in the Support
+   * Center, where the line items and branch stock are reconciled together
+   * (migration 96). Without this the buttons would be live and the API would
+   * refuse them, which is a worse way to learn the same fact.
+   */
   const canTouchRecord =
     abilities.admin &&
     Boolean(ticket?.referenceType) &&
     Boolean(ticket?.referenceId) &&
+    isFinanceRecordAmendable(ticket?.referenceType) &&
     !ticket?.deletedAt;
+
+  /** Referenced, but read-only from this desk — worth SAYING, not just greying out. */
+  const referenceIsInformational =
+    Boolean(ticket?.referenceType) && !isFinanceRecordAmendable(ticket?.referenceType);
 
   const recordDeleted = Boolean(live?.['deletedAt']);
   const queryDeleted = Boolean(ticket?.deletedAt);
@@ -1290,6 +1417,22 @@ export function FinanceQueryDetailDialog({
                       <p className="text-xs text-muted-foreground">
                         These are the figures as they stood when you raised the query. Only an Admin
                         can change them.
+                      </p>
+                    )}
+                    {/* A sale resolves and snapshots here but is corrected in the
+                        Support Center (migration 96). Said in words rather than
+                        left to a greyed-out button, which an admin reads as a
+                        bug in the desk rather than as the answer. */}
+                    {abilities.admin && referenceIsInformational && (
+                      <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          Shown for reference. A{' '}
+                          {FINANCE_TICKET_REFERENCE_LABELS[ticket.referenceType!].toLowerCase()} is
+                          corrected in the Support Center, where its line items, totals and branch
+                          stock are reconciled together — then answer this query with what was
+                          done.
+                        </span>
                       </p>
                     )}
                   </section>
@@ -1450,6 +1593,23 @@ export function FinanceQueryDetailDialog({
                   </>
                 )}
 
+                {/* ---- Audit History (§14) ----
+
+                    Last of the read-only sections and immediately above the
+                    thread, because it is the answer to "what happened to this
+                    query" and everything above it is a piece of that answer
+                    shown in full. The corrections block above overlaps it by
+                    one line per amendment, deliberately: that block carries the
+                    money delta and the reason at full size, this one carries
+                    the ORDER things happened in, and neither reads as the other
+                    with the extra rows deleted. */}
+                {(ticket.auditTrail?.length ?? 0) > 0 && (
+                  <>
+                    <Separator />
+                    <AuditHistory entries={ticket.auditTrail!} />
+                  </>
+                )}
+
                 <Separator />
 
                 <Conversation ticket={ticket} onPosted={() => void refetch()} />
@@ -1485,11 +1645,13 @@ export function FinanceQueryDetailDialog({
                         variant="secondary"
                         disabled={!canTouchRecord || recordDeleted}
                         title={
-                          !canTouchRecord
-                            ? 'This query names no finance record'
-                            : recordDeleted
-                              ? 'That record has already been deleted'
-                              : undefined
+                          referenceIsInformational
+                            ? `A ${FINANCE_TICKET_REFERENCE_LABELS[ticket.referenceType!].toLowerCase()} is corrected in the Support Center, not here`
+                            : !canTouchRecord
+                              ? 'This query names no finance record'
+                              : recordDeleted
+                                ? 'That record has already been deleted'
+                                : undefined
                         }
                         onClick={() => setAmending(true)}
                       >

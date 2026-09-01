@@ -140,29 +140,31 @@ export function QueryPriorityBadge({
 // ---------------------------------------------------------------------------
 
 /**
- * What the query is about, in one line.
+ * The queue's CATEGORY cell (§4) — what the query is about, and which record.
  *
- * A query with no reference is NORMAL from migration 94 onwards — "Calculation
- * Issue" and "Other" name no record — so this renders the query TYPE rather than
- * an em dash. "—" in the Reference column would read as missing data on a row
+ * The category LEADS, always. It is the column §4 names and the axis the filter
+ * above the table works on, so a row whose category cell shows a voucher number
+ * instead cannot be read against the filter that produced it — and the
+ * category, being the only field every query has, would then appear nowhere in
+ * the list at all.
+ *
+ * The reference sits underneath as the secondary line, because it is the handle
+ * an admin scans for when they already know which category they are working
+ * through. A query with no reference is NORMAL from migration 94 onwards —
+ * "Calculation Issue" and "Other" name no record — so that line is simply
+ * absent rather than an em dash, which would read as missing data on a row
  * where nothing is missing.
  */
 export function QueryReference({ ticket }: { ticket: FinanceTicket }) {
-  if (!ticket.referenceNo) {
-    return (
-      <span className="text-sm text-muted-foreground">
-        {FINANCE_QUERY_TYPE_LABELS[ticket.queryType]}
-      </span>
-    );
-  }
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-sm">{ticket.referenceNo}</span>
-      <span className="text-xs text-muted-foreground">
-        {ticket.referenceType
-          ? FINANCE_TICKET_REFERENCE_LABELS[ticket.referenceType]
-          : FINANCE_QUERY_TYPE_LABELS[ticket.queryType]}
-      </span>
+      <span className="text-sm">{FINANCE_QUERY_TYPE_LABELS[ticket.queryType]}</span>
+      {ticket.referenceNo && (
+        <span className="font-mono text-xs text-muted-foreground">
+          {ticket.referenceNo}
+          {ticket.referenceType ? ` · ${FINANCE_TICKET_REFERENCE_LABELS[ticket.referenceType]}` : ''}
+        </span>
+      )}
       {ticket.voucherRef && (
         <span className="text-xs text-muted-foreground">Voucher: {ticket.voucherRef}</span>
       )}
