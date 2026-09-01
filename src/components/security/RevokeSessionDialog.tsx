@@ -47,11 +47,22 @@ import { formatDevice, formatLocation } from './sessionFormat';
 export function RevokeSessionDialog({
   session,
   mode,
+  sessionCount,
   onClose,
 }: {
   /** The session being ended, or — in 'all' mode — one belonging to the account. */
   session: LoginSession | null;
   mode: 'one' | 'all';
+  /**
+   * How many sessions the account has live, for the account-wide form.
+   *
+   * Passed in by the roster, which is the only caller that knows it — the
+   * history table shows one row at a time and has no group to count. Absent
+   * means "not known", and the arithmetic below is simply omitted rather than
+   * guessed at: a confirmation that says "3 other sessions" when it means 2 is
+   * worse than one that does not say.
+   */
+  sessionCount?: number;
   onClose: () => void;
 }) {
   const { token, user } = useAuth();
@@ -124,6 +135,31 @@ export function RevokeSessionDialog({
                 <dd className="text-right">{formatDevice(session)}</dd>
                 <dt className="text-muted-foreground">Location</dt>
                 <dd className="text-right">{formatLocation(session)}</dd>
+              </>
+            )}
+            {/* The arithmetic spelled out, because "sign out all other sessions"
+                is the one action here whose blast radius is not visible from the
+                button. Clearing your own account keeps the browser you are
+                sitting at — the server decides that from your own token — so the
+                two lines differ, and an admin who cannot tell which case they
+                are in declines a safe action. */}
+            {mode === 'all' && sessionCount !== undefined && (
+              <>
+                <dt className="text-muted-foreground">Active sessions</dt>
+                <dd className="text-right tabular-nums">{sessionCount}</dd>
+                {own ? (
+                  <>
+                    <dt className="text-muted-foreground">This browser</dt>
+                    <dd className="text-right">Kept</dd>
+                    <dt className="text-muted-foreground">Signed out</dt>
+                    <dd className="text-right tabular-nums">{Math.max(0, sessionCount - 1)}</dd>
+                  </>
+                ) : (
+                  <>
+                    <dt className="text-muted-foreground">Signed out</dt>
+                    <dd className="text-right tabular-nums">{sessionCount}</dd>
+                  </>
+                )}
               </>
             )}
           </dl>

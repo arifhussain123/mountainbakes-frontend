@@ -26,6 +26,29 @@ export const qk = {
   priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
   reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null) =>
     ['reportSummary', period, branchId ?? null, from ?? null, to ?? null] as const,
+  // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —
+  // window, branch, ranking depth and whether the comparison window was asked
+  // for. Dropping any of them from the key serves one range's figures under
+  // another's heading, which is the one bug an analytics card must not have.
+  //
+  // NOT under the ['reportSummary'] prefix: it is a different endpoint with a
+  // different aggregation, and sharing a prefix would make one invalidation
+  // refetch both — twice the traffic for one screen's worth of data.
+  salesAnalytics: (filters: {
+    from: string;
+    to: string;
+    branchId?: string | null;
+    topLimit?: number;
+    compare?: boolean;
+  }) =>
+    [
+      'salesAnalytics',
+      filters.from,
+      filters.to,
+      filters.branchId ?? null,
+      filters.topLimit ?? 5,
+      filters.compare ?? false,
+    ] as const,
   stock: (branchId?: string | null) => ['stock', branchId ?? 'me'] as const,
   // Admin → Branch Stock. A SEPARATE key from `stock` above because it is
   // date-scoped: the admin page reads any branch on any past business day, and
@@ -84,7 +107,17 @@ export const qk = {
     ['loginHistory', 'page', params] as const,
   activeSessions: () => ['loginHistory', 'active'] as const,
   loginSession: (id: string) => ['loginHistory', 'session', id] as const,
-  loginCountries: () => ['loginHistory', 'countries'] as const,
+  // The country / city / browser dropdown values. Under the same prefix so a
+  // revoke refreshes them too — a revocation cannot add a country, but the
+  // prefix is what keeps this screen's caches from having to be reasoned about
+  // one at a time.
+  loginFilters: () => ['loginHistory', 'filters'] as const,
+  // Failed sign-ins. Under 'loginHistory' as well, because the Security screen
+  // shows it as a third tab beside the other two and an admin switching tabs
+  // after a revoke should not find one of them stale. Keyed by the whole filter
+  // object for the reason the paged history list is.
+  loginAttempts: (params: Record<string, unknown>) =>
+    ['loginHistory', 'attempts', params] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,

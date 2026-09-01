@@ -5,6 +5,7 @@ import type { LoginSession } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoginHistoryBoard } from './LoginHistoryBoard';
+import { FailedLoginsBoard } from './FailedLoginsBoard';
 import { ActiveSessionsBoard } from './ActiveSessionsBoard';
 import { SessionDetailDialog } from './SessionDetailDialog';
 import { RevokeSessionDialog } from './RevokeSessionDialog';
@@ -12,12 +13,17 @@ import { RevokeSessionDialog } from './RevokeSessionDialog';
 /**
  * Admin → Security.
  *
- * TWO BOARDS OVER ONE TABLE. Active Sessions is what is happening now — a live
- * roster, grouped by account so that "signed in from three countries at once" is
- * a thing you can see rather than infer. Login History is the record: every
- * sign-in, filtered and paged in SQL. They are tabs rather than two routes
- * because the work moves between them constantly ("this looks odd — has it
- * happened before?"), and a route change would lose the filters on the way back.
+ * THREE BOARDS. Active Sessions is what is happening now — a live roster,
+ * grouped by account so that "signed in from three countries at once" is a thing
+ * you can see rather than infer. Login History is the record: every sign-in that
+ * WORKED, filtered and paged in SQL. Failed Logins is the other half of that
+ * record — every sign-in that did not — and it is a separate board rather than a
+ * filter because a refused attempt has no session and no account behind it, so
+ * it shares almost no columns with the other two.
+ *
+ * They are tabs rather than three routes because the work moves between them
+ * constantly ("this looks odd — has it happened before? was anything refused
+ * first?"), and a route change would lose the filters on the way back.
  *
  * ACTIVE SESSIONS IS FIRST because it is the tab somebody opens this screen for.
  * The history is where you go once the roster has raised a question.
@@ -39,7 +45,9 @@ export function SecurityPage() {
   const isAdmin = user?.role === 'super_admin';
 
   const [viewId, setViewId] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<{ session: LoginSession; mode: 'one' | 'all' } | null>(null);
+  const [revoking, setRevoking] = useState<
+    { session: LoginSession; mode: 'one' | 'all'; sessionCount?: number } | null
+  >(null);
 
   return (
     <div className="space-y-4">
@@ -55,13 +63,18 @@ export function SecurityPage() {
         <TabsList>
           <TabsTrigger value="active">Active Sessions</TabsTrigger>
           <TabsTrigger value="history">Login History</TabsTrigger>
+          {/* Admin only, and hidden rather than disabled for anybody else — the
+              endpoint behind it refuses a non-admin outright, so a visible tab
+              would be an invitation to a 403. The API is what enforces this;
+              this is only about not offering a door that does not open. */}
+          {isAdmin && <TabsTrigger value="failed">Failed Logins</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
           <ActiveSessionsBoard
             onView={setViewId}
             onRevoke={(session) => setRevoking({ session, mode: 'one' })}
-            onRevokeAll={(session) => setRevoking({ session, mode: 'all' })}
+            onRevokeAll={(session, sessionCount) => setRevoking({ session, mode: 'all', sessionCount })}
           />
         </TabsContent>
 
@@ -72,6 +85,12 @@ export function SecurityPage() {
             canRevoke={isAdmin}
           />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="failed" className="mt-4">
+            <FailedLoginsBoard />
+          </TabsContent>
+        )}
       </Tabs>
 
       <SessionDetailDialog
@@ -97,6 +116,7 @@ export function SecurityPage() {
           key={`${revoking.session.id}:${revoking.mode}`}
           session={revoking.session}
           mode={revoking.mode}
+          {...(revoking.sessionCount !== undefined ? { sessionCount: revoking.sessionCount } : {})}
           onClose={() => setRevoking(null)}
         />
       )}

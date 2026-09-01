@@ -21,7 +21,14 @@ import {
   Users,
 } from 'lucide-react';
 import { StaffAvatar } from './StaffAvatar';
-import { formatBrowser, formatDuration, formatLocation, formatPlatform } from './sessionFormat';
+import {
+  STATE_LABELS,
+  STATE_STYLES,
+  formatBrowser,
+  formatDuration,
+  formatLocation,
+  formatPlatform,
+} from './sessionFormat';
 
 /**
  * Admin → Security → Active Sessions.
@@ -50,7 +57,8 @@ export function ActiveSessionsBoard({
 }: {
   onView: (sessionId: string) => void;
   onRevoke: (session: LoginSession) => void;
-  onRevokeAll: (session: LoginSession) => void;
+  /** Carries the group's live count, which the dialog spells out before asking. */
+  onRevokeAll: (session: LoginSession, sessionCount: number) => void;
 }) {
   const { token } = useAuth();
   const q = useActiveSessions(token);
@@ -78,8 +86,47 @@ export function ActiveSessionsBoard({
   const data = q.data;
   const groups = data?.groups ?? [];
 
+  // Counted from the groups rather than from a server field, because the two
+  // conditions the banner is about are exactly what the grouping already
+  // computed — an account live in more than one country, and an account with a
+  // session the detector flagged. A third round-trip to be told the same thing
+  // would be a number that could disagree with the rows underneath it.
+  const flagged = groups.filter((g) => g.multiCountry || g.hasSuspicious);
+
   return (
     <div className="space-y-4">
+      {/* THE BANNER IS A PROMPT, NOT A VERDICT, and it says so in its own words
+          rather than leaving the reader to supply the qualification. Every
+          signal behind it is weak on its own: IP geolocation is a commercial
+          database that is regularly a country wrong, a VPN or a roaming SIM
+          relocates somebody without their knowing, and a browser update makes a
+          familiar device look new. It is here because an admin who opens this
+          screen for an unrelated reason should still be told that something is
+          worth a look — and it is worded so that reading it as proof takes
+          effort. */}
+      {flagged.length > 0 && (
+        <div className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              {flagged.length === 1
+                ? 'One account has unusual sign-in activity'
+                : `${flagged.length} accounts have unusual sign-in activity`}
+            </p>
+            <p className="text-amber-800 dark:text-amber-300">
+              {/* Named, not merely counted. An admin scanning a long roster
+                  should not have to expand groups to find which ones the
+                  banner meant. */}
+              {flagged.map((g) => g.userCode ?? g.userName).join(' · ')} — signed in from
+              more than one country at once, or on a device or from a place this account
+              has not used before. Review the sessions below before acting; a VPN, a
+              roaming SIM, a new phone and an approximate IP location all look exactly
+              like this.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard title="Live sessions" value={data?.totalSessions ?? 0} icon={MonitorSmartphone} color="blue" />
         <StatCard title="Accounts signed in" value={data?.totalUsers ?? 0} icon={Users} color="blue" />
@@ -131,7 +178,7 @@ function GroupRow({
   onToggle: () => void;
   onView: (sessionId: string) => void;
   onRevoke: (session: LoginSession) => void;
-  onRevokeAll: (session: LoginSession) => void;
+  onRevokeAll: (session: LoginSession, sessionCount: number) => void;
 }) {
   const many = g.sessionCount > 1;
 
@@ -167,6 +214,11 @@ function GroupRow({
               </span>
             )}
           </div>
+          {/* The activated address, under the staff code rather than replacing
+              it. The code is what this screen is read by and what survives an
+              address change; the address is what an admin needs to be sure they
+              are about to sign out the account they mean. */}
+          <p className="truncate text-xs text-muted-foreground">{g.userEmail}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {many ? `${g.sessionCount} active sessions` : `${formatBrowser(g.sessions[0]!)} · ${formatLocation(g.sessions[0]!)}`}
             {' · last active '}
@@ -204,8 +256,16 @@ function GroupRow({
           {g.sessions.map((s) => (
             <div key={s.id} className="flex flex-col gap-2 border-b p-3 last:border-b-0 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">
-                  {formatBrowser(s)} · {formatPlatform(s)}
+                <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                  <span>{formatBrowser(s)} · {formatPlatform(s)}</span>
+                  {/* Per SESSION, not per group. A person can have one tab in
+                      front of them and another asleep on a laptop at home, and
+                      a single badge on the group would have to lie about one of
+                      them — which is the second device this screen exists to
+                      surface. */}
+                  <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
+                    {STATE_LABELS[s.state]}
+                  </span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatLocation(s)} · signed in {formatTime(s.loginAt)} · last active {formatTime(s.lastSeenAt)} ·{' '}
@@ -241,7 +301,7 @@ function GroupRow({
 
           {many && (
             <div className="p-3">
-              <Button variant="destructive" size="sm" className="h-10 w-full md:h-9 sm:w-auto" onClick={() => onRevokeAll(g.sessions[0]!)}>
+              <Button variant="destructive" size="sm" className="h-10 w-full md:h-9 sm:w-auto" onClick={() => onRevokeAll(g.sessions[0]!, g.sessionCount)}>
                 <ShieldOff className="mr-1.5 h-4 w-4" /> Sign out all sessions for {g.userCode ?? g.userName}
               </Button>
             </div>

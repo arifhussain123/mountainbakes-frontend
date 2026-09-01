@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { apiCall } from '@/utils/api';
-import { useProducts, useProductionStock } from '@/lib/queries';import {
+import { useQueryClient } from '@tanstack/react-query';
+import { useProducts, useProductionStock } from '@/lib/queries';
+import {
   CreateProductionSaleSchema,
   type Order,
   type Branch,
@@ -132,6 +134,7 @@ function orderToInvoice(o: Order): InvoiceData {
 export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' }) {
   const { token, user } = useAuth();
   const { settings } = useSettings();
+  const qc = useQueryClient();
   const isProduction = mode === 'production';
   const [branch, setBranch] = useState<Branch | null>(null);
   const [sales, setSales] = useState<Order[]>([]);
@@ -279,6 +282,20 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
   function handleSaved(inv: InvoiceData, shouldPrint: boolean) {
     setShowForm(false);
+    /*
+     * The Daily Sales section on both dashboards is a cached read of an aggregate
+     * this sale just changed. Dropping the whole 'salesAnalytics' prefix — every
+     * branch, window, ranking depth and comparison setting — is right rather than
+     * lazy: the sale lands in today's column, and today is inside the 7-day,
+     * 30-day, month AND custom windows a manager may have left open, so
+     * invalidating one key would leave the rest showing a figure quietly short by
+     * this sale.
+     *
+     * The 2-second refresh tick would reach it on its own; this makes the graph
+     * agree with the table the sale was just added to in the same frame rather
+     * than up to two seconds later.
+     */
+    qc.invalidateQueries({ queryKey: ['salesAnalytics'] });
     // A new sale always books against the business day in progress, so snap the
     // filter back to it — otherwise the cashier rings up a sale while browsing an
     // older date and the table appears not to have recorded it. Re-read the date

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
+import { loginFailureReason, recordFailedLogin } from '@/lib/loginHistory';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
 
@@ -91,6 +92,18 @@ export default function LoginPage() {
       let message = ERROR_MESSAGES[code];
       if (!message && /invalid login credentials/i.test(msg)) message = 'Invalid email or password.';
       setError(message || msg || 'Login failed. Please try again.');
+
+      // Tell the API a sign-in was refused, so Admin → Security can show it.
+      //
+      // HERE AND NOT IN A `signInWithPassword` WRAPPER, because this catch also
+      // covers the fail-closed role check above — an account that authenticated
+      // but carries no role claim was still refused entry, and 'no_role' is a
+      // materially different thing for an admin to see than a wrong password.
+      //
+      // The address only, never the password, and not awaited: the person is
+      // already reading the error above and must not wait on our bookkeeping.
+      // The call swallows its own failures — see recordFailedLogin.
+      recordFailedLogin(email, loginFailureReason(err));
     } finally {
       setLoading(false);
     }

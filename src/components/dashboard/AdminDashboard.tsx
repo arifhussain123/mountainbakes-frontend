@@ -9,12 +9,11 @@ import { RecentOrdersTable } from './RecentOrdersTable';
 import { ShoppingCart, Clock, DollarSign, Package } from 'lucide-react';
 import type { ReportSummary } from '@mb/shared';
 import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
+import { DailySalesSection } from './daily-sales/DailySalesSection';
 
 // Charts pull in recharts; load them lazily on the client so the dashboard's
 // initial bundle doesn't include the charting library.
-const SalesChart = dynamic(() => import('./SalesChart').then((m) => m.SalesChart), { ssr: false });
 const BranchComparisonChart = dynamic(() => import('./BranchComparisonChart').then((m) => m.BranchComparisonChart), { ssr: false });
-const TopProductsChart = dynamic(() => import('./TopProductsChart').then((m) => m.TopProductsChart), { ssr: false });
 
 export function AdminDashboard() {
   const { token } = useAuth();
@@ -63,15 +62,16 @@ export function AdminDashboard() {
         />
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <SalesChart data={summary?.dailyData ?? []} loading={loading} />
-        </div>
-        <div>
-          <TopProductsChart data={summary?.topProducts ?? []} loading={loading} />
-        </div>
-      </div>
+      {/* Daily Sales.
+          Replaces the SalesChart + TopProductsChart pair that used to sit here.
+          Both drew slices of `/api/reports/summary`, which is a monthly report
+          aggregated in Node; this section owns its own date range, its own
+          branch filter and its own Postgres-side aggregation, and it already
+          renders the product ranking those two split between them. Keeping the
+          old pair alongside it would put two cards titled "Daily Sales" on one
+          screen, showing different windows. Both components are untouched and
+          still used by the Reports page. */}
+      <DailySalesSection />
 
       {/* Branch comparison */}
       <BranchComparisonChart data={summary?.branchData ?? []} loading={loading} />

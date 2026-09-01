@@ -34,6 +34,9 @@ import type {
   BranchDiscount,
   BranchDiscountStatus,
   LoginSession,
+  LoginAttemptReason,
+  LoginAttemptsPage,
+  LoginDeviceType,
   LoginHistoryPage,
   LoginSessionState,
   RevokeSessionResult,
@@ -50,6 +53,7 @@ import type {
   BranchLocationStats,
   UpsertBranchLocationInput,
   ReportSummary,
+  SalesAnalytics,
   StockRow,
   StockFigures,
   ConsolidatedDemandRow,
@@ -324,6 +328,52 @@ export function useReportSummary(
     enabled: !!token,
   });
 }
+
+/**
+ * Daily Sales analytics for the dashboard card.
+ *
+ * Aggregated in Postgres and returned as one small document — the whole point
+ * of the endpoint is that changing the date range does not pull a month of
+ * orders into the browser to re-total them here. Nothing in this file
+ * post-processes the payload; the figures arrive ready to render.
+ *
+ * `branchId` is a HINT for the cache key and for an admin's branch picker. The
+ * API resolves the real scope from the JWT and ignores this parameter entirely
+ * for a branch account, so a hand-edited request cannot widen what comes back.
+ *
+ * `LIVE_STALE_TIME`, like the other intraday-money queries: a sale rung up at
+ * the counter should show on the dashboard without a reload, and the 2-second
+ * refresh tick (useAppRefresh) refetches this while it is on screen.
+ */
+export function useSalesAnalytics(
+  token: string,
+  params: {
+    from: string;
+    to: string;
+    branchId?: string | null;
+    topLimit?: number;
+    compare?: boolean;
+  },
+  opts?: { enabled?: boolean },
+) {
+  const { from, to, branchId, topLimit = 5, compare = false } = params;
+  return useQuery({
+    queryKey: qk.salesAnalytics({ from, to, branchId, topLimit, compare }),
+    queryFn: () => {
+      const query = new URLSearchParams({
+        from,
+        to,
+        topLimit: String(topLimit),
+        compare: String(compare),
+      });
+      if (branchId) query.set('branchId', branchId);
+      return apiCall<SalesAnalytics>(`/api/sales-analytics?${query.toString()}`, {}, token);
+    },
+    staleTime: LIVE_STALE_TIME,
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
 
 /**
  * The full derived stock rows (Opening / New / Sold / Returned / Adjustment /
@@ -1066,6 +1116,11 @@ export function useLoginHistoryPage(
     from?: string | null;
     to?: string | null;
     suspiciousOnly?: boolean;
+    branchId?: string | null;
+    role?: string | null;
+    city?: string | null;
+    browser?: string | null;
+    deviceType?: LoginDeviceType | null;
     page?: number;
     pageSize?: number;
   },
@@ -1084,6 +1139,11 @@ export function useLoginHistoryPage(
       put('from', filters.from);
       put('to', filters.to);
       put('suspiciousOnly', filters.suspiciousOnly);
+      put('branchId', filters.branchId);
+      put('role', filters.role);
+      put('city', filters.city);
+      put('browser', filters.browser);
+      put('deviceType', filters.deviceType);
       put('page', filters.page ?? 1);
       put('pageSize', filters.pageSize ?? 25);
       return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
@@ -1108,21 +1168,73 @@ export function useActiveSessions(token: string, enabled = true) {
 }
 
 /**
- * The countries the filter dropdown offers.
+ * The values the country, city and browser dropdowns offer.
  *
- * Its own query, and a slow-moving one — an hour's staleTime, against the
- * 15 seconds everything else here uses. The set of countries staff have ever
- * signed in from does not change between two clicks of a pager, and refetching
- * it on the 2-second tick alongside the list would triple this screen's traffic
- * to re-derive the same dozen strings.
+ * ONE QUERY FOR THREE DROPDOWNS, matching the endpoint — three would be three
+ * round-trips to reduce the same rows three ways.
+ *
+ * A slow-moving query: an hour's staleTime, against the 15 seconds everything
+ * else here uses. The set of places and browsers staff have ever signed in from
+ * does not change between two clicks of a pager, and refetching it on the
+ * 2-second tick alongside the list would multiply this screen's traffic to
+ * re-derive the same few dozen strings.
  */
-export function useLoginCountries(token: string, enabled = true) {
+export function useLoginFilterOptions(token: string, enabled = true) {
   return useQuery({
-    queryKey: qk.loginCountries(),
-    queryFn: () => apiCall<{ countries: string[] }>('/api/login-history/countries', {}, token),
-    select: (r) => r.countries ?? [],
+    queryKey: qk.loginFilters(),
+    queryFn: () =>
+      apiCall<{ countries: string[]; cities: string[]; browsers: string[] }>(
+        '/api/login-history/filters',
+        {},
+        token,
+      ),
     enabled: !!token && enabled,
     staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * One page of failed sign-in attempts. Super admin only; 403s otherwise.
+ *
+ * A SEPARATE ENDPOINT AND A SEPARATE HOOK, not a filter on the history — a
+ * failed attempt has no session and no account behind it, so it shares no
+ * columns with a `LoginSession` beyond the device and the address that was
+ * typed. See the type's own note on why those rows are client-reported.
+ */
+export function useLoginAttempts(
+  token: string,
+  filters: {
+    search?: string | null;
+    reason?: LoginAttemptReason | null;
+    country?: string | null;
+    from?: string | null;
+    to?: string | null;
+    page?: number;
+    pageSize?: number;
+  },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: qk.loginAttempts(filters as Record<string, unknown>),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      const put = (k: string, v: unknown) => {
+        if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+      };
+      put('search', filters.search);
+      put('reason', filters.reason);
+      put('country', filters.country);
+      put('from', filters.from);
+      put('to', filters.to);
+      put('page', filters.page ?? 1);
+      put('pageSize', filters.pageSize ?? 25);
+      return apiCall<LoginAttemptsPage>(`/api/login-attempts?${params.toString()}`, {}, token);
+    },
+    enabled: !!token && enabled,
+    staleTime: LIVE_STALE_TIME,
+    // Same reasoning as the history pager: holding the previous page while the
+    // next loads greys the rows instead of blanking the table.
+    placeholderData: (prev) => prev,
   });
 }
 

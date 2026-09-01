@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { supabase, setRememberMe as persistRememberMeChoice } from '@/lib/supabase/client';
 import { canAccessFinance, getRoleHome } from '@/utils/roleHome';
 import { apiCall } from '@/utils/api';
+import { loginFailureReason, recordFailedLogin } from '@/lib/loginHistory';
 import { COMPANY_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
 import { ROUTES } from '@/utils/routes';
@@ -79,6 +80,19 @@ export default function FinanceLoginPage() {
     setError('');
     setLoading(true);
 
+    /*
+     * What a refused attempt is recorded AGAINST.
+     *
+     * Finance signs in by Finance User ID, not by address, so until the lookup
+     * below resolves one there is no email to record — and a lookup that 404s is
+     * itself a failed attempt worth seeing. So this starts as the identifier
+     * that was actually typed and is upgraded to the address once one is known.
+     * Both are honest answers to "what was entered", which is what the column
+     * means; `maskEmail` already handles a value with no '@' by masking it
+     * whole.
+     */
+    let attemptedAs = userId.trim();
+
     try {
       // Must precede sign-in: it decides whether the session Supabase is about
       // to issue lands in localStorage or sessionStorage.
@@ -90,6 +104,7 @@ export default function FinanceLoginPage() {
         method: 'POST',
         body: JSON.stringify({ userId: userId.trim() }),
       });
+      attemptedAs = email;
 
       // 2 — Sign in.
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
@@ -121,6 +136,11 @@ export default function FinanceLoginPage() {
       await finishSignIn(data.session.user.app_metadata as { role?: string });
     } catch (err: unknown) {
       setError(resolveMessage(err));
+      // Recorded for Admin → Security, exactly as on the main login page. This
+      // catch also covers the abandoned-session paths above — an account that
+      // authenticated but is not a finance one, or one whose second factor was
+      // never enrolled, was still refused entry and is worth an admin seeing.
+      recordFailedLogin(attemptedAs, loginFailureReason(err));
     } finally {
       setLoading(false);
     }

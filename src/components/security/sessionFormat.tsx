@@ -1,4 +1,4 @@
-import type { LoginSession, LoginSessionState } from '@mb/shared';
+import type { LocationSource, LoginSession, LoginSessionState } from '@mb/shared';
 
 /**
  * Everything the three Security screens agree on about how a session reads.
@@ -20,6 +20,10 @@ import type { LoginSession, LoginSessionState } from '@mb/shared';
  */
 export const STATE_STYLES: Record<LoginSessionState, string> = {
   active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+  // Amber like `expired`, because it is the same kind of fact one step earlier —
+  // the tab has gone quiet. Not green, or the roster would overstate how many
+  // people are actually at a screen; not red, because nothing is wrong.
+  idle: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
   ended: 'bg-muted text-muted-foreground',
   expired: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
   revoked: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
@@ -35,6 +39,10 @@ export const STATE_STYLES: Record<LoginSessionState, string> = {
  */
 export const STATE_LABELS: Record<LoginSessionState, string> = {
   active: 'Active',
+  // Named for the tab, not the person. The ping is on a timer and fires whether
+  // or not anybody is typing, so what has gone quiet is the browser — 'Away'
+  // would claim to know something about the human that this cannot.
+  idle: 'Idle',
   ended: 'Signed out',
   expired: 'Tab closed',
   revoked: 'Signed out by admin',
@@ -103,3 +111,23 @@ export function formatPlatform(s: Pick<LoginSession, 'os' | 'osVersion' | 'devic
     : null;
   return [s.os, kind].filter(Boolean).join(' ') || '—';
 }
+
+/**
+ * Location source → what it actually means, in words a person can act on.
+ *
+ * SPELLED OUT RATHER THAN ABBREVIATED. 'IP' on its own reads as a technical
+ * detail and gets skipped; "IP address (approximate)" is the qualification
+ * itself, sitting in the value where it cannot be scrolled past. That distinction
+ * is the whole reason `location_source` is stored — an admin about to sign
+ * somebody out for being in the wrong country needs to know the country came
+ * from a database lookup of a network, not from the device.
+ *
+ * 'DEVICE_GPS' has no writer today. It is labelled anyway so the day one exists,
+ * the two are already distinguishable on screen rather than looking identical
+ * until somebody remembers to add the label.
+ */
+export const LOCATION_SOURCE_LABELS: Record<LocationSource, string> = {
+  IP: 'IP address (approximate)',
+  DEVICE_GPS: 'Device location (precise)',
+  UNKNOWN: 'Not resolved',
+};

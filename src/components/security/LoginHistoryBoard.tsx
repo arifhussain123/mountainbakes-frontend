@@ -1,9 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { LoginSession, LoginSessionState } from '@mb/shared';
+import {
+  USER_ROLES,
+  businessDateStr,
+  businessDaysAgoStr,
+  type LoginDeviceType,
+  type LoginSession,
+  type LoginSessionState,
+} from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useLoginCountries, useLoginHistoryPage } from '@/lib/queries';
+import { useBranches, useLoginFilterOptions, useLoginHistoryPage } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -48,11 +55,20 @@ import {
  * here are query parameters and the pager moves `page`, and this file pays for
  * that with its own markup.
  *
- * WHAT THE TABLE SHOWS AND WHAT IT DOES NOT. The staff code, never the email
- * address. The list is opened on shop-floor tablets by people looking for a
- * device, a place or a time; `MBU-000125` answers "which account" for all of
- * that, and the activated account is one click away in the detail dialog, which
- * is the only view that reveals it and only to a caller the API allows.
+ * WHAT THE TABLE SHOWS. The staff code first, because `MBU-000125` is the
+ * identifier this screen is read by and the one thing that stays true when an
+ * address changes. The activated address sits underneath it — masked for
+ * everyone except a super admin, who is the only caller that sees other
+ * people's rows at all and cannot tell one account from another without it. The
+ * IP address gets its own column for the same reason: an admin comparing two
+ * sessions is comparing origins, and sending them into a dialog per row to do it
+ * is not a workflow.
+ *
+ * THE FILTER BAR IS TWO ROWS ON PURPOSE. The top row is the narrowing anybody
+ * does — who, when, what state. The second is the forensic set — branch, role,
+ * place, browser, device — which is folded away behind "More filters" because it
+ * is used on maybe one visit in ten and would otherwise make the common case
+ * hunt through nine controls to find the search box.
  */
 
 const PAGE_SIZE = 25;
@@ -67,9 +83,43 @@ interface Filters {
   from: string;
   to: string;
   suspiciousOnly: boolean;
+  branchId: string;
+  role: string;
+  city: string;
+  browser: string;
+  deviceType: LoginDeviceType | '';
 }
 
-const NO_FILTERS: Filters = { search: '', state: '', country: '', from: '', to: '', suspiciousOnly: false };
+const NO_FILTERS: Filters = {
+  search: '',
+  state: '',
+  country: '',
+  from: '',
+  to: '',
+  suspiciousOnly: false,
+  branchId: '',
+  role: '',
+  city: '',
+  browser: '',
+  deviceType: '',
+};
+
+const DEVICE_TYPES: LoginDeviceType[] = ['desktop', 'mobile', 'tablet', 'bot', 'unknown'];
+
+/**
+ * The quick filters, as the date range each one actually means.
+ *
+ * BUSINESS DATES, not calendar ones, because that is the column the API filters
+ * on — so "Today" means the bakery's today (08:00 through 02:00 the next
+ * morning), and a sign-in at half past midnight lands on the day the person was
+ * working rather than the day after. `businessDaysAgoStr(6)` and not `(7)`:
+ * "last 7 days" includes today, so it is today plus the six before it.
+ */
+const QUICK_RANGES: ReadonlyArray<readonly [label: string, days: number]> = [
+  ['Today', 0],
+  ['Last 7 days', 6],
+  ['Last 30 days', 29],
+];
 
 export function LoginHistoryBoard({
   onView,
@@ -83,6 +133,7 @@ export function LoginHistoryBoard({
   const { token } = useAuth();
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [page, setPage] = useState(1);
+  const [showMore, setShowMore] = useState(false);
 
   // Every filter change resets to page 1. Without this, narrowing a filter while
   // on page 7 lands on an empty page and reads as "no results" for a filter that
@@ -92,6 +143,26 @@ export function LoginHistoryBoard({
     setPage(1);
   };
 
+  /**
+   * A quick range is a shortcut for the two date inputs, not a mode.
+   *
+   * Setting the same fields the pickers set means the range stays visible and
+   * editable afterwards — an admin who clicks "Last 7 days" and then widens
+   * `from` by two days is doing something obvious, where a hidden mode would
+   * have to be cancelled first. Clicking the active one again clears it.
+   */
+  const applyQuickRange = (days: number) => {
+    const from = days === 0 ? businessDateStr() : businessDaysAgoStr(days);
+    const to = businessDateStr();
+    const alreadyOn = filters.from === from && filters.to === to;
+    setFilters((f) => ({ ...f, from: alreadyOn ? '' : from, to: alreadyOn ? '' : to }));
+    setPage(1);
+  };
+
+  const isQuickRange = (days: number) =>
+    filters.from === (days === 0 ? businessDateStr() : businessDaysAgoStr(days)) &&
+    filters.to === businessDateStr();
+
   const query = useLoginHistoryPage(token, {
     search: filters.search || null,
     state: filters.state || null,
@@ -99,10 +170,19 @@ export function LoginHistoryBoard({
     from: filters.from || null,
     to: filters.to || null,
     suspiciousOnly: filters.suspiciousOnly,
+    branchId: filters.branchId || null,
+    role: filters.role || null,
+    city: filters.city || null,
+    browser: filters.browser || null,
+    deviceType: filters.deviceType || null,
     page,
     pageSize: PAGE_SIZE,
   });
-  const countries = useLoginCountries(token);
+  const options = useLoginFilterOptions(token);
+  // Only fetched once the drawer is open. The branch list is not otherwise
+  // needed by this screen, and a request for it on every visit would be paid by
+  // the nine visits in ten that never open the drawer.
+  const branches = useBranches(token, { enabled: showMore });
 
   const rows = query.data?.sessions ?? [];
   const total = query.data?.total ?? 0;
@@ -111,6 +191,11 @@ export function LoginHistoryBoard({
     () => Object.entries(filters).some(([, v]) => v !== '' && v !== false),
     [filters],
   );
+  // The count is on the button so a filter set inside the collapsed drawer is
+  // never silently narrowing the list — the one genuine hazard of hiding
+  // controls behind a toggle.
+  const advancedCount = [filters.branchId, filters.role, filters.city, filters.browser, filters.deviceType]
+    .filter(Boolean).length;
 
   return (
     <div className="space-y-4">
@@ -122,7 +207,7 @@ export function LoginHistoryBoard({
           <Input
             value={filters.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="Search by Mountain Bakes ID or name…"
+            placeholder="Search by Mountain Bakes ID, name or email…"
             className="h-11 pl-9 md:h-9"
           />
         </div>
@@ -153,7 +238,7 @@ export function LoginHistoryBoard({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Any country</SelectItem>
-            {(countries.data ?? []).map((c) => (
+            {(options.data?.countries ?? []).map((c) => (
               <SelectItem key={c} value={c}>{c}</SelectItem>
             ))}
           </SelectContent>
@@ -187,6 +272,16 @@ export function LoginHistoryBoard({
           <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> Flagged
         </Button>
 
+        <Button
+          variant={advancedCount > 0 ? 'default' : 'outline'}
+          size="sm"
+          className="h-11 md:h-9"
+          onClick={() => setShowMore((v) => !v)}
+          aria-expanded={showMore}
+        >
+          More filters{advancedCount > 0 ? ` (${advancedCount})` : ''}
+        </Button>
+
         {active && (
           <Button variant="ghost" size="sm" className="h-11 md:h-9" onClick={() => { setFilters(NO_FILTERS); setPage(1); }}>
             Clear
@@ -194,12 +289,122 @@ export function LoginHistoryBoard({
         )}
       </div>
 
-      {/* Desktop table */}
-      <div className="hidden overflow-hidden rounded-lg border bg-card md:block">
+      {/* Quick ranges. Their own row under the filters rather than more controls
+          in the same wrap: they set the two date fields above, and sitting
+          directly beneath them is what makes that relationship visible. */}
+      <div className="flex flex-wrap gap-2">
+        {QUICK_RANGES.map(([label, days]) => (
+          <Button
+            key={label}
+            variant={isQuickRange(days) ? 'default' : 'outline'}
+            size="sm"
+            className="h-9"
+            onClick={() => applyQuickRange(days)}
+          >
+            {label}
+          </Button>
+        ))}
+        <Button
+          variant={filters.state === 'active' ? 'default' : 'outline'}
+          size="sm"
+          className="h-9"
+          onClick={() => set('state', filters.state === 'active' ? '' : 'active')}
+        >
+          Active only
+        </Button>
+      </div>
+
+      {showMore && (
+        <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-3">
+          <Select
+            value={filters.branchId || ALL}
+            onValueChange={(v) => set('branchId', !v || v === ALL ? '' : String(v))}
+          >
+            <SelectTrigger className="h-11 w-[180px] md:h-9">
+              <SelectValue placeholder="Any branch" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any branch</SelectItem>
+              {(branches.data ?? []).map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.role || ALL}
+            onValueChange={(v) => set('role', !v || v === ALL ? '' : String(v))}
+          >
+            <SelectTrigger className="h-11 w-[170px] md:h-9">
+              <SelectValue placeholder="Any role" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any role</SelectItem>
+              {USER_ROLES.map((r) => (
+                <SelectItem key={r} value={r} className="capitalize">
+                  {r.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.city || ALL}
+            onValueChange={(v) => set('city', !v || v === ALL ? '' : String(v))}
+          >
+            <SelectTrigger className="h-11 w-[160px] md:h-9">
+              <SelectValue placeholder="Any city" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any city</SelectItem>
+              {(options.data?.cities ?? []).map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.browser || ALL}
+            onValueChange={(v) => set('browser', !v || v === ALL ? '' : String(v))}
+          >
+            <SelectTrigger className="h-11 w-[160px] md:h-9">
+              <SelectValue placeholder="Any browser" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any browser</SelectItem>
+              {(options.data?.browsers ?? []).map((b) => (
+                <SelectItem key={b} value={b}>{b}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.deviceType || ALL}
+            onValueChange={(v) => set('deviceType', !v || v === ALL ? '' : (String(v) as LoginDeviceType))}
+          >
+            <SelectTrigger className="h-11 w-[150px] md:h-9">
+              <SelectValue placeholder="Any device" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any device</SelectItem>
+              {DEVICE_TYPES.map((d) => (
+                <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Desktop table. `overflow-x-auto` rather than a narrower column set at
+          tablet width: eleven columns do not fit a 768px screen, and dropping
+          some of them there would mean the same screen answered a different
+          question depending on the device it was opened on. Scrolling keeps one
+          table with one meaning. */}
+      <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
         <Table>
           <TableHeader>
             <TableRow data-table-head>
-              {['Mountain Bakes ID', 'Login date', 'Time', 'Country', 'City', 'Browser', 'Device', 'Duration', 'Status', ''].map((h, i) => (
+              {['Mountain Bakes ID', 'Login email', 'Login date', 'Time', 'Country', 'City', 'IP address', 'Browser', 'Device', 'Status', ''].map((h, i) => (
                 <TableHead key={i} className="text-xs font-semibold uppercase tracking-wide">{h}</TableHead>
               ))}
             </TableRow>
@@ -208,14 +413,14 @@ export function LoginHistoryBoard({
             {query.isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 10 }).map((__, j) => (
+                  {Array.from({ length: 11 }).map((__, j) => (
                     <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                   ))}
                 </TableRow>
               ))
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="p-0">
+                <TableCell colSpan={11} className="p-0">
                   <EmptyState
                     title="No sign-ins found"
                     description={active ? 'Try widening the filters.' : 'History starts from the first sign-in after this feature went live.'}
@@ -226,6 +431,10 @@ export function LoginHistoryBoard({
             ) : (
               rows.map((s) => (
                 <TableRow key={s.id} className="transition-colors hover:bg-muted/30">
+                  {/* The profile cell: picture, name, staff ID. The address gets
+                      its own column beside it rather than a third line here —
+                      the spec asks for both, and stacking three values in one
+                      cell makes none of them scannable. */}
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <StaffAvatar name={s.userName} seed={s.userCode} size="sm" />
@@ -235,13 +444,18 @@ export function LoginHistoryBoard({
                       </div>
                     </div>
                   </TableCell>
+                  <TableCell className="max-w-[220px]">
+                    <span className="block truncate text-xs" title={s.userEmail}>
+                      {s.userEmail || '—'}
+                    </span>
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{formatDate(s.loginAt)}</TableCell>
                   <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(s.loginAt)}</TableCell>
                   <TableCell className="whitespace-nowrap">{s.country || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap">{s.city || '—'}</TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-xs">{s.ipAddress || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatBrowser(s)}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatPlatform(s)}</TableCell>
-                  <TableCell className="whitespace-nowrap tabular-nums">{formatDuration(s.durationMs)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
@@ -276,9 +490,9 @@ export function LoginHistoryBoard({
       </div>
 
       {/* Phone cards. Same rows, re-laid out rather than a horizontally
-          scrolling table — nine columns on a 390px screen is unreadable, and
+          scrolling table — eleven columns on a 390px screen is unreadable, and
           the questions asked on a phone (who, where, when, is it still open)
-          are answered by four of them. */}
+          are answered by five of them. */}
       <div className="space-y-2 md:hidden">
         {query.isLoading
           ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-lg" />)
@@ -291,6 +505,7 @@ export function LoginHistoryBoard({
                     <div className="min-w-0 flex-1">
                       <p className="font-mono text-sm font-medium">{s.userCode ?? '—'}</p>
                       <p className="truncate text-xs text-muted-foreground">{s.userName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{s.userEmail}</p>
                     </div>
                     <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
                       {STATE_LABELS[s.state]}
@@ -302,6 +517,7 @@ export function LoginHistoryBoard({
                     <div><dt className="text-muted-foreground">Location</dt><dd>{[s.city, s.country].filter(Boolean).join(', ') || '—'}</dd></div>
                     <div><dt className="text-muted-foreground">Login</dt><dd className="tabular-nums">{formatDate(s.loginAt)} · {formatTime(s.loginAt)}</dd></div>
                     <div><dt className="text-muted-foreground">Duration</dt><dd className="tabular-nums">{formatDuration(s.durationMs)}</dd></div>
+                    <div className="col-span-2"><dt className="text-muted-foreground">IP address</dt><dd className="font-mono">{s.ipAddress || '—'}</dd></div>
                   </dl>
 
                   {s.isSuspicious && (

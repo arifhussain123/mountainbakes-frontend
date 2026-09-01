@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { AlertTriangle, ShieldOff } from 'lucide-react';
 import { StaffAvatar } from './StaffAvatar';
 import {
+  LOCATION_SOURCE_LABELS,
   STATE_LABELS,
   STATE_STYLES,
   formatBrowser,
@@ -182,11 +183,44 @@ export function SessionDetailDialog({
               <Row label="Region">{s.region || '—'}</Row>
               <Row label="Timezone">{s.timezone || '—'}</Row>
               <Row label="IP address" mono>{s.ipAddress || '—'}</Row>
+              {/* NAMED, NOT IMPLIED. Every value above is a commercial
+                  database's opinion about which network an address belongs to —
+                  a city at best, wherever the exit node is on a VPN, and
+                  routinely a whole country wrong on a mobile carrier. An admin
+                  deciding whether to sign somebody out has to know which kind of
+                  claim they are reading, and a sentence in a page header they
+                  scrolled past is not that. */}
+              <Row label="Source">{LOCATION_SOURCE_LABELS[s.locationSource]}</Row>
+              {/* Only where there are coordinates, and never as a map link. For
+                  source=IP this pair is the middle of a city — pinning it would
+                  present a whole city's answer as a place a person stood. */}
+              {s.latitude !== null && s.longitude !== null && (
+                <Row label="Coordinates" mono>
+                  {s.latitude.toFixed(4)}, {s.longitude.toFixed(4)}
+                  <span className="ml-1 font-sans text-xs text-muted-foreground">
+                    ({s.locationSource === 'IP' ? 'city centre, approximate' : 'device fix'})
+                  </span>
+                </Row>
+              )}
 
               <Section title="Device" />
               <Row label="Browser">{formatBrowser(s)}</Row>
               <Row label="Platform">{formatPlatform(s)}</Row>
               <Row label="OS version">{s.osVersion || '—'}</Row>
+              {/* Both omitted rather than shown as '—' when absent, unlike the
+                  rows above. A missing model on a laptop and a missing screen
+                  size on an old session are the normal case, not a gap worth a
+                  line each in a dialog that is already long. */}
+              {s.deviceName && <Row label="Model">{s.deviceName}</Row>}
+              {s.screenSize && (
+                <Row label="Screen">
+                  {s.screenSize}
+                  {/* Labelled at the point of display, because it is the one
+                      field on this row the BROWSER volunteered rather than the
+                      server observing. */}
+                  <span className="ml-1 text-xs text-muted-foreground">(device-reported)</span>
+                </Row>
+              )}
 
               <Section title="Security" />
               <Row label="Session ID" mono>{s.id}</Row>
