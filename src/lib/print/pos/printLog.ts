@@ -91,17 +91,59 @@ const KEY = 'mb.posPrintLog';
 const LIMIT = 200;
 const CHANGE_EVENT = 'mb:pos-print-log';
 
+/**
+ * The parsed log, memoised on the RAW stored string.
+ *
+ * ---------------------------------------------------------------------------
+ * Why this is a cache and not a plain read
+ * ---------------------------------------------------------------------------
+ * Because `useSyncExternalStore` compares snapshots with `Object.is`, and this
+ * function is one — `DebugPanel` subscribes to it. A `getSnapshot` that parses
+ * JSON on every call hands React a new array every render, React sees the store
+ * change, re-renders to catch up, gets another new array, and never settles: the
+ * tab pegs a core and the whole app stops responding for as long as the panel is
+ * mounted. It is not a slow render, it is an infinite one, and the empty case
+ * loops just as hard because `return []` is a fresh array too.
+ *
+ * `printerConfig.configSnapshot` solved exactly this for the config and carries
+ * the same note. This is the second store on the same page and it needed the
+ * same treatment; the `EMPTY_LOG` constant used for the server snapshot shows the
+ * rule was known and applied to only one of the three arguments.
+ *
+ * Keyed on the raw string rather than a revision counter so it stays correct
+ * across tabs: a `storage` event from another till session changes the string,
+ * and the next read reparses because of that alone.
+ */
+let CACHE: { raw: string | null; value: PrintLogEntry[] } | null = null;
+
 export function readPrintLog(): PrintLogEntry[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return EMPTY;
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as PrintLogEntry[]) : [];
+    raw = localStorage.getItem(KEY);
   } catch {
-    return [];
+    // Private mode or storage disabled by policy. One stable value, so a browser
+    // that cannot store anything does not loop either.
+    return EMPTY;
   }
+
+  if (CACHE && CACHE.raw === raw) return CACHE.value;
+
+  let value: PrintLogEntry[] = EMPTY;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) value = parsed as PrintLogEntry[];
+    } catch {
+      /* A corrupted entry reads as no history rather than throwing at a cashier. */
+    }
+  }
+  CACHE = { raw, value };
+  return value;
 }
+
+/** One array for every empty result, so the identity is stable across reads. */
+const EMPTY: PrintLogEntry[] = [];
 
 /** Newest first, so a reader sees the print they just attempted at the top. */
 export function appendPrintLog(entry: PrintLogEntry): void {

@@ -45,7 +45,7 @@ import type { DeviceIdentity, LinkStatus, PosTransport, PrintJob, TransportSuppo
  * Those are the terms. They are worth it for a till that would otherwise not
  * print at all, and they are wrong for a till that can do WebUSB — which is why
  * this is chosen in Printer Setup, and why detection offers it only when nothing
- * has been authorised for direct printing (`discovery.ts`).
+ * authorised for direct printing is working (`discovery.ts`).
  *
  * ---------------------------------------------------------------------------
  * Getting the dialog out of the way: kiosk printing
@@ -386,24 +386,49 @@ async function printInFrame(job: PrintJob): Promise<void> {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
-      const finish = () => {
+
+      /*
+       * Everything this job registered, taken back down whichever way it ends.
+       *
+       * `{ once: true }` is not cleanup here and treating it as such leaked on
+       * every receipt. It removes a listener only when that listener FIRES, and
+       * in the normal case exactly one of these two does: the frame's own
+       * `afterprint` arrives, the parent window's never will, and the one on
+       * `window` stays registered for the life of the page — holding this
+       * closure, and through it the job's bytes and the frame, from being
+       * collected. A till printing a few hundred receipts a day accumulates a few
+       * hundred of them, which is a page that gets slower the longer the shift
+       * runs and is worst right after a print. The 60s timer had the same shape:
+       * cleared on the throw path only, so every successful print left a minute
+       * of retained job behind it.
+       */
+      let fallback = 0;
+      const teardown = () => {
+        window.clearTimeout(fallback);
+        view.removeEventListener('afterprint', finish);
+        window.removeEventListener('afterprint', finish);
+      };
+
+      function finish() {
         if (settled) return;
         settled = true;
+        teardown();
         resolve();
-      };
+      }
+
       // `afterprint` is the honest end of the job and fires for both outcomes.
       // The fallback timer is not a guess at success — it releases this promise
       // on a browser that never fires the event, so the till is not left with a
       // permanently disabled Print button.
-      view.addEventListener('afterprint', finish, { once: true });
-      window.addEventListener('afterprint', finish, { once: true });
-      const fallback = window.setTimeout(finish, 60_000);
+      view.addEventListener('afterprint', finish);
+      window.addEventListener('afterprint', finish);
+      fallback = window.setTimeout(finish, 60_000);
       try {
         view.focus();
         view.print();
       } catch (error) {
-        window.clearTimeout(fallback);
         settled = true;
+        teardown();
         reject(error);
         return;
       }
