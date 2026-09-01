@@ -33,6 +33,17 @@ export const ROUTES = {
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',
+  /**
+   * Admin → Security. Login History and Active Sessions in one screen.
+   *
+   * A plain '/security' rather than '/login-history' or '/sessions': the page
+   * holds two related boards and grew a third concern (revoking a session), and
+   * naming it after any one of them would date the moment the next is added.
+   * Added to RouteGuard's ADMIN_PREFIXES in the same change — an admin route
+   * that matches no '/branch-' or '/production-' prefix is unguarded until it is
+   * named there explicitly.
+   */
+  SECURITY: '/security',
   NOTIFICATION_RECIPIENTS: '/notification-recipients',
   SPECIAL_EVENTS: '/special-events',
 

@@ -29,6 +29,7 @@ import {
   ListTree,
   CalendarCheck,
   ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -58,6 +59,9 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
   { label: 'Account Requests', href: ROUTES.USER_REQUESTS,   icon: UserPlus },
+  // Next to Users rather than beside Settings: it is read while thinking about
+  // an account, not while configuring the app.
+  { label: 'Security',        href: ROUTES.SECURITY,         icon: ShieldAlert },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
 ];
 

@@ -135,7 +135,13 @@ let sessionTeardown: Promise<void> | null = null;
  * End a session the server will no longer honour.
  *
  * A 401 that survives the refresh above means the Supabase session is gone for
- * good. Signing out locally is what makes RouteGuard notice: it reads `user` from
+ * good. EXPORTED as well as used here, for the one other caller that reaches the
+ * same conclusion by a different route: the Login History ping, which is told
+ * 403 `session_revoked` when an admin has signed this browser out. That path has
+ * a still-valid access token — a Supabase access token cannot be withdrawn once
+ * issued — so it never produces a 401 to trigger this, and without the export it
+ * would have to duplicate the sign-out, the single-shot guard and the hard
+ * navigation, three things that must not drift into two versions. Signing out locally is what makes RouteGuard notice: it reads `user` from
  * AuthProvider, so until the Supabase session is actually cleared the user keeps
  * sitting on a fully rendered page where every single request 401s and no screen
  * ever loads its data.
@@ -143,7 +149,7 @@ let sessionTeardown: Promise<void> | null = null;
  * A hard navigation rather than router.replace(): it drops all the React state
  * built on the dead identity, which a client-side route change would keep.
  */
-function endDeadSession(): void {
+export function endDeadSession(): void {
   if (typeof window === 'undefined') return;
   if (window.location.pathname.startsWith('/login')) return;
 

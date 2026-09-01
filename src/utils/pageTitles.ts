@@ -27,6 +27,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.STOCK_CONTROL]: 'Branch Stock Control',
   [ROUTES.REPORTS]: 'Reports & Analytics',
   [ROUTES.SUPPORT_CENTER]: 'Support Center',
+  [ROUTES.SECURITY]: 'Security',
   [ROUTES.NOTIFICATION_RECIPIENTS]: 'Notification Recipients',
   // /special-events/<id> is deliberately absent: a dynamic route cannot have a
   // static title here, so EventDetailPage renders its own heading.

@@ -70,6 +70,21 @@ export const qk = {
   // it is refetched by the ordinary active-query refresh tick.
   loginHistory: (scope?: string | null, days?: number | null) =>
     ['loginHistory', scope ?? 'all', days ?? 90] as const,
+  // Admin → Security. All three live under the 'loginHistory' prefix so ONE
+  // invalidation after a revoke refreshes the table, the live roster and any
+  // open detail dialog together — they are three views of one set of rows, and a
+  // revoke that repainted only the button it was clicked on would leave the
+  // other two showing a session it had just ended.
+  //
+  // The paged list is keyed by the whole filter object rather than by a scope
+  // string: page, page size, search, state, country and date range each select a
+  // different set of rows, and a key that ignored any of them would serve one
+  // filter's answer to another.
+  loginHistoryPage: (params: Record<string, unknown>) =>
+    ['loginHistory', 'page', params] as const,
+  activeSessions: () => ['loginHistory', 'active'] as const,
+  loginSession: (id: string) => ['loginHistory', 'session', id] as const,
+  loginCountries: () => ['loginHistory', 'countries'] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,

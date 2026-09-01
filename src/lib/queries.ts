@@ -14,6 +14,7 @@ import { qk } from './queryKeys';
 // date into the UTC instants /api/orders filters created_at on.
 import { businessDayBounds, businessDateStr } from '@mb/shared';
 import type {
+  ActiveSessionsResponse,
   ApproveBranchUserRequestInput,
   Branch,
   BranchStockHistoryRow,
@@ -33,6 +34,9 @@ import type {
   BranchDiscount,
   BranchDiscountStatus,
   LoginSession,
+  LoginHistoryPage,
+  LoginSessionState,
+  RevokeSessionResult,
   ProductionStockRow,
   ProductionStockLedgerRow,
   ProductionStockFigures,
@@ -1006,22 +1010,171 @@ export function useProductionBranchStock(token: string) {
 // row for the tab you are reading this in is still open.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useLoginHistory(token: string, opts?: { userId?: string | null; days?: number }) {
-  const days = opts?.days ?? 90;
+export function useLoginHistory(token: string, opts?: { userId?: string | null; pageSize?: number }) {
+  // The dashboard card is a GLANCE, not the Security screen. It asks for one
+  // page and shows it — the full history, with its filters and its pager, lives
+  // at /security. Before the endpoint was paged this fetched a capped 500 rows
+  // and filtered them in the browser, which meant the cap silently truncated the
+  // card the moment the table outgrew it.
+  const pageSize = opts?.pageSize ?? 50;
   return useQuery({
-    queryKey: qk.loginHistory(opts?.userId ?? 'all', days),
+    queryKey: qk.loginHistory(opts?.userId ?? 'all', pageSize),
     queryFn: () => {
-      const params = new URLSearchParams({ days: String(days) });
+      const params = new URLSearchParams({ pageSize: String(pageSize) });
       if (opts?.userId) params.set('userId', opts.userId);
-      return apiCall<{ sessions: LoginSession[]; scope: string }>(
-        `/api/login-history?${params.toString()}`,
-        {},
-        token,
-      );
+      return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
     },
     select: (r) => r.sessions ?? [],
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Admin → Security
+//
+// The paged history, the live session roster, the country filter's options, one
+// session in full, and the two revoke actions.
+//
+// EVERY ONE OF THESE IS SCOPED BY THE API, not by the hook. A super admin gets
+// every account; every other role is pinned to its own uid whatever it asks for,
+// and the two revoke endpoints 403 outright. The hooks below therefore never
+// check a role — a check here would be a second, drifting copy of a decision the
+// server has already made, and hiding a button is not what makes an action safe.
+//
+// LIVE_STALE_TIME throughout: a session's duration grows while you watch it, and
+// the roster is a picture of right now. The app's own 2-second refresh tick
+// refetches whatever is on screen, so these stay current without polling of
+// their own.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * One page of login history.
+ *
+ * `filters` is passed straight into the query key, so every distinct filter
+ * combination caches separately and paging back to a page already seen is
+ * instant. Undefined values are dropped before the request rather than sent as
+ * the string 'undefined', which the API would then reject as a bad UUID.
+ */
+export function useLoginHistoryPage(
+  token: string,
+  filters: {
+    userId?: string | null;
+    search?: string | null;
+    state?: LoginSessionState | null;
+    country?: string | null;
+    from?: string | null;
+    to?: string | null;
+    suspiciousOnly?: boolean;
+    page?: number;
+    pageSize?: number;
+  },
+) {
+  return useQuery({
+    queryKey: qk.loginHistoryPage(filters as Record<string, unknown>),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      const put = (k: string, v: unknown) => {
+        if (v !== undefined && v !== null && v !== '' && v !== false) params.set(k, String(v));
+      };
+      put('userId', filters.userId);
+      put('search', filters.search);
+      put('state', filters.state);
+      put('country', filters.country);
+      put('from', filters.from);
+      put('to', filters.to);
+      put('suspiciousOnly', filters.suspiciousOnly);
+      put('page', filters.page ?? 1);
+      put('pageSize', filters.pageSize ?? 25);
+      return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
+    },
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    // The pager would otherwise blank the table on every page change. Holding
+    // the previous page while the next loads keeps the rows in place and greys
+    // them instead, which is the difference between paging and reloading.
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** Everything signed in right now, grouped by account. Admin only; 403s otherwise. */
+export function useActiveSessions(token: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.activeSessions(),
+    queryFn: () => apiCall<ActiveSessionsResponse>('/api/login-history/active', {}, token),
+    enabled: !!token && enabled,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The countries the filter dropdown offers.
+ *
+ * Its own query, and a slow-moving one — an hour's staleTime, against the
+ * 15 seconds everything else here uses. The set of countries staff have ever
+ * signed in from does not change between two clicks of a pager, and refetching
+ * it on the 2-second tick alongside the list would triple this screen's traffic
+ * to re-derive the same dozen strings.
+ */
+export function useLoginCountries(token: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.loginCountries(),
+    queryFn: () => apiCall<{ countries: string[] }>('/api/login-history/countries', {}, token),
+    select: (r) => r.countries ?? [],
+    enabled: !!token && enabled,
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * One session in full, for the detail dialog.
+ *
+ * Fetched rather than passed down from the row the admin clicked, because the
+ * row carries a MASKED email and this is the view that may reveal it — the API
+ * decides that per request, and reusing the list row would mean the dialog could
+ * only ever show what the list already had.
+ */
+export function useLoginSession(token: string, sessionId: string | null) {
+  return useQuery({
+    queryKey: qk.loginSession(sessionId ?? ''),
+    queryFn: () => apiCall<LoginSession>(`/api/login-history/${sessionId}`, {}, token),
+    enabled: !!token && !!sessionId,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Sign out one session.
+ *
+ * Invalidates the whole ['loginHistory'] prefix, not just the list it was
+ * clicked from: the revoked session appears in the history table, in the active
+ * roster and possibly in an open detail dialog, and repainting one of the three
+ * would leave the other two showing a session that no longer exists.
+ */
+export function useRevokeSession(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { sessionId: string; reason?: string }) =>
+      apiCall<RevokeSessionResult>(
+        `/api/login-history/${v.sessionId}/revoke`,
+        { method: 'POST', body: JSON.stringify(v.reason ? { reason: v.reason } : {}) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loginHistory'] }),
+  });
+}
+
+/** Sign out every session for one account, optionally sparing one. */
+export function useRevokeAllSessions(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { userId: string; keepSessionId?: string; reason?: string }) =>
+      apiCall<RevokeSessionResult>(
+        '/api/login-history/revoke-all',
+        { method: 'POST', body: JSON.stringify(v) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loginHistory'] }),
   });
 }
 

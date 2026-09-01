@@ -75,6 +75,11 @@ const ADMIN_PREFIXES = [
   // precisely so it does not collide with the '/branch-' rule below, which would
   // have bounced super admins off their own screen. See ROUTES.BRANCH_LOCATIONS.
   '/geofencing',
+  // Admin → Security. Login History for every account, the live session roster,
+  // and the buttons that sign somebody else out. Guarded here as well as in the
+  // API, which re-decides every one of those calls against the JWT — this line
+  // only keeps a non-admin from loading a screen whose every request would 403.
+  '/security',
 ];
 
 function isPublic(pathname: string): boolean {

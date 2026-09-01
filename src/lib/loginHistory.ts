@@ -1,6 +1,7 @@
 import type { LoginSession } from '@mb/shared';
 import { supabase } from '@/lib/supabase/client';
 import { apiCall } from '@/utils/api';
+import { endDeadSession } from '@/lib/api/client';
 
 /**
  * Client half of Login History.
@@ -17,11 +18,33 @@ import { apiCall } from '@/utils/api';
  * neither. Everything here reads its own token from the Supabase client for the
  * same reason.
  *
- * EVERY FUNCTION SWALLOWS ITS ERRORS. This is bookkeeping running alongside real
- * work: an unreachable API must never stop somebody signing in, working, or —
- * least of all — signing out. A lost ping costs at most a slightly short
- * duration on one row.
+ * EVERY FUNCTION SWALLOWS ITS ERRORS, WITH ONE EXCEPTION. This is bookkeeping
+ * running alongside real work: an unreachable API must never stop somebody
+ * signing in, working, or — least of all — signing out. A lost ping costs at
+ * most a slightly short duration on one row.
+ *
+ * The exception is a 403 `session_revoked`, which is not bookkeeping at all. An
+ * admin has signed this browser out, and the ping is the mechanism that carries
+ * that out: a Supabase access token cannot be withdrawn once issued, so the
+ * GoTrue session behind it is already deleted but the token in this tab stays
+ * valid until it expires — up to an hour of a supposedly-terminated session
+ * still working. Answering the 403 by signing out locally is what turns the
+ * revocation into something that happens within the two-minute ping tick.
  */
+
+/**
+ * Did the API say this session has been revoked?
+ *
+ * Matched on the `code`, never on the message. The API sends both; the prose is
+ * for a person and gets reworded, the code does not.
+ */
+function isRevoked(err: unknown): boolean {
+  const e = err as { status?: number; details?: { code?: string } } | null;
+  // `details` and not a top-level field: `apiCall` lifts only `body.details`
+  // onto ApiError and drops the rest of the body, so this is the one place a
+  // machine-readable marker survives the trip.
+  return e?.status === 403 && e?.details?.code === 'session_revoked';
+}
 
 /**
  * Where the session id lives between calls.
@@ -87,7 +110,14 @@ export async function startLoginSession(): Promise<LoginSession | null> {
     );
     write(session.id);
     return session;
-  } catch {
+  } catch (err) {
+    // The reload case. Without this a revoked browser would refresh, find its
+    // access token still valid, open a brand-new session row and reappear in the
+    // Active Sessions list as though the revocation had been undone.
+    if (isRevoked(err)) {
+      write(null);
+      endDeadSession();
+    }
     return null;
   }
 }
@@ -110,6 +140,15 @@ export async function pingLoginSession(): Promise<void> {
   try {
     await apiCall('/api/login-history/ping', { method: 'POST', body: JSON.stringify({ sessionId }) }, token);
   } catch (err) {
+    // Signed out by an admin. Checked BEFORE the 404 branch, and deliberately
+    // not answered by opening a fresh session — that is the difference between
+    // the two, and getting it backwards would make the revoke button reopen the
+    // session it just closed.
+    if (isRevoked(err)) {
+      write(null);
+      endDeadSession();
+      return;
+    }
     if ((err as { status?: number })?.status === 404) {
       write(null);
       void startLoginSession();
