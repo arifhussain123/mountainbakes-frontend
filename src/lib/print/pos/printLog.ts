@@ -26,6 +26,19 @@ import type { PrintErrorCode } from './errors';
 
 export type PrintDocumentType = 'sale' | 'production-order' | 'test-page';
 
+/**
+ * What was actually put on the wire, as opposed to how it was addressed.
+ *
+ * `escpos` is the printer's own command language written straight to a device.
+ * `driver-page` is the installed-printer route: a rendered page handed to the
+ * operating system's driver (`transport/system.ts`). The two fail in completely
+ * different ways — a blank roll from `escpos` means the bytes went nowhere or the
+ * head is not printing them, and a blank roll from `driver-page` means the driver
+ * got a page it could not render — so this is the first field worth reading when
+ * a till reports white paper.
+ */
+export type PrintFormat = 'escpos' | 'driver-page';
+
 export interface PrintLogEntry {
   printJobId: string;
   documentType: PrintDocumentType;
@@ -45,6 +58,33 @@ export interface PrintLogEntry {
   errorMessage?: string;
   durationMs?: number;
   bytes?: number;
+
+  /* ── What the job was, physically ──────────────────────────────────────────
+     Recorded because "the receipt printed wrong" is a question about the paper
+     and the format, and neither is recoverable after the fact: the config is
+     per-device localStorage that may have been changed since, and the profile it
+     resolved to is not stored anywhere at all. Without these, a report of clipped
+     columns cannot be told apart from a report of the wrong roll. */
+
+  /** How the printer was addressed — `usb`, `serial`, `network`, `system`. */
+  connection?: string;
+  /** The roll this job was composed for. `80mm` / `58mm`. */
+  paperWidth?: string;
+  /** Characters across the line, after any hand-set override. The column maths. */
+  columns?: number;
+  /** How many copies were asked for. */
+  copies?: number;
+  /** Bytes, or a page for a driver. See `PrintFormat`. */
+  printFormat?: PrintFormat;
+  /**
+   * Where the link stood when the job failed, checked at the moment of failure.
+   *
+   * Only on a failure, and only ever a *report* — the print was already attempted
+   * by the time this is read, so it costs a customer nothing and it answers the
+   * one question the error code cannot: was the printer there at all. Absent when
+   * the check itself could not be made.
+   */
+  printerState?: string;
 }
 
 const KEY = 'mb.posPrintLog';

@@ -859,6 +859,25 @@ const EMPTY_LOG: PrintLogEntry[] = [];
 
 function LogRow({ entry }: { entry: PrintLogEntry }) {
   const ok = entry.status === 'success';
+  /*
+   * The physical facts of the job, on their own line.
+   *
+   * This is the line a "white paper" report is diagnosed from, and each part
+   * answers a different question that the error message alone cannot: which roll
+   * it was composed for, what column count the totals were padded against,
+   * whether the bytes went to a device or a page went to a driver, and — on a
+   * failure — whether there was anything on the other end at the time. Built from
+   * whatever the entry has, because entries written by an older build carry none
+   * of it and a row of `undefined` would be worse than a shorter line.
+   */
+  const facts = [
+    entry.paperWidth,
+    entry.columns ? `${entry.columns} cols` : null,
+    entry.printFormat,
+    entry.copies && entry.copies > 1 ? `×${entry.copies}` : null,
+    !ok && entry.printerState ? `link ${entry.printerState}` : null,
+  ].filter(Boolean);
+
   return (
     <li className="flex items-start justify-between gap-2 py-0.5 text-[11px]">
       <span className="min-w-0">
@@ -870,6 +889,7 @@ function LogRow({ entry }: { entry: PrintLogEntry }) {
         {' → '}
         {entry.printerName || entry.printerId}
         {entry.errorMessage && <span className="block text-muted-foreground">{entry.errorMessage}</span>}
+        {facts.length > 0 && <span className="block text-muted-foreground">{facts.join(' · ')}</span>}
       </span>
       <span className="shrink-0 text-muted-foreground tabular-nums">
         {formatDateTime(entry.createdAt)}

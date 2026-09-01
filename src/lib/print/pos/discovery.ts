@@ -69,13 +69,20 @@ import {
  * The counter's reasonable conclusion — "the printer is installed, why can this
  * app not see it" — had no answer but an uninstall.
  *
- * So detection now has a last rung. When nothing has been authorised for direct
- * printing, it offers `transport/system.ts`: the receipt goes to whichever
- * printer the operating system hands it to, through the driver that owns the
- * device. It is offered LAST and only when the list is otherwise empty, because
- * it is strictly worse than a device this app opened itself — a dialog appears
+ * So detection now has a last rung. When nothing authorised for direct printing
+ * can print *right now*, it offers `transport/system.ts`: the receipt goes to
+ * whichever printer the operating system hands it to, through the driver that
+ * owns the device. It is offered LAST and only when no device this app can open
+ * is working, because it is strictly worse than one that is — a dialog appears
  * unless the browser was started with `--kiosk-printing`, and nothing comes back
  * to say whether paper moved. It is only better than not printing.
+ *
+ * "Nothing working" rather than "nothing found" is the condition, and the
+ * difference is a till that was locked out: a stale grant for a printer since
+ * unplugged still enumerates, so the old test saw a non-empty list, withheld this
+ * rung, and let the dead device be adopted into the config — where it won rung 1
+ * from then on. The same applies to a printer Windows is holding, which is the
+ * exact case this route exists to answer.
  *
  * Note what has *not* changed: `isSystemDefault` is still `null`. Being able to
  * send to the system printer is not being able to name it, and the field answers
@@ -383,16 +390,35 @@ export async function detectPrinters(config: PosPrinterConfig = DEFAULT_CONFIG):
 
   // The last rung: the printer this computer already has installed.
   //
-  // Appended only when direct printing turned nothing up, and that condition is
-  // the whole design. A till that has authorised a device must not be offered a
-  // second row that prints the same receipts through a dialog — it would be a
-  // choice between a good route and a worse one, presented as if they were peers,
-  // and someone would pick the one whose name mentions Windows.
+  // Appended only when direct printing turned up nothing that can print RIGHT
+  // NOW, and that condition is the whole design. A till whose authorised device
+  // is open must not be offered a second row that prints the same receipts
+  // through a dialog — it would be a choice between a good route and a worse one,
+  // presented as if they were peers, and someone would pick the one whose name
+  // mentions Windows. The test is `available`, so that invariant holds: when a
+  // device this app can open is working, this row is not built at all.
   //
-  // When the list IS empty, this is the difference between a counter that prints
-  // and a counter that does not. The unit is installed, it prints from Notepad,
-  // and `usbprint.sys` is why nothing above found it.
-  if (found.length === 0) {
+  // It used to be `found.length === 0`, which is a stricter thing than it looks
+  // and it locked tills out. Two cases reach here with a non-empty list and
+  // nothing that can print:
+  //
+  //   - The grant is stale. A printer authorised on this machine months ago,
+  //     since unplugged or replaced, still enumerates from the permission store —
+  //     so the list was non-empty, the system row was never offered, and rung 2
+  //     below adopted the DEAD device into the config. That adoption then wins
+  //     rung 1 for good, and the till can never reach the installed printer again
+  //     without someone opening Printer Setup and knowing what to change.
+  //   - Windows is holding the interface. `claimInterface` fails with
+  //     `device-busy`, the row comes back `error`, and the fix for that case is
+  //     precisely this route — the same physical printer, reached through the
+  //     driver that owns it. Not offering it there withheld the one answer.
+  //
+  // It sorts to the top of the list below, and that is not a contradiction of the
+  // paragraph above: it is only ever built when nothing else can print, so the
+  // rows it sorts past are offline, held or unsupported. It is still reported as
+  // `system-fallback` rather than `auto-detected`, so the screen says which route
+  // it is and why a dialog is about to appear.
+  if (!found.some((p) => p.available)) {
     const transport = transportFor('system');
     const support = transport.support();
     if (support.supported) {
@@ -447,11 +473,14 @@ function rank(printer: DetectedPrinter): number {
  *    configured, so the printer this browser already holds a grant for is adopted
  *    with no prompt. Attached ones win over remembered ones.
  * 3. **The printer the operating system has installed.** Appended by
- *    `detectPrinters` only when rung 2 found nothing at all, and adopted here by
- *    the same code that adopts anything else — there is no special case in this
- *    function, because by the time the list reaches it the row is simply the only
- *    candidate. It is reported as `system-fallback` rather than `auto-detected`
- *    so the screen can say what happened.
+ *    `detectPrinters` only when rung 2 turned up nothing that can print right
+ *    now, and adopted here by the same code that adopts anything else — there is
+ *    no special case in this function, because by the time the list reaches it
+ *    the row is the only *available* candidate. It is reported as
+ *    `system-fallback` rather than `auto-detected` so the screen can say what
+ *    happened. Preferring it over an authorised device that is merely offline is
+ *    deliberate: adopting the dead one writes it into the config, where rung 1
+ *    then protects it forever.
  *
  *    This is the rung that used to read "not reachable from a browser". Half of
  *    that is still true and always will be: the printer cannot be *named* here.

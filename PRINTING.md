@@ -137,8 +137,9 @@ its own test page, and Mountain Bakes does not detect it."* It does not detect i
 because Windows owns it; this prints through Windows instead.
 
 It is chosen in Printer Setup under **Connection → Installed Printer**, and
-detection offers it on its own when nothing has been authorised for direct
-printing (see the priority chain below). Three things are given up, and all three
+detection offers it on its own when nothing authorised for direct printing can
+print right now — never alongside a device this app has open (see the priority
+chain below). Three things are given up, and all three
 are on screen before anyone commits:
 
 1. **A dialog opens.** Unless the browser was started with `--kiosk-printing`
@@ -220,11 +221,19 @@ The priority chain in `discovery.ts` is:
    remembered; two attached printers are adopted by first, with `ambiguous` set so
    Printer Settings says which was chosen rather than leaving it a mystery.
 3. **The printer installed on this computer** — appended by `detectPrinters` only
-   when rung 2 found *nothing at all*, then adopted by the same code that adopts
-   anything else. Reported as `system-fallback` rather than `auto-detected`, so
-   Printer Settings says why a dialog is about to appear. It is deliberately never
-   offered alongside a device this app can open: that would present a good route
-   and a worse one as peers.
+   when rung 2 found nothing that can print *right now*, then adopted by the same
+   code that adopts anything else. Reported as `system-fallback` rather than
+   `auto-detected`, so Printer Settings says why a dialog is about to appear. It is
+   deliberately never offered alongside a working device this app can open: that
+   would present a good route and a worse one as peers.
+
+   The test is `available`, not "the list is empty", and the difference is a till
+   that was locked out of printing entirely. A grant for a printer since unplugged
+   still enumerates from the browser's permission store, so the old test saw a
+   non-empty list, withheld this rung, and let rung 2 adopt the **dead** device
+   into the config — where rung 1 then protected it for good. A printer Windows is
+   holding (`device-busy`, reported `error`) is the same shape, and it is the exact
+   case this route exists to answer.
 4. **The chooser** — only when the three above found nothing, and only from a click.
 
 `PrinterAvailability` is the counter's vocabulary — `ready`, `printing`, `offline`,

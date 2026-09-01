@@ -9,7 +9,7 @@ import {
   type PosPrinterConfig,
   type PrinterConnection,
 } from './printerConfig';
-import { appendPrintLog, type PrintDocumentType } from './printLog';
+import { appendPrintLog, type PrintDocumentType, type PrintFormat } from './printLog';
 import {
   InvalidDocumentError,
   productionOrderBlocks,
@@ -367,6 +367,22 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
   // Both forms of the same document, composed once and handed over together.
   // Which half a transport reads is its business — that is what keeps "how many
   // copies" and "which wire" from becoming a branch on connection type up here.
+  /*
+   * What this job physically was, for the log.
+   *
+   * Assembled beside the job rather than at each `appendPrintLog` call, so the
+   * success entry and the failure entry cannot come to describe different paper —
+   * they are the same print, and a log where the two disagree is worse than one
+   * that omits the fields.
+   */
+  const paperFacts = {
+    connection: config.connection,
+    paperWidth: profile.id,
+    columns: profile.charactersPerLine,
+    copies,
+    printFormat: formatOf(config.connection),
+  };
+
   const job: PrintJob = {
     bytes: payload,
     blocks,
@@ -410,6 +426,7 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
       status: 'success',
       durationMs: result.durationMs,
       bytes: result.bytes,
+      ...paperFacts,
     });
     return result;
   } catch (error) {
@@ -428,6 +445,8 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
       errorCode: failure.code,
       errorMessage: failure.message,
       durationMs: Date.now() - startedAt,
+      ...paperFacts,
+      printerState: await linkStateAtFailure(config),
     });
     throw failure;
   } finally {
@@ -448,6 +467,37 @@ function jobTitle(documentType: PrintDocumentType, documentId: string | null): s
   const kind =
     documentType === 'sale' ? 'Receipt' : documentType === 'production-order' ? 'Production order' : 'Test page';
   return documentId ? `${kind} ${documentId}` : kind;
+}
+
+/**
+ * What a connection actually puts on the wire.
+ *
+ * Three of the four transports write ESC/POS to a device they opened; the fourth
+ * hands a rendered page to the driver that owns the printer. A print log that
+ * only recorded the connection would leave a reader to remember which is which,
+ * and it is the distinction that decides where to look when a roll comes out
+ * blank — so it is written down rather than inferred.
+ */
+function formatOf(connection: PrinterConnection): PrintFormat {
+  return connection === 'system' ? 'driver-page' : 'escpos';
+}
+
+/**
+ * Where the link stood at the moment a print failed.
+ *
+ * Only ever called on the failure path, so it costs a successful sale nothing.
+ * It answers what the error code cannot — the code says what this app tried and
+ * this says whether there was anything on the other end — and it is deliberately
+ * best-effort: a status check that itself fails must not replace the real error
+ * with its own.
+ */
+async function linkStateAtFailure(config: PosPrinterConfig): Promise<string | undefined> {
+  try {
+    const link = await transportFor(config.connection).status(targetOf(config));
+    return link.state;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
