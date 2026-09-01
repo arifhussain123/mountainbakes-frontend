@@ -3,16 +3,25 @@
 Two paths, deliberately separate, and neither falls back to the other on its own.
 
 ```
-POS receipts                          A4 documents
-────────────                          ────────────
-PosPrintButton                        PrintButton
-      ↓                                     ↓
-lib/print/pos/printerService          lib/print/browser/documentPrint
-      ↓  ESC/POS bytes                      ↓  window.print()
-lib/print/pos/transport               browser print dialog
-      ↓  WebUSB / Web Serial / TCP          ↓
-80mm thermal printer                  sheet printer / Save as PDF
+POS receipts                                    A4 documents
+────────────                                    ────────────
+PosPrintButton                                  PrintButton
+      ↓                                               ↓
+lib/print/pos/printerService                    lib/print/browser/documentPrint
+      ↓  one PrintJob: bytes + blocks                 ↓  window.print()
+lib/print/pos/transport                         browser print dialog
+      ↓                     ↓                         ↓
+ WebUSB / Serial / TCP    system driver          sheet printer / Save as PDF
+      ↓                     ↓
+ 80mm thermal printer   whatever Windows has installed
 ```
+
+Note the fourth transport. The three on the left open the device and write ESC/POS
+to it. `system` cannot open anything — it hands the receipt to the printer the
+operating system already has, which is the only route to a unit whose driver owns
+it. It is still not `documentPrint`: a receipt printed that way is composed by the
+same formatter, wrapped to the same columns, and rendered in an iframe with its
+own `@page`; the A4 path is untouched and neither falls back to the other.
 
 ## The local print service is gone
 
@@ -76,6 +85,7 @@ between them.
 | | API | Works in | Does not work in |
 | --- | --- | --- | --- |
 | **USB POS Printer** | WebUSB | Chrome / Edge / Opera, desktop and Android, over https | Firefox, Safari, anything on iOS |
+| **Installed Printer** | `window.print()` in an iframe | Everywhere there is a print dialog | Nowhere — this is the fallback that always exists |
 | **USB Serial POS Printer** | Web Serial | Chrome / Edge / Opera, desktop only, over https | Firefox, Safari, Android, iOS |
 | **Network / LAN** | Direct Sockets (`TCPSocket`) | An installed Isolated Web App | An ordinary web page — see below |
 
@@ -88,9 +98,11 @@ Two limits worth knowing before someone files a bug:
 
 - **Windows will not share a USB printer.** If the unit is installed through
   *Printers & scanners*, `usbprint.sys` owns the interface and `claimInterface`
-  fails. That is reported as `device-busy` with the fix in the sentence: remove it
-  from Windows printers, or bind WinUSB to it (Zadig). It is an OS rule, not
-  something this code can work around.
+  fails. That is reported as `device-busy`, and it is an OS rule, not something
+  this code can work around. There are now two fixes rather than one: remove it
+  from Windows printers / bind WinUSB (Zadig) and print directly, **or** choose
+  *Installed Printer* and print through the driver that owns it. The first is
+  faster and silent; the second needs no change to the machine.
 - **A serial printer at the wrong baud rate prints garbage, not nothing.** It is
   the one failure a status pill cannot catch, which is why the speed is a visible
   setting with 9600 as the default.
@@ -110,10 +122,52 @@ the page reports success while no paper has moved.
 
 `transport/network.ts` therefore implements the real thing (`TCPSocket`, granted
 to Isolated Web Apps) and reports `not-supported` with an explanation everywhere
-else. It never fakes a send and never falls back to the browser dialog. The two
-honest alternatives, for whoever asks: point USB at the same printer, or use a
-printer's own "server print" polling mode, which is an API change rather than a
-browser one.
+else. It never fakes a send and never *silently* falls back to anything. What its
+message now does is name the setting that will work tonight: most LAN units are
+also installed on the till, and *Installed Printer* prints through that driver,
+which does the networking itself. The other honest alternatives, for whoever asks:
+point USB at the same printer, or use a printer's own "server print" polling mode,
+which is an API change rather than a browser one.
+
+### The installed printer — `transport/system.ts`
+
+The transport for the printer that is already set up on the machine, and the
+answer to the most common report there is: *"the POS-80 is installed, it prints
+its own test page, and Mountain Bakes does not detect it."* It does not detect it
+because Windows owns it; this prints through Windows instead.
+
+It is chosen in Printer Setup under **Connection → Installed Printer**, and
+detection offers it on its own when nothing has been authorised for direct
+printing (see the priority chain below). Three things are given up, and all three
+are on screen before anyone commits:
+
+1. **A dialog opens.** Unless the browser was started with `--kiosk-printing`
+   (`chrome.exe --kiosk-printing --app=<the app>`), which sends `window.print()`
+   straight to the default printer with no preview. That is a shortcut on a
+   dedicated till, set once by whoever set the till up — this app cannot turn it
+   on and does not pretend to have.
+2. **There is no confirmation.** `afterprint` fires identically for *printed* and
+   *cancelled* and no browser exposes the difference, so the transport reports
+   *handed to the printer* and the log says exactly that. It never claims paper
+   moved.
+3. **The printer cannot be named.** Whichever one the OS picks is the one that
+   prints. `isSystemDefault` is therefore still `null`: sending to the system
+   printer and reading which it is are separate powers, and only the first exists.
+
+The receipt itself is not re-laid-out. The page is built from
+`preview(blocks, columns)` — the same lines, wrapped by the same code, padded by
+the same column maths as the ESC/POS path — set in Courier New at a size derived
+from the profile's `printableWidthMm / charactersPerLine`, so a till that switches
+between this and USB gets the same receipt character for character. The test
+page's ruler proves the width on real paper exactly as it does for a device, and
+*Characters per line* corrects it the same way.
+
+It prints from a **detached iframe with its own document**, which is why this is
+not the banned bare `window.print()`: `globals.css` and its global
+`@page { size: A4 }` do not reach that document at all, so there is no rule to
+inject and no rule to remember to remove, and the screen is neither rebuilt nor
+hidden while the dialog is open. Copies are pages of one document rather than
+repeats of the job — repeating it would open one dialog per copy.
 
 ### Automatic detection, and the printer this app cannot see
 
@@ -132,19 +186,21 @@ That is what makes the grant, rather than the config, the thing that persists. A
 printer authorised once in the life of the machine is found for every account that
 signs into it afterwards.
 
-**It is not the operating system's printer list, and it cannot become one.** There
-is no `navigator.getDefaultPrinter()`, no `listSystemPrinters()`, and nothing in
-any shipping or proposed standard that reports which printer Windows calls
-default. The only browser API that touches the OS print stack is `window.print()`,
+**It is not the operating system's printer list, and it cannot become one.**
+*Sending* to the machine's printer and *reading* which one that is are separate
+powers; `transport/system.ts` takes the first and everything in this paragraph is
+still true of the second. There is no `navigator.getDefaultPrinter()`, no
+`listSystemPrinters()`, and nothing in any shipping or proposed standard that
+reports which printer Windows calls default. The only browser API that touches the OS print stack is `window.print()`,
 which *shows a dialog* rather than telling the page anything. So `DetectedPrinter`
 carries `isSystemDefault`, typed `null` — not `boolean | null`, not optional —
 because a field that can only hold one value cannot later be quietly upgraded to a
 guess, and the type is what enforces that. `SYSTEM_DEFAULT_NOTICE` is the sentence
 shown on screen in its place.
 
-Worth stating plainly, because it is the thing people ask for and it is not a
-missing feature: **on Windows, "the system default printer" and "printed to
-silently" are mutually exclusive.** Install the unit through *Printers & scanners*
+Worth stating plainly, because it is the thing people ask for: **on Windows, "the
+system default printer" and "printed to silently by the page" are mutually
+exclusive.** Install the unit through *Printers & scanners*
 and `usbprint.sys` owns its interface, so `claimInterface` fails with `device-busy`
 — the printer the OS calls default is precisely the one this app cannot open, and
 the only route left to it is the browser print dialog. Bind it to WinUSB instead
@@ -160,11 +216,15 @@ The priority chain in `discovery.ts` is:
 1. **The branch's configured printer** — a decision, never overruled by detection,
    and kept even when it is offline. Silently switching a till to the spare is how
    a receipt ends up on a roll in another room.
-2. **The OS default printer** — the rung a native layer would fill. It is a comment
-   there rather than dead code, because an `if` that never runs documents nothing.
-3. **An authorised device on this machine** — the automatic case. Attached beats
+2. **An authorised device on this machine** — the automatic case. Attached beats
    remembered; two attached printers are adopted by first, with `ambiguous` set so
    Printer Settings says which was chosen rather than leaving it a mystery.
+3. **The printer installed on this computer** — appended by `detectPrinters` only
+   when rung 2 found *nothing at all*, then adopted by the same code that adopts
+   anything else. Reported as `system-fallback` rather than `auto-detected`, so
+   Printer Settings says why a dialog is about to appear. It is deliberately never
+   offered alongside a device this app can open: that would present a good route
+   and a worse one as peers.
 4. **The chooser** — only when the three above found nothing, and only from a click.
 
 `PrinterAvailability` is the counter's vocabulary — `ready`, `printing`, `offline`,
@@ -217,7 +277,9 @@ The till presses Connect once.
 ### Duplicate protection, in two layers
 
 1. **The button** disables itself while a print is in flight — an impatient
-   double-click.
+   double-click. On the installed-printer route "in flight" lasts until the dialog
+   closes, which is why `send` there waits for `afterprint` rather than returning
+   as soon as `print()` is called.
 2. **The service** refuses a second print of the same document while one is in
    flight — two different buttons aimed at one sale.
 

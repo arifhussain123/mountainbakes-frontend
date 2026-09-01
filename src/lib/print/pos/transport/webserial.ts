@@ -212,7 +212,7 @@ export const webSerialTransport: PosTransport = {
     return identityOf(link.port);
   },
 
-  async send(target, bytes) {
+  async send(target, job) {
     const link = await linkFor(target);
     const writable = link.port.writable;
     if (!writable) {
@@ -222,13 +222,23 @@ export const webSerialTransport: PosTransport = {
     const writer = writable.getWriter();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const deadline = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new PosPrintError('timeout', 'The printer stopped accepting the receipt. Check the paper roll, then print again.')),
-          WRITE_TIMEOUT_MS,
-        );
-      });
-      await Promise.race([writer.write(bytes), deadline]);
+      // One writer for every copy — reacquiring the lock between them would race
+      // the release below. Each copy gets its own deadline, because the timeout
+      // is about one write stalling, not about how many were asked for.
+      for (let copy = 0; copy < Math.max(1, job.copies); copy++) {
+        const deadline = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new PosPrintError('timeout', 'The printer stopped accepting the receipt. Check the paper roll, then print again.')),
+            WRITE_TIMEOUT_MS,
+          );
+        });
+        try {
+          await Promise.race([writer.write(job.bytes), deadline]);
+        } finally {
+          if (timer) clearTimeout(timer);
+          timer = undefined;
+        }
+      }
     } catch (error) {
       OPEN.delete(link.port);
       throw asPrintError(error, 'write-failed');

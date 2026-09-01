@@ -4,6 +4,7 @@ import { activePrintCount } from './printerService';
 import { DEFAULT_CONFIG, targetOf, type PosPrinterConfig } from './printerConfig';
 import {
   DEFAULT_BAUD_RATE,
+  SYSTEM_DEVICE,
   transportFor,
   type ConnectionType,
   type DeviceIdentity,
@@ -24,7 +25,10 @@ import {
  * with nobody pressing anything.
  *
  * It is **not** a reader of the operating system's printer list, and no amount of
- * work in this file could make it one. That is worth stating in the module rather
+ * work in this file could make it one. *Sending* to the machine's printer and
+ * *reading* which one that is are separate powers, and only the first is
+ * available to a web page — `transport/system.ts` takes the first, and everything
+ * below is still true of the second. That is worth stating in the module rather
  * than in a ticket, because the difference is invisible from the UI and someone
  * will eventually try to close it:
  *
@@ -55,8 +59,29 @@ import {
  *
  * A till therefore chooses one or the other. This app is built for the second,
  * and detection here means *the authorised device on this machine*, named as
- * such on screen. `PRINTING.md` carries the long version and the native-wrapper
- * route for anyone who needs the first.
+ * such on screen.
+ *
+ * ---------------------------------------------------------------------------
+ * The rung that used to be empty
+ * ---------------------------------------------------------------------------
+ * That left one case with nothing in it, and it is the common one: a POS-80 unit
+ * installed the ordinary way, printing happily from Windows, and invisible here.
+ * The counter's reasonable conclusion — "the printer is installed, why can this
+ * app not see it" — had no answer but an uninstall.
+ *
+ * So detection now has a last rung. When nothing has been authorised for direct
+ * printing, it offers `transport/system.ts`: the receipt goes to whichever
+ * printer the operating system hands it to, through the driver that owns the
+ * device. It is offered LAST and only when the list is otherwise empty, because
+ * it is strictly worse than a device this app opened itself — a dialog appears
+ * unless the browser was started with `--kiosk-printing`, and nothing comes back
+ * to say whether paper moved. It is only better than not printing.
+ *
+ * Note what has *not* changed: `isSystemDefault` is still `null`. Being able to
+ * send to the system printer is not being able to name it, and the field answers
+ * the second question. `PRINTING.md` carries the long version and the
+ * native-wrapper route for anyone who needs a printer this app can both name and
+ * print to silently.
  *
  * ---------------------------------------------------------------------------
  * Why detection is still worth having
@@ -122,6 +147,11 @@ export interface DetectedPrinter {
    * exposes this. It is a field rather than an omission so that the answer is
    * *stated* — an absent property reads as an oversight, and the next person to
    * want this needs to find the reason, not the gap. See the module comment.
+   *
+   * It stays `null` even on the `system` entry, which is exactly the row someone
+   * will want to set it `true` on. That row prints *to* whatever the OS considers
+   * default; it does not know that it does, and it cannot report the name, so
+   * `true` there would be a guess wearing a fact's clothes.
    */
   isSystemDefault: null;
   /** `true` when a print sent right now would reach it. */
@@ -167,6 +197,13 @@ export type SelectionSource =
   | 'auto-detected'
   /** Configured, but that device is not attached at the moment. */
   | 'configured-offline'
+  /**
+   * Nothing was authorised for direct printing, so the printer installed on this
+   * computer was taken instead. A working till, on the worse of the two routes —
+   * named separately from `auto-detected` so the screen can say which one it is
+   * rather than leaving someone to wonder why a dialog appeared.
+   */
+  | 'system-fallback'
   /** Nothing configured and nothing authorised. */
   | 'none';
 
@@ -178,7 +215,11 @@ export type SelectionSource =
  * panel say the same thing, and three copies of it would drift.
  */
 export const SYSTEM_DEFAULT_NOTICE =
-  'A web browser cannot read this computer’s default printer, so Mountain Bakes detects the printer authorised for it on this machine instead. Set it up once and it is found automatically from then on.';
+  'A web browser cannot read this computer’s default printer by name, so Mountain Bakes detects the printer authorised for it on this machine instead — set it up once and it is found automatically from then on. If the printer is installed in Windows and does not appear here, Windows owns it and no browser can open it directly: choose “Installed Printer” under Connection to print through its driver instead.';
+
+/** What the installed-printer row says about itself, wherever it is shown. */
+export const SYSTEM_PRINTER_NOTICE =
+  'Prints through the printer installed on this computer, so it works with a driver Windows will not share. A print dialog opens unless this till’s browser was started with kiosk printing, and Windows does not report back whether the receipt printed.';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Detection
@@ -340,6 +381,37 @@ export async function detectPrinters(config: PosPrinterConfig = DEFAULT_CONFIG):
     if (support.supported) anySupported = true;
   }
 
+  // The last rung: the printer this computer already has installed.
+  //
+  // Appended only when direct printing turned nothing up, and that condition is
+  // the whole design. A till that has authorised a device must not be offered a
+  // second row that prints the same receipts through a dialog — it would be a
+  // choice between a good route and a worse one, presented as if they were peers,
+  // and someone would pick the one whose name mentions Windows.
+  //
+  // When the list IS empty, this is the difference between a counter that prints
+  // and a counter that does not. The unit is installed, it prints from Notepad,
+  // and `usbprint.sys` is why nothing above found it.
+  if (found.length === 0) {
+    const transport = transportFor('system');
+    const support = transport.support();
+    if (support.supported) {
+      anySupported = true;
+      found.push({
+        deviceId: SYSTEM_DEVICE.deviceId,
+        name: SYSTEM_DEVICE.label,
+        status: busy ? 'printing' : 'ready',
+        connectionType: 'system',
+        isDefault: false,
+        isSystemDefault: null,
+        available: true,
+        // `ready` here means the route is open, not that a printer answered — so
+        // the caveat travels with the row rather than being left to the word.
+        reason: SYSTEM_PRINTER_NOTICE,
+      });
+    }
+  }
+
   // Ready first, then anything attached, then the rest — a till with a spare
   // printer authorised from a previous cable should not have to read past it.
   found.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
@@ -371,13 +443,19 @@ function rank(printer: DetectedPrinter): number {
  *    holds even when the configured printer is offline: a till whose printer is
  *    switched off wants *Offline*, not a silent switch to the spare, because the
  *    silent switch is how a receipt ends up on the wrong roll in another room.
- * 2. **The OS default printer.** Not reachable from a browser — see the module
- *    comment. This is the rung a native wrapper would fill, and it sits here in
- *    the comment rather than in the code because an empty `if` that never runs is
- *    worse documentation than a sentence that explains why.
- * 3. **An authorised device on this machine.** The real automatic case: nothing
+ * 2. **An authorised device on this machine.** The real automatic case: nothing
  *    configured, so the printer this browser already holds a grant for is adopted
  *    with no prompt. Attached ones win over remembered ones.
+ * 3. **The printer the operating system has installed.** Appended by
+ *    `detectPrinters` only when rung 2 found nothing at all, and adopted here by
+ *    the same code that adopts anything else — there is no special case in this
+ *    function, because by the time the list reaches it the row is simply the only
+ *    candidate. It is reported as `system-fallback` rather than `auto-detected`
+ *    so the screen can say what happened.
+ *
+ *    This is the rung that used to read "not reachable from a browser". Half of
+ *    that is still true and always will be: the printer cannot be *named* here.
+ *    It can now be printed to, which is the half that was worth having.
  * 4. **The chooser.** Only when the three above found nothing, and only from a
  *    click — Printer Settings, `Connect Printer`.
  */
@@ -411,7 +489,7 @@ function finalise(
   return {
     printers: mark(printers, candidate),
     selected: candidate ? { ...candidate, isDefault: true } : null,
-    source: candidate ? 'auto-detected' : 'none',
+    source: candidate ? (candidate.connectionType === 'system' ? 'system-fallback' : 'auto-detected') : 'none',
     supported: meta.supported,
     reason: meta.reason ?? (candidate ? undefined : NOTHING_FOUND),
     ambiguous: attached.length > 1,
@@ -419,6 +497,11 @@ function finalise(
   };
 }
 
+/**
+ * Reached only when even the installed-printer route is unavailable, which means
+ * a browser with no print dialog at all — server rendering, or a locked-down
+ * embed. On any real till the system rung answers before this does.
+ */
 const NOTHING_FOUND =
   'No POS printer has been authorised on this computer yet. Press Connect Printer and choose it once — Mountain Bakes finds it by itself after that.';
 
@@ -452,10 +535,27 @@ export async function detectDefaultPrinter(config: PosPrinterConfig = DEFAULT_CO
  *
  * `null` when the printer cannot be addressed from its identity: a network entry
  * (there is nothing to adopt), or a USB device with no ids, which cannot be found
- * again in `getDevices()` and so must not be written as though it could.
+ * again in `getDevices()` and so must not be written as though it could. The
+ * system entry is the opposite case and returns a patch with no target at all —
+ * see below.
  */
 export function adoptionPatch(printer: DetectedPrinter, config: PosPrinterConfig): Partial<PosPrinterConfig> | null {
   const [scheme, vendor, product, serial] = printer.deviceId.split(':');
+
+  // The installed printer needs nothing carried over — there is no descriptor to
+  // save. Choosing it IS the whole configuration, which is why `isConfigured`
+  // tests the connection rather than a target for this one.
+  if (printer.connectionType === 'system') {
+    return {
+      printerId: printer.deviceId,
+      printerName: config.printerName.trim() || printer.name,
+      connection: 'system',
+      isDefault: true,
+      usb: null,
+      serial: null,
+      network: null,
+    };
+  }
 
   if (printer.connectionType === 'usb' && scheme === 'usb') {
     const vendorId = Number(vendor);

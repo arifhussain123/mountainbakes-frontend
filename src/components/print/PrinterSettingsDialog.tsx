@@ -21,6 +21,7 @@ import {
   adoptionPatch,
   AVAILABILITY_LABELS,
   SYSTEM_DEFAULT_NOTICE,
+  SYSTEM_PRINTER_NOTICE,
   type DetectedPrinter,
   type PrinterAvailability,
   type PrinterDetection,
@@ -31,7 +32,7 @@ import { clearPrintLog, readPrintLog, subscribeToPrintLog, type PrintLogEntry } 
 import { preview } from '@/lib/print/pos/escpos';
 import { testPageBlocks } from '@/lib/print/pos/receiptFormatter';
 import { formatDateTime } from '@/utils/date';
-import { AlertTriangle, Check, Info, Loader2, Plug, Printer, RefreshCw, Save, Wifi } from 'lucide-react';
+import { AlertTriangle, Check, Info, Loader2, MonitorCog, Plug, Printer, RefreshCw, Save, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -148,7 +149,11 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
             : current.serial,
       }));
       setLinked(true);
-      toast.success(`Connected to ${named}.`);
+      toast.success(
+        draft.connection === 'system'
+          ? 'Mountain Bakes will print through this computer’s printer. Print a test page to check the paper width.'
+          : `Connected to ${named}.`,
+      );
     } catch (error) {
       setLinked(false);
       const failure = error instanceof PosPrintError ? error : null;
@@ -258,15 +263,26 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
   const profile = profileOf(draft);
   const busy = phase !== 'idle';
   const hasDevice = Boolean(draft.printerId);
+  // "Connected" is a claim about a link that was opened, and the installed-printer
+  // route never opens one — so it says what is actually true of it instead. Using
+  // the same word for both would make the word mean nothing on the till where it
+  // matters most.
+  const systemRoute = draft.connection === 'system';
   const statusText = busy
     ? phase === 'printing'
       ? 'Printing…'
-      : 'Connecting…'
-    : linked
-      ? 'Connected'
-      : hasDevice
-        ? 'Not connected'
-        : 'No printer connected';
+      : systemRoute
+        ? 'Selecting…'
+        : 'Connecting…'
+    : systemRoute
+      ? hasDevice
+        ? 'Using this computer’s printer'
+        : 'No printer chosen'
+      : linked
+        ? 'Connected'
+        : hasDevice
+          ? 'Not connected'
+          : 'No printer connected';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -282,7 +298,17 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               <span
                 aria-hidden
                 className={`h-2.5 w-2.5 rounded-full ${
-                  busy ? 'bg-amber-400' : linked ? 'bg-emerald-500' : hasDevice ? 'bg-red-500' : 'bg-neutral-400'
+                  busy
+                    ? 'bg-amber-400'
+                    : systemRoute
+                      ? hasDevice
+                        ? 'bg-emerald-500'
+                        : 'bg-neutral-400'
+                      : linked
+                        ? 'bg-emerald-500'
+                        : hasDevice
+                          ? 'bg-red-500'
+                          : 'bg-neutral-400'
                 }`}
               />
               <span aria-live="polite">{statusText}</span>
@@ -342,7 +368,9 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
                   const connection = value as PrinterConnection;
                   // Switching connection invalidates the device: a USB grant is not
                   // an IP address. Clearing it here is what stops Save writing a
-                  // printer id that the new transport could never open.
+                  // printer id that the new transport could never open. The
+                  // installed-printer route has no device to clear, and it is
+                  // re-established by one press of the button below.
                   patch({
                     connection,
                     printerId: '',
@@ -379,6 +407,31 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               <p className="rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                 {chosen.support.reason}
               </p>
+            )}
+
+            {/*
+              The installed-printer route, explained where it is chosen.
+
+              It is the answer to "the printer is installed and this app cannot
+              see it", and it comes with two costs a till must know about before
+              it commits — a dialog, and no confirmation. Saying so here is what
+              stops the first receipt being a surprise, and it is where the kiosk
+              switch that removes the dialog belongs, because it is a decision
+              about this machine rather than about this app.
+            */}
+            {draft.connection === 'system' && supported && (
+              <div className="space-y-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+                <p>{SYSTEM_PRINTER_NOTICE}</p>
+                <p>
+                  Use this when the printer prints from Windows but is not detected above — an installed driver owns
+                  the device, and no browser can open it directly.
+                </p>
+                <p>
+                  To remove the print dialog on a dedicated till, start the browser with kiosk printing:{' '}
+                  <span className="font-mono text-[11px]">chrome.exe --kiosk-printing --app=&lt;this address&gt;</span>.
+                  Receipts then go straight to the computer&rsquo;s default printer.
+                </p>
+              </div>
             )}
 
             {draft.connection === 'serial' && supported && (
@@ -493,7 +546,20 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
 
           {/* ── Actions ─────────────────────────────────────────────────── */}
           <section className="grid gap-2">
-            {draft.connection === 'network' ? (
+            {/*
+              Three different first actions, because the three connections prove
+              themselves in three different ways. USB and serial open a chooser.
+              A LAN address is proved by connecting to it. The installed printer
+              has nothing to choose and nothing to handshake with — pressing this
+              only records the choice, and the proof is the Test Print below,
+              which is a page coming out of the printer.
+            */}
+            {draft.connection === 'system' ? (
+              <Button onClick={connect} disabled={busy || !supported}>
+                {phase === 'connecting' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <MonitorCog className="mr-1.5 h-4 w-4" />}
+                Use this computer&rsquo;s printer
+              </Button>
+            ) : draft.connection === 'network' ? (
               <Button onClick={verify} disabled={busy || !supported || !draft.network?.host?.trim()}>
                 {phase === 'connecting' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Wifi className="mr-1.5 h-4 w-4" />}
                 Test Connection
@@ -509,6 +575,12 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               {phase === 'printing' ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Printer className="mr-1.5 h-4 w-4" />}
               Test Print
             </Button>
+            {draft.connection === 'system' && hasDevice && (
+              <p className="text-xs text-muted-foreground">
+                The test page is the only proof available on this connection — Windows does not tell a web page whether
+                a receipt printed. Check the ruler line ends at the edge of the roll.
+              </p>
+            )}
 
             <Button variant="secondary" onClick={save} disabled={busy || !hasDevice}>
               <Save className="mr-1.5 h-4 w-4" /> Save Printer
@@ -688,6 +760,8 @@ function sourceSentence(source: PrinterDetection['source'] | undefined): string 
       return 'Set up for this branch, but not attached at the moment.';
     case 'auto-detected':
       return 'Detected automatically on this computer — nobody had to choose it.';
+    case 'system-fallback':
+      return 'No printer is authorised for direct printing on this computer, so Mountain Bakes will print through the printer installed in Windows.';
     default:
       return 'No printer chosen yet.';
   }

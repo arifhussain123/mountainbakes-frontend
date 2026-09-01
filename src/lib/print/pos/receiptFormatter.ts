@@ -1,5 +1,5 @@
 import type { Block } from './escpos';
-import { renderBlocks, toBytes } from './escpos';
+// Blocks are the output now — 'renderBlocks' moved to 'printerService' with the job.
 import type { PrinterProfile } from './profiles';
 import { DEFAULT_PROFILE } from './profiles';
 import { amountRow, columnLayout, pairRow, tableHeader, tableRow, type TableCells } from './table';
@@ -398,17 +398,16 @@ function ruler(columns: number): string {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Bytes
+   Bytes — composed one layer up now
    ──────────────────────────────────────────────────────────────────────────── */
 
-export function saleReceiptBytes(doc: SaleReceiptDoc, profile: PrinterProfile): Uint8Array {
-  return toBytes(renderBlocks(saleReceiptBlocks(doc, profile), profile.charactersPerLine));
-}
-
-export function productionOrderBytes(doc: ProductionOrderDoc, profile: PrinterProfile): Uint8Array {
-  return toBytes(renderBlocks(productionOrderBlocks(doc, profile), profile.charactersPerLine));
-}
-
-export function testPageBytes(doc: TestPageDoc, profile: PrinterProfile): Uint8Array {
-  return toBytes(renderBlocks(testPageBlocks(doc, profile), profile.charactersPerLine));
-}
+/*
+ * `saleReceiptBytes` and its two siblings used to live here, each wrapping its
+ * `*Blocks` function in `toBytes(renderBlocks(…))`. They are gone because bytes
+ * are no longer the only form a transport takes: the installed-printer route is
+ * handed a page to render and needs the blocks themselves, so `printerService`
+ * composes both from one list of blocks and passes them together as a `PrintJob`.
+ *
+ * Keeping the shortcuts would have left two places that turn a document into
+ * bytes, and the day one of them gained a step the other would not have it.
+ */

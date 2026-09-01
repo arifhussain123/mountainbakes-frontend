@@ -400,11 +400,21 @@ export const webUsbTransport: PosTransport = {
     return identityOf(link.device);
   },
 
-  async send(target, bytes) {
+  /**
+   * The job, all copies of it, down one already-open link.
+   *
+   * Each copy is the whole byte stream again rather than the payload repeated
+   * inside one — the stream ends in a cut, and a kitchen copy and a customer copy
+   * have to be two receipts rather than one long strip.
+   */
+  async send(target, job) {
     const link = await linkFor(target);
+    const bytes = job.bytes;
     try {
-      for (let offset = 0; offset < bytes.length; offset += CHUNK_BYTES) {
-        await writeChunk(link, bytes.subarray(offset, offset + CHUNK_BYTES));
+      for (let copy = 0; copy < Math.max(1, job.copies); copy++) {
+        for (let offset = 0; offset < bytes.length; offset += CHUNK_BYTES) {
+          await writeChunk(link, bytes.subarray(offset, offset + CHUNK_BYTES));
+        }
       }
     } catch (error) {
       // A failed write means the handle is no longer trustworthy — the cable was

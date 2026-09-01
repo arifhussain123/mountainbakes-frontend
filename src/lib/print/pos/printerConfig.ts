@@ -99,7 +99,7 @@ const KEY_PREFIX = 'mb.posPrinter';
 /** Same-tab notification — `storage` only fires in *other* tabs. */
 const CHANGE_EVENT = 'mb:pos-printer';
 
-const CONNECTIONS: readonly PrinterConnection[] = ['usb', 'serial', 'network'];
+const CONNECTIONS: readonly PrinterConnection[] = ['usb', 'serial', 'network', 'system'];
 
 function storageKey(branchId: string | null | undefined): string {
   return `${KEY_PREFIX}.${branchId?.trim() || 'default'}`;
@@ -133,6 +133,13 @@ export function readConfig(branchId: string | null | undefined): PosPrinterConfi
  * `connection` of `system`, and a `printerId` that was the *agent's* name for a
  * spooler queue. None of that addresses a device this app can now open, so the
  * printer identity is cleared and the till is asked to press Connect once.
+ *
+ * `system` is a live connection type again — it means the *browser's* route to
+ * the installed driver now, not a Node service's — but a legacy entry is still
+ * cleared rather than reinterpreted, because its `printerId` named a spooler
+ * queue on a machine this app cannot address by name. The `agentUrl` key is what
+ * tells the two apart, which is why `legacy` tests for that and not for the
+ * connection.
  *
  * What survives is everything that was a genuine choice about the paper and the
  * shop — width, copies, the column override — because re-asking for those would
@@ -240,7 +247,13 @@ export function subscribeToConfig(onChange: () => void): () => void {
 
 /** `true` once a printer has been set up — the one question every print path asks. */
 export function isConfigured(config: PosPrinterConfig): boolean {
-  return Boolean(config.printerId) && Boolean(targetOf(config).usb || targetOf(config).serial || targetOf(config).network);
+  if (!config.printerId) return false;
+  // The system printer is addressed by nothing, so "has a target" cannot be the
+  // test for it. Having been chosen IS the configuration — there is no second
+  // fact to check, and requiring one would leave it permanently unconfigured.
+  if (config.connection === 'system') return true;
+  const target = targetOf(config);
+  return Boolean(target.usb || target.serial || target.network);
 }
 
 /**
@@ -258,6 +271,12 @@ export function targetOf(config: PosPrinterConfig): TransportTarget {
       return { serial: config.serial };
     case 'network':
       return { network: config.network };
+    case 'system':
+      // Empty, and correctly so. The system transport prints through the driver
+      // the operating system already has; there is no descriptor, no address and
+      // no grant to hand it. A field invented to fill this gap would be a field
+      // nothing could ever put a true value in.
+      return {};
   }
 }
 
@@ -270,6 +289,7 @@ export const CONNECTION_LABELS: Record<PrinterConnection, string> = {
   usb: 'USB',
   serial: 'USB Serial',
   network: 'Network',
+  system: 'Installed printer',
 };
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -1,3 +1,5 @@
+import type { Block } from '../escpos';
+
 /**
  * How ESC/POS bytes actually leave the browser.
  *
@@ -27,8 +29,17 @@
  * falls back to the browser's own print dialog.
  */
 
-/** The ways this app can reach a thermal printer, in preference order. */
-export type ConnectionType = 'usb' | 'serial' | 'network';
+/**
+ * The ways this app can reach a printer, in preference order.
+ *
+ * The first three write ESC/POS to a device this app opened itself. `system` is
+ * the odd one out and is deliberately kept: it hands the receipt to the printer
+ * *the operating system has installed*, through the browser's print path, which
+ * is the only way to reach a unit whose vendor driver already owns it. See
+ * `system.ts` for why that is a separate kind of thing rather than a fallback the
+ * other three quietly perform.
+ */
+export type ConnectionType = 'usb' | 'serial' | 'network' | 'system';
 
 /**
  * Whether this browser, on this machine, can use a transport at all.
@@ -42,6 +53,46 @@ export interface TransportSupport {
   supported: boolean;
   /** What is missing, and what would fix it. Shown verbatim in Printer Setup. */
   reason?: string;
+}
+
+/**
+ * One composed document, in every form a printer might accept it.
+ *
+ * ---------------------------------------------------------------------------
+ * Why a transport is handed blocks as well as bytes
+ * ---------------------------------------------------------------------------
+ * Because the two kinds of printer this app can reach want genuinely different
+ * things, and neither can be derived from the other at this layer. A device
+ * transport writes `bytes` — ESC/POS, straight down the wire, no layout engine
+ * involved. The system transport cannot: an installed driver is handed a *page*
+ * to render, and ESC/POS posted to it comes out as a column of escape sequences.
+ * It needs the document, which is what `blocks` is.
+ *
+ * Composing both up front, in `printerService`, is what keeps that from becoming
+ * a branch on connection type in the code above — the caller composes a job, and
+ * each transport takes the half of it that its wire understands.
+ *
+ * `copies` is part of the job rather than a loop around it for the same reason.
+ * A device transport repeats the byte stream, and each repeat is a separate
+ * receipt with its own cut. The system transport must NOT repeat the whole job:
+ * that would open the print dialog once per copy. It puts the copies on
+ * successive pages of one document instead.
+ */
+export interface PrintJob {
+  /** The document as ESC/POS. What every device transport writes. */
+  bytes: Uint8Array;
+  /** The same document before it became bytes, for a transport that must lay out a page. */
+  blocks: readonly Block[];
+  /** Characters across the roll. The blocks were wrapped to exactly this. */
+  columns: number;
+  /** Roll width in millimetres — the page box a driver is given. */
+  paperWidthMm: number;
+  /** The head's print area, narrower than the roll. Where the text actually goes. */
+  printableWidthMm: number;
+  /** How many receipts to produce. At least 1. */
+  copies: number;
+  /** Names the job in the OS spooler and in the print dialog's title. */
+  title: string;
 }
 
 /**
@@ -115,8 +166,8 @@ export interface PosTransport {
   request(target: TransportTarget): Promise<DeviceIdentity>;
   /** Open the link and prove it works, without printing. Drives Test Connection. */
   probe(target: TransportTarget): Promise<DeviceIdentity>;
-  /** Send bytes. Opens the link first if it is not already open. */
-  send(target: TransportTarget, bytes: Uint8Array): Promise<void>;
+  /** Send the job, all copies of it. Opens the link first if it is not already open. */
+  send(target: TransportTarget, job: PrintJob): Promise<void>;
   /** Current state, silently — for the status pill. */
   status(target: TransportTarget): Promise<LinkStatus>;
   /** Release the device so another application can have it. */
@@ -131,6 +182,13 @@ export interface PosTransport {
  * those is a type that invites it to start caring.
  */
 export interface TransportTarget {
+  /**
+   * The system transport needs nothing here, and that is the honest shape of it:
+   * there is no address, no descriptor and no grant to remember. The printer it
+   * prints to is whichever one the operating system hands the job to, which this
+   * app cannot name, choose or store. `printerConfig.targetOf` therefore returns
+   * an empty target for it rather than inventing a field to fill.
+   */
   usb?: { vendorId: number; productId: number; serialNumber: string | null } | null;
   serial?: { usbVendorId: number | null; usbProductId: number | null; baudRate: number } | null;
   network?: { host: string; port: number } | null;

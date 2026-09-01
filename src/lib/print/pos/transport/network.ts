@@ -40,6 +40,11 @@ import type { DeviceIdentity, LinkStatus, PosTransport, TransportSupport, Transp
  *
  * The two other honest routes to a LAN printer, for whoever asks:
  *
+ * - **Print through the driver.** If the unit is installed on the till — as a
+ *   network printer in Windows, or over its USB socket — `transport/system.ts`
+ *   hands the receipt to that driver and the driver does the networking. It is
+ *   the answer for almost every till that reaches this message, and it is what
+ *   `UNSUPPORTED_REASON` now sends people to.
  * - **Point USB at it instead.** Most network units also have a USB socket, and
  *   the USB transport needs nothing installed.
  * - **Let the printer poll.** ESC/POS units with a "server print" mode fetch jobs
@@ -100,8 +105,22 @@ function requireAddress(target: TransportTarget): { host: string; port: number }
   return { host, port };
 }
 
+/**
+ * The message, and why it now names a way out.
+ *
+ * The first two sentences are unchanged and unchangeable: they state a fact about
+ * the browser, and no wording makes a TCP socket appear. What was wrong with it
+ * was the ending — it left a counter with a LAN printer holding a message that
+ * was entirely true and entirely unusable, whose only suggestions were to rewire
+ * the shop or to repackage the app.
+ *
+ * Most network POS units are also installed on the till in Windows, over USB or
+ * over the same LAN, and *that* installation is reachable — through its driver,
+ * by `transport/system.ts`. So the sentence ends by naming the setting that will
+ * actually print tonight, and keeps the two structural fixes after it.
+ */
 const UNSUPPORTED_REASON =
-  'Direct network printing is not available in this browser. A web page cannot open a raw connection to a printer on port 9100 — only an installed app can. Connect the printer by USB instead, or run Mountain Bakes as an installed app on this till.';
+  'Direct network printing is not available in this browser. A web page cannot open a raw connection to a printer on port 9100 — only an installed app can. If this printer is installed on this computer, choose “Installed Printer” under Connection and it will print through its Windows driver. Otherwise connect it by USB, or run Mountain Bakes as an installed app on this till.';
 
 async function connect(host: string, port: number): Promise<{ socket: TcpSocketInstance; writable: WritableStream<Uint8Array> }> {
   const TCPSocket = tcpSocket();
@@ -202,12 +221,17 @@ export const networkTransport: PosTransport = {
     return { deviceId: networkDeviceId(host, port), label: `${host}:${port}` };
   },
 
-  async send(target, bytes) {
+  async send(target, job) {
     const { host, port } = requireAddress(target);
     const { socket, writable } = await connect(host, port);
     const writer = writable.getWriter();
     try {
-      await writer.write(bytes);
+      // Every copy goes down the one connection. Reconnecting between them would
+      // hand the printer back to whatever else on the network is waiting for it,
+      // and the second copy would then queue behind that.
+      for (let copy = 0; copy < Math.max(1, job.copies); copy++) {
+        await writer.write(job.bytes);
+      }
       // Closing the writer flushes it. Returning before that would report a
       // successful print for bytes still sitting in a buffer that is about to be
       // dropped by `socket.close()`.

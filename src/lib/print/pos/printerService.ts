@@ -12,15 +12,16 @@ import {
 import { appendPrintLog, type PrintDocumentType } from './printLog';
 import {
   InvalidDocumentError,
-  productionOrderBytes,
-  saleReceiptBytes,
-  testPageBytes,
+  productionOrderBlocks,
+  saleReceiptBlocks,
+  testPageBlocks,
   validateProductionDoc,
   validateSaleDoc,
   type ProductionOrderDoc,
   type SaleReceiptDoc,
 } from './receiptFormatter';
-import { transportFor, type DeviceIdentity, type LinkStatus } from './transport';
+import { renderBlocks, toBytes, type Block } from './escpos';
+import { transportFor, type DeviceIdentity, type LinkStatus, type PrintJob } from './transport';
 
 /**
  * The one way anything in the web app prints to a thermal printer.
@@ -43,9 +44,10 @@ import { transportFor, type DeviceIdentity, type LinkStatus } from './transport'
  * fix nobody at a till can perform.
  *
  * The browser can open the printer itself, so it does. `transport/` holds the
- * three ways (WebUSB, Web Serial, a raw socket) and their real limits; this file
- * holds everything that is the same whichever one is in use: validate, compose,
- * send, log.
+ * ways it can (WebUSB, Web Serial, a raw socket) and their real limits — plus one
+ * that does not open the printer at all and says so, the installed-driver route
+ * for a unit Windows already owns. This file holds everything that is the same
+ * whichever is in use: validate, compose, send, log.
  *
  * ---------------------------------------------------------------------------
  * Every page prints through here
@@ -257,7 +259,7 @@ export async function printSaleReceipt(doc: SaleReceiptDoc, context: PrintContex
       // reconcile never reaches the printer at all — an unprintable receipt is
       // better than a wrong one in a customer's hand.
       validateSaleDoc(doc);
-      return saleReceiptBytes(doc, profileOf(config));
+      return saleReceiptBlocks(doc, profileOf(config));
     },
   });
 }
@@ -269,7 +271,7 @@ export async function printProductionOrder(doc: ProductionOrderDoc, context: Pri
     documentId: doc.orderNumber,
     build: (config) => {
       validateProductionDoc(doc);
-      return productionOrderBytes(doc, profileOf(config));
+      return productionOrderBlocks(doc, profileOf(config));
     },
   });
 }
@@ -294,7 +296,7 @@ export async function printTestPage(
     documentId: null,
     printerName: name,
     build: (config) =>
-      testPageBytes(
+      testPageBlocks(
         { printerName: name || 'Unnamed printer', connectionLabel: CONNECTION_LABELS[connection] },
         profileOf(config),
       ),
@@ -307,7 +309,16 @@ interface SubmitArgs {
   documentId: string | null;
   /** Overrides the stored name — only the test page uses it. */
   printerName?: string;
-  build: (config: PosPrinterConfig) => Uint8Array;
+  /**
+   * The document as blocks, not as bytes.
+   *
+   * Composing stops one step short of ESC/POS here because not every transport
+   * wants ESC/POS: the installed-printer route is handed a page to render and
+   * needs the document itself (`transport/types.ts` explains why both travel).
+   * The bytes are made below, from these blocks, so the two forms cannot describe
+   * different receipts.
+   */
+  build: (config: PosPrinterConfig) => Block[];
 }
 
 /**
@@ -337,9 +348,9 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
     throw new PosPrintError('duplicate', 'This document is already printing.');
   }
 
-  let payload: Uint8Array;
+  let blocks: Block[];
   try {
-    payload = args.build(config);
+    blocks = args.build(config);
   } catch (error) {
     // A document that does not reconcile is not a printer problem, so it is not
     // retried and it is not logged as a failed print job — nothing was sent.
@@ -349,24 +360,41 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
     throw error;
   }
 
+  const profile = profileOf(config);
+  const copies = Math.max(1, config.copies);
+  const payload = toBytes(renderBlocks(blocks, profile.charactersPerLine));
+
+  // Both forms of the same document, composed once and handed over together.
+  // Which half a transport reads is its business — that is what keeps "how many
+  // copies" and "which wire" from becoming a branch on connection type up here.
+  const job: PrintJob = {
+    bytes: payload,
+    blocks,
+    columns: profile.charactersPerLine,
+    paperWidthMm: profile.paperWidthMm,
+    printableWidthMm: profile.printableWidthMm,
+    copies,
+    title: jobTitle(documentType, documentId),
+  };
+
   IN_FLIGHT.add(key);
   const printJobId = newJobId();
   const startedAt = Date.now();
   const target = targetOf(config);
 
   try {
-    // `copies` writes the job that many times. One payload with the bytes
-    // repeated would print on one long strip with a single cut at the end — a
-    // kitchen copy and a customer copy have to be two receipts.
-    for (let copy = 0; copy < Math.max(1, config.copies); copy++) {
-      await transport.send(target, payload);
-    }
+    // One call for every copy. A device transport repeats the byte stream — the
+    // stream ends in a cut, so a kitchen copy and a customer copy come out as two
+    // receipts rather than one long strip — and the installed-printer transport
+    // puts them on successive pages of a single document, because repeating the
+    // job there would mean one print dialog per copy.
+    await transport.send(target, job);
 
     const result: PrintResult = {
       printJobId,
       printerName,
       durationMs: Date.now() - startedAt,
-      bytes: payload.length * Math.max(1, config.copies),
+      bytes: payload.length * copies,
     };
 
     appendPrintLog({
@@ -405,6 +433,21 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
   } finally {
     IN_FLIGHT.delete(key);
   }
+}
+
+/**
+ * What the job is called where a name is visible.
+ *
+ * Only the installed-printer route has anywhere to put this — it becomes the
+ * document title, which is what Windows shows in the print queue and what a
+ * browser puts in the dialog's header. The device transports have no such field
+ * and ignore it. Naming the sale is what makes a stuck queue diagnosable without
+ * a row of identical "about:blank" entries.
+ */
+function jobTitle(documentType: PrintDocumentType, documentId: string | null): string {
+  const kind =
+    documentType === 'sale' ? 'Receipt' : documentType === 'production-order' ? 'Production order' : 'Test page';
+  return documentId ? `${kind} ${documentId}` : kind;
 }
 
 /**

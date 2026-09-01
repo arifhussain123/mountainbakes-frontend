@@ -24,6 +24,17 @@ export interface PrinterProfile {
   /** Roll width, for the screen to show and for the agent's logs to make sense. */
   paperWidthMm: number;
   /**
+   * How much of that width the head actually prints on.
+   *
+   * A roll is wider than its print area — 80mm of paper, 72mm of dots — and the
+   * gap is the margin the mechanism needs on each side. Nothing that composes
+   * ESC/POS cares (the printer applies its own margin), but a transport that has
+   * to lay out a *page* for a driver does: a page box set to the roll width puts
+   * the text 4mm off centre, and one set to the print area lands it correctly.
+   * That is the whole reason this figure is here rather than derived.
+   */
+  printableWidthMm: number;
+  /**
    * Characters across one line in the printer's default font (Font A).
    *
    * 48 is the standard figure for an 80mm roll: a 72mm print area at 12 dots per
@@ -43,6 +54,7 @@ export const PROFILE_80MM: PrinterProfile = {
   id: '80mm',
   label: '80mm roll',
   paperWidthMm: 80,
+  printableWidthMm: 72,
   charactersPerLine: 48,
 };
 
@@ -50,6 +62,7 @@ export const PROFILE_58MM: PrinterProfile = {
   id: '58mm',
   label: '58mm roll',
   paperWidthMm: 58,
+  printableWidthMm: 48,
   charactersPerLine: 32,
 };
 
