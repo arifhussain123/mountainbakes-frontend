@@ -792,8 +792,9 @@ function PreviewBody({
             </div>
           )}
 
-          {/* Previous balance & returns — same figures the Company Copy prints,
-              shown on screen too so this isn't only visible after clicking Print. */}
+          {/* Previous balance & returns — the same figures both printed copies
+              carry, shown on screen too so this isn't only visible after clicking
+              Print. The itemised tables below print on the Company Copy only. */}
           <div className="mt-6">
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-600">
               Previous Order Balance
@@ -1181,32 +1182,44 @@ function PrintCopy({
         </div>
       </div>
 
-      {/* Previous order balance + return netting — Company Copy only. This is
-          internal reconciliation between production and the branch; the customer
-          doesn't need it on their delivery receipt. */}
+      {/* Previous Order Balance — on BOTH copies.
+
+          It used to be Company Copy only, on the argument that this is internal
+          reconciliation and a customer does not need it on a delivery receipt.
+          That was wrong in the one way that matters: the rider COLLECTS this
+          amount in cash at the counter, and the branch handing the money over had
+          no printed statement of what it was for. Asking somebody to pay against
+          a figure they can only see on the other party's copy is not a document,
+          it is a request to take their word for it.
+
+          The itemised Return Items and Discounts tables below stay Company Copy
+          only. They are the working behind the two "Less …" lines, each copy gets
+          half a page, and two more tables on the customer half would push the
+          product list onto a second sheet — the summary lines are what the branch
+          needs to check the total, and the detail is one question away. */}
+      <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
+        <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
+        {hasPrevBalance ? (
+          // Full working shown, not just the total — this is counted out in
+          // cash at the counter and has to be verifiable line by line.
+          <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
+            <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
+            <MetaKV k="Previous Demand Date" v={previousRef!.date} />
+            <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
+            <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
+            <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+            <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
+            <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
+          </div>
+        ) : (
+          <p className="text-[9px] font-medium text-neutral-500">
+            No previous delivery for this branch — nothing to collect.
+          </p>
+        )}
+      </div>
+
       {isCompanyCopy && (
         <>
-          <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
-            {hasPrevBalance ? (
-              // Full working shown, not just the total — this is counted out in
-              // cash at the counter and has to be verifiable line by line.
-              <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
-                <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
-                <MetaKV k="Previous Demand Date" v={previousRef!.date} />
-                <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
-                <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
-                <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
-                <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
-                <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
-              </div>
-            ) : (
-              <p className="text-[9px] font-medium text-neutral-500">
-                No previous delivery for this branch — nothing to collect.
-              </p>
-            )}
-          </div>
-
           {/* Return items — accepted the previous business day. Rendered only when
               the branch actually returned something, so an ordinary slip is
               unchanged. */}
