@@ -91,10 +91,28 @@ export function ManualFeedDialog({
   );
 }
 
-const AUTO_BY_METHOD: Record<DailySaleManualMethod, keyof DailySaleRecord> = {
-  cash: 'autoCash',
+/**
+ * What each counted figure is checked against.
+ *
+ * Cash reads `expectedCashInHand` — Cash on Table — and NOT `autoCash`. The
+ * person at this form is counting physical notes, and the day's cash expenses
+ * have already been paid out of the drawer; comparing against gross takings
+ * would report a shortfall equal to those expenses on every record. The other
+ * two are gross, because nothing is ever paid out of a bank settlement or an
+ * Easypaisa balance. Mirrors the `cash_difference` generated column (migration
+ * 102) — the database is what actually decides.
+ */
+const EXPECTED_BY_METHOD: Record<DailySaleManualMethod, keyof DailySaleRecord> = {
+  cash: 'expectedCashInHand',
   easypaisa: 'autoEasypaisa',
   bank_account: 'autoBank',
+};
+
+/** The label above each expected figure — cash's is not the raw takings. */
+const EXPECTED_LABEL: Record<DailySaleManualMethod, string> = {
+  cash: 'Cash on table',
+  easypaisa: 'System',
+  bank_account: 'System',
 };
 
 /** 'DD-MM-YYYY' — string work, not Date work; these are already Karachi dates. */
@@ -138,8 +156,9 @@ function FeedForm({
     [locks],
   );
 
-  function autoOf(method: DailySaleManualMethod): number {
-    return Number(record[AUTO_BY_METHOD[method]] ?? 0);
+  /** What this method's count should come to. Cash on Table for cash; gross otherwise. */
+  function expectedOf(method: DailySaleManualMethod): number {
+    return Number(record[EXPECTED_BY_METHOD[method]] ?? 0);
   }
 
   /** The live difference for a field, or null while it is empty or unparseable. */
@@ -147,7 +166,7 @@ function FeedForm({
     const raw = values[method].trim();
     if (raw === '') return null;
     const n = Number(raw);
-    return Number.isFinite(n) ? Math.round((n - autoOf(method)) * 100) / 100 : null;
+    return Number.isFinite(n) ? Math.round((n - expectedOf(method)) * 100) / 100 : null;
   }
 
   async function submit() {
@@ -207,7 +226,7 @@ function FeedForm({
           // A locked field is disabled for a branch and left open for an admin —
           // whose entry is then audited as an override.
           const disabled = locked && !isAdmin;
-          const auto = autoOf(method);
+          const expected = expectedOf(method);
           const diff = liveDifference(method);
 
           return (
@@ -225,7 +244,10 @@ function FeedForm({
                   )}
                 </Label>
                 <span className="text-xs text-muted-foreground">
-                  System: <span className="font-semibold tabular-nums text-foreground">{money(auto, currencySymbol)}</span>
+                  {EXPECTED_LABEL[method]}:{' '}
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {money(expected, currencySymbol)}
+                  </span>
                 </span>
               </div>
 
@@ -261,15 +283,14 @@ function FeedForm({
                   This method is locked. Your entry will be recorded as an admin override.
                 </p>
               )}
-              {/* The one figure this form does not compare against, and the one
-                  people expect it to: cash is checked against GROSS takings, so
-                  the drawer expectation is stated separately rather than folded
-                  into the difference above. */}
+              {/* Where the Cash on Table figure came from. Without this the
+                  operator sees a number that is not the day's cash takings and
+                  has no way to tell whether it is wrong or simply net. */}
               {method === 'cash' && record.cashExpense > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {exactMoney(record.cashExpense, currencySymbol)} was paid out of the till, so the drawer
-                  should hold {exactMoney(record.expectedCashInHand, currencySymbol)}. The difference above
-                  compares your count against gross cash sales.
+                  {exactMoney(record.autoCash, currencySymbol)} taken, less{' '}
+                  {exactMoney(record.cashExpense, currencySymbol)} paid out of the till. Count the notes
+                  in the drawer.
                 </p>
               )}
             </div>

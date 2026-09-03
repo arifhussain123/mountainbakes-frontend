@@ -218,6 +218,12 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
       moneyColumn('foodpanda', 'Foodpanda', (r) => r.autoFoodpanda, symbol),
       moneyColumn('bank', 'Bank', (r) => r.autoBank, symbol),
       moneyColumn('cashExpense', 'Cash Expense', (r) => r.cashExpense, symbol),
+      // Straight after Cash Expense so the subtraction is visible in the row —
+      // 45,000 · 5,000 · 40,000 reads as arithmetic rather than as three
+      // unrelated figures. This is what the counted cash is checked against, so
+      // it sits next to the Difference column's reasoning rather than off in the
+      // View popup where the person counting the drawer would not see it.
+      moneyColumn('cashOnTable', 'Cash on Table', (r) => r.expectedCashInHand, symbol, true),
       moneyColumn('discount', 'Discount', (r) => r.discount, symbol),
       {
         id: 'difference',

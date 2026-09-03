@@ -185,7 +185,7 @@ function ViewBody({
             {record.autoOther > 0 && <Row label="Other" value={money(record.autoOther, symbol)} />}
             <Row label="Discount" value={money(record.discount, symbol)} muted />
             <Row label="Cash Expense" value={money(record.cashExpense, symbol)} muted />
-            <Row label="Expected Cash in Hand" value={money(record.expectedCashInHand, symbol)} strong />
+            <Row label="Cash on Table" value={money(record.expectedCashInHand, symbol)} strong />
             {record.autoStaff > 0 && (
               <Row label="Staff consumption (unpaid)" value={money(record.autoStaff, symbol)} muted />
             )}
@@ -204,7 +204,11 @@ function ViewBody({
           </Section>
 
           <Section title="Difference">
-            <DiffRow label="Cash" value={record.cashDifference} symbol={symbol} />
+            {/* The basis is named on the row, not left to be inferred: cash is
+                checked against Cash on Table and the other two against their
+                gross settlement, and a reader chasing a discrepancy needs to
+                know which without opening the code. */}
+            <DiffRow label="Cash (vs Cash on Table)" value={record.cashDifference} symbol={symbol} />
             <DiffRow label="Easypaisa" value={record.easypaisaDifference} symbol={symbol} />
             <DiffRow label="Bank" value={record.bankDifference} symbol={symbol} />
             <DiffRow label="Overall" value={record.overallDifference} symbol={symbol} strong />

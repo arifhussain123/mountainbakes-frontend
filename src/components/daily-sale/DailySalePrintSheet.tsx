@@ -89,7 +89,7 @@ export function DailySalePrintSheet({
         <PrintRow label="Payment Total" value={money(record.paymentTotal, symbol)} strong />
         <PrintRow label="Discount (already deducted)" value={money(record.discount, symbol)} />
         <PrintRow label="Cash Expense" value={money(record.cashExpense, symbol)} />
-        <PrintRow label="Expected Cash in Hand" value={money(record.expectedCashInHand, symbol)} strong />
+        <PrintRow label="Cash on Table" value={money(record.expectedCashInHand, symbol)} strong />
         {record.autoStaff > 0 && (
           <PrintRow label="Staff consumption (no payment taken)" value={money(record.autoStaff, symbol)} />
         )}
@@ -111,7 +111,9 @@ export function DailySalePrintSheet({
 
       {/* ── Difference ── */}
       <PrintSection title="Difference">
-        <PrintRow label="Cash" value={differenceText(record.cashDifference, symbol)} />
+        {/* Named on the sheet for the same reason it is named on screen — this is
+            the copy that gets signed and filed, and it has to stand on its own. */}
+        <PrintRow label="Cash (vs Cash on Table)" value={differenceText(record.cashDifference, symbol)} />
         <PrintRow label="Easypaisa" value={differenceText(record.easypaisaDifference, symbol)} />
         <PrintRow label="Bank" value={differenceText(record.bankDifference, symbol)} />
         <PrintRow label="Overall" value={differenceText(record.overallDifference, symbol)} strong />
