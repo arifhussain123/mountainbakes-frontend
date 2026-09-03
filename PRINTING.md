@@ -156,12 +156,60 @@ are on screen before anyone commits:
    printer and reading which it is are separate powers, and only the first exists.
 
 The receipt itself is not re-laid-out. The page is built from
-`preview(blocks, columns)` — the same lines, wrapped by the same code, padded by
-the same column maths as the ESC/POS path — set in Courier New at a size derived
-from the profile's `printableWidthMm / charactersPerLine`, so a till that switches
-between this and USB gets the same receipt character for character. The test
-page's ruler proves the width on real paper exactly as it does for a device, and
-*Characters per line* corrects it the same way.
+`previewStyled(blocks, columns)` — the same lines, wrapped by the same code,
+padded by the same column maths as the ESC/POS path, and carrying the same
+emphasis — set in Courier New at a size derived from the profile's
+`printableWidthMm / charactersPerLine`, so a till that switches between this and
+USB gets the same receipt character for character. The test page's ruler proves
+the width on real paper exactly as it does for a device, and *Characters per
+line* corrects it the same way.
+
+Each line is its own element rather than one run of text in a `<pre>`, because a
+flattened page printed the company name and the grand total looking exactly like
+a line item — the one figure a reader looks for had no emphasis on the one
+document they read. `previewStyled` keeps each line's style; `.h2` reproduces
+`GS !` double height, `.w2` double width.
+
+#### Why the driver page is set in bold
+
+Because that is the fix for faint output, and it is a rasterisation problem
+rather than a printer one. The driver is handed a greyscale bitmap and has one
+ink: Courier New's stems at receipt size land as mid-grey, and thresholding those
+drops roughly half the dots in every glyph — the *"very faint, some characters
+unreadable"* receipt. Bold stems survive the threshold. It is safe for the column
+maths only because Courier New Bold is metrically identical to the regular face
+(the same 0.6em advance), which is also why the weight, the ligature setting and
+`text-rendering` all sit on the selector shared with `#mb-probe`: that probe is
+the ruler `fitDocument()` scales the receipt against, and a ruler rendered in a
+different mode from the thing it measures gives a wrong answer confidently.
+
+Nothing on the ESC/POS path needs any of this — there the printer sets the glyph
+itself, at full density.
+
+#### Blank paper, and the leading
+
+Three separate things made these receipts longer than the receipt:
+
+- `@page { margin: 0 }`, and `fitDocument()` measuring the rendered height and
+  writing it into a second `@page` rule — both already in place, and the reason
+  the last `<style>` in the head must stay last (two rules setting `size` are
+  resolved by document order).
+- `line-height`, which was `1.15`. It is `1` now, matching what the bytes path
+  does — 24 dots of leading for a 24-dot glyph. On a 40-line demand the old value
+  was several centimetres of roll for nothing.
+- `.receipt`'s `padding: 2mm 0`, now `0`. The head already cannot print in the
+  first millimetre of paper; a deliberate margin on top of that is paper spent
+  twice.
+
+#### The browser's own header and footer
+
+The URL, page number and date Chrome can draw on a printed page are drawn **in
+the page margin**, and `@page { margin: 0 }` is the whole of what a document can
+do about them — with no margin there is no band to draw them in. If they still
+appear, the dialog's **Headers and footers** checkbox is on. That is a browser
+setting, remembered per user, and no page can read or change it: turning it off
+once, or running the till with `--kiosk-printing`, is the fix. This app cannot do
+it and does not claim to.
 
 It prints from a **detached iframe with its own document**, which is why this is
 not the banned bare `window.print()`: `globals.css` and its global
@@ -311,6 +359,47 @@ back because the on-screen invoice has it.
 Totals are printed exactly as stored. `validateSaleDoc` refuses to compose a
 receipt whose parts do not reconcile to its total — an unprintable receipt beats a
 wrong one in a customer's hand.
+
+### What the production slip carries
+
+The demand's lines and grand total, then the previous delivery's collection and
+two signature lines. The last two are on the A4 challan as well, deliberately:
+the roll is what physically travels with the delivery, and a collection the rider
+cannot read at the counter is one that gets argued about later.
+
+The collection block is **not** a "previous balance" and must not be labelled as
+one. The carry-forward balance was removed server-side (migration 74) and
+Production no longer sees a Prev. Balance / Total Demand pair at all. What this
+prints is money owed for the *last delivery* — company share, less returns, less
+claims, giving `TO COLLECT` — which is the opposite direction from
+`production_balances` (goods owed **to** the branch). Every figure is
+server-computed, because `company_share_pct` lives in `finance_settings` and
+production users cannot read it, and every figure is printed exactly as supplied.
+A slip that recomputed the collection would be the one document in the building
+disagreeing with the ledger.
+
+`PreviousCollection` distinguishes three states and they print differently:
+supplied (the working), `null` (*"No previous delivery - nothing to collect."*),
+and omitted entirely — which is what a caller passes while the query is still in
+flight, so an early print leaves the block off rather than printing a collection
+of zero against a delivery that has one. Zeros and "nothing owed" read the same as
+numbers and mean different things.
+
+Deduction lines are printed only when non-zero, so the one delivery that did have
+a claim against it is findable in a stack.
+
+### Line spacing on the bytes path
+
+`renderBlocks` sends `ESC 3 24` after the reset — one character cell of leading
+for the 12×24 Font A glyph, the standard receipt figure. The printer's own default
+is 30–34 dots depending on the unit, which is set for prose and is visibly loose
+on a receipt.
+
+It is sent at the head of the document rather than from `init()`, because `init()`
+is *also* the trailing reset and the whole point of that one is to hand the
+printer back in its default state — including to a job sent by a different
+application. Tightening the leading is this document's business, not the next
+one's.
 
 ## Browser printing
 

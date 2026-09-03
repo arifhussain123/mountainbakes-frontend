@@ -431,6 +431,22 @@ function PreviewBody({
         amount: r.amount,
       })),
       grandTotal: totals.amount,
+      // The same server figures the A4 challan's collection block prints, passed
+      // through rather than re-derived. `undefined` while the query is still in
+      // flight, so a slip printed early leaves the block off instead of printing
+      // a collection of zero against a delivery that has one.
+      previousCollection: prevBalanceQ.isLoading
+        ? undefined
+        : previousRef
+          ? {
+              reference: previousRef.demandNumber,
+              dateText: previousRef.date,
+              companyShare: companyShareValue,
+              returnsAmount,
+              discountsAmount,
+              amountToCollect: collectionAmount,
+            }
+          : null,
     };
   }
 

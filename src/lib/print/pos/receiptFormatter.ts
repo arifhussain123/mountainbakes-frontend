@@ -68,6 +68,35 @@ export interface ProductionOrderLine {
   amount: number;
 }
 
+/**
+ * What the rider collects against the PREVIOUS delivery, as the slip states it.
+ *
+ * Deliberately not called a "previous balance". The carry-forward balance this
+ * document used to carry was removed server-side (migration 74) and Production
+ * no longer sees a Prev. Balance / Total Demand pair at all; what remains — and
+ * what the A4 challan prints — is money owed for the last delivery, which is the
+ * opposite direction from `production_balances` (goods owed TO the branch).
+ * Printing the one under the other's name is how a counter dispute starts.
+ *
+ * Every figure is server-computed (`company_share_pct` lives in finance_settings,
+ * which production users cannot read) and is printed exactly as supplied. Nothing
+ * here re-derives them: a slip that recomputed the collection would be the one
+ * document in the building disagreeing with the ledger.
+ */
+export interface PreviousCollection {
+  /** The previous demand's number, and when it was raised. */
+  reference: string;
+  dateText: string;
+  /** The branch's share of that delivery — what is owed before deductions. */
+  companyShare: number;
+  /** Accepted returns from that delivery, already netted server-side. */
+  returnsAmount: number;
+  /** Claims against that delivery. An amount, never a quantity. */
+  discountsAmount: number;
+  /** What the rider actually collects. The server's figure, printed as given. */
+  amountToCollect: number;
+}
+
 export interface ProductionOrderDoc {
   orderNumber: string;
   dateText: string;
@@ -79,6 +108,19 @@ export interface ProductionOrderDoc {
   currencySymbol: string;
   items: ProductionOrderLine[];
   grandTotal: number;
+  /**
+   * The previous delivery's collection, or `null` where there was no previous
+   * delivery for this branch.
+   *
+   * `null` prints the same sentence the screen shows rather than a row of zeros:
+   * "nothing to collect" and "collect nothing because every figure happens to be
+   * zero" read identically as numbers and mean different things.
+   *
+   * Omitted entirely (rather than `null`) by a caller that has not loaded the
+   * figures — the block is then left off the slip, which is honest, where
+   * printing zeros would not be.
+   */
+  previousCollection?: PreviousCollection | null;
 }
 
 const BRAND = 'MOUNTAIN BAKES';
@@ -267,10 +309,16 @@ export function saleReceiptBlocks(doc: SaleReceiptDoc, profile: PrinterProfile =
  * section costs a glance, and the four facts are read together — "what is this,
  * when was it raised, when is it due".
  *
- * Only what the floor needs to make and send the order. No status badge, no
- * approval trail, no previous-balance reconciliation — those live on the A4
- * challan, which still prints through the browser path and is a different
- * document for a different reader.
+ * Only what the floor needs to make and send the order, plus what the rider
+ * needs to settle the last one. No status badge and no approval trail — those
+ * live on the A4 challan, which still prints through the browser path and is a
+ * different document for a different reader.
+ *
+ * The previous-delivery collection and the signature lines are on both, and
+ * deliberately so: the roll is what physically travels with the delivery, and a
+ * collection the rider cannot read at the counter is a collection that gets
+ * argued about later. The figures come from the server on both documents (see
+ * `PreviousCollection`), so the two cannot disagree.
  */
 export function productionOrderBlocks(
   doc: ProductionOrderDoc,
@@ -318,7 +366,93 @@ export function productionOrderBlocks(
   });
   blocks.push({ kind: 'rule' });
 
+  // ---- What the rider collects for the last delivery ----------------------
+  // Only when the caller supplied the figures. `undefined` means "not loaded",
+  // which is a different thing from `null` ("loaded, and there was no previous
+  // delivery") — the first leaves the block off, the second says so on paper.
+  if (doc.previousCollection !== undefined) {
+    blocks.push(...previousCollectionBlocks(doc.previousCollection, symbol, columns));
+  }
+
+  // ---- Who handed it over and who took it --------------------------------
+  blocks.push(...signatureBlocks(columns));
+
+  blocks.push({ kind: 'rule' });
+  blocks.push({
+    kind: 'text',
+    text: (doc.companyName?.trim() || BRAND).toUpperCase(),
+    align: 'center',
+    style: { bold: true },
+  });
+
   return blocks;
+}
+
+/**
+ * The previous delivery's collection working, as the A4 challan states it.
+ *
+ * Same four figures in the same order, so a rider holding the roll and the sheet
+ * is reading one document twice rather than reconciling two. The deductions are
+ * labelled "Less" because a bare `Returns  Rs 500` under a share of `Rs 8,000`
+ * reads as an addition often enough to matter when it is being totalled by hand
+ * at a counter.
+ *
+ * The deduction lines are printed only when they are non-zero. A row of zeros is
+ * three lines of roll saying nothing happened, and it makes the one delivery that
+ * *did* have a claim against it harder to spot in a stack.
+ */
+function previousCollectionBlocks(
+  collection: PreviousCollection | null,
+  symbol: string,
+  columns: number,
+): Block[] {
+  if (!collection) {
+    return [
+      { kind: 'text', text: 'PREVIOUS ORDER', style: { bold: true } },
+      { kind: 'text', text: 'No previous delivery - nothing to collect.' },
+      { kind: 'rule' },
+    ];
+  }
+
+  const blocks: Block[] = [
+    { kind: 'text', text: 'PREVIOUS ORDER', style: { bold: true } },
+    ...pairRow(`No: ${collection.reference}`, `Date: ${collection.dateText}`, columns),
+    amountRow('Company Share', money(collection.companyShare, symbol), columns),
+  ];
+  if (collection.returnsAmount > 0) {
+    blocks.push(amountRow('Less Returns', money(collection.returnsAmount, symbol), columns));
+  }
+  if (collection.discountsAmount > 0) {
+    blocks.push(amountRow('Less Claims', money(collection.discountsAmount, symbol), columns));
+  }
+  blocks.push({
+    ...amountRow('TO COLLECT', money(collection.amountToCollect, symbol), columns),
+    style: { bold: true },
+  });
+  blocks.push({ kind: 'rule' });
+  return blocks;
+}
+
+/**
+ * The two signature lines.
+ *
+ * Ruled to the edge of the roll rather than to a fixed width, because a 58mm
+ * slip and an 80mm one otherwise get the same short rule with very different
+ * amounts of blank paper after it. A minimum of four underscores keeps the line
+ * recognisable as somewhere to sign even on the narrowest roll, where the label
+ * has eaten most of the width.
+ *
+ * A blank line between them, and nothing after: the cut is the end of the
+ * document, and feed past it is the printer's business (`escpos.cut`), not this
+ * layout's. Padding the bottom here is what produces the trailing blank paper
+ * these receipts were criticised for.
+ */
+function signatureBlocks(columns: number): Block[] {
+  const line = (label: string) => {
+    const rule = '_'.repeat(Math.max(4, columns - label.length));
+    return { kind: 'text', text: `${label}${rule}` } as Block;
+  };
+  return [line('Collected By: '), { kind: 'feed', lines: 1 }, line('Received By:  ')];
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 'use client';
 
 import { PosPrintError, asPrintError } from '../errors';
-import { preview } from '../escpos';
+import { previewStyled, type PreviewLine } from '../escpos';
 import type { DeviceIdentity, LinkStatus, PosTransport, PrintJob, TransportSupport } from './types';
 
 /**
@@ -78,12 +78,28 @@ import type { DeviceIdentity, LinkStatus, PosTransport, PrintJob, TransportSuppo
  * ---------------------------------------------------------------------------
  * Why the text is the same text
  * ---------------------------------------------------------------------------
- * The page is built from `preview(blocks, columns)` — the exact lines the ESC/POS
- * path would print, wrapped by the same code, padded by the same column maths.
- * Not an HTML re-layout of the receipt: an HTML *rendering of the receipt's
- * lines*. A till that switches between this transport and USB gets the same
- * receipt, character for character, and the totals column cannot drift between
- * the two because there is only one implementation of it.
+ * The page is built from `previewStyled(blocks, columns)` — the exact lines the
+ * ESC/POS path would print, wrapped by the same code, padded by the same column
+ * maths, and carrying the same emphasis. Not an HTML re-layout of the receipt: an
+ * HTML *rendering of the receipt's lines*. A till that switches between this
+ * transport and USB gets the same receipt, character for character, and the
+ * totals column cannot drift between the two because there is only one
+ * implementation of it.
+ *
+ * ---------------------------------------------------------------------------
+ * The one thing CSS cannot do: the browser's own header and footer
+ * ---------------------------------------------------------------------------
+ * The URL, the page number and the date Chrome draws on a printed page are drawn
+ * *in the page margin*, and `@page { margin: 0 }` below is the whole of what a
+ * document can do about them — with no margin there is no band to draw them in.
+ * That is why the margin is zero here and why nothing else in this file tries.
+ *
+ * If they still appear, the print dialog's **Headers and footers** checkbox is
+ * on, and only the person at the machine can turn it off: it is a browser
+ * setting, it is remembered per user, and no page can read or change it. Turning
+ * it off once, or starting the till's browser with `--kiosk-printing` (which
+ * skips the dialog entirely), is the fix. This transport cannot do it and does
+ * not pretend to.
  */
 
 /** The one printer this transport can address, and it cannot name it. */
@@ -147,6 +163,29 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * One rendered line as one element, carrying the emphasis ESC/POS would apply.
+ *
+ * This is what stops the driver page from being a flattened copy of the receipt.
+ * The bytes path prints the company name double-height and the grand total bold
+ * and double-height; rendered as plain text those came out identical to a line
+ * item, so the one document a customer actually reads for its total had no total
+ * to look at. Same lines, same padding — set the way the printer would set them.
+ *
+ * An empty line still needs a box, or a `feed` block collapses to nothing and the
+ * receipt shortens by however many blank lines it asked for. `&nbsp;` rather than
+ * a height rule, because the height then comes from the same line-height as every
+ * other line instead of being a second number to keep in step.
+ */
+function lineHtml(line: PreviewLine): string {
+  const classes = ['l'];
+  if (line.style?.bold) classes.push('b');
+  if (line.style?.doubleHeight) classes.push('h2');
+  if (line.style?.doubleWidth) classes.push('w2');
+  const text = line.text.length === 0 ? '&nbsp;' : escapeHtml(line.text);
+  return `<div class="${classes.join(' ')}">${text}</div>`;
+}
+
+/**
  * The job as a printable document, sized to the roll.
  *
  * ---------------------------------------------------------------------------
@@ -166,9 +205,9 @@ function escapeHtml(text: string): string {
  * thing being printed is available in a way that parser behaviour is not.
  */
 function documentHtml(job: PrintJob): string {
-  const lines = preview(job.blocks, job.columns);
+  const lines = previewStyled(job.blocks, job.columns);
   const fontSizeMm = job.printableWidthMm / job.columns / MONO_ADVANCE;
-  const body = escapeHtml(lines.join('\n'));
+  const body = lines.map(lineHtml).join('');
   // What `fitToRoll` measures against: a box exactly one print area wide, and a
   // line of exactly the column count in the receipt's own font. Both are in the
   // document rather than built by script, so they cannot drift from `.receipt`.
@@ -179,7 +218,7 @@ function documentHtml(job: PrintJob): string {
   const copies = Math.max(1, Math.trunc(job.copies));
   const pages = Array.from(
     { length: copies },
-    (_, index) => `<pre class="receipt${index < copies - 1 ? ' cut' : ''}">${body}</pre>`,
+    (_, index) => `<div class="receipt${index < copies - 1 ? ' cut' : ''}">${body}</div>`,
   ).join('');
 
   return `<!doctype html>
@@ -212,6 +251,34 @@ function documentHtml(job: PrintJob): string {
        them here is what would make this receipt differ from the ESC/POS one, and
        it would do it silently. */
     white-space: pre;
+    /*
+     * Bold is the fix for faint output, and it belongs on the PROBE as well as
+     * the receipt.
+     *
+     * A thermal driver gets a greyscale bitmap from the browser and has one ink.
+     * Courier New's stems at receipt size land as mid-grey, and thresholding
+     * those drops roughly half the dots in every glyph — which is the "very
+     * faint, some characters unreadable" output this transport was producing,
+     * and it is a rasterisation problem rather than anything the ESC/POS path
+     * can suffer (there the printer sets the glyph itself, at full density).
+     * Bold stems survive the threshold intact.
+     *
+     * Safe for the column maths only because Courier New Bold is metrically
+     * identical to the regular face — same 0.6em advance — so 48 characters
+     * still measure one print area. That is exactly why the weight is declared
+     * on this shared selector: #mb-probe must be set in the same face it is
+     * measuring, or fitDocument() scales the receipt against the wrong advance.
+     */
+    font-weight: bold;
+    /*
+     * Everything below changes glyph ADVANCE, so it has to sit on this shared
+     * selector rather than on .receipt alone: #mb-probe is the ruler fitDocument()
+     * scales the receipt against, and a ruler rendered in a different mode from
+     * the thing it measures gives a wrong answer confidently.
+     */
+    font-variant-ligatures: none;
+    -webkit-font-smoothing: none;
+    text-rendering: geometricPrecision;
   }
   #mb-gauge {
     /* One print area wide and nothing else — the measurement target. */
@@ -232,13 +299,53 @@ function documentHtml(job: PrintJob): string {
     /* The print area, centred on the roll by the margin the head cannot reach. */
     width: ${job.printableWidthMm}mm;
     margin: 0 auto;
-    padding: 2mm 0;
-    line-height: 1.15;
-    /* Thermal output is one weight. Any font synthesis is the browser inventing
-       a difference the printer cannot reproduce. */
-    font-weight: normal;
-    font-variant-ligatures: none;
-    -webkit-font-smoothing: none;
+    /*
+     * No padding. It was 2mm top and bottom, which is 4mm of blank roll on every
+     * sale and the top half of the "excessive blank paper" complaint — the rest
+     * of which is the page box, measured in fitDocument(). The head already
+     * cannot print in the first millimetre or so of paper, so a deliberate
+     * margin on top of that is paper spent twice.
+     */
+    padding: 0;
+    /*
+     * 1.0 is what the ESC/POS path does: 24 dots of leading for a 24-dot glyph,
+     * lines sitting directly under one another. This was 1.15, which is a 15%
+     * longer receipt for nothing — on a 40-line demand, several centimetres of
+     * roll and the "excessive vertical line spacing" that was reported.
+     */
+    line-height: 1;
+    /* Forbid the engine lightening anything to save ink it has no concept of.
+       The antialiasing settings that go with this are on the shared selector
+       above, because they move glyph advances and the fit probe must match. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt .l {
+    /* Each line is its own box so it can carry its own emphasis; none of them
+       may add spacing of their own on top of the line-height above. */
+    margin: 0;
+    padding: 0;
+  }
+  /*
+   * Emphasis, matching what renderBlocks() sends for the same block.
+   *
+   * The base face is already bold (see above), so ESC E 1 cannot be reproduced
+   * by going bolder — there is nowhere left to go on a one-ink device, which is
+   * the same reason the printer's own bold is a modest thing. It is left as the
+   * one difference between the two paths, and it is invisible on paper.
+   */
+  .receipt .h2 {
+    /* GS ! double height: twice as tall, no wider, so the column maths is
+       untouched. The line box grows with it because line-height is unitless. */
+    font-size: 2em;
+  }
+  .receipt .w2 {
+    /* Double width. The line's text is already half the column count (previewStyled()
+       halves the width for these), so it is stretched rather than re-set — the
+       character count is what has to match, and scaling keeps it exact. */
+    display: inline-block;
+    transform: scaleX(2);
+    transform-origin: left center;
   }
   .receipt.cut {
     break-after: page;

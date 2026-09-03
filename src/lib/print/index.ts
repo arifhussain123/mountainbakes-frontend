@@ -68,11 +68,12 @@ export {
   productionOrderBlocks,
   saleReceiptBlocks,
   testPageBlocks,
+  type PreviousCollection,
   type ProductionOrderDoc,
   type SaleReceiptDoc,
 } from './pos/receiptFormatter';
 
-export { preview } from './pos/escpos';
+export { preview, previewStyled, type PreviewLine } from './pos/escpos';
 
 export {
   appendPrintLog,

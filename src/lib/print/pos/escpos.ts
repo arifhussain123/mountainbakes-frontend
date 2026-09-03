@@ -113,6 +113,39 @@ export function feed(lines: number): number[] {
 }
 
 /**
+ * `ESC 3 n` — the gap between one line's baseline and the next, in motor dots.
+ *
+ * The printer's own default is 30–34 dots depending on the unit, which is set
+ * for continuous prose and is visibly loose on a receipt: a 40-line demand comes
+ * out several centimetres longer than it needs to be, and on a roll that is paper
+ * spent on nothing. 24 dots is the standard receipt figure — one character cell
+ * for the 12×24 Font A glyph, so lines sit directly under each other with no
+ * leading — and it is what every POS slip in the wild uses.
+ *
+ * Sent right after `ESC @`, because the reset restores the default and would
+ * otherwise undo this. Anything outside the printable range is a bug in a caller:
+ * clamped rather than passed through, since a value over 255 wraps to a byte and
+ * would silently produce a *tighter* line than asked for.
+ *
+ * `ESC 2` (restore the default) is deliberately not offered. A caller that wants
+ * the loose default can ask for it in dots and have that recorded in the config,
+ * rather than there being two ways to express one setting.
+ */
+export function lineSpacing(dots: number): number[] {
+  const n = Math.max(0, Math.min(255, Math.trunc(dots)));
+  return [ESC, 0x33, n];
+}
+
+/**
+ * Dots between lines on a receipt, unless a profile overrides it.
+ *
+ * See `lineSpacing`. Changing this changes the length of every receipt the
+ * direct transports print; it does not affect the installed-driver route, which
+ * lays out a page and takes its leading from CSS.
+ */
+export const DEFAULT_LINE_SPACING_DOTS = 24;
+
+/**
  * Feed clear of the head, then ask for a partial cut.
  *
  * The feed is not optional: the cutter sits a couple of centimetres past the
@@ -246,19 +279,47 @@ export function wrap(text: string, width: number): string[] {
  * monospaced.
  */
 export function preview(blocks: readonly Block[], columns: number): string[] {
-  const out: string[] = [];
+  return previewStyled(blocks, columns).map((line) => line.text);
+}
+
+/**
+ * One rendered line, with the emphasis the printer would have applied to it.
+ *
+ * The plain-text `preview` above throws this away, which is right for the
+ * on-screen preview (a monospaced div, no emphasis to give) and wrong for the
+ * installed-driver transport: that one renders an actual page, so a heading the
+ * ESC/POS path prints bold and a total it prints double-height came out of the
+ * driver looking exactly like a line item. Same lines, same wrapping, same
+ * padding — this variant just also says how each one is set.
+ */
+export interface PreviewLine {
+  text: string;
+  style?: TextStyle;
+  align?: Align;
+}
+
+/**
+ * The blocks as rendered lines that remember their styling.
+ *
+ * `preview` is a projection of this, so there is still one implementation of the
+ * wrap-and-pad maths and the two cannot drift — which matters more than it looks,
+ * because the driver page and the ESC/POS bytes have to agree character for
+ * character or a till that switches between them prints two different receipts.
+ */
+export function previewStyled(blocks: readonly Block[], columns: number): PreviewLine[] {
+  const out: PreviewLine[] = [];
   for (const block of blocks) {
     if (block.kind === 'rule') {
-      out.push('-'.repeat(columns));
+      out.push({ text: '-'.repeat(columns) });
       continue;
     }
     if (block.kind === 'feed') {
-      for (let i = 0; i < block.lines; i++) out.push('');
+      for (let i = 0; i < block.lines; i++) out.push({ text: '' });
       continue;
     }
     const width = Math.floor(columns / widthFactor(block.style));
     for (const line of wrap(block.text, width)) {
-      out.push(pad(line, width, block.align ?? 'left'));
+      out.push({ text: pad(line, width, block.align ?? 'left'), style: block.style, align: block.align });
     }
   }
   return out;
@@ -280,7 +341,11 @@ function pad(line: string, width: number, align: Align): string {
  * job sent by a different application.
  */
 export function renderBlocks(blocks: readonly Block[], columns: number): number[] {
-  const bytes: number[] = [...init()];
+  // Spacing is set here rather than inside `init()` because `init()` is also the
+  // trailing reset, and the whole point of that one is to hand the printer back
+  // in its default state — including to a job sent by a different application.
+  // Tightening the leading is this document's business, not the next one's.
+  const bytes: number[] = [...init(), ...lineSpacing(DEFAULT_LINE_SPACING_DOTS)];
 
   for (const block of blocks) {
     if (block.kind === 'rule') {
