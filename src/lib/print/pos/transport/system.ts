@@ -335,9 +335,33 @@ function documentHtml(job: PrintJob): string {
    * one difference between the two paths, and it is invisible on paper.
    */
   .receipt .h2 {
-    /* GS ! double height: twice as tall, no wider, so the column maths is
-       untouched. The line box grows with it because line-height is unitless. */
-    font-size: 2em;
+    /*
+     * GS ! double height: twice as tall, and NOT ONE CHARACTER WIDER.
+     *
+     * font-size: 2em was wrong and wrong in the expensive direction. It scales
+     * both axes, so a total already padded to the full 48 columns rendered 96
+     * columns wide — 144mm of text on a 72mm print area — and what runs off the
+     * edge of the roll is the right-hand end of the line, which is the amount.
+     * The one figure that has to survive is the one it dropped.
+     *
+     * So the glyphs are scaled on Y alone, and the line box is given two lines
+     * of room to hold them. Height is reserved by line-height (which is layout,
+     * and so is what fitDocument measures) while the scale is paint only; the
+     * two are set to the same factor, which is what keeps a tall line from
+     * overlapping its neighbour.
+     */
+    line-height: 2;
+    transform: scaleY(2);
+  }
+  .receipt .h2.w2 {
+    /*
+     * Both at once. transform is a single property, so the rules either side of
+     * this would not combine — the later one would simply replace the earlier.
+     * Nothing composes the two today, and a silently half-applied style is not
+     * what should happen the day something does.
+     */
+    transform-origin: left center;
+    transform: scale(2);
   }
   .receipt .w2 {
     /* Double width. The line's text is already half the column count (previewStyled()
