@@ -229,9 +229,29 @@ function documentHtml(job: PrintJob): string {
 <style>
   @page {
     margin: 0;
-    /* Replaced by fitDocument() with the receipt's measured height. This one only
-       has to be long enough not to split a receipt if measuring ever fails. */
-    size: ${job.paperWidthMm}mm 297mm;
+    /*
+     * The PRINT AREA, not the paper. It was the paper width, with .receipt then
+     * centred inside it by margin: 0 auto — this document modelling the head's
+     * unprintable margin as an equal gutter either side.
+     *
+     * That gutter is what put the company name off centre. The margin is real,
+     * but it is the DRIVER's, it is not ours to draw, and on a POS-80 it is not
+     * symmetric: the head is commonly flush to one edge with the whole 8mm of
+     * slack at the other. Asked for an 80mm page, the driver lays our 4mm of
+     * blank down its own left margin and clips 4mm off the right of the receipt
+     * — the whole strip shifted sideways, which shows up first and worst on the
+     * one line with white space around it.
+     *
+     * A page exactly the print area cannot be placed wrong: it lands on the
+     * printable rectangle whichever edge that rectangle starts at, so the
+     * receipt begins where the head begins — the same origin the ESC/POS path
+     * prints from, which is what makes the two paths agree on paper.
+     *
+     * The height is replaced by fitDocument() with the receipt's measured one.
+     * This value only has to be long enough not to split a receipt if measuring
+     * ever fails.
+     */
+    size: ${job.printableWidthMm}mm 297mm;
   }
   html, body {
     margin: 0;
@@ -296,9 +316,11 @@ function documentHtml(job: PrintJob): string {
     #mb-gauge, #mb-probe { display: none; }
   }
   .receipt {
-    /* The print area, centred on the roll by the margin the head cannot reach. */
+    /* The print area, filling the page box above — which IS the print area now.
+       No auto margins: centring the receipt inside a paper-width page is the
+       gutter the @page comment above describes, and it is the driver's job. */
     width: ${job.printableWidthMm}mm;
-    margin: 0 auto;
+    margin: 0;
     /*
      * No padding. It was 2mm top and bottom, which is 4mm of blank roll on every
      * sale and the top half of the "excessive blank paper" complaint — the rest
@@ -423,7 +445,7 @@ function documentHtml(job: PrintJob): string {
  * that has Courier New, and in every case a receipt printed on an estimate beats
  * no receipt.
  */
-function fitDocument(view: Window, printableWidthMm: number, paperWidthMm: number): void {
+function fitDocument(view: Window, printableWidthMm: number): void {
   try {
     const doc = view.document;
     const gauge = doc.getElementById('mb-gauge');
@@ -456,7 +478,10 @@ function fitDocument(view: Window, printableWidthMm: number, paperWidthMm: numbe
     // the final line a hair past the page and spill it onto a second one — which
     // on a roll is a second cut with one line of receipt on it.
     const pageHeightMm = Math.ceil(heightMm) + 1;
-    page.textContent = `@page { margin: 0; size: ${paperWidthMm}mm ${pageHeightMm}mm; }`;
+    // Width must stay the PRINT area, matching the placeholder rule this replaces
+    // — this rule wins on document order, so naming the paper width here would put
+    // the gutter (and the sideways shift) straight back on every receipt.
+    page.textContent = `@page { margin: 0; size: ${printableWidthMm}mm ${pageHeightMm}mm; }`;
   } catch {
     /* A frame that cannot be read is a frame that prints on the estimate. */
   }
@@ -513,7 +538,7 @@ async function printInFrame(job: PrintJob): Promise<void> {
     if (!view) throw new PosPrintError('print-failed', 'The receipt could not be prepared for the printer. Try again.');
 
     // Before the dialog, while the document is live and measurable.
-    fitDocument(view, job.printableWidthMm, job.paperWidthMm);
+    fitDocument(view, job.printableWidthMm);
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;

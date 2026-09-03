@@ -201,6 +201,27 @@ Three separate things made these receipts longer than the receipt:
   first millimetre of paper; a deliberate margin on top of that is paper spent
   twice.
 
+#### The page box is the print area, not the paper
+
+`@page { size }` names **`printableWidthMm`** (72mm on an 80mm roll), and `.receipt`
+fills it at `margin: 0`. Both `@page` rules say so — the placeholder in the head and
+the one `fitDocument()` writes over it — because the second wins on document order,
+so a paper width left in either one is a paper width on every receipt.
+
+It was `paperWidthMm` (80mm), with `.receipt` centred inside by `margin: 0 auto`:
+the document drawing the head's unprintable margin itself, as an equal gutter either
+side. That is what put **the company name off centre in the print preview**. The
+margin is real, but it belongs to the driver, and on a POS-80 it is not symmetric —
+the head is commonly flush to one edge with the whole 8mm of slack at the other.
+Handed an 80mm page, the driver lays our 4mm of blank down its own left margin and
+clips 4mm off the right of the receipt. The whole strip moves sideways; it shows up
+first and worst on the one line with white space around it to move within.
+
+A page exactly the print area cannot be placed wrong — it lands on the printable
+rectangle whichever paper edge that rectangle starts at, so the receipt begins where
+the head begins. That is the origin the ESC/POS path prints from, which is what makes
+a till that switches between the two get the same receipt in the same place.
+
 #### The browser's own header and footer
 
 The URL, page number and date Chrome can draw on a printed page are drawn **in
