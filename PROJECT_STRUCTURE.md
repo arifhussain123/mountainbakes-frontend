@@ -71,7 +71,7 @@ src/app/
     │   ├── customers/          price-history/     stock-control/
     │   ├── geofencing/         reports/           settings/
     │   ├── notification-recipients/               support/
-    │   ├── users/              user-requests/
+    │   ├── users/              user-requests/     daily-sale-records/
     │   └── special-events/
     │       ├── page.tsx
     │       └── [id]/page.tsx   builds ONE shell at EVENT_ID_PLACEHOLDER;
@@ -82,7 +82,7 @@ src/app/
     │   ├── branch-orders/      branch-new-orders/ branch-return-stock/
     │   ├── branch-closing/     branch-expenses/   branch-discounts/
     │   ├── branch-customers/   branch-events/     branch-reports/
-    │   ├── branch-users/       branch-help-desk/
+    │   ├── branch-users/       branch-help-desk/  branch-daily-sale/
     │
     ├── (production)/           production_user
     │   ├── production-dashboard/   production-orders/    production-queue/
@@ -155,6 +155,9 @@ src/components/
 ├── sales/                  SalesPage · SaleForm · InvoiceView
 ├── expenses/               ExpensesPage · ExpenseForm · ExpenseExportModal
 ├── closing/                BranchClosingPage · ClosingExportModal
+├── daily-sale/             DailySaleRecordPage (branch + admin) · ManualFeedDialog
+│                           DailySaleViewDialog · DailySalePrintSheet
+│                           AmendDialog · UnlockDialog · PaymentLockPanel · parts
 │
 ├── special-events/         SpecialEventsPage · EventDetailPage · EventDetailRoute
 │                           EventFormDialog · EventListTable · EventCalendar

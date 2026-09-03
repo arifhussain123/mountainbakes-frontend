@@ -172,6 +172,28 @@ export const qk = {
   // beside another's stock is a reconciliation bug waiting to be filed.
   branchClosing: (businessDate: string) => ['branchClosing', businessDate] as const,
 
+  // ── Daily Sale Record ──
+  // Every key starts with the literal 'dailySale' so one mutation can drop the
+  // whole module with a single prefix invalidation: a manual feed changes the
+  // list, the record and (for an override) the audit trail, and the three are
+  // never usefully invalidated apart.
+  //
+  // The list key carries its full window AND branch, for the same reason
+  // `salesAnalytics` does: serving one range's figures under another's heading is
+  // the one bug a reconciliation board must not have. 'me' rather than null for
+  // the absent branch, so a branch account's own key never collides with the
+  // admin's consolidated one.
+  dailySaleRecords: (filters: { from: string; to: string; branchId?: string | null }) =>
+    ['dailySale', 'records', filters.from, filters.to, filters.branchId ?? 'me'] as const,
+  // Its own key rather than reading the row out of the list's cache: the list
+  // deliberately does not carry the audit history or the branch address the View
+  // popup and the print sheet need, so serving them from it would show an empty
+  // history on every record until the list happened to refetch.
+  dailySaleRecord: (id: string) => ['dailySale', 'record', id] as const,
+  dailySaleLocks: (branchId?: string | null) => ['dailySale', 'locks', branchId ?? 'me'] as const,
+  dailySaleAudit: (branchId?: string | null, days?: number | null) =>
+    ['dailySale', 'audit', branchId ?? 'me', days ?? 30] as const,
+
   // ── Finance Ledger ──
   // Every finance key starts with the literal 'finance' so a sign-out or a
   // settings change can drop the whole module with one

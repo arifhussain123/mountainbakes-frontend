@@ -30,6 +30,7 @@ import {
   CalendarCheck,
   ShieldCheck,
   ShieldAlert,
+  Scale,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -54,6 +55,9 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
   { label: 'Special Events',  href: ROUTES.SPECIAL_EVENTS,   icon: CalendarDays },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },
+  // Next to Reports rather than beside Branches: it is opened while looking at
+  // the money, and it is where a branch's disputed day gets unlocked or amended.
+  { label: 'Daily Sale Records', href: ROUTES.DAILY_SALE_RECORDS, icon: Scale },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
   { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
@@ -103,6 +107,9 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
   { label: 'Branch Closing',href: ROUTES.BRANCH_CLOSING,     icon: CalendarCheck },
+  // Straight after Branch Closing, because that is the order the work happens
+  // in: read the day, then count the money against it and sign it off.
+  { label: 'Daily Sale Record', href: ROUTES.BRANCH_DAILY_SALE, icon: Scale },
   { label: 'Shift Accounts',href: ROUTES.BRANCH_USERS,       icon: UserCog },
   { label: 'Reports',       href: ROUTES.BRANCH_REPORTS,     icon: BarChart3 },
   { label: 'Help Desk',     href: ROUTES.BRANCH_HELP_DESK,   icon: Headset },
@@ -139,6 +146,14 @@ export const BRANCH_USER_NAV: NavItem[] = [
   { label: 'Shop Expenses',  href: ROUTES.BRANCH_EXPENSES,   icon: Receipt },
   { label: 'Events',         href: ROUTES.BRANCH_EVENTS,     icon: CalendarDays },
   { label: 'Branch Closing', href: ROUTES.BRANCH_CLOSING,    icon: CalendarCheck },
+  /* The shift account is the person who physically counts the drawer, so it gets
+   * this screen too — withholding it would mean the count is keyed from memory by
+   * somebody else the next morning, which is the failure the record exists to stop.
+   * It may FEED a figure and not sign one off: verification is branch_manager and
+   * admin only, enforced by the API (daily-sale.routes.ts), and the Verify button
+   * simply does not render here. Adding it to this list also grants the route —
+   * RouteGuard derives the branch_user allowlist from it. */
+  { label: 'Daily Sale Record', href: ROUTES.BRANCH_DAILY_SALE, icon: Scale },
 ];
 
 export const PRODUCTION_NAV: NavItem[] = [

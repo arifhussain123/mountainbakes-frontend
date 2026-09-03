@@ -28,6 +28,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.REPORTS]: 'Reports & Analytics',
   [ROUTES.SUPPORT_CENTER]: 'Support Center',
   [ROUTES.SECURITY]: 'Security',
+  [ROUTES.DAILY_SALE_RECORDS]: 'Daily Sale Records',
   [ROUTES.NOTIFICATION_RECIPIENTS]: 'Notification Recipients',
   // /special-events/<id> is deliberately absent: a dynamic route cannot have a
   // static title here, so EventDetailPage renders its own heading.
@@ -48,6 +49,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.BRANCH_REPORTS]: 'Branch Reports',
   [ROUTES.BRANCH_HELP_DESK]: 'Help Desk',
   [ROUTES.BRANCH_CLOSING]: 'Branch Closing',
+  [ROUTES.BRANCH_DAILY_SALE]: 'Daily Sale Record',
   [ROUTES.BRANCH_USERS]: 'Shift Accounts',
   [ROUTES.USER_REQUESTS]: 'Account Requests',
   [ROUTES.BRANCH_EVENTS]: 'Special Events',

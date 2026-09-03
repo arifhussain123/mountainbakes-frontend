@@ -54,6 +54,12 @@ import type {
   UpsertBranchLocationInput,
   ReportSummary,
   SalesAnalytics,
+  AmendDailySaleRecordInput,
+  DailySaleAudit,
+  DailySaleRecordDetail,
+  DailySaleRecordList,
+  PaymentMethodLock,
+  SetPaymentMethodLockInput,
   StockRow,
   StockFigures,
   ConsolidatedDemandRow,
@@ -1933,5 +1939,222 @@ export function useBranchClosing(token: string, businessDate: string) {
     },
     enabled: !!token && !!businessDate,
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Daily Sale Record
+//
+// The one place in this file where NOTHING is composed on the client. Branch
+// Closing above builds its sheet from three endpoints because a shift account
+// may not call a report endpoint; this feature has its own API that aggregates
+// in Postgres and returns the finished figures, so these hooks only pass a
+// window along and hand the answer back.
+//
+// Every mutation invalidates the whole ['dailySale'] prefix. That is broader
+// than the sweeping invalidation `useCreateBranchDiscount` deliberately avoids,
+// and for the opposite reason: a manual feed moves the row, the record detail,
+// the summary cards and the audit history at once, so anything narrower would
+// leave one of the four showing the figure that was there before somebody
+// counted the drawer.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useDailySaleRecords(
+  token: string,
+  opts: { from: string; to: string; branchId?: string | null; enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.dailySaleRecords(opts),
+    queryFn: () => {
+      const params = new URLSearchParams({ from: opts.from, to: opts.to });
+      // Only an admin may name a branch; the API discards it for a branch role
+      // and reads the JWT instead, so sending it is harmless either way.
+      if (opts.branchId) params.set('branchId', opts.branchId);
+      return apiCall<DailySaleRecordList>(`/api/daily-sale-records?${params.toString()}`, {}, token);
+    },
+    // `enabled` is how the page declines to ask for a window the API will refuse:
+    // the range cap is a 400, and firing it anyway would put a red toast under a
+    // card that already explains what to do about it.
+    enabled: !!token && !!opts.from && !!opts.to && (opts.enabled ?? true),
+    // Intraday money, like the other reconciliation reads: a sale rung up while
+    // somebody is counting has to be in the figure they are counting against.
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * One record in full — figures, history, locks and the branch's print header.
+ *
+ * `enabled` is gated on the id because the View, History, Amend and Print
+ * surfaces are all mounted from the table and opened on few of its rows. An
+ * ungated query would put a request on the page for every popup nobody asked
+ * for — the same restraint `useBranchDiscounts` applies to its New Orders popup.
+ */
+export function useDailySaleRecord(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.dailySaleRecord(id ?? 'none'),
+    queryFn: () => apiCall<DailySaleRecordDetail>(`/api/daily-sale-records/${id}`, {}, token),
+    enabled: !!token && !!id,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Which payment methods this branch may key by hand. Read by the Manual Feed form.
+ *
+ * A branch account sends no `branchId` — the API reads its JWT. An admin MUST
+ * name one, because they have no branch of their own and the endpoint answers
+ * 400 rather than handing back some arbitrary branch's configuration; that is
+ * what `enabled` is for, and why it is a caller's decision rather than something
+ * inferred from `branchId` being absent.
+ */
+export function useDailySaleLocks(
+  token: string,
+  branchId?: string | null,
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.dailySaleLocks(branchId ?? null),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (branchId) params.set('branchId', branchId);
+      const qs = params.toString();
+      return apiCall<{ locks: PaymentMethodLock[] }>(
+        `/api/daily-sale-records/locks${qs ? `?${qs}` : ''}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.locks ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    // Configuration, not money — the 60s default is right, and refetching a lock
+    // state every 15 seconds would be traffic for a value that changes monthly.
+  });
+}
+
+/**
+ * A branch's whole audit trail, including the lock changes that belong to no one
+ * record.
+ *
+ * Separate from `useDailySaleRecord`'s history because a `method_locked` entry
+ * carries no `record_id` — without this hook, "Admin unlocked Cash" would be
+ * written to the audit table and visible on no screen.
+ */
+export function useDailySaleAudit(
+  token: string,
+  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
+) {
+  const days = opts?.days ?? 30;
+  return useQuery({
+    queryKey: qk.dailySaleAudit(opts?.branchId ?? null, days),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      return apiCall<{ audits: DailySaleAudit[] }>(
+        `/api/daily-sale-records/audit?${params.toString()}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.audits ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+/**
+ * Create or refresh one day's record.
+ *
+ * Safe to call repeatedly and safe to double-click: the unique key on
+ * (branch_id, business_date) plus ON CONFLICT in `ensure_daily_sale_record` is
+ * what makes concurrent callers converge on one record rather than race to
+ * insert a second. No client-side guard is needed and none should be added — a
+ * disabled button is not duplicate protection.
+ */
+export function useGenerateDailySaleRecord(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { businessDate: string; branchId?: string }) =>
+      apiCall<DailySaleRecordDetail>(
+        '/api/daily-sale-records/generate',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/**
+ * Record what was physically counted.
+ *
+ * Addressed by branch + business date rather than by record id, because the
+ * record may not exist yet — the API generates it, refreshes the auto figures,
+ * checks the lock and writes the count in one transaction. An omitted method
+ * leaves its stored count alone, so a partial count is one call per figure.
+ */
+export function useFeedDailySale(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      businessDate: string;
+      branchId?: string;
+      cash?: number;
+      easypaisa?: number;
+      bank?: number;
+    }) =>
+      apiCall<DailySaleRecordDetail>(
+        '/api/daily-sale-records/manual-feed',
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/**
+ * Verify, lock or unlock a record.
+ *
+ * One hook for the three because they are one endpoint family with one
+ * invalidation; which of them the current user may actually call is decided by
+ * the API (`requireRole` plus the SQL status machine), and the buttons that do
+ * not apply simply do not render.
+ */
+export function useDecideDailySale(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, reason }: { id: string; action: 'verify' | 'lock' | 'unlock'; reason?: string }) =>
+      apiCall<DailySaleRecordDetail>(
+        `/api/daily-sale-records/${id}/${action}`,
+        { method: 'PUT', body: JSON.stringify(reason ? { reason } : {}) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/** Admin corrects a signed-off figure. Only a counted figure is amendable (§16). */
+export function useAmendDailySale(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, field, amount, reason }: { id: string } & AmendDailySaleRecordInput) =>
+      apiCall<DailySaleRecordDetail>(
+        `/api/daily-sale-records/${id}/amend`,
+        { method: 'PUT', body: JSON.stringify({ field, amount, reason }) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/** Admin sets one payment method's lock for one branch (§11, §12). */
+export function useSetPaymentMethodLock(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetPaymentMethodLockInput) =>
+      apiCall<{ locks: PaymentMethodLock[] }>(
+        '/api/daily-sale-records/locks',
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
   });
 }

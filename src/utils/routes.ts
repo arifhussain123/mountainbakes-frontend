@@ -44,6 +44,19 @@ export const ROUTES = {
    * named there explicitly.
    */
   SECURITY: '/security',
+  /**
+   * Admin → Daily Sale Records. Every branch's daily reconciliation, and the only
+   * place a locked record can be unlocked or an amended figure entered.
+   *
+   * The path is '/daily-sale-records', NOT '/branch-daily-sale-admin' or anything
+   * else beginning '/branch-': RouteGuard maps every '/branch-' prefix to the
+   * branch roles, so an admin screen under it would bounce a super admin off its
+   * own page — the trap ROUTES.BRANCH_LOCATIONS and ROUTES.STOCK_CONTROL each
+   * document from the other direction. Added to ADMIN_PREFIXES in the same
+   * change, because an admin route matching neither prefix rule is unguarded
+   * until it is named there.
+   */
+  DAILY_SALE_RECORDS: '/daily-sale-records',
   NOTIFICATION_RECIPIENTS: '/notification-recipients',
   SPECIAL_EVENTS: '/special-events',
 
@@ -108,6 +121,21 @@ export const ROUTES = {
   // sales / expenses / stock a branch account can already read — it is a view of
   // the day, not the business-day *closure*, which stays admin-only.
   BRANCH_CLOSING: '/branch-closing',
+  /**
+   * Branch → Daily Sale Record. The day's takings reconciled against what was
+   * physically counted, signed off and locked.
+   *
+   * The '/branch-' prefix is load-bearing rather than descriptive: RouteGuard's
+   * prefix rule is the only thing guarding this screen, exactly as it is for
+   * BRANCH_RETURN_STOCK and BRANCH_DISCOUNTS above.
+   *
+   * Note the sibling it is NOT. BRANCH_CLOSING is a read of the day that writes
+   * nothing; this one writes a record with a status machine, an audit trail and a
+   * lock behind it. And DAILY_SALE_RECORDS below is the ADMIN board over every
+   * branch's copy of the same table — a separate path because a '/branch-' route
+   * bounces a super admin to their own home page (see BRANCH_LOCATIONS).
+   */
+  BRANCH_DAILY_SALE: '/branch-daily-sale',
   // Where a manager asks Admin for a shift account, and watches the outcome.
   BRANCH_USERS: '/branch-users',
   // The admin side of that same queue.

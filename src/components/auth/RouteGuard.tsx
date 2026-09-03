@@ -80,6 +80,11 @@ const ADMIN_PREFIXES = [
   // API, which re-decides every one of those calls against the JWT — this line
   // only keeps a non-admin from loading a screen whose every request would 403.
   '/security',
+  // Admin → Daily Sale Records. Named '/daily-sale-records' rather than anything
+  // beginning '/branch-' precisely so it does not fall to the '/branch-' rule
+  // below, which would bounce super admins off their own board. See
+  // ROUTES.DAILY_SALE_RECORDS.
+  '/daily-sale-records',
 ];
 
 function isPublic(pathname: string): boolean {
