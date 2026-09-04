@@ -671,6 +671,8 @@ export function useProductionBalances(token: string, opts?: { branchId?: string 
 
 export interface PreviousOrderBalance {
   previous: { demandNumber: string; date: string } | null;
+  /** The previous demand's lines at REQUESTED quantity — context for deliveredValue. */
+  orderedValue: number;
   deliveredValue: number;
   companySharePct: number;
   companyShareValue: number;

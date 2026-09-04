@@ -2,7 +2,7 @@ import type { Block } from './escpos';
 // Blocks are the output now — 'renderBlocks' moved to 'printerService' with the job.
 import type { PrinterProfile } from './profiles';
 import { DEFAULT_PROFILE } from './profiles';
-import { amountRow, columnLayout, pairRow, tableHeader, tableRow, type TableCells } from './table';
+import { amountRow, columnLayout, pairRow, tableBody, tableHeader, type TableCells } from './table';
 
 /**
  * The two documents this shop prints on a thermal roll, and the test page.
@@ -87,6 +87,8 @@ export interface PreviousCollection {
   /** The previous demand's number, and when it was raised. */
   reference: string;
   dateText: string;
+  /** What the previous demand ASKED for. Context only — nothing bills against it. */
+  orderedValue: number;
   /** What that delivery was worth — the base the share is taken from. */
   deliveredValue: number;
   /**
@@ -269,7 +271,7 @@ export function saleReceiptBlocks(doc: SaleReceiptDoc, profile: PrinterProfile =
   blocks.push({ kind: 'rule' });
   blocks.push(tableHeader(layout));
   blocks.push({ kind: 'rule' });
-  for (const cell of cells) blocks.push(...tableRow(cell, layout));
+  blocks.push(...tableBody(cells, layout));
   blocks.push({ kind: 'rule' });
 
   // ---- Money --------------------------------------------------------------
@@ -366,7 +368,7 @@ export function productionOrderBlocks(
   blocks.push(tableHeader(layout));
   blocks.push({ kind: 'rule' });
 
-  for (const cell of cells) blocks.push(...tableRow(cell, layout));
+  blocks.push(...tableBody(cells, layout));
 
   blocks.push({ kind: 'rule' });
   blocks.push({
@@ -429,20 +431,24 @@ function previousCollectionBlocks(
   }
 
   /*
-   * "Previous Order" is a REFERENCE here, not an amount, and that is the app's
-   * meaning of the phrase rather than a shortcut.
+   * "Previous Order" is the demand's ORDERED value, and it comes from the server
+   * like every other figure here.
    *
-   * The payload carries no value for what the previous demand was ordered at —
-   * only `deliveredValue`, what actually went out. The on-screen slip labels the
-   * demand number and date "Previous Order" for exactly this reason. Printing a
-   * money figure under that label would mean inventing one on the client, which
-   * is the one thing a collection block must never do: it is settled in cash at
-   * a counter against a server-computed total.
+   * It used to be the demand number, because the payload carried no such amount:
+   * only `deliveredValue`, what actually went out. `orderedValue` was added to
+   * previous-balance.service.ts for this row, valued on the same basis as
+   * delivered so the two are comparable — the difference between them is a
+   * difference in quantity, which is what a reader takes it for. Nothing is
+   * derived on the client; this block is settled in cash against a server total.
    */
   const blocks: Block[] = [
     { kind: 'text', text: 'PREVIOUS ORDER BALANCE', style: { bold: true } },
-    amountRow('Previous Order', collection.reference, columns),
-    amountRow('Order Date', collection.dateText, columns),
+    // The demand this settles, named before it is valued. It moved off the
+    // "Previous Order" row when that row became the money figure it is on the
+    // A4 slip — the reference still has to be on the roll, or a disputed
+    // collection has no delivery to point at.
+    ...pairRow(`Order No: ${collection.reference}`, collection.dateText, columns),
+    amountRow('Previous Order', money(collection.orderedValue, symbol), columns),
     amountRow('Delivered Value', money(collection.deliveredValue, symbol), columns),
     amountRow('Company Share', money(collection.companyShare, symbol), columns),
     // Both deductions print even at zero. A rider settling in cash reads down a
@@ -529,7 +535,7 @@ export function testPageBlocks(doc: TestPageDoc, profile: PrinterProfile = DEFAU
     { kind: 'text', text: 'The line above must end at the edge of the roll.' },
     { kind: 'rule' },
     tableHeader(layout),
-    ...sampleRows.flatMap((row) => tableRow(row, layout)),
+    ...tableBody(sampleRows, layout),
     { kind: 'rule' },
     { kind: 'text', text: 'Normal' },
     { kind: 'text', text: 'Bold', style: { bold: true } },
