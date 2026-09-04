@@ -441,6 +441,7 @@ function PreviewBody({
           ? {
               reference: previousRef.demandNumber,
               dateText: previousRef.date,
+              deliveredValue,
               companyShare: companyShareValue,
               returnsAmount,
               discountsAmount,

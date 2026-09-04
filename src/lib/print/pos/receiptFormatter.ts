@@ -87,7 +87,16 @@ export interface PreviousCollection {
   /** The previous demand's number, and when it was raised. */
   reference: string;
   dateText: string;
-  /** The branch's share of that delivery — what is owed before deductions. */
+  /** What that delivery was worth — the base the share is taken from. */
+  deliveredValue: number;
+  /**
+   * The branch's share of that delivery — what is owed before deductions.
+   *
+   * The VALUE, never the percentage. company_share_pct is on the payload too and
+   * is deliberately not printed: a share shown as "Company Share 75%" invites the
+   * reader to re-derive the figure at the counter, and the whole point of a
+   * server-computed collection is that nobody does that arithmetic twice.
+   */
   companyShare: number;
   /** Accepted returns from that delivery, already netted server-side. */
   returnsAmount: number;
@@ -377,7 +386,12 @@ export function productionOrderBlocks(
   // ---- Who handed it over and who took it --------------------------------
   blocks.push(...signatureBlocks(columns));
 
+  // ---- Footer -------------------------------------------------------------
+  // Two lines and no feed after them. The cut command already feeds the three
+  // lines the cutter sits past the head (see escpos.cut), so anything added here
+  // is roll thrown away on every delivery.
   blocks.push({ kind: 'rule' });
+  blocks.push({ kind: 'text', text: 'Thank You', align: 'center' });
   blocks.push({
     kind: 'text',
     text: (doc.companyName?.trim() || BRAND).toUpperCase(),
@@ -408,28 +422,41 @@ function previousCollectionBlocks(
 ): Block[] {
   if (!collection) {
     return [
-      { kind: 'text', text: 'PREVIOUS ORDER', style: { bold: true } },
+      { kind: 'text', text: 'PREVIOUS ORDER BALANCE', style: { bold: true } },
       { kind: 'text', text: 'No previous delivery - nothing to collect.' },
       { kind: 'rule' },
     ];
   }
 
+  /*
+   * "Previous Order" is a REFERENCE here, not an amount, and that is the app's
+   * meaning of the phrase rather than a shortcut.
+   *
+   * The payload carries no value for what the previous demand was ordered at —
+   * only `deliveredValue`, what actually went out. The on-screen slip labels the
+   * demand number and date "Previous Order" for exactly this reason. Printing a
+   * money figure under that label would mean inventing one on the client, which
+   * is the one thing a collection block must never do: it is settled in cash at
+   * a counter against a server-computed total.
+   */
   const blocks: Block[] = [
-    { kind: 'text', text: 'PREVIOUS ORDER', style: { bold: true } },
-    ...pairRow(`No: ${collection.reference}`, `Date: ${collection.dateText}`, columns),
+    { kind: 'text', text: 'PREVIOUS ORDER BALANCE', style: { bold: true } },
+    amountRow('Previous Order', collection.reference, columns),
+    amountRow('Order Date', collection.dateText, columns),
+    amountRow('Delivered Value', money(collection.deliveredValue, symbol), columns),
     amountRow('Company Share', money(collection.companyShare, symbol), columns),
+    // Both deductions print even at zero. A rider settling in cash reads down a
+    // fixed set of rows, and a line that disappears when it happens to be nil is
+    // a line the reader has to notice is missing to know it was nil.
+    amountRow('Less Returns', money(collection.returnsAmount, symbol), columns),
+    amountRow('Less Discount', money(collection.discountsAmount, symbol), columns),
+    { kind: 'rule' },
+    {
+      ...amountRow('AMOUNT TO COLLECT', money(collection.amountToCollect, symbol), columns),
+      style: { bold: true },
+    },
+    { kind: 'rule' },
   ];
-  if (collection.returnsAmount > 0) {
-    blocks.push(amountRow('Less Returns', money(collection.returnsAmount, symbol), columns));
-  }
-  if (collection.discountsAmount > 0) {
-    blocks.push(amountRow('Less Claims', money(collection.discountsAmount, symbol), columns));
-  }
-  blocks.push({
-    ...amountRow('TO COLLECT', money(collection.amountToCollect, symbol), columns),
-    style: { bold: true },
-  });
-  blocks.push({ kind: 'rule' });
   return blocks;
 }
 
