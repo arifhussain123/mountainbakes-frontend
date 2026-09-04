@@ -187,6 +187,47 @@ export function tableRow(row: TableCells, layout: ColumnLayout): Block[] {
 }
 
 /**
+ * Blank lines between one item and the next.
+ *
+ * Zero is what this was, and it is what makes a thirty-line demand a solid block
+ * of text that has to be read with a finger. One blank line is what separates the
+ * items without turning the receipt into a list of paragraphs.
+ *
+ * It is a line of paper per item and that is the whole of the cost: thirty items
+ * is thirty extra lines, a little over 10cm of an 80mm roll. Set it to 0 here to
+ * have the compact table back — nothing else has to change, because every caller
+ * goes through `tableBody` and both print paths render a `feed` block the same
+ * way (`renderBlocks` feeds the printer, `previewStyled` emits an empty line), so
+ * the roll and the driver page cannot disagree about it.
+ */
+export const PRODUCT_ROW_GAP = 1;
+
+/**
+ * Every item in the table, separated by `gap` blank lines.
+ *
+ * The gap goes BETWEEN items, never before the first or after the last: leading
+ * blank lines are the "excessive blank paper" this printing path has been dug out
+ * of twice, and a trailing one just pads the rule that already closes the table.
+ *
+ * An item that wrapped onto two lines is still one item — `tableRow` returns all
+ * of its lines together and the gap is applied around that group, so a long
+ * product name does not get a blank line driven through the middle of it.
+ */
+export function tableBody(
+  rows: readonly TableCells[],
+  layout: ColumnLayout,
+  gap: number = PRODUCT_ROW_GAP,
+): Block[] {
+  const lines = Math.max(0, Math.trunc(gap));
+  const blocks: Block[] = [];
+  for (const row of rows) {
+    if (blocks.length > 0 && lines > 0) blocks.push({ kind: 'feed', lines });
+    blocks.push(...tableRow(row, layout));
+  }
+  return blocks;
+}
+
+/**
  * A label on the left and an amount hard against the right edge.
  *
  * Not `align: 'right'` on the block — that would push the label right as well.
