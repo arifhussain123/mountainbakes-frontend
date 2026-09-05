@@ -3,6 +3,7 @@
 import { PosPrintError, asPrintError } from '../errors';
 import { previewStyled, type PreviewLine } from '../escpos';
 import type { DeviceIdentity, LinkStatus, PosTransport, PrintJob, TransportSupport } from './types';
+import { printTrace } from '../../diagnostics';
 
 /**
  * The printer that is already installed on this computer.
@@ -537,8 +538,10 @@ async function printInFrame(job: PrintJob): Promise<void> {
     const view = frame.contentWindow;
     if (!view) throw new PosPrintError('print-failed', 'The receipt could not be prepared for the printer. Try again.');
 
+    printTrace('receipt iframe loaded');
     // Before the dialog, while the document is live and measurable.
     fitDocument(view, job.printableWidthMm);
+    printTrace('receipt fitted to page box');
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -569,6 +572,7 @@ async function printInFrame(job: PrintJob): Promise<void> {
         if (settled) return;
         settled = true;
         teardown();
+        printTrace('installed-printer dialog finished');
         resolve();
       }
 
@@ -581,7 +585,9 @@ async function printInFrame(job: PrintJob): Promise<void> {
       fallback = window.setTimeout(finish, 60_000);
       try {
         view.focus();
+        printTrace('iframe print() called');
         view.print();
+        printTrace('iframe print() returned');
       } catch (error) {
         settled = true;
         teardown();

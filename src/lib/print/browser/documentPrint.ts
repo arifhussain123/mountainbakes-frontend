@@ -2,6 +2,7 @@
 
 import type { PaperMode } from '@/hooks/usePrintCapability';
 import { applyPrintPaper, resetPrintPaper } from '@/lib/printPaper';
+import { printTrace } from '@/lib/print/diagnostics';
 
 /**
  * Browser printing — the A4 documents, and the explicit fallback.
@@ -64,6 +65,7 @@ export function whenPrintAreaReady(maxWaitMs = 1_500): Promise<void> {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const images = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
+        printTrace('print DOM laid out', { images: images.length, pending: images.filter((img) => !img.complete).length });
         const decodes = images
           .filter((img) => !img.complete)
           .map((img) => (typeof img.decode === 'function' ? img.decode().catch(() => undefined) : Promise.resolve()));
@@ -90,10 +92,13 @@ export function printDocument({ paper = 'a4', onAfterPrint }: PrintDocumentOptio
   function done() {
     window.removeEventListener('afterprint', done);
     resetPrintPaper();
+    printTrace('afterprint handled: page box reset');
     onAfterPrint?.();
   }
 
   window.addEventListener('afterprint', done);
   applyPrintPaper(paper);
+  printTrace('window.print() called', { paper });
   window.print();
+  printTrace('window.print() returned');
 }

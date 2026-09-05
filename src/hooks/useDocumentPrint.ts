@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { printDocument, whenPrintAreaReady, type PrintDocumentOptions } from '@/lib/print/browser/documentPrint';
+import { beginPrintTrace, printTrace } from '@/lib/print/diagnostics';
 
 /**
  * A browser print whose document exists only while it is being printed.
@@ -50,6 +51,8 @@ export function useDocumentPrint(): DocumentPrint {
   const pending = useRef<PrintDocumentOptions | null>(null);
 
   const print = useCallback((options: PrintDocumentOptions = {}) => {
+    beginPrintTrace('document-print');
+    printTrace('print requested', { paper: options.paper ?? 'a4' });
     pending.current = options;
     setPrinting(true);
   }, []);
@@ -66,6 +69,7 @@ export function useDocumentPrint(): DocumentPrint {
       settled = true;
       window.clearTimeout(fallback);
       if (!cancelled) setPrinting(false);
+      printTrace('print DOM released');
       options.onAfterPrint?.();
     };
     const fallback = window.setTimeout(finish, SETTLE_FALLBACK_MS);
@@ -73,8 +77,10 @@ export function useDocumentPrint(): DocumentPrint {
     // The portal has committed its children by the time this effect runs; what
     // is still outstanding is layout and any logo the sheet carries. Waiting for
     // both is what stops a blank sheet or a missing logo in the preview.
+    printTrace('print DOM mounted');
     void whenPrintAreaReady().then(() => {
       if (cancelled) return;
+      printTrace('print area ready');
       printDocument({ ...options, onAfterPrint: finish });
     });
 

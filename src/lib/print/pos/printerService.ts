@@ -32,6 +32,7 @@ import {
 } from './receiptFormatter';
 import { renderBlocks, toBytes, type Block } from './escpos';
 import { transportFor, type DeviceIdentity, type LinkStatus, type PrintJob } from './transport';
+import { printTrace } from '../diagnostics';
 
 /**
  * The one way anything in the web app prints to a thermal printer.
@@ -448,6 +449,7 @@ async function execute(
   const copies = Math.max(1, config.copies);
   const payload = toBytes(renderBlocks(blocks, profile.charactersPerLine));
   reporter.composed(now() - composeStart);
+  printTrace('payload composed', { ms: Math.round(now() - composeStart), bytes: payload.length, lines: blocks.length, copies });
 
   // Both forms of the same document, composed once and handed over together.
   // Which half a transport reads is its business — that is what keeps "how many
@@ -499,6 +501,7 @@ async function execute(
           }
         } finally {
           reporter.connected(now() - connectStart);
+          printTrace(dialog ? 'installed-printer route (no device to open)' : 'printer link proven', { ms: Math.round(now() - connectStart) });
         }
 
         const sendStart = now();
@@ -517,6 +520,7 @@ async function execute(
           }
         } finally {
           reporter.sent(now() - sendStart);
+          printTrace('transport.send returned', { ms: Math.round(now() - sendStart) });
         }
       },
       dialog ? RETRY_POLICY_DIALOG : RETRY_POLICY_DEVICE,

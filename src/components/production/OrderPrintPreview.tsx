@@ -14,6 +14,7 @@ import { PrintPortal } from '@/components/shared/PrintPortal';
 import { usePaperCapability } from '@/hooks/usePrintCapability';
 import { useDocumentPrint } from '@/hooks/useDocumentPrint';
 import { useCachedLogo } from '@/lib/print/logoCache';
+import { printTrace } from '@/lib/print/diagnostics';
 import { PosPrintButton, type PrintHooks } from '@/components/print/PosPrintButton';
 import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
 import { usePosPrinter } from '@/hooks/usePosPrinter';
@@ -385,7 +386,13 @@ function PreviewBody({
     // why the close has to wait for the browser's own signal. The hook mounts
     // the print DOM first and prints once it has laid out, so the 300ms timer
     // that used to guess at that moment is gone.
-    printViaBrowser({ paper, onAfterPrint: onClose });
+    printViaBrowser({
+      paper,
+      onAfterPrint: () => {
+        printTrace('closing order dialog');
+        onClose();
+      },
+    });
   }
 
   // Print only prints — it no longer submits a pending demand as a side effect.
@@ -395,7 +402,8 @@ function PreviewBody({
   function print() {
     setEditing(false);
     setPrintMode('slip');
-    markPrinted(order.id).catch(() => {});
+    printTrace('markPrinted requested');
+    markPrinted(order.id).then(() => printTrace('markPrinted done')).catch(() => printTrace('markPrinted failed'));
     printAndClose();
   }
 
@@ -467,6 +475,7 @@ function PreviewBody({
     // Queued, not awaited on the main thread: printerService hands this to the
     // print queue and the hooks let the button say Queued / Printing as it moves.
     const result = await printProductionOrder(productionDoc(), { ...posPrinter.context, ...hooks });
+    printTrace('markPrinted requested');
     // Same flag the A4 slip sets, and set the same way — fire and forget, because
     // a failed bookkeeping call must not turn a receipt that DID print into an
     // error the counter has to interpret.

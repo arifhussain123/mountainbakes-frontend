@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { usePosPrinter } from '@/hooks/usePosPrinter';
+import { setPrintDebug } from '@/lib/print/diagnostics';
 import {
   connectPrinter,
   printTestPage,
@@ -596,7 +597,7 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
               <Separator />
               <DebugPanel
                 debug={draft.debug}
-                onToggle={(debug) => patch({ debug })}
+                onToggle={(debug) => { patch({ debug }); setPrintDebug(debug); }}
                 profile={profile}
                 printerName={draft.printerName}
                 connectionLabel={CONNECTION_LABELS[draft.connection]}

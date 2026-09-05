@@ -7,6 +7,7 @@
 // The QueryClient (see providers/QueryProvider.tsx) defaults to staleTime 60s, so
 // repeat reads within a minute are served from cache with no network round-trip.
 
+import { printTrace } from '@/lib/print/diagnostics';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
@@ -722,6 +723,7 @@ export function useMarkPrinted(token: string) {
     // largest thing the Production page did after pressing Print. The 2-second
     // refresh tick reconciles anything else soon enough.
     onSuccess: (_result, id) => {
+      printTrace('markPrinted done: patching one order in cache');
       const printedAt = new Date().toISOString();
       qc.setQueriesData<{ orders: BranchProductionOrder[] }>({ queryKey: ['productionOrders'] }, (old) => {
         if (!old?.orders?.some((o) => o.id === id && !o.printed)) return old;

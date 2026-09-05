@@ -8,6 +8,7 @@ import { usePosPrinter } from '@/hooks/usePosPrinter';
 import { PosPrintError, type PrintJobSnapshot, type PrintResult } from '@/lib/print/pos/printerService';
 import { canReconnect, isRetryable, needsSettings, type PrintErrorCode } from '@/lib/print/pos/errors';
 import { cn } from '@/lib/utils';
+import { beginPrintTrace, printTrace } from '@/lib/print/diagnostics';
 import { AlertTriangle, Check, Clock, Loader2, Plug, Printer, RefreshCw, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -138,6 +139,8 @@ export function PosPrintButton({
   const run = useCallback(async () => {
     if (busyRef.current) return;
     busyRef.current = true;
+    beginPrintTrace('pos-print');
+    printTrace('button pressed', { label });
     setState('printing');
     setAhead(0);
     setError(null);
@@ -157,6 +160,7 @@ export function PosPrintButton({
 
     try {
       const result = await printRef.current(hooks);
+      printTrace('print promise resolved', { ms: result.durationMs, bytes: result.bytes });
       if (!mounted.current) return;
       setState('printed');
       toast.success('Printed successfully');
@@ -167,12 +171,13 @@ export function PosPrintButton({
       const failure = caught instanceof PosPrintError
         ? caught
         : new PosPrintError('print-failed', 'Unable to print. Check the POS printer connection.');
+      printTrace('print promise rejected', { code: failure.code });
       setState('failed');
       setError({ code: failure.code, message: failure.message });
     } finally {
       busyRef.current = false;
     }
-  }, []);
+  }, [label]);
 
   /*
    * Auto-print fires exactly once per mount. The ref, not the `state`, is what

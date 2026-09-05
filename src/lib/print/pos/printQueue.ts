@@ -2,6 +2,7 @@
 
 import { PosPrintError, asPrintError, type PrintErrorCode } from './errors';
 import type { PrintDocumentType } from './printLog';
+import { printDebugEnabled, printTrace } from '../diagnostics';
 
 /**
  * The POS print queue.
@@ -399,7 +400,9 @@ function renumber(printerKey: string): void {
 }
 
 function patch(record: JobRecord, fields: Partial<PrintJobSnapshot>): void {
+  const before = record.snapshot.state;
   record.snapshot = { ...record.snapshot, ...fields };
+  if (fields.state && fields.state !== before) printTrace(`job ${fields.state}`, { jobId: record.snapshot.jobId, attempt: record.snapshot.attempt });
   emit(record);
 }
 
@@ -499,7 +502,7 @@ function sleep(ms: number): Promise<void> {
  * complaint is diagnosed from.
  */
 function logTimings(snapshot: PrintJobSnapshot): void {
-  if (process.env.NODE_ENV === 'production') return;
+  if (!printDebugEnabled()) return;
   const t = snapshot.timings;
   const stages = [
     `queue ${fmt(t.queueWaitMs)}`,
