@@ -159,7 +159,15 @@ export function SessionDetailDialog({
                 <span className="capitalize">{(s.userRole ?? '—').replace(/_/g, ' ')}</span>
               </Row>
               <Row label="Branch">{s.branchName || '—'}</Row>
-              <Row label="User email">
+              <Row label="Browser (Google) email">
+                <span className={cn('break-all', !s.browserEmail && 'italic text-muted-foreground')}>
+                  {s.browserEmail || 'Not recorded'}
+                </span>
+                {s.browserEmail && s.emailMasked && (
+                  <span className="ml-1 text-xs text-muted-foreground">(hidden)</span>
+                )}
+              </Row>
+              <Row label="Mountain Bakes email">
                 <span className={cn('break-all', !s.userEmail && 'italic text-muted-foreground')}>
                   {s.userEmail || 'Not recorded'}
                 </span>

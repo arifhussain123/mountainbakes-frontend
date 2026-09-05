@@ -39,7 +39,9 @@ import {
   LOGIN_STATUS_STYLES,
   STATE_LABELS,
   STATE_STYLES,
-  formatBrowser,
+  formatBrowserEmail,
+  formatBrowserName,
+  formatBrowserVersion,
   formatDeviceKind,
   formatDuration,
   formatEmail,
@@ -59,15 +61,22 @@ import {
  * here are query parameters and the pager moves `page`, and this file pays for
  * that with its own markup.
  *
- * WHAT THE TABLE SHOWS. The staff code first, because `MBU-000125` is the
- * identifier this screen is read by and the one thing that stays true when an
- * address changes. The activated email address is the NEXT column, and it is a
- * different fact: the code is the Mountain Bakes ID, the address is what the
- * session signed in as, read off the verified token by the API. Neither is ever
- * shown in the other's place — a row with no recorded address says "Not
- * recorded" rather than borrowing the code. The API decides how much of the
- * address this reader gets: a super admin sees every one in full, everyone
- * else sees their own in full and would get anybody else's masked.
+ * WHAT THE TABLE SHOWS. Three identity columns, and they are three different
+ * facts that are never shown in one another's place:
+ *
+ *   Browser email        — the Google account the session was signed in WITH,
+ *                          when it was signed in with Google. Null, shown as
+ *                          "Not recorded", for a password login: a website
+ *                          cannot see the browser's Google account by itself.
+ *   Mountain Bakes ID    — `MBU-000125`, the identifier this screen is read by
+ *                          and the one thing that stays true when an address
+ *                          changes.
+ *   Mountain Bakes email — the account the session signed in as, read off the
+ *                          verified token by the API.
+ *
+ * The API decides how much of each address this reader gets: a super admin sees
+ * every one in full, everyone else sees their own in full and would get anybody
+ * else's masked.
  *
  * Browser, operating system and device are three columns rather than one, and
  * login status sits apart from session status, because each pair is two facts
@@ -94,13 +103,15 @@ const PAGE_SIZE = 25;
  * cell counts cannot drift from the real rows.
  */
 const HEADERS = [
+  'Browser email',
   'Mountain Bakes ID',
-  'User email',
+  'Mountain Bakes email',
   'Login date',
   'Time',
   'Country',
   'City',
   'Browser',
+  'Browser version',
   'Operating system',
   'Device',
   'IP address',
@@ -467,10 +478,20 @@ export function LoginHistoryBoard({
             ) : (
               rows.map((s) => (
                 <TableRow key={s.id} className="transition-colors hover:bg-muted/30">
-                  {/* The profile cell: picture, name, staff ID. The address gets
-                      its own column beside it rather than a third line here —
-                      the spec asks for both, and stacking three values in one
-                      cell makes none of them scannable. */}
+                  {/* The Google account, first because it is the column this
+                      screen was asked for. Null for a password login. */}
+                  <TableCell className="max-w-[240px]">
+                    <span
+                      className={cn('block truncate text-xs', !s.browserEmail && 'italic text-muted-foreground')}
+                      title={s.browserEmail || undefined}
+                    >
+                      {formatBrowserEmail(s)}
+                    </span>
+                  </TableCell>
+                  {/* The profile cell: picture, name, staff ID. The addresses get
+                      their own columns beside it rather than more lines here —
+                      the spec asks for each, and stacking values in one cell
+                      makes none of them scannable. */}
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <StaffAvatar name={s.userName} seed={s.userCode} size="sm" />
@@ -494,7 +515,8 @@ export function LoginHistoryBoard({
                   <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(s.loginAt)}</TableCell>
                   <TableCell className="whitespace-nowrap">{s.country || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap">{s.city || '—'}</TableCell>
-                  <TableCell className="whitespace-nowrap">{formatBrowser(s)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{formatBrowserName(s)}</TableCell>
+                  <TableCell className="whitespace-nowrap tabular-nums">{formatBrowserVersion(s)}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatOs(s)}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatDeviceKind(s)}</TableCell>
                   <TableCell className="whitespace-nowrap font-mono text-xs">{s.ipAddress || '—'}</TableCell>
@@ -560,6 +582,9 @@ export function LoginHistoryBoard({
                       <p className={cn('truncate text-xs', s.userEmail ? 'text-foreground' : 'italic text-muted-foreground')}>
                         {formatEmail(s)}
                       </p>
+                      <p className={cn('truncate text-xs', s.browserEmail ? 'text-foreground' : 'italic text-muted-foreground')}>
+                        Google: {formatBrowserEmail(s)}
+                      </p>
                     </div>
                     <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
                       {STATE_LABELS[s.state]}
@@ -567,7 +592,7 @@ export function LoginHistoryBoard({
                   </div>
 
                   <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <div><dt className="text-muted-foreground">Browser</dt><dd>{formatBrowser(s)}</dd></div>
+                    <div><dt className="text-muted-foreground">Browser</dt><dd>{formatBrowserName(s)} {formatBrowserVersion(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Operating system</dt><dd>{formatOs(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Device</dt><dd>{formatDeviceKind(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Location</dt><dd>{[s.city, s.country].filter(Boolean).join(', ') || '—'}</dd></div>

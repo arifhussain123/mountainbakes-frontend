@@ -144,6 +144,28 @@ export function formatEmail(s: Pick<LoginSession, 'userEmail'>): string {
 }
 
 /**
+ * The Google account the session was signed in with, or "Not recorded".
+ *
+ * Null is the normal case for a password login and for every row from before
+ * the column existed, and it is shown as exactly that. It is never filled from
+ * `userEmail`: the Mountain Bakes account and the Google account are different
+ * facts, and a website cannot see the browser's Google account on its own.
+ */
+export function formatBrowserEmail(s: Pick<LoginSession, 'browserEmail'>): string {
+  return s.browserEmail || EMAIL_NOT_RECORDED;
+}
+
+/** 'Chrome' — the browser name alone, for the table that gives the version its own column. */
+export function formatBrowserName(s: Pick<LoginSession, 'browser'>): string {
+  return s.browser || '—';
+}
+
+/** '152' — the version alone. */
+export function formatBrowserVersion(s: Pick<LoginSession, 'browserVersion'>): string {
+  return s.browserVersion || '—';
+}
+
+/**
  * Login status → label. Distinct from the session state on purpose: this says
  * whether the sign-in was accepted, the state says what the session is doing
  * now. Every row in the history is a successful sign-in (a refused one has no

@@ -20,12 +20,15 @@ import {
   LOGIN_STATUS_STYLES,
   STATE_LABELS,
   STATE_STYLES,
-  formatBrowser,
+  formatBrowserEmail,
+  formatBrowserName,
+  formatBrowserVersion,
   formatDeviceKind,
   formatDuration,
   formatEmail,
   formatOs,
 } from '@/components/security/sessionFormat';
+import { GoogleAccountLink } from '@/components/security/GoogleAccountLink';
 
 /**
  * Login History — who signed in, from where, and for how long.
@@ -74,6 +77,21 @@ export function LoginHistoryCard() {
   const [viewId, setViewId] = useState<string | null>(null);
 
   const columns = [
+    // The Google account the session was signed in with. Null — "Not recorded"
+    // — for a password login; a website cannot see the browser's Google account
+    // on its own, and this column never borrows the Mountain Bakes address.
+    col.accessor((s) => s.browserEmail ?? '', {
+      id: 'browserEmail',
+      header: 'Browser Email',
+      cell: ({ row }) => (
+        <span
+          className={cn('block max-w-[240px] truncate text-xs', !row.original.browserEmail && 'italic text-muted-foreground')}
+          title={row.original.browserEmail || undefined}
+        >
+          {formatBrowserEmail(row.original)}
+        </span>
+      ),
+    }),
     col.accessor((s) => `${s.userCode ?? ''} ${s.userName}`, {
       id: 'who',
       header: 'Mountain Bakes ID',
@@ -96,7 +114,7 @@ export function LoginHistoryCard() {
     // find its sign-ins.
     col.accessor((s) => s.userEmail, {
       id: 'email',
-      header: 'User Email',
+      header: 'Mountain Bakes Email',
       meta: { mobile: 'subtitle' },
       cell: ({ row }) => (
         <span
@@ -130,10 +148,15 @@ export function LoginHistoryCard() {
       header: 'City',
       cell: ({ row }) => <span className="whitespace-nowrap">{row.original.city || '—'}</span>,
     }),
-    col.accessor((s) => formatBrowser(s), {
+    col.accessor((s) => formatBrowserName(s), {
       id: 'browser',
       header: 'Browser',
       cell: (i) => <span className="whitespace-nowrap">{i.getValue()}</span>,
+    }),
+    col.accessor((s) => formatBrowserVersion(s), {
+      id: 'browserVersion',
+      header: 'Browser Version',
+      cell: (i) => <span className="whitespace-nowrap tabular-nums">{i.getValue()}</span>,
     }),
     col.accessor((s) => formatOs(s), {
       id: 'os',
@@ -208,6 +231,10 @@ export function LoginHistoryCard() {
                 ? 'Every account · recent sign-ins · location is resolved from the login IP and is approximate'
                 : `Sign-ins for ${user?.email ?? 'this account'} · location is resolved from your IP and is approximate`}
             </p>
+            {/* Renders only when the project has Google sign-in enabled. */}
+            <div className="mt-2">
+              <GoogleAccountLink />
+            </div>
           </div>
           {/* Admin only, because the screen it points at is. A link a branch
               user could see and not open is worse than no link. */}
