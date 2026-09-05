@@ -29,7 +29,7 @@ import { PosPrintButton } from '@/components/print/PosPrintButton';
 import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
 import { usePosPrinter } from '@/hooks/usePosPrinter';
 import { printSaleReceipt } from '@/lib/print/pos/printerService';
-import { printDocument } from '@/lib/print/browser/documentPrint';
+import { useDocumentPrint } from '@/hooks/useDocumentPrint';
 import { usePaperCapability } from '@/hooks/usePrintCapability';
 import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
@@ -161,6 +161,8 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   // still print an A4 report from the same screen.
   const posPrinter = usePosPrinter();
   const { paper } = usePaperCapability();
+  // The A4 invoice DOM exists only while the browser dialog is open.
+  const { printing: documentPrinting, print: printViaBrowser } = useDocumentPrint();
 
   // A price change — from this browser or another device — refreshes the product
   // list backing the New Sale form, so the cashier never quotes a stale rate.
@@ -684,7 +686,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               <div className="no-print">
                 <InvoiceView invoice={invoice} settings={settings} branch={branch} />
               </div>
-              <PrintPortal>
+              <PrintPortal active={documentPrinting}>
                 <InvoiceView invoice={invoice} settings={settings} branch={branch} />
               </PrintPortal>
             </>
@@ -699,20 +701,20 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               label="Print Receipt"
               role={user?.role}
               autoPrint={autoPrintInvoice}
-              print={() =>
+              print={(hooks) =>
                 printSaleReceipt(
                   invoiceToReceipt(invoice, {
                     branchName: branch?.name ?? (isProduction ? 'Production' : null),
                     companyName: settings?.companyName,
                     currencySymbol: cur,
                   }),
-                  posPrinter.context,
+                  { ...posPrinter.context, ...hooks },
                 )
               }
-              onBrowserPrint={() => printDocument({ paper })}
+              onBrowserPrint={() => printViaBrowser({ paper })}
             />
           ) : (
-            <PrintButton className="w-full" onPrint={() => printDocument({ paper })} />
+            <PrintButton className="w-full" onPrint={() => printViaBrowser({ paper })} />
           )}
         </DialogContent>
       </Dialog>

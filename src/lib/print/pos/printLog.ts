@@ -1,6 +1,7 @@
 'use client';
 
 import type { PrintErrorCode } from './errors';
+import type { PrintJobTimings } from './printQueue';
 
 /**
  * A record of what this till printed, kept so a POS problem can be diagnosed
@@ -85,6 +86,8 @@ export interface PrintLogEntry {
    * the check itself could not be made.
    */
   printerState?: string;
+  /** Where the time went — queue wait, compose, connect, send. See printQueue.ts. */
+  timings?: PrintJobTimings;
 }
 
 const KEY = 'mb.posPrintLog';

@@ -716,8 +716,17 @@ export function useMarkPrinted(token: string) {
   return useMutation({
     mutationFn: (id: string) =>
       apiCall(`/api/production-orders/${id}/printed`, { method: 'PUT' }, token),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+    // Patch the one order in place rather than invalidating the list. The
+    // server sets exactly two fields, both known here, and a refetch of every
+    // production order — items included — on the heels of a print was the single
+    // largest thing the Production page did after pressing Print. The 2-second
+    // refresh tick reconciles anything else soon enough.
+    onSuccess: (_result, id) => {
+      const printedAt = new Date().toISOString();
+      qc.setQueriesData<{ orders: BranchProductionOrder[] }>({ queryKey: ['productionOrders'] }, (old) => {
+        if (!old?.orders?.some((o) => o.id === id && !o.printed)) return old;
+        return { ...old, orders: old.orders.map((o) => (o.id === id ? { ...o, printed: true, printedAt } : o)) };
+      });
     },
   });
 }

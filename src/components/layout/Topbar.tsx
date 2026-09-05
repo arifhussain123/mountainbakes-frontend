@@ -47,7 +47,7 @@ export function Topbar({ title }: { title?: string }) {
 
   return (
     <>
-      <header className="h-14 border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center px-4 gap-3">
+      <header className="no-print h-14 border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center px-4 gap-3">
         {/* Three sections rather than the old "content, spacer, content": both
             outer sections are `flex-1` from a zero basis, so they grow equally
             and leave the Refresh button in the true centre of the bar. The left

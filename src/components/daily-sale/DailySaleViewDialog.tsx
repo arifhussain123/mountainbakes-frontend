@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
-import { printDocument } from '@/lib/print/browser/documentPrint';
+import { useDocumentPrint } from '@/hooks/useDocumentPrint';
 import { DailySalePrintSheet } from './DailySalePrintSheet';
 import { DifferenceBadge, Row, Section, StatusBadge, exactMoney, money, orDash } from './parts';
 
@@ -115,17 +115,17 @@ function ViewBody({
   autoPrint: boolean;
 }) {
   const [tab, setTab] = useState<string>(initialTab);
+  // The sheet is mounted into the PrintPortal only for the duration of a print;
+  // the hook waits for it to attach to <body> and lay out before printing, which
+  // is what used to need a hand-rolled animation frame here.
+  const { printing, print } = useDocumentPrint();
 
   // Fires once per mounted record: `ViewBody` is keyed on the record id and only
   // rendered once the fetch has resolved, so "when the data is ready" and "when
-  // this component mounts" are the same moment. A frame is allowed to pass first
-  // so the PrintPortal below has actually attached to <body> — printing before it
-  // does would produce a blank sheet, for exactly the reason PrintPortal exists.
+  // this component mounts" are the same moment.
   useEffect(() => {
-    if (!autoPrint) return;
-    const id = requestAnimationFrame(() => printDocument());
-    return () => cancelAnimationFrame(id);
-  }, [autoPrint]);
+    if (autoPrint) print();
+  }, [autoPrint, print]);
 
   const { record, branch, audits } = detail;
   const symbol = settings?.currencySymbol || 'Rs.';
@@ -146,7 +146,7 @@ function ViewBody({
           {/* The document print path — never the POS one. A reconciliation sheet
               is signed by two people and filed; see DailySalePrintSheet. */}
           <PrintButton
-            onPrint={() => printDocument()}
+            onPrint={() => print()}
             printLabel="Print"
             saveLabel="Save PDF"
             size="sm"
@@ -239,7 +239,7 @@ function ViewBody({
       {/* Rendered whichever tab is open: the Print button is in the header, and a
           sheet that only existed while the Summary tab was selected would print
           blank from History. */}
-      <PrintPortal>
+      <PrintPortal active={printing}>
         <DailySalePrintSheet detail={detail} settings={settings} />
       </PrintPortal>
     </div>

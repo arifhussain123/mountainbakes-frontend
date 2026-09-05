@@ -32,7 +32,7 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop / tablet: always visible, part of the flex row. */}
-      <aside className="hidden md:flex w-64 flex-shrink-0 flex-col bg-sidebar text-sidebar-foreground">
+      <aside className="no-print hidden md:flex w-64 flex-shrink-0 flex-col bg-sidebar text-sidebar-foreground">
         <SidebarBody />
       </aside>
 

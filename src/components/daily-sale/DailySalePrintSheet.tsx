@@ -1,5 +1,6 @@
 'use client';
 
+import { useCachedLogo } from '@/lib/print/logoCache';
 import {
   DAILY_SALE_STATUS_LABELS,
   DIFFERENCE_STATUS_LABELS,
@@ -41,6 +42,7 @@ export function DailySalePrintSheet({
 }) {
   const { record, branch } = detail;
   const symbol = settings?.currencySymbol || 'Rs.';
+  const logo = useCachedLogo(settings?.logoUrl);
   const generated = record.generatedAt ? new Date(record.generatedAt) : new Date();
 
   return (
@@ -48,9 +50,9 @@ export function DailySalePrintSheet({
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 border-b-2 border-black pb-3">
         <div className="flex items-center gap-3">
-          {settings?.logoUrl && (
+          {logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={settings.logoUrl} alt="" className="h-16 w-16 object-contain" />
+            <img src={logo} alt="" className="h-16 w-16 object-contain" />
           )}
           <div>
             <h1 className="text-xl font-bold leading-tight">{settings?.companyName || COMPANY_NAME}</h1>

@@ -2,6 +2,16 @@
 
 import { PosPrintError, asPrintError, type PrintErrorCode } from './errors';
 import {
+  activePrintJobs,
+  enqueue,
+  withRetries,
+  withTimeout,
+  type PrintJobReporter,
+  type PrintJobSnapshot,
+  type PrintJobTimings,
+  type RetryPolicy,
+} from './printQueue';
+import {
   CONNECTION_LABELS,
   isConfigured,
   profileOf,
@@ -191,45 +201,74 @@ export async function releasePrinter(config: PosPrinterConfig): Promise<void> {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Duplicate protection
+   Duplicate protection, and the queue
    ──────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Documents currently being printed, so the same one cannot be sent twice.
+ * Two layers, as before — the button disables itself, and the service refuses to
+ * make a second job for a document already in flight. What changed is the shape
+ * of the refusal: it used to be a `duplicate` error thrown at whoever pressed
+ * second, and it is now the *same job* handed back. Two buttons aimed at one sale
+ * both follow one print and both say Printed when it is.
  *
- * The button's disabled state is the first line and this is the second, because
- * the button only covers one button: a reprint launched from the sales table
- * while the invoice dialog's own Print is still in flight is two different
- * buttons aimed at one sale.
- *
- * There used to be a third line in the print agent, which ignored a job id it had
- * already run — protection against an HTTP request retried after its response was
- * lost. With the agent gone there is no request and no response to lose: the
- * write either reaches the device or throws. The layer went with the thing it was
- * protecting against, rather than being reimplemented for a hazard that no longer
- * exists.
+ * The queue (`printQueue.ts`) is what makes that possible, and it also does the
+ * thing this file could not: one job at a time per printer. Two different
+ * documents sent together used to race into the same bulk endpoint.
  *
  * Keyed by document, not by job: a *deliberate* reprint after the first finished
- * is a new print and must go through.
+ * is a new print and must go through. A caller that genuinely wants a second
+ * copy *while* the first is still printing passes `requestId` in the context.
  */
-const IN_FLIGHT = new Set<string>();
+function documentKey(type: PrintDocumentType, id: string | null, requestId?: string | null): string {
+  return `${type}:${id ?? 'none'}${requestId ? `:${requestId}` : ''}`;
+}
 
-function documentKey(type: PrintDocumentType, id: string | null): string {
-  return `${type}:${id ?? 'none'}`;
+/** Which lane a config prints on — one per physical printer. */
+function printerKeyOf(config: PosPrinterConfig): string {
+  return config.printerId || `${config.connection}:unnamed`;
 }
 
 /**
- * How many jobs are on the wire right now.
+ * How many jobs are queued or on the wire right now.
  *
  * Exists so `discovery.ts` can report *Printing* honestly. No device API answers
  * "are you busy" — a bulk endpoint takes bytes or it does not — so the only true
- * statement available is that this app has a write outstanding, and this is where
- * that is known. Reading the set rather than adding a second counter is what
- * keeps the two from disagreeing.
+ * statement available is that this app has a job outstanding, and the queue is
+ * where that is known.
  */
 export function activePrintCount(): number {
-  return IN_FLIGHT.size;
+  return activePrintJobs().length;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Timeouts and retries
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** Opening the device: claim the interface, open the port, complete the handshake. */
+const CONNECT_TIMEOUT_MS = 5_000;
+/** The write, per copy. A receipt is a few KB and takes well under a second. */
+const PRINT_TIMEOUT_PER_COPY_MS = 10_000;
+/** Three tries in all, with a growing pause: 500ms before the second, 1s before the third. */
+const RETRY_POLICY_DEVICE: RetryPolicy = {
+  maxAttempts: 3,
+  delaysMs: [500, 1_000, 2_000],
+  shouldRetry: (error) => AUTO_RETRY.has(error.code),
+};
+/**
+ * The faults worth a second go without asking: the link dropped, or the printer
+ * did not answer in time. Deliberately NOT `write-failed` — bytes reached the
+ * paper before the fault, and a retry there prints the receipt again below a
+ * torn one — and not the faults a retry cannot fix (Windows holding the device,
+ * an unplugged printer, a document that does not add up).
+ */
+const AUTO_RETRY: ReadonlySet<PrintErrorCode> = new Set<PrintErrorCode>([
+  'timeout',
+  'printer-offline',
+  'not-connected',
+  'print-failed',
+]);
+/** The installed-printer route is a dialog a person is looking at. Never repeat it. */
+const RETRY_POLICY_DIALOG: RetryPolicy = { maxAttempts: 1, delaysMs: [], shouldRetry: () => false };
 
 /* ────────────────────────────────────────────────────────────────────────────
    Printing
@@ -240,6 +279,18 @@ export interface PrintContext {
   branchId?: string | null;
   branchName?: string | null;
   userId?: string | null;
+  /**
+   * Follow the job: queued (and how many are ahead), printing, printed, failed.
+   * The button passes this so it can say *Queued* rather than *Printing…* while
+   * another receipt is on the wire.
+   */
+  onJobUpdate?: (job: PrintJobSnapshot<PrintResult>) => void;
+  /**
+   * Distinguishes a second copy asked for *while* the first is still printing
+   * from a double-press. Leave unset for ordinary prints — the same document
+   * pressed twice is one job.
+   */
+  requestId?: string | null;
 }
 
 export interface PrintResult {
@@ -247,6 +298,8 @@ export interface PrintResult {
   printerName: string;
   durationMs: number;
   bytes: number;
+  /** Where the time went. Zero cost to a caller that ignores it. */
+  timings: PrintJobTimings;
 }
 
 export async function printSaleReceipt(doc: SaleReceiptDoc, context: PrintContext): Promise<PrintResult> {
@@ -322,11 +375,16 @@ interface SubmitArgs {
 }
 
 /**
- * Validate, compose, send, log.
+ * Validate the request, queue it, and hand back the job's promise.
  *
- * The whole print lifecycle lives here rather than in the three public functions
- * above, so the sale path and the production path cannot drift into having
- * different duplicate handling, different logging or different error mapping.
+ * Nothing heavy happens on the caller's stack. The checks here are the ones that
+ * are cheap and that a person would want to hear about at once — no printer set
+ * up, a browser that cannot do this — and everything else (compose, open, write,
+ * log) runs in the lane, one job at a time per printer, after the event loop has
+ * had a turn. The whole print lifecycle lives in `execute` rather than in the
+ * three public functions above, so the sale path and the production path cannot
+ * drift into having different duplicate handling, different logging or different
+ * error mapping.
  */
 async function submit(args: SubmitArgs): Promise<PrintResult> {
   const { context, documentType, documentId } = args;
@@ -343,11 +401,37 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
     throw new PosPrintError('not-supported', support.reason ?? 'This browser cannot reach that kind of printer.');
   }
 
-  const key = documentKey(documentType, documentId);
-  if (IN_FLIGHT.has(key)) {
-    throw new PosPrintError('duplicate', 'This document is already printing.');
-  }
+  const { promise } = enqueue<PrintResult>({
+    key: documentKey(documentType, documentId, context.requestId),
+    printerKey: printerKeyOf(config),
+    documentType,
+    documentId,
+    onUpdate: context.onJobUpdate,
+    run: (reporter) => execute(args, transport, printerName, reporter),
+  });
+  return promise;
+}
 
+/**
+ * Compose, connect, send, log — the body of one job, run by the lane.
+ *
+ * Copies: one call for every copy. A device transport repeats the byte stream —
+ * the stream ends in a cut, so a kitchen copy and a customer copy come out as
+ * two receipts rather than one long strip — and the installed-printer transport
+ * puts them on successive pages of a single document, because repeating the job
+ * there would mean one print dialog per copy.
+ */
+async function execute(
+  args: SubmitArgs,
+  transport: ReturnType<typeof transportFor>,
+  printerName: string,
+  reporter: PrintJobReporter,
+): Promise<PrintResult> {
+  const { context, documentType, documentId } = args;
+  const config = context.config;
+  const startedAt = Date.now();
+
+  const composeStart = now();
   let blocks: Block[];
   try {
     blocks = args.build(config);
@@ -363,10 +447,21 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
   const profile = profileOf(config);
   const copies = Math.max(1, config.copies);
   const payload = toBytes(renderBlocks(blocks, profile.charactersPerLine));
+  reporter.composed(now() - composeStart);
 
   // Both forms of the same document, composed once and handed over together.
   // Which half a transport reads is its business — that is what keeps "how many
   // copies" and "which wire" from becoming a branch on connection type up here.
+  const job: PrintJob = {
+    bytes: payload,
+    blocks,
+    columns: profile.charactersPerLine,
+    paperWidthMm: profile.paperWidthMm,
+    printableWidthMm: profile.printableWidthMm,
+    copies,
+    title: jobTitle(documentType, documentId),
+  };
+
   /*
    * What this job physically was, for the log.
    *
@@ -383,34 +478,58 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
     printFormat: formatOf(config.connection),
   };
 
-  const job: PrintJob = {
-    bytes: payload,
-    blocks,
-    columns: profile.charactersPerLine,
-    paperWidthMm: profile.paperWidthMm,
-    printableWidthMm: profile.printableWidthMm,
-    copies,
-    title: jobTitle(documentType, documentId),
-  };
-
-  IN_FLIGHT.add(key);
-  const printJobId = newJobId();
-  const startedAt = Date.now();
+  const printJobId = reporter.jobId;
   const target = targetOf(config);
+  const dialog = config.connection === 'system';
 
   try {
-    // One call for every copy. A device transport repeats the byte stream — the
-    // stream ends in a cut, so a kitchen copy and a customer copy come out as two
-    // receipts rather than one long strip — and the installed-printer transport
-    // puts them on successive pages of a single document, because repeating the
-    // job there would mean one print dialog per copy.
-    await transport.send(target, job);
+    await withRetries(
+      async () => {
+        // Prove the link first, on its own clock. A printer that is switched off
+        // fails here in five seconds with a sentence about the printer, rather
+        // than in ten with one about the receipt.
+        const connectStart = now();
+        try {
+          if (!dialog) {
+            await withTimeout(
+              transport.probe(target),
+              CONNECT_TIMEOUT_MS,
+              'The printer did not answer. Check it is switched on and connected, then print again.',
+            );
+          }
+        } finally {
+          reporter.connected(now() - connectStart);
+        }
 
+        const sendStart = now();
+        try {
+          if (dialog) {
+            // A print dialog has no deadline a page should enforce: the person
+            // reading it sets the pace, and the transport's own fallback covers
+            // a dialog that never reports back.
+            await transport.send(target, job);
+          } else {
+            await withTimeout(
+              transport.send(target, job),
+              PRINT_TIMEOUT_PER_COPY_MS * copies,
+              'The printer stopped accepting the receipt. Check the paper roll, then print again.',
+            );
+          }
+        } finally {
+          reporter.sent(now() - sendStart);
+        }
+      },
+      dialog ? RETRY_POLICY_DIALOG : RETRY_POLICY_DEVICE,
+      reporter,
+    );
+
+    const timings = reporter.timings();
     const result: PrintResult = {
       printJobId,
       printerName,
       durationMs: Date.now() - startedAt,
       bytes: payload.length * copies,
+      timings,
     };
 
     appendPrintLog({
@@ -427,6 +546,7 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
       durationMs: result.durationMs,
       bytes: result.bytes,
       ...paperFacts,
+      timings,
     });
     return result;
   } catch (error) {
@@ -446,12 +566,15 @@ async function submit(args: SubmitArgs): Promise<PrintResult> {
       errorMessage: failure.message,
       durationMs: Date.now() - startedAt,
       ...paperFacts,
+      timings: reporter.timings(),
       printerState: await linkStateAtFailure(config),
     });
     throw failure;
-  } finally {
-    IN_FLIGHT.delete(key);
   }
+}
+
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
 /**
@@ -500,19 +623,15 @@ async function linkStateAtFailure(config: PosPrinterConfig): Promise<string | un
   }
 }
 
-/**
- * A fresh id per press.
- *
- * `crypto.randomUUID` needs a secure context, which the deployed app has and a
- * plain-HTTP dev host on a LAN IP does not — so the fallback is not decoration.
- * It identifies the job in the on-device print log, which is what a POS complaint
- * is diagnosed from.
- */
-function newJobId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  return `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 /** Re-exported so callers need one import for the whole POS print surface. */
 export { PosPrintError };
+export {
+  activePrintJobs,
+  cancelPrintJob,
+  isPrinting,
+  printJobSnapshot,
+  subscribeToPrintJob,
+  subscribeToPrintQueue,
+} from './printQueue';
 export type { PrintErrorCode, PrinterConnection, DeviceIdentity };
+export type { PrintJobSnapshot, PrintJobState, PrintJobTimings } from './printQueue';

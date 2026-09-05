@@ -352,14 +352,91 @@ copies and column override survive; the agent URL, the agent token and the spool
 printer id are dropped, because none of them addresses a device this app can open.
 The till presses Connect once.
 
+### The print queue — why pressing Print no longer touches the printer
+
+`src/lib/print/pos/printQueue.ts`
+
+A press used to run the whole lifecycle on its own stack: compose, open the
+device, `transferOut`, log. Two things went wrong with that as the app grew. Two
+different documents sent close together — *Save & Print* on the sale form while a
+reprint was still running from the table — raced straight into the same bulk
+endpoint and interleaved their chunks. And every screen that mounted
+`usePosPrinter` (the sales page, the pill, the button, the settings dialog) ran its
+own reconnect on mount, which for WebUSB means `claimInterface` — so opening the
+invoice dialog re-claimed the printer underneath the auto-print that was writing
+to it.
+
+Now `printerService` **queues** the job and returns. The queue holds one *lane*
+per printer and drains it one job at a time; a second document waits its turn.
+The button follows the job through its states and says so:
+
+```
+queued → printing → printed
+                 ↘ failed          (retry budget spent, or a fault retrying cannot fix)
+queued → cancelled                 (only before it started)
+```
+
+- **Idempotent by document.** A second press of the same sale while the first is
+  queued or printing is handed the *same job* — both buttons say Printed when it
+  is. There is no "duplicate" error to show anyone, because nothing duplicate was
+  made. A reprint after the first finished is a new job. A caller that genuinely
+  wants a second copy while the first is still printing passes `requestId`.
+- **Every device operation has a deadline.** 5 s to prove the link, 10 s per copy
+  for the write, on top of the transport's own per-chunk timeout. *Printing…*
+  cannot stay on screen forever.
+- **Bounded retries.** Three attempts with a growing pause (500 ms, 1 s), and only
+  for the faults a pause can fix — the link dropped, the printer did not answer.
+  Never for `write-failed` (bytes reached the paper; a retry prints it again
+  below a torn one), never for a printer Windows is holding, and never on the
+  installed-printer route, whose "send" is a dialog a person is looking at.
+- **The press returns first.** The lane yields to the event loop before it
+  composes, so the click's render commits before any work starts. Composing is
+  under 2 ms even for a 100-line demand (measured: `bench.ts`), which is why there
+  is no worker thread — what needed fixing was contention and ordering, not CPU.
+- **Diagnostics.** Each job carries queue wait / compose / connect / send / total
+  and the attempt count. In development they are written to the console as one
+  line per job; in every build they go into the on-device print log entry.
+
+There is no server-side print API, and there should not be one: the bytes can
+only leave *this tab*, so a job spooled on the server would have to come back
+here to be printed. The one server call on the print path is
+`PUT /api/production-orders/:id/printed`, which is idempotent and now patches the
+one order in the query cache rather than refetching the whole list.
+
+### One printer watcher, not one per component
+
+`src/lib/print/pos/printerStore.ts`
+
+`usePosPrinter` is a view onto a store that runs once per branch: one reconnect,
+one 30-second poll, one detection pass, one device-event subscription, shared by
+every subscriber through `useSyncExternalStore`. It starts when the first
+component subscribes and stops shortly after the last one leaves. No check runs
+while a job is on the wire, and a WebUSB `restore` of a device already held open
+returns the held link rather than claiming the interface again.
+
+### The browser print DOM exists only while printing
+
+`src/hooks/useDocumentPrint.ts`, `PrintPortal`'s `active` prop
+
+The A4 surfaces — the production slip, the sale invoice, the daily-sale sheet —
+used to keep their print DOM mounted for the life of the dialog, hidden with
+`display: none`. Every keystroke in a quantity field re-rendered two invisible
+copies of the slip. Now the portal mounts on the press, the hook waits two frames
+and for any image to decode, calls `printDocument`, and unmounts on `afterprint`.
+`window.print()` is still modal in Chrome — no page can change that — but what it
+lays out is the document and nothing else: the sidebar, topbar and bottom nav carry
+`no-print`, and the logo is fetched once per session and inlined as a data URL
+(`src/lib/print/logoCache.ts`) so the preview never waits on the storage host.
+
 ### Duplicate protection, in two layers
 
 1. **The button** disables itself while a print is in flight — an impatient
    double-click. On the installed-printer route "in flight" lasts until the dialog
    closes, which is why `send` there waits for `afterprint` rather than returning
    as soon as `print()` is called.
-2. **The service** refuses a second print of the same document while one is in
-   flight — two different buttons aimed at one sale.
+2. **The queue** folds a second print of the same document while one is in
+   flight onto the first job — two different buttons aimed at one sale both
+   follow the one print.
 
 There used to be a third in the agent, which ignored a job id it had already run —
 protection against an HTTP request retried after its response was lost. With no

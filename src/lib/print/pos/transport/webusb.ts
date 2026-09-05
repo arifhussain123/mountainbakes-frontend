@@ -315,6 +315,12 @@ export const webUsbTransport: PosTransport = {
     const device = await findAuthorised(target);
     if (!device) return null;
     const identity = identityOf(device);
+    // Already held open — by an earlier restore, or by a print that is on the
+    // wire this very moment. Re-claiming the interface underneath an in-flight
+    // `transferOut` is how a receipt came out cut short when the status pill
+    // and the print button both mounted at once; the held link is the answer.
+    const held = OPEN.get(identity.deviceId);
+    if (held && held.device === device && device.opened) return identity;
     try {
       OPEN.set(identity.deviceId, await open(device));
       LAST_FAILURE.delete(identity.deviceId);

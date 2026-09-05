@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
 import { usePaperCapability } from '@/hooks/usePrintCapability';
-import { printDocument } from '@/lib/print/browser/documentPrint';
-import { PosPrintButton } from '@/components/print/PosPrintButton';
+import { useDocumentPrint } from '@/hooks/useDocumentPrint';
+import { useCachedLogo } from '@/lib/print/logoCache';
+import { PosPrintButton, type PrintHooks } from '@/components/print/PosPrintButton';
 import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
 import { usePosPrinter } from '@/hooks/usePosPrinter';
 import { useAuth } from '@/hooks/useAuth';
@@ -165,6 +166,13 @@ function PreviewBody({
   const { paper } = usePaperCapability();
   const posPrinter = usePosPrinter();
   const { user } = useAuth();
+  // The A4 print DOM is mounted only for the duration of a print — see
+  // useDocumentPrint. Until the press it does not exist, so editing quantities
+  // re-renders the review, not two invisible copies of the slip as well.
+  const { printing: documentPrinting, print: printViaBrowser } = useDocumentPrint();
+  // Fetched once per session and inlined, so the preview never waits on the
+  // storage host for the logo.
+  const logo = useCachedLogo(settings?.logoUrl);
 
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
@@ -372,10 +380,12 @@ function PreviewBody({
   // with a different reader and goes through the POS path below, which never
   // opens a dialog at all.
   function printAndClose() {
-    // `printDocument` owns the paper switch and the afterprint cleanup that used
-    // to be written out here — see its header for why the reset is not optional
-    // and why the close has to wait for the browser's own signal.
-    printDocument({ paper, onAfterPrint: onClose });
+    // `printDocument` (behind useDocumentPrint) owns the paper switch and the
+    // afterprint cleanup — see its header for why the reset is not optional and
+    // why the close has to wait for the browser's own signal. The hook mounts
+    // the print DOM first and prints once it has laid out, so the 300ms timer
+    // that used to guess at that moment is gone.
+    printViaBrowser({ paper, onAfterPrint: onClose });
   }
 
   // Print only prints — it no longer submits a pending demand as a side effect.
@@ -386,7 +396,7 @@ function PreviewBody({
     setEditing(false);
     setPrintMode('slip');
     markPrinted(order.id).catch(() => {});
-    setTimeout(printAndClose, 300);
+    printAndClose();
   }
 
   // A separate, simplified sheet for the floor — branch, product, qty, amount
@@ -396,7 +406,7 @@ function PreviewBody({
   function printCheck() {
     setEditing(false);
     setPrintMode('check');
-    setTimeout(printAndClose, 300);
+    printAndClose();
   }
 
   /**
@@ -452,9 +462,11 @@ function PreviewBody({
     };
   }
 
-  async function printPos() {
+  async function printPos(hooks: PrintHooks) {
     setEditing(false);
-    const result = await printProductionOrder(productionDoc(), posPrinter.context);
+    // Queued, not awaited on the main thread: printerService hands this to the
+    // print queue and the hooks let the button say Queued / Printing as it moves.
+    const result = await printProductionOrder(productionDoc(), { ...posPrinter.context, ...hooks });
     // Same flag the A4 slip sets, and set the same way — fire and forget, because
     // a failed bookkeeping call must not turn a receipt that DID print into an
     // error the counter has to interpret.
@@ -462,7 +474,6 @@ function PreviewBody({
     return result;
   }
 
-  const logo = settings?.logoUrl ?? undefined;
   const companyName = settings?.companyName || COMPANY_NAME;
 
   return (
@@ -911,8 +922,10 @@ function PreviewBody({
           Portalled to <body> deliberately. Left inside the dialog it is an
           absolutely positioned box inside a fixed, translated, overflow-clipped
           ancestor, and the printer only ever gets the part that fits the dialog
-          — see PrintPortal. ── */}
-      <PrintPortal>
+          — see PrintPortal.
+
+          Mounted only while a print is in progress. ── */}
+      <PrintPortal active={documentPrinting}>
         {printMode === 'slip' ? (
           paper === 'pos' ? (
             /* 80mm roll: ONE continuous receipt rather than two half-page copies —

@@ -108,6 +108,11 @@ function padRight(text: string, width: number): string {
 export function wrapName(name: string, width: number): string[] {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [''];
+  // A width of zero would make the hard-split loop below slice nothing and loop
+  // forever — the one bug that freezes a whole tab rather than one receipt. The
+  // layout never produces it (NAME_FLOOR guards the column, the profile floors
+  // the page), but the function must be safe on its own terms.
+  if (!Number.isFinite(width) || width < 1) return [words.join(' ')];
 
   const lines: string[] = [];
   let current = '';

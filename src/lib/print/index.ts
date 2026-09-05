@@ -9,11 +9,18 @@
  * is using is visible in its import list.
  */
 
-export { printDocument } from './browser/documentPrint';
+export { printDocument, whenPrintAreaReady } from './browser/documentPrint';
+export { cachedLogo, useCachedLogo, warmLogo } from './logoCache';
 
 export {
+  activePrintJobs,
+  cancelPrintJob,
   connectPrinter,
+  isPrinting,
   printerStatus,
+  printJobSnapshot,
+  subscribeToPrintJob,
+  subscribeToPrintQueue,
   printProductionOrder,
   printSaleReceipt,
   printTestPage,
@@ -25,6 +32,9 @@ export {
   type PrinterState,
   type PrinterStatus,
   type PrintContext,
+  type PrintJobSnapshot,
+  type PrintJobState,
+  type PrintJobTimings,
   type PrintResult,
 } from './pos/printerService';
 

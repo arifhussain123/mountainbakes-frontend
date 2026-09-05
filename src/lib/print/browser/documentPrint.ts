@@ -43,6 +43,39 @@ export interface PrintDocumentOptions {
   onAfterPrint?: () => void;
 }
 
+/**
+ * Resolve once the print DOM is laid out and its images are decoded.
+ *
+ * Two animation frames cover the commit and the layout of a portal that has
+ * just mounted; the image wait covers the logo, which the preview would
+ * otherwise stall on. Capped, because a print must not be held hostage by an
+ * image that never arrives — the preview simply prints without it.
+ */
+export function whenPrintAreaReady(maxWaitMs = 1_500): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    const cap = window.setTimeout(finish, maxWaitMs);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const images = Array.from(document.querySelectorAll<HTMLImageElement>('.print-area img'));
+        const decodes = images
+          .filter((img) => !img.complete)
+          .map((img) => (typeof img.decode === 'function' ? img.decode().catch(() => undefined) : Promise.resolve()));
+        void Promise.all(decodes).then(() => {
+          window.clearTimeout(cap);
+          finish();
+        });
+      });
+    });
+  });
+}
+
 export function printDocument({ paper = 'a4', onAfterPrint }: PrintDocumentOptions = {}): void {
   if (typeof window === 'undefined') return;
 
