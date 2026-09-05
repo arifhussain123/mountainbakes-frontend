@@ -159,8 +159,10 @@ export function SessionDetailDialog({
                 <span className="capitalize">{(s.userRole ?? '—').replace(/_/g, ' ')}</span>
               </Row>
               <Row label="Branch">{s.branchName || '—'}</Row>
-              <Row label="Activated account">
-                <span className="break-all">{s.userEmail || '—'}</span>
+              <Row label="User email">
+                <span className={cn('break-all', !s.userEmail && 'italic text-muted-foreground')}>
+                  {s.userEmail || 'Not recorded'}
+                </span>
                 {/* Only shown when it IS masked, so the absence of this line is
                     itself the signal that the address is the real one. */}
                 {s.emailMasked && (

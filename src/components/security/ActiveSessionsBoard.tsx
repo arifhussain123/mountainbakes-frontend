@@ -218,7 +218,9 @@ function GroupRow({
               it. The code is what this screen is read by and what survives an
               address change; the address is what an admin needs to be sure they
               are about to sign out the account they mean. */}
-          <p className="truncate text-xs text-muted-foreground">{g.userEmail}</p>
+          <p className={cn('truncate text-xs', g.userEmail ? 'text-muted-foreground' : 'italic text-muted-foreground/70')}>
+            {g.userEmail || 'Not recorded'}
+          </p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {many ? `${g.sessionCount} active sessions` : `${formatBrowser(g.sessions[0]!)} · ${formatLocation(g.sessions[0]!)}`}
             {' · last active '}

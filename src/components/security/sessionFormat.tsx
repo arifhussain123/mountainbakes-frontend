@@ -1,4 +1,4 @@
-import type { LocationSource, LoginSession, LoginSessionState } from '@mb/shared';
+import type { LocationSource, LoginSession, LoginSessionState, LoginStatus } from '@mb/shared';
 
 /**
  * Everything the three Security screens agree on about how a session reads.
@@ -111,6 +111,50 @@ export function formatPlatform(s: Pick<LoginSession, 'os' | 'osVersion' | 'devic
     : null;
   return [s.os, kind].filter(Boolean).join(' ') || '—';
 }
+
+/** 'Linux', 'Android 14', 'Windows 10' — the operating system on its own. */
+export function formatOs(s: Pick<LoginSession, 'os' | 'osVersion'>): string {
+  return [s.os, s.osVersion].filter(Boolean).join(' ') || '—';
+}
+
+/**
+ * 'Desktop', 'Mobile', 'Tablet' — or the model where the user agent named one,
+ * 'Samsung SM-A155F (Mobile)'. The device on its own, for the table that shows
+ * browser, operating system and device as the three separate columns they are.
+ */
+export function formatDeviceKind(s: Pick<LoginSession, 'deviceType' | 'deviceName'>): string {
+  const kind = s.deviceType && s.deviceType !== 'unknown'
+    ? s.deviceType.charAt(0).toUpperCase() + s.deviceType.slice(1)
+    : null;
+  if (s.deviceName && kind) return `${s.deviceName} (${kind})`;
+  return s.deviceName || kind || '—';
+}
+
+/**
+ * The activated email address as the table shows it.
+ *
+ * '' means the row never recorded one — a session from before the column was
+ * written, or a token that carried no address. It is shown as "Not recorded"
+ * and NEVER as the staff code: the Mountain Bakes ID has its own column, and
+ * putting it here would make an unknown address look like a known one.
+ */
+export const EMAIL_NOT_RECORDED = 'Not recorded';
+export function formatEmail(s: Pick<LoginSession, 'userEmail'>): string {
+  return s.userEmail || EMAIL_NOT_RECORDED;
+}
+
+/**
+ * Login status → label. Distinct from the session state on purpose: this says
+ * whether the sign-in was accepted, the state says what the session is doing
+ * now. Every row in the history is a successful sign-in (a refused one has no
+ * session and lives on the Failed Logins board), so today there is one value.
+ */
+export const LOGIN_STATUS_LABELS: Record<LoginStatus, string> = {
+  SUCCESS: 'Success',
+};
+export const LOGIN_STATUS_STYLES: Record<LoginStatus, string> = {
+  SUCCESS: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+};
 
 /**
  * Location source → what it actually means, in words a person can act on.

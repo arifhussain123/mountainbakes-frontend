@@ -35,11 +35,15 @@ import { cn } from '@/lib/utils';
 import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Search, ShieldOff } from 'lucide-react';
 import { StaffAvatar } from './StaffAvatar';
 import {
+  LOGIN_STATUS_LABELS,
+  LOGIN_STATUS_STYLES,
   STATE_LABELS,
   STATE_STYLES,
   formatBrowser,
+  formatDeviceKind,
   formatDuration,
-  formatPlatform,
+  formatEmail,
+  formatOs,
 } from './sessionFormat';
 
 /**
@@ -57,9 +61,19 @@ import {
  *
  * WHAT THE TABLE SHOWS. The staff code first, because `MBU-000125` is the
  * identifier this screen is read by and the one thing that stays true when an
- * address changes. The activated address sits underneath it — masked for
- * everyone except a super admin, who is the only caller that sees other
- * people's rows at all and cannot tell one account from another without it. The
+ * address changes. The activated email address is the NEXT column, and it is a
+ * different fact: the code is the Mountain Bakes ID, the address is what the
+ * session signed in as, read off the verified token by the API. Neither is ever
+ * shown in the other's place — a row with no recorded address says "Not
+ * recorded" rather than borrowing the code. The API decides how much of the
+ * address this reader gets: a super admin sees every one in full, everyone
+ * else sees their own in full and would get anybody else's masked.
+ *
+ * Browser, operating system and device are three columns rather than one, and
+ * login status sits apart from session status, because each pair is two facts
+ * that an admin filters on separately: "Chrome on Android" and "Chrome on
+ * Windows" are the same browser on different devices, and "signed in
+ * successfully" and "tab closed" are the start and the end of one session. The
  * IP address gets its own column for the same reason: an admin comparing two
  * sessions is comparing origins, and sending them into a dialog per row to do it
  * is not a workflow.
@@ -72,6 +86,28 @@ import {
  */
 
 const PAGE_SIZE = 25;
+
+/**
+ * The wide table's columns, in order. The staff ID and the email address are
+ * the first two and are two different things; the last, empty heading is the
+ * actions column. The skeleton and the empty state read this list so their
+ * cell counts cannot drift from the real rows.
+ */
+const HEADERS = [
+  'Mountain Bakes ID',
+  'User email',
+  'Login date',
+  'Time',
+  'Country',
+  'City',
+  'Browser',
+  'Operating system',
+  'Device',
+  'IP address',
+  'Login status',
+  'Session status',
+  '',
+] as const;
 
 /** '' is the "no filter" value: a Select cannot hold undefined. */
 const ALL = '__all__';
@@ -396,7 +432,7 @@ export function LoginHistoryBoard({
       )}
 
       {/* Desktop table. `overflow-x-auto` rather than a narrower column set at
-          tablet width: eleven columns do not fit a 768px screen, and dropping
+          tablet width: thirteen columns do not fit a 768px screen, and dropping
           some of them there would mean the same screen answered a different
           question depending on the device it was opened on. Scrolling keeps one
           table with one meaning. */}
@@ -404,7 +440,7 @@ export function LoginHistoryBoard({
         <Table>
           <TableHeader>
             <TableRow data-table-head>
-              {['Mountain Bakes ID', 'Login email', 'Login date', 'Time', 'Country', 'City', 'IP address', 'Browser', 'Device', 'Status', ''].map((h, i) => (
+              {HEADERS.map((h, i) => (
                 <TableHead key={i} className="text-xs font-semibold uppercase tracking-wide">{h}</TableHead>
               ))}
             </TableRow>
@@ -413,14 +449,14 @@ export function LoginHistoryBoard({
             {query.isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 11 }).map((__, j) => (
+                  {HEADERS.map((__, j) => (
                     <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                   ))}
                 </TableRow>
               ))
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="p-0">
+                <TableCell colSpan={HEADERS.length} className="p-0">
                   <EmptyState
                     title="No sign-ins found"
                     description={active ? 'Try widening the filters.' : 'History starts from the first sign-in after this feature went live.'}
@@ -444,18 +480,34 @@ export function LoginHistoryBoard({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[220px]">
-                    <span className="block truncate text-xs" title={s.userEmail}>
-                      {s.userEmail || '—'}
+                  {/* The activated address — its own column, its own fact.
+                      "Not recorded" for a row without one, never the staff code. */}
+                  <TableCell className="max-w-[240px]">
+                    <span
+                      className={cn('block truncate text-xs', !s.userEmail && 'italic text-muted-foreground')}
+                      title={s.userEmail || undefined}
+                    >
+                      {formatEmail(s)}
                     </span>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{formatDate(s.loginAt)}</TableCell>
                   <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(s.loginAt)}</TableCell>
                   <TableCell className="whitespace-nowrap">{s.country || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap">{s.city || '—'}</TableCell>
-                  <TableCell className="whitespace-nowrap font-mono text-xs">{s.ipAddress || '—'}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatBrowser(s)}</TableCell>
-                  <TableCell className="whitespace-nowrap">{formatPlatform(s)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{formatOs(s)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{formatDeviceKind(s)}</TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-xs">{s.ipAddress || '—'}</TableCell>
+                  {/* Guarded: the web app and the API deploy separately, and a
+                      row from an API that predates `loginStatus` must show a
+                      dash rather than an empty pill. */}
+                  <TableCell>
+                    {s.loginStatus ? (
+                      <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', LOGIN_STATUS_STYLES[s.loginStatus])}>
+                        {LOGIN_STATUS_LABELS[s.loginStatus]}
+                      </span>
+                    ) : '—'}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
@@ -505,7 +557,9 @@ export function LoginHistoryBoard({
                     <div className="min-w-0 flex-1">
                       <p className="font-mono text-sm font-medium">{s.userCode ?? '—'}</p>
                       <p className="truncate text-xs text-muted-foreground">{s.userName}</p>
-                      <p className="truncate text-xs text-muted-foreground">{s.userEmail}</p>
+                      <p className={cn('truncate text-xs', s.userEmail ? 'text-foreground' : 'italic text-muted-foreground')}>
+                        {formatEmail(s)}
+                      </p>
                     </div>
                     <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
                       {STATE_LABELS[s.state]}
@@ -513,7 +567,9 @@ export function LoginHistoryBoard({
                   </div>
 
                   <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <div><dt className="text-muted-foreground">Device</dt><dd>{formatBrowser(s)} · {formatPlatform(s)}</dd></div>
+                    <div><dt className="text-muted-foreground">Browser</dt><dd>{formatBrowser(s)}</dd></div>
+                    <div><dt className="text-muted-foreground">Operating system</dt><dd>{formatOs(s)}</dd></div>
+                    <div><dt className="text-muted-foreground">Device</dt><dd>{formatDeviceKind(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Location</dt><dd>{[s.city, s.country].filter(Boolean).join(', ') || '—'}</dd></div>
                     <div><dt className="text-muted-foreground">Login</dt><dd className="tabular-nums">{formatDate(s.loginAt)} · {formatTime(s.loginAt)}</dd></div>
                     <div><dt className="text-muted-foreground">Duration</dt><dd className="tabular-nums">{formatDuration(s.durationMs)}</dd></div>

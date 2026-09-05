@@ -16,11 +16,15 @@ import { ROUTES } from '@/utils/routes';
 import { StaffAvatar } from '@/components/security/StaffAvatar';
 import { SessionDetailDialog } from '@/components/security/SessionDetailDialog';
 import {
+  LOGIN_STATUS_LABELS,
+  LOGIN_STATUS_STYLES,
   STATE_LABELS,
   STATE_STYLES,
   formatBrowser,
+  formatDeviceKind,
   formatDuration,
-  formatPlatform,
+  formatEmail,
+  formatOs,
 } from '@/components/security/sessionFormat';
 
 /**
@@ -38,12 +42,15 @@ import {
  * this card fetched a capped 500 rows and filtered them in the browser, which
  * meant the cap silently truncated it once the table outgrew the cap.
  *
- * THE STAFF CODE, NOT THE EMAIL. `MBU-000125` identifies the account for
- * everything this card is read for, and the API masks every address in a list
- * regardless of who is asking — this card is open on shared shop-floor devices.
- * Opening a row reveals the address to a caller the API allows, which is why the
- * detail dialog is the shared one from the Security screen and not a local copy:
- * it re-fetches by id, and the API decides.
+ * THE STAFF CODE AND THE EMAIL, AS TWO COLUMNS. `MBU-000125` is the Mountain
+ * Bakes ID and the handle the account is quoted by; the address beside it is
+ * what the session actually signed in as, read off the verified token by the
+ * API when the session was opened. They are different facts and neither stands
+ * in for the other — a row with no recorded address says "Not recorded". The
+ * API decides how much of the address this reader gets (a super admin sees every
+ * one, everybody else their own), so this card never has to. The detail dialog
+ * is the shared one from the Security screen and not a local copy for the same
+ * reason: it re-fetches by id, and the API decides.
  *
  * COUNTRY AND CITY ARE OFTEN BLANK, and that is normal rather than broken. Both
  * are resolved from the login IP by a free third-party lookup that is allowed to
@@ -84,12 +91,27 @@ export function LoginHistoryCard() {
         </div>
       ),
     }),
+    // The activated address. Separate from the staff ID above on purpose, and
+    // searchable through the global filter so an admin can type an address and
+    // find its sign-ins.
+    col.accessor((s) => s.userEmail, {
+      id: 'email',
+      header: 'User Email',
+      meta: { mobile: 'subtitle' },
+      cell: ({ row }) => (
+        <span
+          className={cn('block max-w-[240px] truncate text-xs', !row.original.userEmail && 'italic text-muted-foreground')}
+          title={row.original.userEmail || undefined}
+        >
+          {formatEmail(row.original)}
+        </span>
+      ),
+    }),
     // ISO first so the column sorts chronologically, with the rendered spelling
     // appended so the global filter matches "22 Aug" as well as "2026-08-22".
     col.accessor((s) => `${s.loginAt} ${formatDate(s.loginAt)}`, {
       id: 'date',
       header: 'Login Date',
-      meta: { mobile: 'subtitle' },
       cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.loginAt)}</span>,
     }),
     col.accessor('loginAt', {
@@ -113,18 +135,42 @@ export function LoginHistoryCard() {
       header: 'Browser',
       cell: (i) => <span className="whitespace-nowrap">{i.getValue()}</span>,
     }),
-    col.accessor((s) => formatPlatform(s), {
+    col.accessor((s) => formatOs(s), {
+      id: 'os',
+      header: 'Operating System',
+      cell: (i) => <span className="whitespace-nowrap">{i.getValue()}</span>,
+    }),
+    col.accessor((s) => formatDeviceKind(s), {
       id: 'device',
       header: 'Device',
       cell: (i) => <span className="whitespace-nowrap">{i.getValue()}</span>,
+    }),
+    col.accessor((s) => s.ipAddress ?? '', {
+      id: 'ip',
+      header: 'IP Address',
+      cell: ({ row }) => <span className="whitespace-nowrap font-mono text-xs">{row.original.ipAddress || '—'}</span>,
     }),
     col.accessor('durationMs', {
       header: 'Duration',
       meta: { align: 'center' },
       cell: (i) => <span className="tabular-nums">{formatDuration(i.getValue())}</span>,
     }),
+    // Two status columns for two facts: whether the sign-in was accepted, and
+    // what the session is doing now. Every row here succeeded — a refused
+    // attempt has no session and is on the Failed Logins board instead.
+    col.accessor('loginStatus', {
+      header: 'Login Status',
+      // Guarded: the web app and the API deploy separately, and a row from an
+      // API that predates `loginStatus` must show a dash, not an empty pill.
+      cell: ({ row }) =>
+        row.original.loginStatus ? (
+          <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium', LOGIN_STATUS_STYLES[row.original.loginStatus])}>
+            {LOGIN_STATUS_LABELS[row.original.loginStatus]}
+          </span>
+        ) : '—',
+    }),
     col.accessor('state', {
-      header: 'Status',
+      header: 'Session Status',
       meta: { mobile: 'badge' },
       cell: ({ row }) => (
         <div className="flex items-center gap-1.5">
