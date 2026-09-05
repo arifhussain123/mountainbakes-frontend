@@ -1931,7 +1931,12 @@ export function useBranchClosing(token: string, businessDate: string) {
         // that window comes back empty — the page says so rather than showing a
         // confident zero.
         apiCall<{ expenses: Expense[] }>('/api/expenses', {}, token),
-        apiCall<{ rows: StockRow[] }>(`/api/stock?date=${businessDate}`, {}, token),
+        // activityOnly: the sheet lists a product only when one of Opening /
+        // Received / Sold / Returned / Balance is non-zero. The API applies the
+        // rule, so the totals below, the printed sheet and the row count are all
+        // read off the same filtered set and a large catalogue is never
+        // downloaded just to be hidden.
+        apiCall<{ rows: StockRow[] }>(`/api/stock?date=${businessDate}&activityOnly=1`, {}, token),
       ]);
       return {
         orders: orders.orders ?? [],

@@ -119,6 +119,19 @@
   --chart-4: oklch(0.82 0.1 85);
   --chart-5: oklch(0.48 0.12 47);
 
+  /* Closing Stock histogram — one colour per stock head, fixed to the head
+     (Opening is always blue) so the bars keep their identity when the graph is
+     switched to a single head. NOT the --chart-N brand set above: those are five
+     steps of one brown/orange hue, which is fine for one or two series but
+     indistinguishable under colour-blindness at five side by side. This set
+     passes the colour-vision separation checks in both modes; the dark values
+     are re-stepped for the dark card, not a flip of the light ones. */
+  --stock-opening: #2a78d6;
+  --stock-received: #eb6834;
+  --stock-sold: #1baf7a;
+  --stock-returned: #eda100;
+  --stock-balance: #e87ba4;
+
   /* Sidebar — dark brown */
   --sidebar: oklch(0.25 0.07 47);
   --sidebar-foreground: oklch(0.95 0.02 88);
@@ -154,6 +167,11 @@
   --chart-3: oklch(0.6 0.14 41.5);
   --chart-4: oklch(0.82 0.1 85);
   --chart-5: oklch(0.48 0.12 47);
+  --stock-opening: #3987e5;
+  --stock-received: #d95926;
+  --stock-sold: #199e70;
+  --stock-returned: #c98500;
+  --stock-balance: #d55181;
   --sidebar: oklch(0.12 0.04 47);
   --sidebar-foreground: oklch(0.92 0.018 88);
   --sidebar-primary: oklch(0.702 0.187 41.5);

@@ -1,10 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Banknote, Boxes, Receipt, ShoppingCart, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useBranchClosing } from '@/lib/queries';
+import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { businessDateStr, businessDaysAgoStr, computeClosingTotals } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
 import { PrintButton } from '@/components/shared/PrintButton';
@@ -12,6 +14,7 @@ import { printDocument } from '@/lib/print/browser/documentPrint';
 import { Button } from '@/components/ui/button';
 import { ClosingExportModal } from './ClosingExportModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
@@ -36,6 +39,12 @@ import { FileSpreadsheet } from 'lucide-react';
 // PaymentMethod), so it is not a row in the payment breakdown either.
 const PAID_METHODS = ['cash', 'easypaisa', 'foodpanda', 'bank_account'] as const;
 
+// recharts is heavy; keep it out of the closing sheet's initial bundle.
+const ClosingStockHistogram = dynamic(
+  () => import('./ClosingStockHistogram').then((m) => m.ClosingStockHistogram),
+  { ssr: false, loading: () => <Skeleton className="h-48 w-full" /> },
+);
+
 export function BranchClosingPage() {
   const { token, user } = useAuth();
   const { settings } = useSettings();
@@ -43,6 +52,11 @@ export function BranchClosingPage() {
   const [exportOpen, setExportOpen] = useState(false);
 
   const { data, isLoading } = useBranchClosing(token, date);
+  // Closing Stock lists only products that moved or hold stock, so a Production
+  // approval or an admin correction landing while the sheet is open can add a
+  // row or empty one. This refreshes the sheet on those events the same way the
+  // Stock page refreshes itself.
+  useStockRealtime();
   const cur = settings?.currencySymbol || 'Rs.';
   const money = (n: number) => `${cur}${Math.round(n).toLocaleString()}`;
 
@@ -219,8 +233,12 @@ export function BranchClosingPage() {
                 {isLoading && (
                   <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Loading…</td></tr>
                 )}
+                {/* The API returns only products with a non-zero Opening,
+                    Received, Sold, Returned or Balance, so an empty list means
+                    nothing moved and nothing is on the shelf — not that stock
+                    was never set up. */}
                 {!isLoading && stock.length === 0 && (
-                  <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No stock rows for this date.</td></tr>
+                  <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No stock activity for this business day.</td></tr>
                 )}
                 {stock.map((r) => (
                   <tr key={r.productId} className="border-b last:border-0">
@@ -234,8 +252,8 @@ export function BranchClosingPage() {
                 ))}
               </tbody>
               {/* Only when there are rows to total. A Total line under "No stock
-                  rows for this date" would be five zeroes dressed up as a
-                  finding. In <tfoot>, so a printed sheet that runs to a second
+                  activity for this business day" would be five zeroes dressed up
+                  as a finding. In <tfoot>, so a printed sheet that runs to a second
                   page repeats it — this page has a Print button and the sheet is
                   what a shift hands over on. */}
               {!isLoading && stock.length > 0 && (
@@ -257,6 +275,19 @@ export function BranchClosingPage() {
               )}
             </table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* The same `stock` rows and `stockTotals` the table above just printed —
+          the graph is the table drawn, not a second read of the day. Kept off
+          the printed sheet (`print:hidden`): the table is the handover record
+          and the export keeps its own format. */}
+      <Card className="print:hidden">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Closing Stock Histogram</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ClosingStockHistogram rows={stock} totals={stockTotals} loading={isLoading} />
         </CardContent>
       </Card>
 

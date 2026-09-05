@@ -170,7 +170,12 @@ export const qk = {
   // expenses and stock behind it are read together, for one business date, and
   // are only meaningful together — a cache that could serve one date's sales
   // beside another's stock is a reconciliation bug waiting to be filed.
-  branchClosing: (businessDate: string) => ['branchClosing', businessDate] as const,
+  // Under the ['stock'] prefix like `stockDay` and `stockHistory`, for the same
+  // reason: a return, a Production approval or an admin correction moves the
+  // Closing Stock rows, and every one of those already invalidates ['stock'].
+  // A sheet left open would otherwise keep a product that has since moved, or
+  // miss one that has.
+  branchClosing: (businessDate: string) => ['stock', 'closing', businessDate] as const,
 
   // ── Daily Sale Record ──
   // Every key starts with the literal 'dailySale' so one mutation can drop the
