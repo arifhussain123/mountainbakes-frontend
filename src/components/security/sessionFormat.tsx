@@ -69,10 +69,19 @@ export function formatDuration(ms: number): string {
   return `${minutes}m`;
 }
 
-/** 'Skardu, Pakistan' · 'Pakistan' · '—'. */
-export function formatLocation(s: Pick<LoginSession, 'city' | 'country'>): string {
-  const parts = [s.city, s.country].filter(Boolean);
-  return parts.length ? parts.join(', ') : '—';
+/**
+ * 'Manzoor Colony, Karachi, Pakistan' · 'Karachi, Pakistan' · 'Pakistan' ·
+ * 'Location unavailable'.
+ *
+ * Composed from whatever is known, most specific first, and nothing is padded:
+ * the neighbourhood appears only when a device fix was reverse-geocoded (see
+ * `LoginSession.area`), the city only when a lookup named one. An IP-resolved
+ * row therefore reads at the city level and a row nothing resolved says so.
+ */
+export const LOCATION_UNAVAILABLE = 'Location unavailable';
+export function formatLocation(s: Pick<LoginSession, 'area' | 'city' | 'country'>): string {
+  const parts = [s.area, s.city, s.country].filter(Boolean);
+  return parts.length ? parts.join(', ') : LOCATION_UNAVAILABLE;
 }
 
 /**

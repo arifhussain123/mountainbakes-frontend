@@ -44,7 +44,7 @@ import {
   formatBrowserVersion,
   formatDeviceKind,
   formatDuration,
-  formatEmail,
+  formatLocation,
   formatOs,
 } from './sessionFormat';
 
@@ -61,22 +61,26 @@ import {
  * here are query parameters and the pager moves `page`, and this file pays for
  * that with its own markup.
  *
- * WHAT THE TABLE SHOWS. Three identity columns, and they are three different
- * facts that are never shown in one another's place:
+ * WHAT THE TABLE SHOWS. Two identity columns, and they are two different facts
+ * that are never shown in one another's place:
  *
- *   Browser email        — the Google account the session was signed in WITH,
- *                          when it was signed in with Google. Null, shown as
- *                          "Not recorded", for a password login: a website
- *                          cannot see the browser's Google account by itself.
- *   Mountain Bakes ID    — `MBU-000125`, the identifier this screen is read by
- *                          and the one thing that stays true when an address
- *                          changes.
- *   Mountain Bakes email — the account the session signed in as, read off the
- *                          verified token by the API.
+ *   Browser email      — the Google account the session was signed in WITH,
+ *                        when it was signed in with Google. Null, shown as
+ *                        "Not recorded", for a password login: a website cannot
+ *                        see the browser's Google account by itself.
+ *   Mountain Bakes ID  — `MBU-000125`, the identifier this screen is read by
+ *                        and the one thing that stays true when an address
+ *                        changes.
  *
- * The API decides how much of each address this reader gets: a super admin sees
- * every one in full, everyone else sees their own in full and would get anybody
- * else's masked.
+ * The Mountain Bakes account address is deliberately NOT a column here. The
+ * staff ID identifies the account for everything this list is read for, and
+ * the address was being mistaken for the browser email. The API still sends it
+ * (the Active Sessions roster uses it); this screen just does not print it.
+ *
+ * Location is one column — 'Manzoor Colony, Karachi, Pakistan' — composed
+ * from the neighbourhood, city and country the row actually knows. The
+ * neighbourhood exists only for a session whose device sent its position; an
+ * IP-resolved row honestly stops at the city.
  *
  * Browser, operating system and device are three columns rather than one, and
  * login status sits apart from session status, because each pair is two facts
@@ -105,11 +109,9 @@ const PAGE_SIZE = 25;
 const HEADERS = [
   'Browser email',
   'Mountain Bakes ID',
-  'Mountain Bakes email',
   'Login date',
   'Time',
-  'Country',
-  'City',
+  'Location',
   'Browser',
   'Browser version',
   'Operating system',
@@ -254,7 +256,7 @@ export function LoginHistoryBoard({
           <Input
             value={filters.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="Search by Mountain Bakes ID, name or email…"
+            placeholder="Search by Mountain Bakes ID, name, email or place…"
             className="h-11 pl-9 md:h-9"
           />
         </div>
@@ -501,20 +503,19 @@ export function LoginHistoryBoard({
                       </div>
                     </div>
                   </TableCell>
-                  {/* The activated address — its own column, its own fact.
-                      "Not recorded" for a row without one, never the staff code. */}
-                  <TableCell className="max-w-[240px]">
-                    <span
-                      className={cn('block truncate text-xs', !s.userEmail && 'italic text-muted-foreground')}
-                      title={s.userEmail || undefined}
-                    >
-                      {formatEmail(s)}
-                    </span>
-                  </TableCell>
                   <TableCell className="whitespace-nowrap">{formatDate(s.loginAt)}</TableCell>
                   <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(s.loginAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap">{s.country || '—'}</TableCell>
-                  <TableCell className="whitespace-nowrap">{s.city || '—'}</TableCell>
+                  {/* Neighbourhood, city, country — whatever is known. The
+                      source is in the detail view; here the words say what they
+                      can and stop. */}
+                  <TableCell className="max-w-[260px]">
+                    <span
+                      className={cn('block truncate', !(s.area || s.city || s.country) && 'italic text-muted-foreground')}
+                      title={formatLocation(s)}
+                    >
+                      {formatLocation(s)}
+                    </span>
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{formatBrowserName(s)}</TableCell>
                   <TableCell className="whitespace-nowrap tabular-nums">{formatBrowserVersion(s)}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatOs(s)}</TableCell>
@@ -579,11 +580,8 @@ export function LoginHistoryBoard({
                     <div className="min-w-0 flex-1">
                       <p className="font-mono text-sm font-medium">{s.userCode ?? '—'}</p>
                       <p className="truncate text-xs text-muted-foreground">{s.userName}</p>
-                      <p className={cn('truncate text-xs', s.userEmail ? 'text-foreground' : 'italic text-muted-foreground')}>
-                        {formatEmail(s)}
-                      </p>
                       <p className={cn('truncate text-xs', s.browserEmail ? 'text-foreground' : 'italic text-muted-foreground')}>
-                        Google: {formatBrowserEmail(s)}
+                        {formatBrowserEmail(s)}
                       </p>
                     </div>
                     <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', STATE_STYLES[s.state])}>
@@ -595,7 +593,7 @@ export function LoginHistoryBoard({
                     <div><dt className="text-muted-foreground">Browser</dt><dd>{formatBrowserName(s)} {formatBrowserVersion(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Operating system</dt><dd>{formatOs(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Device</dt><dd>{formatDeviceKind(s)}</dd></div>
-                    <div><dt className="text-muted-foreground">Location</dt><dd>{[s.city, s.country].filter(Boolean).join(', ') || '—'}</dd></div>
+                    <div className="col-span-2"><dt className="text-muted-foreground">Location</dt><dd>{formatLocation(s)}</dd></div>
                     <div><dt className="text-muted-foreground">Login</dt><dd className="tabular-nums">{formatDate(s.loginAt)} · {formatTime(s.loginAt)}</dd></div>
                     <div><dt className="text-muted-foreground">Duration</dt><dd className="tabular-nums">{formatDuration(s.durationMs)}</dd></div>
                     <div className="col-span-2"><dt className="text-muted-foreground">IP address</dt><dd className="font-mono">{s.ipAddress || '—'}</dd></div>

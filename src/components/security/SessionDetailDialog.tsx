@@ -167,16 +167,6 @@ export function SessionDetailDialog({
                   <span className="ml-1 text-xs text-muted-foreground">(hidden)</span>
                 )}
               </Row>
-              <Row label="Mountain Bakes email">
-                <span className={cn('break-all', !s.userEmail && 'italic text-muted-foreground')}>
-                  {s.userEmail || 'Not recorded'}
-                </span>
-                {/* Only shown when it IS masked, so the absence of this line is
-                    itself the signal that the address is the real one. */}
-                {s.emailMasked && (
-                  <span className="ml-1 text-xs text-muted-foreground">(hidden)</span>
-                )}
-              </Row>
 
               <Section title="Session" />
               <Row label="Signed in">{formatDateTime(s.loginAt)}</Row>
@@ -189,7 +179,7 @@ export function SessionDetailDialog({
               <Row label="Business day">{formatDate(s.date)}</Row>
 
               <Section title="Location" />
-              <Row label="Place">{formatLocation(s)}</Row>
+              <Row label="Location">{formatLocation(s)}</Row>
               <Row label="Region">{s.region || '—'}</Row>
               <Row label="Timezone">{s.timezone || '—'}</Row>
               <Row label="IP address" mono>{s.ipAddress || '—'}</Row>

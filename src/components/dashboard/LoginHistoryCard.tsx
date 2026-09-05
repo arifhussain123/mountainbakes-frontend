@@ -25,7 +25,7 @@ import {
   formatBrowserVersion,
   formatDeviceKind,
   formatDuration,
-  formatEmail,
+  formatLocation,
   formatOs,
 } from '@/components/security/sessionFormat';
 import { GoogleAccountLink } from '@/components/security/GoogleAccountLink';
@@ -45,15 +45,16 @@ import { GoogleAccountLink } from '@/components/security/GoogleAccountLink';
  * this card fetched a capped 500 rows and filtered them in the browser, which
  * meant the cap silently truncated it once the table outgrew the cap.
  *
- * THE STAFF CODE AND THE EMAIL, AS TWO COLUMNS. `MBU-000125` is the Mountain
- * Bakes ID and the handle the account is quoted by; the address beside it is
- * what the session actually signed in as, read off the verified token by the
- * API when the session was opened. They are different facts and neither stands
- * in for the other — a row with no recorded address says "Not recorded". The
- * API decides how much of the address this reader gets (a super admin sees every
- * one, everybody else their own), so this card never has to. The detail dialog
- * is the shared one from the Security screen and not a local copy for the same
- * reason: it re-fetches by id, and the API decides.
+ * THE BROWSER EMAIL AND THE STAFF CODE, AS TWO COLUMNS — and NOT the Mountain
+ * Bakes account address. `MBU-000125` is the handle the account is quoted by;
+ * the Google address beside it is what the session was signed in WITH, when it
+ * was signed in with Google, and "Not recorded" otherwise. The account's own
+ * address is deliberately not printed here: the staff ID already identifies
+ * the account, and the address kept being mistaken for the browser email. The
+ * API decides how much of the Google address this reader gets (a super admin
+ * sees every one, everybody else their own), so this card never has to. The
+ * detail dialog is the shared one from the Security screen and not a local
+ * copy for the same reason: it re-fetches by id, and the API decides.
  *
  * COUNTRY AND CITY ARE OFTEN BLANK, and that is normal rather than broken. Both
  * are resolved from the login IP by a free third-party lookup that is allowed to
@@ -109,27 +110,12 @@ export function LoginHistoryCard() {
         </div>
       ),
     }),
-    // The activated address. Separate from the staff ID above on purpose, and
-    // searchable through the global filter so an admin can type an address and
-    // find its sign-ins.
-    col.accessor((s) => s.userEmail, {
-      id: 'email',
-      header: 'Mountain Bakes Email',
-      meta: { mobile: 'subtitle' },
-      cell: ({ row }) => (
-        <span
-          className={cn('block max-w-[240px] truncate text-xs', !row.original.userEmail && 'italic text-muted-foreground')}
-          title={row.original.userEmail || undefined}
-        >
-          {formatEmail(row.original)}
-        </span>
-      ),
-    }),
     // ISO first so the column sorts chronologically, with the rendered spelling
     // appended so the global filter matches "22 Aug" as well as "2026-08-22".
     col.accessor((s) => `${s.loginAt} ${formatDate(s.loginAt)}`, {
       id: 'date',
       header: 'Login Date',
+      meta: { mobile: 'subtitle' },
       cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.loginAt)}</span>,
     }),
     col.accessor('loginAt', {
@@ -138,15 +124,21 @@ export function LoginHistoryCard() {
       meta: { align: 'center' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
-    col.accessor((s) => s.country ?? '', {
-      id: 'country',
-      header: 'Country',
-      cell: ({ row }) => <span className="whitespace-nowrap">{row.original.country || '—'}</span>,
-    }),
-    col.accessor((s) => s.city ?? '', {
-      id: 'city',
-      header: 'City',
-      cell: ({ row }) => <span className="whitespace-nowrap">{row.original.city || '—'}</span>,
+    // One place column — 'Manzoor Colony, Karachi, Pakistan' — from whatever
+    // the row knows. The neighbourhood exists only where the device sent its
+    // position; an IP-resolved row honestly stops at the city.
+    col.accessor((s) => formatLocation(s), {
+      id: 'location',
+      header: 'Location',
+      meta: { mobileFull: true },
+      cell: ({ row }) => (
+        <span
+          className={cn('block max-w-[260px] truncate', !(row.original.area || row.original.city || row.original.country) && 'italic text-muted-foreground')}
+          title={formatLocation(row.original)}
+        >
+          {formatLocation(row.original)}
+        </span>
+      ),
     }),
     col.accessor((s) => formatBrowserName(s), {
       id: 'browser',
@@ -229,7 +221,7 @@ export function LoginHistoryCard() {
             <p className="text-xs text-muted-foreground">
               {isAdmin
                 ? 'Every account · recent sign-ins · location is resolved from the login IP and is approximate'
-                : `Sign-ins for ${user?.email ?? 'this account'} · location is resolved from your IP and is approximate`}
+                : `Sign-ins for ${user?.displayName || 'this account'} · location is resolved from your IP, or your device when it shares its position`}
             </p>
             {/* Renders only when the project has Google sign-in enabled. */}
             <div className="mt-2">
