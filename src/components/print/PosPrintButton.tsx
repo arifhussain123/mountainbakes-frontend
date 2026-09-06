@@ -51,6 +51,20 @@ import { toast } from 'sonner';
 
 type PrintState = 'idle' | 'queued' | 'printing' | 'printed' | 'failed';
 
+/**
+ * How long "Printed successfully" stays on screen, and how long the button
+ * reads *Printed* before it is a Print button again.
+ *
+ * The toast is a receipt for the eye, not a step: it confirms that paper moved
+ * and gets out of the way. Sonner's default is four seconds, which at a counter
+ * is long enough to read as the page still being busy — the same complaint a
+ * blocking dialog would earn, from a control that blocks nothing. The button
+ * follows the same clock so the two do not disagree about when the print was
+ * over. It is never disabled in the *Printed* state; a second press is a
+ * deliberate reprint.
+ */
+const PRINTED_FEEDBACK_MS = 1_200;
+
 /** What the button hands the caller's `print` so it can follow the job. */
 export interface PrintHooks {
   /** Spread into the `PrintContext` — `printSaleReceipt(doc, { ...context, ...hooks })`. */
@@ -163,9 +177,12 @@ export function PosPrintButton({
       printTrace('print promise resolved', { ms: result.durationMs, bytes: result.bytes });
       if (!mounted.current) return;
       setState('printed');
-      toast.success('Printed successfully');
+      toast.success('Printed successfully', { duration: PRINTED_FEEDBACK_MS });
       onPrintedRef.current?.(result);
-      revert.current = setTimeout(() => setState('idle'), 2500);
+      // One timer at a time: a reprint inside the window replaces the pending
+      // revert rather than leaving two racing to reset the button.
+      if (revert.current) clearTimeout(revert.current);
+      revert.current = setTimeout(() => setState('idle'), PRINTED_FEEDBACK_MS);
     } catch (caught) {
       if (!mounted.current) return;
       const failure = caught instanceof PosPrintError

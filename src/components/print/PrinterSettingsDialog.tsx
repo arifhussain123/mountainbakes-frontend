@@ -183,12 +183,12 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
         printerName: current.printerName.trim() || device.label,
       }));
       setLinked(true);
-      toast.success('The printer answered.');
+      toast.success('The printer answered.', { duration: 1_200 });
     } catch (error) {
       setLinked(false);
       const message = error instanceof PosPrintError ? error.message : 'Connection failed.';
       setProblem(message);
-      toast.error(message);
+      toast.error(message, { duration: 3_000 });
     } finally {
       setPhase('idle');
     }
@@ -200,11 +200,14 @@ export function PrinterSettingsDialog({ open, onOpenChange, role }: PrinterSetti
     try {
       await printTestPage(draftContext, { name: draft.printerName, connection: draft.connection });
       setLinked(true);
-      toast.success('Printed successfully');
+      toast.success('Printed successfully', { duration: 1_200 });
     } catch (error) {
       const message = error instanceof PosPrintError ? error.message : 'The test page could not be printed.';
       setProblem(message);
-      toast.error(message);
+      // Stays a little longer than the success toast — there is a sentence to
+      // read — and the same message is written into the panel beneath, so
+      // nothing is lost when it goes.
+      toast.error(message, { duration: 3_000 });
     } finally {
       setPhase('idle');
     }

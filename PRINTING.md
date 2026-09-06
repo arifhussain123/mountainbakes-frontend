@@ -414,6 +414,57 @@ component subscribes and stops shortly after the last one leaves. No check runs
 while a job is on the wire, and a WebUSB `restore` of a device already held open
 returns the held link rather than claiming the interface again.
 
+### After the paper moves — what the page is allowed to do
+
+The rule for the moment a job settles is that the page does **less**, not more.
+The lifecycle is:
+
+```
+press → queued → printing → printed
+                              ↓
+                   button: Printed ✓  (1.2 s, never disabled)
+                   toast:  Printed successfully  (1.2 s, non-modal, auto-closes)
+                   caller: one in-place cache patch (markPrinted), no refetch
+                              ↓
+                   ~1.5 s later, in its own frame:
+                   printerStore re-reads the link, and publishes ONLY if it changed
+```
+
+What is deliberately **not** on that list, and where each one is enforced:
+
+- **No refetch.** `useMarkPrinted` patches the one order in the cache
+  (`lib/queries.ts`); nothing invalidates `productionOrders`, `products`, stock
+  or the dashboard on a print. The 2-second refresh tick (`useAppRefresh`) is
+  independent of printing and is paused while the print dialog is open.
+- **No reload.** Nothing in `lib/print/` or the print components calls
+  `location.reload()` / `router.refresh()`.
+- **No blocking success UI.** The success toast is Sonner, 1.2 s, pointer-events
+  pass through the container. The *failure* panel is still a dialog, on purpose:
+  it carries Reconnect, Retry, Printer Settings and the browser fallback, which
+  a three-second toast cannot, and it never appears on a success.
+- **No expensive `finally`.** `printerService.execute` awaits nothing on the
+  success path after `send` but the log write, which is a bounded 200-entry
+  `localStorage` array; `linkStateAtFailure` runs only on the failure path.
+- **No lingering listeners or DOM.** The installed-printer route registers its
+  `afterprint` handlers per job and removes both on either outcome; the frame
+  is removed one second after the dialog closes. The A4 route mounts its print
+  DOM on the press and unmounts it on `afterprint`.
+- **No immediate device probe.** The watcher's post-job check is deferred
+  (`POST_JOB_CHECK_DELAY_MS`) and coalesced, and `update()` publishes a new
+  snapshot only when status or detection actually changed — so the sales page
+  and the production preview are not re-rendered to be told the printer is
+  still there.
+- **No snapshot stall.** The offline cache snapshot (`components/pwa/OfflineCache`)
+  is the one main-thread cost that grows through a shift. It now runs in idle
+  time and is skipped outright when no query's data changed since the last save,
+  which after a print is the usual case.
+
+If a till still stalls after the paper is out, switch on *Show print diagnostics*
+in Printer Settings and read the `[PRINT]` trace: a stall attributed to this
+origin after `transport.send returned` is ours; a scheduler gap with no long
+task is the driver or the browser's own print pipeline, which no page code can
+shorten.
+
 ### The browser print DOM exists only while printing
 
 `src/hooks/useDocumentPrint.ts`, `PrintPortal`'s `active` prop

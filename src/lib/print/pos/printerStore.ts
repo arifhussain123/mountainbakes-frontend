@@ -45,6 +45,18 @@ import { subscribeToDevices } from './transport';
 const POLL_MS = 30_000;
 /** How long an unsubscribed watcher lingers before stopping — a remount is cheap to absorb. */
 const LINGER_MS = 2_000;
+/**
+ * How long after a job settles before the link is re-read.
+ *
+ * The moment a print finishes is the busiest frame of the whole lifecycle: the
+ * button repaints, the toast mounts, the caller patches its order, and — until
+ * this delay existed — the watcher also fired a device probe plus a full
+ * detection pass and pushed a fresh snapshot to every subscriber, which on the
+ * sales and production screens is the whole page. None of that answers
+ * anything a person is waiting on. It runs a moment later instead, once the
+ * screen has settled, and it runs once even if several jobs settle in a burst.
+ */
+const POST_JOB_CHECK_DELAY_MS = 1_500;
 
 export interface PrinterWatch {
   status: PrinterStatus | null;
@@ -64,6 +76,8 @@ interface Watcher {
   stopDeviceEvents: (() => void) | null;
   stopConfigEvents: (() => void) | null;
   stopQueueEvents: (() => void) | null;
+  /** The deferred post-job check, so a burst of jobs schedules one, not many. */
+  postJob: ReturnType<typeof setTimeout> | null;
   onVisibility: (() => void) | null;
   /** Serialises checks: one in flight per watcher, never a pile-up. */
   inFlight: Promise<void> | null;
@@ -194,6 +208,7 @@ function ensure(branchId: string | null | undefined): Watcher {
       stopDeviceEvents: null,
       stopConfigEvents: null,
       stopQueueEvents: null,
+      postJob: null,
       onVisibility: null,
       inFlight: null,
       again: false,
@@ -203,9 +218,66 @@ function ensure(branchId: string | null | undefined): Watcher {
   return watcher;
 }
 
+/**
+ * Publish a change — and only a change.
+ *
+ * Every pass builds a fresh `status` and `detection`, and the old code pushed
+ * them out regardless, so every 30-second poll and every finished print
+ * re-rendered every subscriber — the sales page, the production preview, the
+ * pill, each print button — to show exactly what they were already showing.
+ * The snapshot now keeps its identity when nothing it says has changed, which
+ * is what `useSyncExternalStore` needs to leave the tree alone.
+ */
 function update(watcher: Watcher, patch: Partial<PrinterWatch>): void {
-  watcher.state = { ...watcher.state, ...patch };
+  const next: PrinterWatch = { ...watcher.state, ...patch };
+  if (sameWatch(watcher.state, next)) return;
+  watcher.state = next;
   for (const listener of watcher.listeners) listener();
+}
+
+function sameWatch(a: PrinterWatch, b: PrinterWatch): boolean {
+  return a.checking === b.checking && sameStatus(a.status, b.status) && sameDetection(a.detection, b.detection);
+}
+
+/** Everything but `checkedAt`, for the same reason `detectedAt` is left out below. */
+function sameStatus(a: PrinterStatus | null, b: PrinterStatus | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.state === b.state &&
+    a.supported === b.supported &&
+    a.reason === b.reason &&
+    (a.deviceLabel ?? null) === (b.deviceLabel ?? null)
+  );
+}
+
+/** Everything but `detectedAt`, which changes on every pass and says nothing a screen shows. */
+function sameDetection(a: PrinterDetection | null, b: PrinterDetection | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (
+    a.source !== b.source ||
+    a.supported !== b.supported ||
+    a.reason !== b.reason ||
+    a.ambiguous !== b.ambiguous ||
+    a.selected?.deviceId !== b.selected?.deviceId ||
+    a.printers.length !== b.printers.length
+  ) {
+    return false;
+  }
+  return a.printers.every((p, i) => {
+    const q = b.printers[i];
+    return (
+      !!q &&
+      p.deviceId === q.deviceId &&
+      p.name === q.name &&
+      p.status === q.status &&
+      p.connectionType === q.connectionType &&
+      p.isDefault === q.isDefault &&
+      p.available === q.available &&
+      p.reason === q.reason
+    );
+  });
 }
 
 function start(watcher: Watcher): void {
@@ -280,10 +352,18 @@ function start(watcher: Watcher): void {
   });
   // A job finishing is the one moment the link state is worth re-reading
   // without waiting for the poll: a failed print has just told us something.
+  // Deferred, not immediate — see POST_JOB_CHECK_DELAY_MS — and coalesced, so
+  // three receipts settling in a row schedule one check after the last.
   let wasPrinting = isPrinting();
   watcher.stopQueueEvents = subscribeToPrintQueue(() => {
     const printing = isPrinting();
-    if (wasPrinting && !printing) check('event');
+    if (wasPrinting && !printing) {
+      if (watcher.postJob) clearTimeout(watcher.postJob);
+      watcher.postJob = setTimeout(() => {
+        watcher.postJob = null;
+        check('event');
+      }, POST_JOB_CHECK_DELAY_MS);
+    }
     wasPrinting = printing;
   });
 }
@@ -299,6 +379,8 @@ function stop(watcher: Watcher): void {
   watcher.stopConfigEvents = null;
   watcher.stopQueueEvents?.();
   watcher.stopQueueEvents = null;
+  if (watcher.postJob) clearTimeout(watcher.postJob);
+  watcher.postJob = null;
   // The snapshot is kept: a remount shows the last known state at once rather
   // than a "checking" flash, and the next start re-checks anyway.
   watcher.identity = '';
