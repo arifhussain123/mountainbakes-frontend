@@ -293,7 +293,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
      * invalidating one key would leave the rest showing a figure quietly short by
      * this sale.
      *
-     * The 1-second refresh tick would reach it on its own; this makes the graph
+     * The continuous refresh tick would reach it on its own; this makes the graph
      * agree with the table the sale was just added to in the same frame rather
      * than up to two seconds later.
      */
