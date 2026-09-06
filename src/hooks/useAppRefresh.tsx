@@ -22,12 +22,12 @@ import type { QueryClient } from '@tanstack/react-query';
  * still exactly one interval, now with the build check on the same tick and a
  * single source of truth the Refresh button can read and drive.
  *
- * The tick fires every 2 SECONDS, but ONLY the data half runs that often. The
+ * The tick fires every 10 SECONDS, but ONLY the data half runs that often. The
  * two pieces of work that touch the user's session — the Login History ping and
  * the new-build check that can reload the page — stay on their original 2-minute
- * cadence, one out of every sixty ticks. Making the screen near-live must not
- * mean pinging the session sixty times as often, and must not mean a reload
- * lands sixty times as readily on somebody who has just paused.
+ * cadence, one out of every twelve ticks. Making the screen near-live must not
+ * mean pinging the session twelve times as often, and must not mean a reload
+ * lands twelve times as readily on somebody who has just paused.
  *
  * At this cadence the data half is no longer obviously cheap, so it carries
  * guards a slower tick did not need — see `shouldRefetch`. Every one of them
@@ -35,18 +35,24 @@ import type { QueryClient } from '@tanstack/react-query';
  */
 
 /**
- * How often the data on screen is refetched. This is deliberately aggressive:
- * one forced refetch of every mounted query, ~30 times a minute per open tab.
- * `staleTime` does not apply — `refetchQueries` goes to the network regardless —
- * so this number IS the API request rate for a tab sitting on a busy screen.
+ * How often the data on screen is refetched: one forced refetch of every
+ * mounted query, 6 times a minute per open tab. `staleTime` does not apply —
+ * `refetchQueries` goes to the network regardless — so this number IS the API
+ * request rate for a tab sitting on a busy screen.
+ *
+ * It ran at 2 seconds for a while. At that rate a production or sales screen
+ * re-fetched and re-diffed every one of its lists thirty times a minute, and
+ * the burst when a dialog closed (the tick is paused while one is open) was
+ * what a till felt as the page "catching up" after printing. Ten seconds keeps
+ * the screen near-live and removes most of that load.
  */
-const REFRESH_INTERVAL_MS = 2 * 1000;
+const REFRESH_INTERVAL_MS = 10 * 1000;
 
 /**
- * Ticks between the session-affecting work: 60 × 2s = the 2 minutes both the
- * Login History ping and the build check ran at before the data tick sped up.
- * Keep these derived from the interval — hardcoding "60" somewhere else is how
- * the ping cadence quietly drifts the next time this number changes.
+ * Ticks between the session-affecting work: 12 × 10s = the 2 minutes both the
+ * Login History ping and the build check have always run at. Keep these derived
+ * from the interval — hardcoding the count somewhere else is how the ping
+ * cadence quietly drifts the next time this number changes.
  */
 const SESSION_TICK_EVERY = Math.round((2 * 60 * 1000) / REFRESH_INTERVAL_MS);
 
@@ -83,19 +89,19 @@ function dialogOpen() {
 /**
  * Is a data refetch safe and worth doing *right now*?
  *
- * At a 2-second cadence this question stops being rhetorical. Each guard is a
+ * At a 10-second cadence this question is still worth asking. Each guard is a
  * distinct way the tick would otherwise cost more than the freshness is worth:
  *
  *  - **Hidden tab.** A tab left open on another monitor, or a phone with the
- *    screen off, would otherwise fetch every mounted query 30 times a minute
+ *    screen off, would otherwise fetch every mounted query 6 times a minute
  *    for as long as it is forgotten. Nobody is reading it. The tick resumes on
  *    `visibilitychange`, which also fires an immediate catch-up refetch, so
  *    coming back to the tab shows fresh data rather than the stale snapshot.
  *  - **Dialog open.** Unchanged from the original design: an in-flight refetch
  *    must never reshuffle props out from under someone mid-entry.
  *  - **Mutation in flight.** A refetch that lands mid-save can roll the pending
- *    write back on screen. At 2s this collides with almost every save there is,
- *    where at 2 minutes it was a rarity.
+ *    write back on screen. At 10s this still collides with many saves, where
+ *    at 2 minutes it was a rarity.
  */
 function shouldRefetch(queryClient: QueryClient) {
   if (document.hidden) return false;
@@ -180,7 +186,8 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
   /**
    * One refetch at a time.
    *
-   * The tick is 2s; a refetch of a heavy screen over a slow connection is not.
+   * The tick is 10s; a refetch of a heavy screen over a slow connection can
+   * take longer.
    * Without this the intervals overlap, each one queueing another full round of
    * requests behind the last, and a tab on a bad connection digs itself into a
    * backlog it never climbs out of. `setInterval` does not wait for an async
@@ -218,7 +225,7 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
 
   const refreshNow = useCallback(async () => {
     setRefreshing(true);
-    // Claim the same slot the tick uses, so a 2-second tick cannot fire a second
+    // Claim the same slot the tick uses, so a 10-second tick cannot fire a second
     // round of the same requests underneath the button's own refetch. Unlike the
     // tick this ignores `shouldRefetch` — an explicit click is a request to
     // refresh, dialog open or not.
@@ -247,7 +254,7 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
     } catch {
       // Swallowed on purpose. The callers are `void`-ed — an interval and a
       // visibility listener — so a rejection here would surface as an unhandled
-      // one, thirty times a minute, for as long as the network is down. The
+      // one, six times a minute, for as long as the network is down. The
       // failure is already visible where it matters: each query keeps its own
       // error state, and `lastRefreshedAt` simply stops advancing.
     } finally {
@@ -267,14 +274,14 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
     let ticks = 0;
 
     const id = setInterval(() => {
-      // Every sixtieth tick is a "session tick" — the 2-minute cadence the whole
+      // Every twelfth tick is a "session tick" — the 2-minute cadence the whole
       // provider used to run at, preserved for the two jobs that reach past the
       // rendered data and into the user's session.
       const sessionTick = ++ticks % SESSION_TICK_EVERY === 0;
 
       // Data: every tick, subject to `shouldRefetch` and the overlap guard.
       // Unawaited, so a slow refetch cannot hold up the session work below it —
-      // at 2s an awaited refetch would be the thing that delays the ping.
+      // an awaited refetch would be the thing that delays the ping.
       void refetchData();
 
       if (!sessionTick) return;
@@ -287,12 +294,12 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
       // while a Dialog is open, and even hidden: someone mid-entry — or a tab
       // merely backgrounded — is still a live session, and skipping the ping
       // would close their row out from under them. Held at 2 minutes so the
-      // faster data tick does not multiply writes to that row sixtyfold.
+      // faster data tick does not multiply writes to that row twelvefold.
       void pingLoginSession();
 
       // Frontend: also held at 2 minutes. Applying a build means reloading, which
       // ends the session on screen — noticing a deploy sooner is worth nothing
-      // next to the risk of that reload firing on a sixtyfold shorter fuse.
+      // next to the risk of that reload firing on a twelvefold shorter fuse.
       // Detected always, applied only when nothing is at stake; when it is not
       // applied the flag stays up, the button lights, and the next session tick
       // tries again.

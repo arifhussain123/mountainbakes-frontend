@@ -81,7 +81,7 @@ function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBReque
  * React Query's structural sharing hands a query the same `data` object back
  * when a refetch returns identical rows, so object identity is a free and exact
  * "has anything changed" test — no walking, no hashing. It is what lets the
- * 2-second refresh tick, which touches every active query thirty times a
+ * 10-second refresh tick, which touches every active query six times a
  * minute, cost this module nothing on a quiet till.
  */
 let savedIdentity: Map<string, unknown> | null = null;
