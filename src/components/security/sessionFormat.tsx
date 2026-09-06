@@ -197,9 +197,9 @@ export const LOGIN_STATUS_STYLES: Record<LoginStatus, string> = {
  * somebody out for being in the wrong country needs to know the country came
  * from a database lookup of a network, not from the device.
  *
- * 'DEVICE_GPS' has no writer today. It is labelled anyway so the day one exists,
- * the two are already distinguishable on screen rather than looking identical
- * until somebody remembers to add the label.
+ * 'DEVICE_GPS' is written when the browser sent its own position with the
+ * session start or a later ping — the same consented fix the geofence check
+ * uses — and the API reverse-geocoded it for the neighbourhood.
  */
 export const LOCATION_SOURCE_LABELS: Record<LocationSource, string> = {
   IP: 'IP address (approximate)',

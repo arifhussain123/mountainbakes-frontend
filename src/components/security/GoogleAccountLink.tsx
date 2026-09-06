@@ -20,9 +20,12 @@ import { Link2, Loader2, Unlink } from 'lucide-react';
  *
  * A staff account signs in as ahmed@mountainbakes.com; the person's Google
  * account is arifsiksavi@gmail.com. Supabase only knows those are the same
- * person once the Google identity is LINKED to the account, and only a session
- * opened with "Continue with Google" afterwards records the Google address.
- * This is the linking half; the login page has the other.
+ * person once the Google identity is LINKED to the account. Coming back from
+ * the link is itself a Google-authenticated session — GoTrue issues a fresh
+ * one with the identity attached — so the login history records the Google
+ * address from that moment, and on every later "Continue with Google".
+ * A password sign-in still records nothing. This is the linking half; the
+ * login page has the other.
  *
  * Renders nothing until the Google provider is enabled for the project, so the
  * dashboard does not advertise a button that cannot work.
@@ -93,7 +96,7 @@ export function GoogleAccountLink() {
         </>
       ) : (
         <>
-          <span>Sign in with Google to record your Google account in the login history.</span>
+          <span>Connect your Google account to record it in the login history from now on.</span>
           <Button variant="outline" size="sm" className="h-7 px-2" onClick={connect} disabled={busy}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             <span className="ml-1">Connect Google account</span>

@@ -117,6 +117,7 @@ const HEADERS = [
   'Operating system',
   'Device',
   'IP address',
+  'Duration',
   'Login status',
   'Session status',
   '',
@@ -256,7 +257,7 @@ export function LoginHistoryBoard({
           <Input
             value={filters.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="Search by Mountain Bakes ID, name, email or place…"
+            placeholder="Search by Mountain Bakes ID, name, email, place, browser, IP or status…"
             className="h-11 pl-9 md:h-9"
           />
         </div>
@@ -445,7 +446,7 @@ export function LoginHistoryBoard({
       )}
 
       {/* Desktop table. `overflow-x-auto` rather than a narrower column set at
-          tablet width: thirteen columns do not fit a 768px screen, and dropping
+          tablet width: fourteen columns do not fit a 768px screen, and dropping
           some of them there would mean the same screen answered a different
           question depending on the device it was opened on. Scrolling keeps one
           table with one meaning. */}
@@ -521,6 +522,10 @@ export function LoginHistoryBoard({
                   <TableCell className="whitespace-nowrap">{formatOs(s)}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatDeviceKind(s)}</TableCell>
                   <TableCell className="whitespace-nowrap font-mono text-xs">{s.ipAddress || '—'}</TableCell>
+                  {/* `coalesce(ended, last seen) − login`, derived server-side.
+                      For a live session it is "so far"; the state pill beside
+                      it says which. */}
+                  <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{formatDuration(s.durationMs)}</TableCell>
                   {/* Guarded: the web app and the API deploy separately, and a
                       row from an API that predates `loginStatus` must show a
                       dash rather than an empty pill. */}
@@ -565,7 +570,7 @@ export function LoginHistoryBoard({
       </div>
 
       {/* Phone cards. Same rows, re-laid out rather than a horizontally
-          scrolling table — eleven columns on a 390px screen is unreadable, and
+          scrolling table — fourteen columns on a 390px screen is unreadable, and
           the questions asked on a phone (who, where, when, is it still open)
           are answered by five of them. */}
       <div className="space-y-2 md:hidden">
