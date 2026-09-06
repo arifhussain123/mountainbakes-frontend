@@ -1,9 +1,11 @@
 /**
  * The printing surface, in two halves that never call each other.
  *
- *   pos/      → ESC/POS bytes straight to the device (WebUSB / Web Serial /
- *               a socket). No browser dialog, ever, and no local service.
- *   browser/  → `window.print()`, for documents that genuinely want a sheet.
+ *   receipt/ + systemPrinter  → POP Print: the canonical receipt document, sent to
+ *                               the printer this computer has installed.
+ *   browser/                  → `window.print()` of the page itself, for the
+ *                               documents that genuinely want an A4 sheet: the
+ *                               delivery challan, the reports, the daily-sale sheet.
  *
  * Import from here rather than reaching into the folders, so which half a screen
  * is using is visible in its import list.
@@ -13,83 +15,31 @@ export { printDocument, whenPrintAreaReady } from './browser/documentPrint';
 export { cachedLogo, useCachedLogo, warmLogo } from './logoCache';
 
 export {
-  activePrintJobs,
-  cancelPrintJob,
-  connectPrinter,
-  isPrinting,
-  printerStatus,
-  printJobSnapshot,
-  subscribeToPrintJob,
-  subscribeToPrintQueue,
   printProductionOrder,
   printSaleReceipt,
-  printTestPage,
-  reconnectPrinter,
-  releasePrinter,
-  testConnection,
+  productionOrderDocument,
+  printingSupported,
+  isPrinting,
+  subscribeToPrintQueue,
   PosPrintError,
-  type DeviceIdentity,
-  type PrinterState,
-  type PrinterStatus,
-  type PrintContext,
-  type PrintJobSnapshot,
-  type PrintJobState,
-  type PrintJobTimings,
+  type PrintOptions,
   type PrintResult,
-} from './pos/printerService';
+  type PrintJobSnapshot,
+} from './systemPrinter';
 
-export {
-  canReconnect,
-  isRetryable,
-  needsSettings,
-  printErrorMessage,
-  type PrintErrorCode,
-} from './pos/errors';
+export { isRetryable, printErrorMessage, type PrintErrorCode } from './errors';
 
-export {
-  CONNECTION_LABELS,
-  DEFAULT_CONFIG,
-  clearConfig,
-  isConfigured,
-  profileOf,
-  readConfig,
-  subscribeToConfig,
-  targetOf,
-  writeConfig,
-  type PosPrinterConfig,
-  type PrinterConnection,
-} from './pos/printerConfig';
+export { PAPER_OPTIONS, readReceiptPaper, useReceiptPaper, writeReceiptPaper } from './receiptPaper';
 
-export {
-  connectionOptions,
-  subscribeToDevices,
-  transportFor,
-  DEFAULT_PRINTER_PORT,
-  type ConnectionType,
-} from './pos/transport';
-
-export {
-  PRINTER_PROFILES,
-  type PaperWidth,
-  type PrinterProfile,
-} from './pos/profiles';
-
-export {
-  productionOrderBlocks,
-  saleReceiptBlocks,
-  testPageBlocks,
-  type PreviousCollection,
-  type ProductionOrderDoc,
-  type SaleReceiptDoc,
-} from './pos/receiptFormatter';
-
-export { preview, previewStyled, type PreviewLine } from './pos/escpos';
-
-export {
-  appendPrintLog,
-  clearPrintLog,
-  readPrintLog,
-  subscribeToPrintLog,
-  type PrintDocumentType,
-  type PrintLogEntry,
-} from './pos/printLog';
+export { buildProductionOrderDocument } from './receipt/productionOrder';
+export { buildSaleReceiptDocument } from './receipt/saleReceipt';
+export { PRINT_STYLES, PAPERS, DEFAULT_PAPER } from './receipt/styles';
+export type { PrintDocument } from './receipt/document';
+export type {
+  PaperWidth,
+  PreviousCollection,
+  ProductionOrderDoc,
+  ProductionOrderLine,
+  ReceiptLine,
+  SaleReceiptDoc,
+} from './receipt/types';

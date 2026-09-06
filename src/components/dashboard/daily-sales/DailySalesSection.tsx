@@ -28,7 +28,6 @@ import { formatDate } from '@/utils/date';
 import { logger } from '@/utils/logger';
 import { cn } from '@/lib/utils';
 import { printDocument } from '@/lib/print/browser/documentPrint';
-import { usePaperCapability } from '@/hooks/usePrintCapability';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,7 +80,6 @@ const ALL_BRANCHES = 'all';
 export function DailySalesSection() {
   const { token, user } = useAuth();
   const { settings } = useSettings();
-  const { paper } = usePaperCapability();
 
   const isAdmin = user?.role === 'super_admin';
   const cur = settings?.currencySymbol || 'Rs.';
@@ -291,7 +289,7 @@ export function DailySalesSection() {
               <DropdownMenuItem onClick={() => handleExport('pdf')} className="gap-2">
                 <FileText className="size-4" /> PDF
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => printDocument({ paper })} className="gap-2">
+              <DropdownMenuItem onClick={() => printDocument()} className="gap-2">
                 <Printer className="size-4" /> Print
               </DropdownMenuItem>
             </DropdownMenuContent>

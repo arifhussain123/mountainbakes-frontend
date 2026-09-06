@@ -11,16 +11,12 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
-import { usePaperCapability } from '@/hooks/usePrintCapability';
 import { useDocumentPrint } from '@/hooks/useDocumentPrint';
 import { useCachedLogo } from '@/lib/print/logoCache';
 import { printTrace } from '@/lib/print/diagnostics';
-import { PosPrintButton, type PrintHooks } from '@/components/print/PosPrintButton';
-import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
-import { usePosPrinter } from '@/hooks/usePosPrinter';
-import { useAuth } from '@/hooks/useAuth';
-import { printProductionOrder } from '@/lib/print/pos/printerService';
-import type { ProductionOrderDoc } from '@/lib/print/pos/receiptFormatter';
+import { PopPrintButton, type PrintHooks } from '@/components/print/PopPrintButton';
+import { printProductionOrder } from '@/lib/print/systemPrinter';
+import type { ProductionOrderDoc } from '@/lib/print/receipt/types';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -162,11 +158,6 @@ function PreviewBody({
   const [returnQty, setReturnQty] = useState('');
   const [returnReason, setReturnReason] = useState('');
 
-  // A4 sheet or 80mm roll — pinned per device, `auto` resolves to A4. Nothing is
-  // sniffed from the printer; see usePaperCapability for why that is impossible.
-  const { paper } = usePaperCapability();
-  const posPrinter = usePosPrinter();
-  const { user } = useAuth();
   // The A4 print DOM is mounted only for the duration of a print — see
   // useDocumentPrint. Until the press it does not exist, so editing quantities
   // re-renders the review, not two invisible copies of the slip as well.
@@ -377,17 +368,13 @@ function PreviewBody({
   }
 
   // The A4 challan — a real document on a real sheet, so the browser dialog is
-  // the right tool and stays. The 80mm production slip is a different document
-  // with a different reader and goes through the POS path below, which never
-  // opens a dialog at all.
+  // the right tool and stays. The receipt is a different document with a
+  // different reader and goes through POP Print below.
   function printAndClose() {
-    // `printDocument` (behind useDocumentPrint) owns the paper switch and the
-    // afterprint cleanup — see its header for why the reset is not optional and
-    // why the close has to wait for the browser's own signal. The hook mounts
-    // the print DOM first and prints once it has laid out, so the 300ms timer
-    // that used to guess at that moment is gone.
+    // `printDocument` (behind useDocumentPrint) owns the afterprint cleanup — see
+    // its header for why the close has to wait for the browser's own signal. The
+    // hook mounts the print DOM first and prints once it has laid out.
     printViaBrowser({
-      paper,
       onAfterPrint: () => {
         printTrace('closing order dialog');
         onClose();
@@ -418,7 +405,7 @@ function PreviewBody({
   }
 
   /**
-   * The demand as the 80mm production slip.
+   * The demand as the receipt — the canonical print document POP Print sends.
    *
    * Built from `printRows` and `totals` — the very rows and total the review
    * table on screen is showing — rather than re-derived from `order.items`.
@@ -442,6 +429,8 @@ function PreviewBody({
       branchName: branch?.name || order.branchName || '—',
       companyName: settings?.companyName ?? COMPANY_NAME,
       currencySymbol: sym,
+      // Only when already inlined as bytes — the receipt never waits on a fetch.
+      logo: logo ?? null,
       items: printRows.map((r) => ({
         productName: r.productName,
         qty: r.approved,
@@ -470,11 +459,11 @@ function PreviewBody({
     };
   }
 
-  async function printPos(hooks: PrintHooks) {
+  async function printPop(hooks: PrintHooks) {
     setEditing(false);
-    // Queued, not awaited on the main thread: printerService hands this to the
+    // Queued, not awaited on the main thread: systemPrinter hands this to the
     // print queue and the hooks let the button say Queued / Printing as it moves.
-    const result = await printProductionOrder(productionDoc(), { ...posPrinter.context, ...hooks });
+    const result = await printProductionOrder(productionDoc(), { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate });
     printTrace('markPrinted requested');
     // Same flag the A4 slip sets, and set the same way — fire and forget, because
     // a failed bookkeeping call must not turn a receipt that DID print into an
@@ -919,7 +908,7 @@ function PreviewBody({
           )}
 
           <p className="mt-6 text-center text-[11px] text-neutral-400">
-            Print produces one page — Customer Copy on top, Company Copy below the cut line.
+            POP Print sends the receipt to this computer&apos;s printer. A4 Challan prints one page — Customer Copy on top, Company Copy below the cut line.
           </p>
         </div>
 
@@ -936,19 +925,6 @@ function PreviewBody({
           Mounted only while a print is in progress. ── */}
       <PrintPortal active={documentPrinting}>
         {printMode === 'slip' ? (
-          paper === 'pos' ? (
-            /* 80mm roll: ONE continuous receipt rather than two half-page copies —
-               the delivery lines and grand total, a cut line, then the previous
-               order's collection working below it. */
-            <PosSlip
-              logo={logo} companyName={companyName} sym={sym} order={order}
-              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-              previousRef={previousRef} deliveredValue={deliveredValue}
-              companyShareValue={companyShareValue}
-              returnsQty={returnsQty} returnsAmount={returnsAmount}
-              discountsAmount={discountsAmount} collectionAmount={collectionAmount}
-            />
-          ) : (
           /* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
              the bottom half, with a cut line between them. See `.print-sheet` /
              `.print-half` in globals.css. */
@@ -972,9 +948,8 @@ function PreviewBody({
               discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             />
           </div>
-          )
         ) : (
-          <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} pos={paper === 'pos'} />
+          <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
         )}
       </PrintPortal>
 
@@ -1033,36 +1008,27 @@ function PreviewBody({
             <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
           </Button>
         )}
-        {/* Two printers, two documents.
+        {/* Two documents, two buttons, and neither falls back to the other.
 
-            The POS button sends the 80mm production slip straight to the thermal
-            printer — no browser preview, no destination to pick. It is only shown
-            where a printer has actually been set up on the device, because on the
-            office machine there is nothing for it to reach and it would be a
-            button that can only fail.
+            POP Print sends the receipt — the canonical print document — to the
+            printer this computer has installed. No setup, no printer to pick:
+            the operating system's default printer is the printer.
 
-            The A4 challan keeps the browser dialog, which is right for it: it is a
-            delivery document on a sheet, it paginates, and it is signed. Neither
-            button falls back to the other on its own. */}
-        {/* Also the only way in to Printer Settings from this screen, which is
-            what a production till needs before it can print anything at all. */}
-        <PosPrinterStatus className="mr-auto self-center" role={user?.role} />
-        {posPrinter.configured && (
-          <PosPrintButton
-            label="Print Order"
-            role={user?.role}
-            print={printPos}
-            disabled={reviewing}
-            onBrowserPrint={print}
-          />
-        )}
+            A4 Challan is the signed delivery document on a sheet, two copies
+            per page, and keeps the browser dialog because that is the right
+            tool for a sheet. Its menu is where a device with no printer says
+            so and gets "Save as PDF" wording instead. */}
+        <PopPrintButton
+          label="POP Print"
+          print={printPop}
+          disabled={reviewing}
+        />
         <PrintButton
           variant="secondary"
           onPrint={print}
           disabled={reviewing}
-          showPaper
-          printLabel={posPrinter.configured ? 'A4 Challan' : 'Print'}
-          saveLabel={posPrinter.configured ? 'Save A4 PDF' : 'Save as PDF'}
+          printLabel="A4 Challan"
+          saveLabel="Save A4 PDF"
         />
       </div>
     </>
@@ -1462,193 +1428,6 @@ function PrintCopy({
   );
 }
 
-/** A full-width dashed rule — the cut/section line the receipt is read by. */
-function PosRule({ solid }: { solid?: boolean }) {
-  return <div className={`my-1 border-t ${solid ? 'border-solid border-black' : 'border-dashed border-neutral-500'}`} />;
-}
-
-/** Label left, value right, on one line. The receipt's only layout primitive. */
-function PosKV({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
-  return (
-    <div className={`flex justify-between gap-2 leading-snug ${bold ? 'font-bold' : ''}`}>
-      <span className="shrink-0">{k}</span>
-      <span className="text-right tabular-nums">{v}</span>
-    </div>
-  );
-}
-
-/**
- * The POS (80mm thermal roll) production order — a single continuous receipt,
- * not the two-copies-per-sheet A4 challan.
- *
- * Layout, top to bottom: logo + company name, the demand/required dates and
- * order reference, the delivered lines as name / qty / amount, the grand total,
- * a cut rule, then the previous order's collection working — company share less
- * returns and discounts, ending on the amount collected.
- *
- * Written for ~74mm of printable width, which is roughly 32 monospace columns:
- * everything is one column, every figure is right-aligned and `tabular-nums`, and
- * nothing relies on a background or a grey — thermal paper has one ink and
- * browsers drop backgrounds when printing anyway, so a greyed panel would come
- * out as an invisible block rather than a visible one.
- *
- * Deliberately NOT split into Customer and Company copies. Two copies on a roll
- * means two jobs (print it twice), and the whole document is short enough that
- * the counter reads goods and money off the same strip — which is what makes the
- * previous-payment block sit below the cut rule rather than on a separate sheet.
- */
-function PosSlip({
-  logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
-  previousRef, deliveredValue, companyShareValue, returnsQty, returnsAmount,
-  discountsAmount, collectionAmount,
-}: {
-  logo?: string;
-  companyName: string;
-  sym: string;
-  order: BranchProductionOrder;
-  printRows: PrintRow[];
-  packingPrintRows: { materialName: string; qty: number }[];
-  printDate: string;
-  printTime: string;
-  previousRef: { demandNumber: string; date: string } | null;
-  deliveredValue: number;
-  companyShareValue: number;
-  returnsQty: number;
-  returnsAmount: number;
-  discountsAmount: number;
-  collectionAmount: number;
-}) {
-  // Same rule as the A4 copies: a delivery document lists what actually goes out,
-  // so a line approved down to zero is not on it.
-  const items = printRows.filter((r) => r.approved > 0);
-  const packingItems = packingPrintRows.filter((p) => p.qty > 0);
-  const totalQty = items.reduce((a, r) => a + r.approved, 0);
-  const grandTotal = items.reduce((a, r) => a + r.amount, 0);
-  const hasPrevBalance = !!previousRef;
-
-  return (
-    <div className="production-slip print-half mx-auto w-[74mm] bg-white px-1 py-2 text-[10px] leading-snug text-black">
-      {/* ── Header: logo, company, what this is ── */}
-      <div className="text-center">
-        {logo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logo} alt="logo" className="mx-auto mb-1 h-10 w-10 object-contain" />
-        )}
-        <p className="text-[13px] font-black uppercase leading-tight">{companyName}</p>
-        <p className="text-[9px] uppercase tracking-wide">Production Department</p>
-        <p className="text-[11px] font-bold uppercase tracking-wide">Production Order</p>
-      </div>
-
-      <PosRule solid />
-
-      {/* ── Dates first: the two the branch and the rider actually check ── */}
-      <PosKV k="Demand Date" v={order.date || '—'} />
-      <PosKV k="Required Date" v={order.requiredDate || '—'} />
-      <PosKV k="Order No" v={slipReference(order)} />
-      <PosKV k="Branch" v={order.branchName || '—'} />
-      <PosKV k="Printed" v={`${printDate} ${printTime}`} />
-      <PosKV k="Status" v={statusLabel(order.status).toUpperCase()} />
-
-      <PosRule solid />
-
-      {/* ── Delivered items: name, qty, amount ──
-          The name gets its own full-width line above the figures whenever it is
-          long. A three-column table at 74mm either truncates the product name or
-          squeezes the money column into a wrap, and on a document checked against
-          physical goods the name is the part that must never be cut. */}
-      <div className="flex justify-between text-[9px] font-bold uppercase">
-        <span>Item</span>
-        <span className="flex gap-2">
-          <span className="w-8 text-right">Qty</span>
-          <span className="w-16 text-right">Amount</span>
-        </span>
-      </div>
-      <PosRule />
-      {items.length === 0 ? (
-        <p className="py-1 text-center">No approved products.</p>
-      ) : (
-        items.map((r) => (
-          <div key={r.productName} className="mb-0.5 flex items-start justify-between gap-1">
-            <span className="min-w-0 flex-1 break-words font-medium">{r.productName}</span>
-            <span className="flex shrink-0 gap-2 tabular-nums">
-              <span className="w-8 text-right font-semibold">{fmt(r.approved)}</span>
-              <span className="w-16 text-right font-semibold">{money(r.amount, sym)}</span>
-            </span>
-          </div>
-        ))
-      )}
-
-      <PosRule />
-      <PosKV k="Total Qty" v={fmt(totalQty)} />
-      <div className="flex justify-between gap-2 text-[12px] font-black">
-        <span>GRAND TOTAL</span>
-        <span className="tabular-nums">{money(grandTotal, sym)}</span>
-      </div>
-
-      {/* ── Packing materials: carried because the rider loads them, kept below
-             the money totals and out of them — these lines have no price. ── */}
-      {packingItems.length > 0 && (
-        <>
-          <PosRule />
-          <p className="text-[9px] font-bold uppercase">Packing Materials</p>
-          {packingItems.map((p) => (
-            <PosKV key={p.materialName} k={p.materialName} v={fmt(p.qty)} />
-          ))}
-        </>
-      )}
-
-      {/* ── Cut line, then the company's collection working ── */}
-      <PosRule solid />
-      <p className="text-center text-[9px] font-bold uppercase tracking-wide">Previous Payment Detail</p>
-      <PosRule />
-
-      {hasPrevBalance ? (
-        <>
-          <PosKV k="Order No" v={previousRef!.demandNumber} />
-          <PosKV k="Order Date" v={previousRef!.date} />
-          <PosKV k="Delivered Value" v={money(deliveredValue, sym)} />
-          <PosKV k="Company Share" v={money(companyShareValue, sym)} />
-          {/* Both deductions print even at zero. A rider counting cash against
-              this strip needs to see that returns WERE considered and came to
-              nothing — an absent line reads as an omission, not as a zero. */}
-          <PosKV
-            k={returnsQty > 0 ? `Less Return (${fmt(returnsQty)})` : 'Less Return'}
-            v={returnsAmount > 0 ? `- ${money(returnsAmount, sym)}` : money(0, sym)}
-          />
-          <PosKV
-            k="Less Discount"
-            v={discountsAmount > 0 ? `- ${money(discountsAmount, sym)}` : money(0, sym)}
-          />
-          <PosRule />
-          <div className="flex justify-between gap-2 text-[12px] font-black">
-            <span>COLLECTED AMOUNT</span>
-            <span className="tabular-nums">{money(collectionAmount, sym)}</span>
-          </div>
-        </>
-      ) : (
-        <p className="py-1 text-center">No previous delivery — nothing to collect.</p>
-      )}
-
-      <PosRule solid />
-
-      {/* Signature lines: this strip is the counter's record of a cash handover,
-          the same job the A4 Company Copy's Payment block does. */}
-      <div className="mt-2 space-y-3">
-        <div className="flex items-end gap-1">
-          <span className="shrink-0 text-[9px] uppercase">Cash Paid {sym}</span>
-          <span className="flex-1 border-b border-black" />
-        </div>
-        <div className="flex items-end gap-1">
-          <span className="shrink-0 text-[9px] uppercase">Received By</span>
-          <span className="flex-1 border-b border-black" />
-        </div>
-      </div>
-
-      <p className="mt-3 text-center text-[9px]">*** End of Order ***</p>
-    </div>
-  );
-}
-
 /**
  * Production Check sheet — a stripped-down stock-check aid for the floor, not a
  * customer/company document: just Branch, Product, Qty, Amount, no prices,
@@ -1656,28 +1435,24 @@ function PosSlip({
  * split into 2-3 side-by-side columns so a long list still fits one page.
  */
 function ProductionCheckSheet({
-  order, printRows, sym, printDate, pos,
+  order, printRows, sym, printDate,
 }: {
   order: BranchProductionOrder;
   printRows: PrintRow[];
   sym: string;
   printDate: string;
-  /** Device is on an 80mm roll — one column, roll width, no A4 page padding. */
-  pos?: boolean;
 }) {
   const items = printRows.filter((r) => r.approved > 0).map((r) => ({ productName: r.productName, qty: r.approved, amount: r.amount }));
-  // 74mm has room for exactly one column however long the demand is, so the
-  // count-based split is skipped entirely on a roll rather than tuned for it.
-  const cols = pos ? 1 : items.length > 30 ? 3 : items.length > 12 ? 2 : 1;
+  const cols = items.length > 30 ? 3 : items.length > 12 ? 2 : 1;
   const groups = chunk(items, cols);
   const totalQty = items.reduce((a, r) => a + r.qty, 0);
   const totalAmount = items.reduce((a, r) => a + r.amount, 0);
 
   return (
-    <div className={`production-slip print-page relative mx-auto bg-white text-black ${pos ? 'w-[74mm] px-1 py-2' : 'w-full max-w-[720px] p-6'}`}>
+    <div className="production-slip print-page relative mx-auto w-full max-w-[720px] bg-white p-6 text-black">
       <div className="avoid-break border-b-2 border-neutral-800 pb-3">
         <h2 className="text-lg font-bold uppercase tracking-wide">Production Check</h2>
-        <div className={`mt-2 grid gap-x-6 gap-y-1 text-[11px] ${pos ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-4'}`}>
+        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] sm:grid-cols-4">
           <MetaKV k="Branch" v={order.branchName} />
           <MetaKV k="Production Order No" v={slipReference(order)} mono />
           <MetaKV k="Demand Date" v={order.date} />
@@ -1713,7 +1488,7 @@ function ProductionCheckSheet({
         </div>
       )}
 
-      <div className={`avoid-break mt-3 flex gap-6 border-t-2 border-neutral-400 pt-2 text-[11px] font-bold ${pos ? 'flex-col gap-0' : 'justify-end'}`}>
+      <div className="avoid-break mt-3 flex justify-end gap-6 border-t-2 border-neutral-400 pt-2 text-[11px] font-bold">
         <span>Total Qty: {fmt(totalQty)}</span>
         <span>Total Amount: {money(totalAmount, sym)}</span>
       </div>

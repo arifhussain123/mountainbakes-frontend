@@ -25,12 +25,10 @@ import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import { Fab } from '@/components/shared/Fab';
 import { PrintButton } from '@/components/shared/PrintButton';
-import { PosPrintButton } from '@/components/print/PosPrintButton';
-import { PosPrinterStatus } from '@/components/print/PosPrinterStatus';
-import { usePosPrinter } from '@/hooks/usePosPrinter';
-import { printSaleReceipt } from '@/lib/print/pos/printerService';
+import { PopPrintButton } from '@/components/print/PopPrintButton';
+import { printSaleReceipt } from '@/lib/print/systemPrinter';
+import { useCachedLogo } from '@/lib/print/logoCache';
 import { useDocumentPrint } from '@/hooks/useDocumentPrint';
-import { usePaperCapability } from '@/hooks/usePrintCapability';
 import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
@@ -45,7 +43,7 @@ import {
   UNPAID_PAYMENT_METHOD,
 } from '@/utils/constants';
 
-import type { SaleReceiptDoc } from '@/lib/print/pos/receiptFormatter';
+import type { SaleReceiptDoc } from '@/lib/print/receipt/types';
 
 const col = createColumnHelper<Order>();
 
@@ -66,11 +64,12 @@ const col = createColumnHelper<Order>();
  */
 function invoiceToReceipt(
   inv: InvoiceData,
-  opts: { branchName?: string | null; companyName?: string | null; currencySymbol: string },
+  opts: { branchName?: string | null; companyName?: string | null; currencySymbol: string; logo?: string | null },
 ): SaleReceiptDoc {
   const created = new Date(inv.createdAt);
   return {
     saleId: inv.orderNumber,
+    logo: opts.logo ?? null,
     dateText: karachiDateStr(created),
     timeText: karachiTimeStr(created),
     customerName: inv.customerName,
@@ -156,13 +155,10 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
 
   const cur = settings?.currencySymbol || 'Rs.';
 
-  // The POS printer this device is set up with, and the A4/roll page box for the
-  // browser path. Two independent answers: a till can have a thermal printer AND
-  // still print an A4 report from the same screen.
-  const posPrinter = usePosPrinter();
-  const { paper } = usePaperCapability();
   // The A4 invoice DOM exists only while the browser dialog is open.
   const { printing: documentPrinting, print: printViaBrowser } = useDocumentPrint();
+  // Inlined once per session so the receipt can carry it without a fetch.
+  const logo = useCachedLogo(settings?.logoUrl);
 
   // A price change — from this browser or another device — refreshes the product
   // list backing the New Sale form, so the cashier never quotes a stale rate.
@@ -310,7 +306,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     loadStock(); // reflect the just-deducted balances
     if (shouldPrint) {
       setInvoice(inv);
-      setAutoPrintInvoice(posPrinter.configured);
+      // POP Print is always available — the receipt goes to this computer's
+      // default printer — so Save & Print fires it as soon as the invoice opens.
+      setAutoPrintInvoice(true);
       setInvoiceOpen(true);
     }
   }
@@ -485,9 +483,6 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           <p className="text-sm text-muted-foreground">
             {isToday ? 'Today’s sales' : `Sales on ${date}`} · {sales.length} recorded
           </p>
-          {/* Live indicator and the way in to Printer Settings. Never blocks the
-              page — see PosPrinterStatus. */}
-          <PosPrinterStatus className="mt-1" role={user?.role} />
         </div>
         <div className="flex items-end gap-2">
           <div className="flex-1 space-y-1 sm:flex-none">
@@ -691,30 +686,37 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               </PrintPortal>
             </>
           )}
-          {/* The receipt goes straight to the thermal printer — no browser
-              preview, no destination picker. `PrintButton` (which opens the OS
-              dialog) is what a device with no POS printer falls back to, and the
-              A4 layout it prints is the portalled InvoiceView above. */}
-          {invoice && posPrinter.configured ? (
-            <PosPrintButton
-              className="w-full"
-              label="Print Receipt"
-              role={user?.role}
-              autoPrint={autoPrintInvoice}
-              print={(hooks) =>
-                printSaleReceipt(
-                  invoiceToReceipt(invoice, {
-                    branchName: branch?.name ?? (isProduction ? 'Production' : null),
-                    companyName: settings?.companyName,
-                    currencySymbol: cur,
-                  }),
-                  { ...posPrinter.context, ...hooks },
-                )
-              }
-              onBrowserPrint={() => printViaBrowser({ paper })}
-            />
-          ) : (
-            <PrintButton className="w-full" onPrint={() => printViaBrowser({ paper })} />
+          {/* POP Print sends the canonical receipt document to the printer this
+              computer has installed — no printer to pick, no setup. The A4
+              invoice below is the portalled InvoiceView, for a device that wants
+              a sheet or a PDF of the full invoice instead. Neither falls back to
+              the other on its own. */}
+          {invoice && (
+            <div className="grid gap-2">
+              <PopPrintButton
+                className="w-full"
+                label="POP Print"
+                autoPrint={autoPrintInvoice}
+                print={(hooks) =>
+                  printSaleReceipt(
+                    invoiceToReceipt(invoice, {
+                      branchName: branch?.name ?? (isProduction ? 'Production' : null),
+                      companyName: settings?.companyName,
+                      currencySymbol: cur,
+                      logo,
+                    }),
+                    { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate },
+                  )
+                }
+              />
+              <PrintButton
+                className="w-full"
+                variant="outline"
+                onPrint={() => printViaBrowser()}
+                printLabel="A4 Invoice"
+                saveLabel="Save A4 PDF"
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>

@@ -20,13 +20,14 @@ import { useEffect, useSyncExternalStore } from 'react';
  * What it does not do
  * ---------------------------------------------------------------------------
  * No canvas, no resize, no re-encode — `FileReader.readAsDataURL` on the fetched
- * blob is asynchronous and leaves the main thread alone. Nothing is done for the
- * ESC/POS path, which prints no logo at all: a thermal receipt here is text, and
- * `PRINTING.md` explains why that is the fast path rather than a bitmap.
+ * blob is asynchronous and leaves the main thread alone. The receipt (POP Print)
+ * carries the logo ONLY once it is a data URL: `receipt/document.ts` leaves a
+ * plain URL off rather than put a fetch inside a print, so a logo that has not
+ * arrived yet costs the receipt its picture, never its text.
  *
  * A logo that will not fetch (a CORS refusal, an outage) falls back to the plain
- * URL for the session and is not retried — the print still works, as it always
- * did, it merely waits for the image again.
+ * URL for the session and is not retried — the A4 documents still print, as they
+ * always did, they merely wait for the image again.
  */
 
 /** Above this a data URL bloats every printed document; the plain URL is better. */

@@ -33,7 +33,7 @@ import { beginPrintTrace, printTrace } from '@/lib/print/diagnostics';
  * is the document and nothing else.
  *
  * Pass `printing` to `<PrintPortal active={printing}>` and call `print()` from
- * the button. Any option (`paper`, `onAfterPrint`) goes through unchanged.
+ * the button. `onAfterPrint` goes through unchanged.
  */
 
 /** A print that never reports back must not leave the surface stuck. */
@@ -52,7 +52,7 @@ export function useDocumentPrint(): DocumentPrint {
 
   const print = useCallback((options: PrintDocumentOptions = {}) => {
     beginPrintTrace('document-print');
-    printTrace('print requested', { paper: options.paper ?? 'a4' });
+    printTrace('print requested');
     pending.current = options;
     setPrinting(true);
   }, []);

@@ -12,12 +12,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Printer, Download, ChevronDown } from 'lucide-react';
-import {
-  usePrintCapability,
-  usePaperCapability,
-  type PrintPreference,
-  type PaperPreference,
-} from '@/hooks/usePrintCapability';
+import { usePrintCapability, type PrintPreference } from '@/hooks/usePrintCapability';
 import { printDocument } from '@/lib/print/browser/documentPrint';
 import { cn } from '@/lib/utils';
 
@@ -25,12 +20,6 @@ const OPTIONS: { value: PrintPreference; label: string; hint: string }[] = [
   { value: 'auto', label: 'Detect automatically', hint: 'Guess from the device' },
   { value: 'print', label: 'This device has a printer', hint: 'Always offer Print' },
   { value: 'save', label: 'No printer on this device', hint: 'Always offer Save as PDF' },
-];
-
-const PAPER_OPTIONS: { value: PaperPreference; label: string; hint: string }[] = [
-  { value: 'auto', label: 'Detect automatically', hint: 'Falls back to A4' },
-  { value: 'a4', label: 'A4 sheet printer', hint: 'Full-page delivery challan' },
-  { value: 'pos', label: 'POS receipt printer', hint: '80mm thermal roll' },
 ];
 
 export interface PrintButtonProps {
@@ -42,16 +31,6 @@ export interface PrintButtonProps {
   saveLabel?: string;
   /** Drop the "which device is this?" menu when there is no room for it. */
   showMenu?: boolean;
-  /**
-   * Offer the A4 / POS-roll choice as well.
-   *
-   * Off by default and it must stay that way: the setting is per *device*, not
-   * per screen, so exposing it somewhere that has no receipt layout would let
-   * someone pin a shared till to POS and quietly reformat the page box of every
-   * report printed from it afterwards. Turn it on only where a POS layout
-   * actually exists to render.
-   */
-  showPaper?: boolean;
   disabled?: boolean;
   variant?: ComponentProps<typeof Button>['variant'];
   size?: ComponentProps<typeof Button>['size'];
@@ -76,14 +55,8 @@ export interface PrintButtonProps {
  *
  * **This is the DOCUMENT button, not the receipt button.** It opens the browser
  * dialog by design, which is right for an A4 challan or a report and wrong for a
- * thermal receipt; those use `PosPrintButton`, which never opens it.
- *
- * The default action goes through `printDocument` rather than `window.print()`
- * directly, and that is the fix for the reported "Print preview failed": a bare
- * `window.print()` leaves the global `@page { size: A4 }` from globals.css in
- * force, and an 80mm roll driver handed an A4 page box is exactly what Chrome
- * cannot generate a preview for. `printDocument` applies this device's paper
- * first and takes it back off on `afterprint`.
+ * thermal receipt; those use `PopPrintButton`, which prints a self-contained
+ * receipt document through the installed printer.
  *
  * The device is *guessed*, never known — see `usePrintCapability`. The attached
  * menu is not a nicety: it is how a wrong guess gets corrected, and the choice
@@ -95,7 +68,6 @@ export function PrintButton({
   printLabel = 'Print',
   saveLabel = 'Save as PDF',
   showMenu = true,
-  showPaper = false,
   disabled,
   variant = 'default',
   size = 'default',
@@ -103,12 +75,11 @@ export function PrintButton({
   buttonClassName,
 }: PrintButtonProps) {
   const { mode, preference, setPreference } = usePrintCapability();
-  const { paper, paperPreference, setPaperPreference } = usePaperCapability();
   const save = mode === 'save';
 
   function run() {
     if (onPrint) onPrint();
-    else printDocument({ paper });
+    else printDocument();
   }
 
   return (
@@ -158,26 +129,6 @@ export function PrintButton({
               ))}
             </DropdownMenuRadioGroup>
 
-            {showPaper && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Paper on this device</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={paperPreference}
-                  onValueChange={(v) => setPaperPreference(v as PaperPreference)}
-                >
-                  {PAPER_OPTIONS.map((o) => (
-                    <DropdownMenuRadioItem key={o.value} value={o.value} className="py-1.5">
-                      <span className="flex flex-col">
-                        <span>{o.label}</span>
-                        <span className="text-xs text-muted-foreground">{o.hint}</span>
-                      </span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

@@ -1,8 +1,10 @@
 'use client';
 
 import { PosPrintError, asPrintError, type PrintErrorCode } from './errors';
-import type { PrintDocumentType } from './printLog';
-import { printDebugEnabled, printTrace } from '../diagnostics';
+import { printDebugEnabled, printTrace } from './diagnostics';
+
+/** The two documents the shop prints on a roll. */
+export type PrintDocumentType = 'sale' | 'production-order';
 
 /**
  * The POS print queue.
@@ -10,18 +12,18 @@ import { printDebugEnabled, printTrace } from '../diagnostics';
  * ---------------------------------------------------------------------------
  * Why a queue, when the browser is the printer driver
  * ---------------------------------------------------------------------------
- * The bytes leave the browser itself (WebUSB / Web Serial / an iframe handed to
- * the installed driver), so there is no server to spool on — and nothing here
- * ever should: a receipt spooled on a server would still have to come back to
- * this very tab to reach a printer only this tab can open. The queue therefore
- * lives in the page, and it exists for three reasons that a plain `await
- * transport.send()` in a click handler cannot give:
+ * The document leaves the browser itself — a frame handed to the printer the
+ * operating system has installed (`systemPrinter.ts`) — so there is no server to
+ * spool on, and nothing here ever should: a receipt spooled on a server would
+ * still have to come back to this very tab to reach a printer only this tab can
+ * open. The queue therefore lives in the page, and it exists for three reasons
+ * that a plain `await print()` in a click handler cannot give:
  *
- * 1. **One job on the wire per printer.** Two documents sent at once — Save &
- *    Print from the sale form while a reprint is running from the table — used
- *    to race straight into `transferOut`, interleaving their chunks on the same
- *    bulk endpoint. Each printer is a *lane* here, and a lane drains one job at
- *    a time; a second request waits its turn rather than corrupting the first.
+ * 1. **One job at a time.** Two documents sent together — Save & Print from the
+ *    sale form while a reprint is running from the table — would ask the browser
+ *    for two print dialogs at once, and it silently drops the second. Each
+ *    printer is a *lane* here, and a lane drains one job at a time; a second
+ *    request waits its turn rather than vanishing.
  * 2. **One job per document while it is in flight.** A double-press, or two
  *    buttons aimed at one sale, collapse onto the same job — both callers get
  *    the same promise and the same result. There is no "duplicate" error to
@@ -51,11 +53,10 @@ import { printDebugEnabled, printTrace } from '../diagnostics';
  * ---------------------------------------------------------------------------
  * What is deliberately NOT here
  * ---------------------------------------------------------------------------
- * The transport, the document and the printer config. This module knows how to
- * order and observe work; `printerService` knows what the work is. The retry and
- * timeout helpers at the bottom are exported for it to compose with, rather than
- * baked into the lane, so that the *system* transport — whose "send" is a print
- * dialog a person is looking at — can opt out of both.
+ * The document and the printer. This module knows how to order and observe
+ * work; `systemPrinter` knows what the work is. The timeout helper at the bottom
+ * is exported for it to compose with rather than baked into the lane, because a
+ * print dialog a person is looking at has no deadline a page should enforce.
  */
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -73,11 +74,11 @@ export interface PrintJobTimings {
   finishedAt?: number;
   /** `startedAt - createdAt`. */
   queueWaitMs?: number;
-  /** Validate + compose + ESC/POS render. */
+  /** Validate + compose the document. */
   composeMs?: number;
-  /** Opening the device (or proving it open). Last attempt's figure. */
+  /** Preparing the print frame: load, fonts, fit, content check. */
   connectMs?: number;
-  /** The write itself. Last attempt's figure. */
+  /** From `print()` to the dialog closing (or the job spooling, in kiosk mode). */
   sendMs?: number;
   /** `finishedAt - createdAt`. */
   totalMs?: number;
@@ -424,7 +425,7 @@ function emit(record: JobRecord): void {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Helpers for the job body — composed by printerService
+   Helpers for the job body — composed by systemPrinter
    ──────────────────────────────────────────────────────────────────────────── */
 
 /** Give the browser one turn — paint, run the pending click's render, breathe. */
