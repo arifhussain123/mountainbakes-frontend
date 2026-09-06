@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProductionOrders, useStockRows } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
-import { type StockRow, businessDateStr } from '@mb/shared';
+import { type StockRow, businessDateStr, hasStockActivity } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +37,22 @@ export function StockPage() {
   // notifications stream.
   const { data: rows = [], isPending, error, refetch } = useStockRows(token ?? '', { date });
   useStockRealtime();
+
+  /**
+   * The table lists only products with stock activity — the same rule the Branch
+   * Closing sheet uses (`hasStockActivity`, shared): a row survives if any of
+   * Opening / New / Sold / Returned / Balance is non-zero. Every zero row is a
+   * product this branch neither holds nor moved that day, and a catalogue of
+   * them buries the handful that did.
+   *
+   * Filtered HERE, not by asking the API for `activityOnly` as the closing sheet
+   * does: this query's response is the cache entry `useStock`'s balance map
+   * reads to validate a return, and that map has to know a product is at zero.
+   * The Stock Check modal below gets the UNFILTERED rows for the same reason —
+   * units found on the shelf for a product the ledger says is at zero is
+   * exactly the discrepancy a count exists to catch.
+   */
+  const activeRows = useMemo(() => rows.filter(hasStockActivity), [rows]);
 
   /**
    * What this branch has ordered and not yet counted in.
@@ -258,8 +274,8 @@ export function StockPage() {
           <h2 className="text-lg font-semibold">Stock</h2>
           <p className="text-sm text-muted-foreground">
             {isToday
-              ? `${date} · opening carries over from yesterday, new stock lands when you verify a delivery, waiting demand is what Production has yet to hand over, adjustments are admin corrections made today and clear tomorrow`
-              : `${date} · a past business day, read-only. Balances are that day's closing figures, not today's. Adjustments show on the day they were made.`}
+              ? `${date} · opening carries over from yesterday, new stock lands when you verify a delivery, waiting demand is what Production has yet to hand over, adjustments are admin corrections made today and clear tomorrow. Products with no stock and no movement today are not listed.`
+              : `${date} · a past business day, read-only. Balances are that day's closing figures, not today's. Adjustments show on the day they were made. Products with no stock and no movement that day are not listed.`}
           </p>
         </div>
       </div>
@@ -280,7 +296,7 @@ export function StockPage() {
 
       <DataTable
         columns={columns}
-        data={rows}
+        data={activeRows}
         loading={isPending}
         searchPlaceholder="Search products…"
         pageSize={50}
