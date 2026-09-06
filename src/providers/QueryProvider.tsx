@@ -46,7 +46,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
   // The fallback refetch that used to live here now runs in AppRefreshProvider
   // (hooks/useAppRefresh.tsx), which puts it on the same tick as the new-build
-  // check and exposes it to the Topbar's Refresh button. It fires continuously (REFRESH_INTERVAL_MS)
+  // check and exposes it to the Topbar's Refresh button. It fires every second
   // rather than the 2 minutes it ran at here, which is why `staleTime` below no
   // longer governs how often active queries hit the network — `refetchQueries`
   // ignores it. One timer instead of two, and one place that decides whether

@@ -25,7 +25,7 @@ import { startLoginSession } from '@/lib/loginHistory';
  * one.
  *
  * Renders nothing. The ping lives on AppRefreshProvider's tick — on its
- * 2-minute session beat, NOT the continuous data beat — and the close in
+ * 2-minute session beat, NOT the 1-second data beat — and the close in
  * AuthProvider's logout; neither belongs to a component.
  */
 export function LoginHistoryBridge() {

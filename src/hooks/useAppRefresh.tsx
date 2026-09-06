@@ -22,13 +22,12 @@ import type { QueryClient } from '@tanstack/react-query';
  * still exactly one interval, now with the build check on the same tick and a
  * single source of truth the Refresh button can read and drive.
  *
- * The tick fires as fast as the browser allows, but ONLY the data half runs
- * that often. The two pieces of work that touch the user's session — the Login
- * History ping and the new-build check that can reload the page — stay on their
- * original 2-minute cadence, measured by the clock rather than by counting
- * ticks. Making the screen live must not mean pinging the session thousands of
- * times as often, and must not mean a reload lands on somebody who has just
- * paused.
+ * The tick fires every SECOND, but ONLY the data half runs that often. The
+ * two pieces of work that touch the user's session — the Login History ping and
+ * the new-build check that can reload the page — stay on their original 2-minute
+ * cadence, measured by the clock rather than by counting ticks. Making the
+ * screen live must not mean pinging the session 120 times as often, and must
+ * not mean a reload lands on somebody who has just paused.
  *
  * At this cadence the data half is no longer obviously cheap, so it carries
  * guards a slower tick did not need — see `shouldRefetch`. Every one of them
@@ -36,33 +35,30 @@ import type { QueryClient } from '@tanstack/react-query';
  */
 
 /**
- * How often the data on screen is refetched.
+ * How often the data on screen is refetched: one forced refetch of every
+ * mounted query, 60 times a minute per open tab. `staleTime` does not apply —
+ * `refetchQueries` goes to the network regardless — so this number IS the API
+ * request rate for a tab sitting on a busy screen.
  *
- * ONE MILLISECOND, BY EXPLICIT DECISION of the product owner, after 2 seconds,
- * 10 seconds and 1 second in turn, and after the cost was set out. What the
- * value actually does, so nobody reads it as a typo:
+ * ONE SECOND, BY DECISION. It has been 2 seconds, 10 seconds and briefly a
+ * continuous 1ms loop; the product owner settled on 1 second. The cost is real:
+ * every list on a production or sales screen is re-fetched and re-diffed sixty
+ * times a minute, and because the tick is paused while a dialog is open,
+ * closing one (the print preview included) fires every stale query at once.
+ * The guards in `shouldRefetch` and the one-at-a-time ref below keep this from
+ * compounding; the offline snapshot is change-gated so it costs nothing when a
+ * refetch returns the same rows.
  *
- * - Browsers clamp nested timers to ~4ms, so the tick fires about 250 times a
- *   second. That is the timer; it is not the request rate.
- * - `refetching` below holds the tick to one round of requests at a time, so
- *   the real behaviour is "refetch every active query again the instant the
- *   previous round finishes" — a continuous stream, bounded only by how fast
- *   the API answers. `staleTime` does not apply: `refetchQueries` goes to the
- *   network regardless.
- * - The guards in `shouldRefetch` (hidden tab, open dialog, mutation in
- *   flight) are the only pauses, and the change-gated offline snapshot is what
- *   keeps the disk write from riding along.
- *
- * The session work below is on the clock, not on a tick count, precisely so
- * this number can be anything at all without moving the ping or the build check.
+ * The session work below is on the clock, not on a tick count, so this number
+ * can change without moving the ping or the build check.
  */
-const REFRESH_INTERVAL_MS = 1;
+const REFRESH_INTERVAL_MS = 1 * 1000;
 
 /**
  * How often the session-affecting work runs: the 2 minutes both the Login
  * History ping and the build check have always run at. Measured by the clock —
- * a tick count would drift with the browser's timer clamping, and at a 1ms
- * interval "every N ticks" would have quietly become every eight minutes.
+ * a tick count drifts with the browser's timer clamping and has to be redone
+ * every time the interval above changes.
  */
 const SESSION_INTERVAL_MS = 2 * 60 * 1000;
 
@@ -99,19 +95,19 @@ function dialogOpen() {
 /**
  * Is a data refetch safe and worth doing *right now*?
  *
- * At this cadence this question is anything but rhetorical. Each guard is a
+ * At a 1-second cadence this question is anything but rhetorical. Each guard is a
  * distinct way the tick would otherwise cost more than the freshness is worth:
  *
  *  - **Hidden tab.** A tab left open on another monitor, or a phone with the
- *    screen off, would otherwise fetch every mounted query continuously for as
- *    long as it is forgotten. Nobody is reading it. The tick resumes on
+ *    screen off, would otherwise fetch every mounted query 60 times a minute
+ *    for as long as it is forgotten. Nobody is reading it. The tick resumes on
  *    `visibilitychange`, which also fires an immediate catch-up refetch, so
  *    coming back to the tab shows fresh data rather than the stale snapshot.
  *  - **Dialog open.** Unchanged from the original design: an in-flight refetch
  *    must never reshuffle props out from under someone mid-entry.
  *  - **Mutation in flight.** A refetch that lands mid-save can roll the pending
- *    write back on screen. At this rate it would collide with every save
- *    there is, where at 2 minutes it was a rarity.
+ *    write back on screen. At 1s this collides with almost every save there is,
+ *    where at 2 minutes it was a rarity.
  */
 function shouldRefetch(queryClient: QueryClient) {
   if (document.hidden) return false;
@@ -196,8 +192,8 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
   /**
    * One refetch at a time.
    *
-   * The tick is far shorter than any refetch, so without this the intervals
-   * would overlap on every single tick.
+   * The tick is 1s; a refetch of a heavy screen over a slow connection is
+   * routinely longer.
    * Without this the intervals overlap, each one queueing another full round of
    * requests behind the last, and a tab on a bad connection digs itself into a
    * backlog it never climbs out of. `setInterval` does not wait for an async
@@ -235,7 +231,7 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
 
   const refreshNow = useCallback(async () => {
     setRefreshing(true);
-    // Claim the same slot the tick uses, so the tick cannot fire a second
+    // Claim the same slot the tick uses, so a 1-second tick cannot fire a second
     // round of the same requests underneath the button's own refetch. Unlike the
     // tick this ignores `shouldRefetch` — an explicit click is a request to
     // refresh, dialog open or not.
@@ -264,7 +260,7 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
     } catch {
       // Swallowed on purpose. The callers are `void`-ed — an interval and a
       // visibility listener — so a rejection here would surface as an unhandled
-      // one, continuously, for as long as the network is down. The
+      // one, sixty times a minute, for as long as the network is down. The
       // failure is already visible where it matters: each query keeps its own
       // error state, and `lastRefreshedAt` simply stops advancing.
     } finally {

@@ -349,7 +349,7 @@ export function useReportSummary(
  * for a branch account, so a hand-edited request cannot widen what comes back.
  *
  * `LIVE_STALE_TIME`, like the other intraday-money queries: a sale rung up at
- * the counter should show on the dashboard without a reload, and the continuous
+ * the counter should show on the dashboard without a reload, and the 1-second
  * refresh tick (useAppRefresh) refetches this while it is on screen.
  */
 export function useSalesAnalytics(
@@ -720,7 +720,7 @@ export function useMarkPrinted(token: string) {
     // Patch the one order in place rather than invalidating the list. The
     // server sets exactly two fields, both known here, and a refetch of every
     // production order — items included — on the heels of a print was the single
-    // largest thing the Production page did after pressing Print. The continuous
+    // largest thing the Production page did after pressing Print. The 1-second
     // refresh tick reconciles anything else soon enough.
     onSuccess: (_result, id) => {
       printTrace('markPrinted done: patching one order in cache');
@@ -1112,7 +1112,7 @@ export function useLoginHistory(token: string, opts?: { userId?: string | null; 
 // server has already made, and hiding a button is not what makes an action safe.
 //
 // LIVE_STALE_TIME throughout: a session's duration grows while you watch it, and
-// the roster is a picture of right now. The app's own continuous refresh tick
+// the roster is a picture of right now. The app's own 1-second refresh tick
 // refetches whatever is on screen, so these stay current without polling of
 // their own.
 // ───────────────────────────────────────────────────────────────────────────
@@ -1195,7 +1195,7 @@ export function useActiveSessions(token: string, enabled = true) {
  * A slow-moving query: an hour's staleTime, against the 15 seconds everything
  * else here uses. The set of places and browsers staff have ever signed in from
  * does not change between two clicks of a pager, and refetching it on the
- * continuous refresh tick alongside the list would multiply this screen's traffic to
+ * 1-second refresh tick alongside the list would multiply this screen's traffic to
  * re-derive the same few dozen strings.
  */
 export function useLoginFilterOptions(token: string, enabled = true) {
