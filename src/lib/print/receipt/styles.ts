@@ -137,21 +137,11 @@ export function receiptCss(paper: PaperSpec): string {
   }
   table.items td { padding: 0.6mm 0; vertical-align: top; border-bottom: 1px dotted #777; }
   table.items tr:last-child td { border-bottom: 0; }
-  table.items .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 1mm; }
-  table.items .qty { width: 16%; }
-  table.items .chg { width: 19%; }
+  table.items .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.items .qty { width: 11%; }
   table.items .rate { width: 20%; }
-  table.items .amt { width: 22%; }
-  table.items.packing .pqty { width: 19%; }
-  table.items.packing .pchg { width: 21%; }
+  table.items .amt { width: 24%; }
   table.items td.name { padding-right: 1.5mm; }
-  table.items td.name .small { line-height: 1.2; }
-  .rate-note { white-space: nowrap; }
-  .tag { font-size: ${px(s.smallPx)}; font-weight: 700; text-transform: uppercase; border: 1px solid #000; padding: 0 0.6mm; }
-  .fill { display: flex; align-items: baseline; gap: 1.5mm; margin-top: 1.2mm; }
-  .fill .k { flex: 0 0 auto; white-space: nowrap; }
-  .fill .p { flex: 0 0 auto; }
-  .fill .line { flex: 1 1 auto; border-bottom: 1px solid #000; height: ${px(s.bodyPx)}; }
   .total { font-size: ${px(s.totalPx)}; font-weight: 700; }
   .total .v { font-variant-numeric: tabular-nums; }
   .note { font-size: ${px(s.bodyPx)}; }

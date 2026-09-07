@@ -52,59 +52,6 @@ width (80mm / 58mm), per device, in `receiptPaper.ts`, because no browser can re
 it off the driver and a receipt laid out for 72mm on a 48mm roll loses its
 amounts column.
 
-## One source of print data — the production order
-
-```
-order (fetched, not remembered)
-      ↓
-getPrintData()            lib/print/productionOrderPrintData.ts
-      ↓
-validatePrintData()       lib/print/receipt/validate.ts
-      ↓
-ProductionOrderDoc        the canonical print document, as data
-      ├── POP Print       receipt/productionOrder.ts → systemPrinter → default printer
-      ├── A4 challan      OrderPrintPreview PrintCopy ×2 → browser dialog / Save as PDF
-      └── Check sheet     OrderPrintPreview ProductionCheckSheet
-```
-
-`getPrintData` is the only place a demand line becomes a printed quantity. It
-resolves, once, per line: the branch's **demand**, Production's **changed**
-quantity (the stored approval once the order has left `pending`; the quantity
-being typed before that), the snapshotted rate and the amount. The on-screen
-review table uses the same resolver (`resolveProductLine` /
-`resolvePackingLine`), so the screen, the roll and the sheet cannot disagree.
-No destination recomputes a total: `grandTotal` is checked against the lines
-and printed as given.
-
-**Every print starts with a fetch.** `OrderPrintPreview.preparePrintData()`
-refetches the order and its previous-balance figures and builds the document
-from what comes back — never from the `order` prop the dialog opened with. A
-fetch that fails is a print that does not happen; the toast says so.
-
-**Packing materials** (shoppers, boxes, spoons, writing cream — the Admin
-master list in `packing_materials`) ride on the same document, in their own
-table, with no rate and no amount and never in the total:
-
-- The document carries a packing line **only when the branch requested it**
-  (`demandQty > 0`). A demand with no packing request prints no packing
-  heading, no empty table — nothing.
-- When it did, every requested material prints at its exact demand and
-  changed quantities, once. `validatePrintData` refuses a zero-quantity or
-  duplicate packing row rather than printing it.
-- A packing-only demand is a real order: it prints with a product total of 0.
-- An order with **nothing going out** — no product and no packing line with a
-  changed quantity above zero — is refused before any destination sees it, so
-  the printer never feeds and cuts a blank slip.
-
-The receipt prints, top to bottom: logo, company, Production Department,
-Production Order; order number, slip reference, branch, status, business date
-and time, required date, print date and time; PRODUCTS as *Product (@ rate) /
-Demand / Changed / Amount* with Total Qty and TOTAL; PACKING MATERIALS as
-*Packing Material / Demand / Changed* (only when requested); PREVIOUS ORDER
-BALANCE and AMOUNT TO COLLECT; the PAYMENT lines the rider fills in; and the
-Collected By / Received By signatures. The A4 copies carry the same data on a
-sheet, plus the itemised returns and discounts on the Company Copy.
-
 ## The blank-page guard
 
 The failure this design answers: paper and PDF both came out completely white
@@ -121,9 +68,8 @@ Before `print()` is called, `systemPrinter.ts`:
    lists, not the 72mm print area, which none does.
 4. **Reads the rendered text back** and refuses the job as `invalid-document` if
    the receipt box has no height or its text does not contain the reference
-   number, the total, the company name and every requested packing material
-   (`PrintDocument.mustContain`). Nothing is sent, no paper is fed, no cut
-   happens.
+   number, the total and the company name (`PrintDocument.mustContain`). Nothing
+   is sent, no paper is fed, no cut happens.
 
 ## The queue
 
