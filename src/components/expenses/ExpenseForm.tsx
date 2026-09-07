@@ -49,7 +49,11 @@ export function ExpenseForm({ onSuccess }: { onSuccess?: () => void }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Date</Label>
-          <Input type="date" {...form.register('date')} />
+          {/* Today only. A shop expense is entered on the day it is paid, and
+              the API refuses any other date from a branch account — so the
+              field shows the business date rather than offering a picker
+              that would be rejected. */}
+          <Input type="date" readOnly className="bg-muted" {...form.register('date')} />
         </div>
         <div className="space-y-1">
           <Label>Amount</Label>
