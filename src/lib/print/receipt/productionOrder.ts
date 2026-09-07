@@ -1,6 +1,6 @@
 import { escapeHtml, kv, logoHtml, money, num, rule, wrapDocument, type PrintDocument } from './document';
 import { paperSpec } from './styles';
-import type { PaperWidth, PreviousCollection, ProductionOrderDoc } from './types';
+import type { PaperWidth, PreviousCollection, ProductionOrderDoc, ProductionOrderPackingLine } from './types';
 import { validateProductionDoc } from './validate';
 
 const BRAND = 'MOUNTAIN BAKES';
@@ -24,6 +24,7 @@ export function buildProductionOrderDocument(doc: ProductionOrderDoc, paper: Pap
   // A line approved at zero is not going out, so it is not on the sheet the floor
   // packs from.
   const lines = doc.items.filter((line) => line.qty > 0);
+  const packing = doc.packingItems ?? [];
   const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
   const total = money(doc.grandTotal, symbol);
 
@@ -62,6 +63,7 @@ ${rule()}
 ${kv('Total Qty', num(totalQty))}
 ${kv('TOTAL', total, 'total')}
 ${rule()}
+${packing.length > 0 ? packingHtml(packing) : ''}
 ${doc.previousCollection === undefined ? '' : previousCollectionHtml(doc.previousCollection, symbol)}
 <div class="sign"><div>Collected By</div><div>Received By</div></div>
 <div class="footer">Thank You<br><span class="b">${escapeHtml(company)}</span></div>
@@ -75,8 +77,35 @@ ${doc.previousCollection === undefined ? '' : previousCollectionHtml(doc.previou
     html: wrapDocument(`Production order ${doc.orderNumber}`, spec, body),
     // The reference and the total: if either is not on the rendered page, the
     // page is not this document and must not be printed.
-    mustContain: [doc.orderNumber, total, company],
+    // …and every requested packing material by name: a slip missing one is not
+    // this order.
+    mustContain: [doc.orderNumber, total, company, ...packing.map((p) => p.materialName)],
   };
+}
+
+/**
+ * PACKING MATERIALS — its own table below the total, and only when the branch
+ * requested some. Every requested line prints at its approved quantity; there
+ * is no rate and no amount, and the section is absent (no heading, no empty
+ * table) on a demand with none.
+ */
+function packingHtml(packing: ProductionOrderPackingLine[]): string {
+  const rows = packing
+    .map(
+      (line) => `<tr>
+  <td class="name">${escapeHtml(line.materialName)}</td>
+  <td class="num amt">${num(line.qty)}</td>
+</tr>`,
+    )
+    .join('');
+  const totalQty = packing.reduce((sum, line) => sum + line.qty, 0);
+  return `<div class="section">Packing Materials</div>
+<table class="items">
+  <thead><tr><th class="name">Packing Material</th><th class="num amt">Qty</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+${kv('Packing Qty', num(totalQty))}
+${rule()}`;
 }
 
 /**

@@ -56,13 +56,29 @@ export function validateProductionDoc(doc: ProductionOrderDoc): void {
     throw new InvalidDocumentError('This order has no reference number to print.');
   }
   const lines = doc.items.filter((i) => i.qty > 0);
-  if (lines.length === 0) {
-    throw new InvalidDocumentError('This order has no approved items to print.');
+  const packing = doc.packingItems ?? [];
+  // Has products or packing materials? A demand of shoppers and boxes alone is
+  // a real order; one with nothing going out is not, and no paper moves for it.
+  if (lines.length === 0 && packing.length === 0) {
+    throw new InvalidDocumentError('This order has no approved items or packing materials to print.');
   }
   const summed = lines.reduce((total, line) => total + line.amount, 0);
   if (Math.abs(summed - doc.grandTotal) > 1) {
     throw new InvalidDocumentError(
       `The order lines do not add up to the total (${summed} ≠ ${doc.grandTotal}).`,
     );
+  }
+  // Packing rows: only what was requested, once each. A zero row would print a
+  // material nobody is sending; a duplicate would print one request twice.
+  const seen = new Set<string>();
+  for (const line of packing) {
+    const name = line.materialName?.trim();
+    if (!name) throw new InvalidDocumentError('A packing material on this order has no name.');
+    if (!(line.qty > 0)) {
+      throw new InvalidDocumentError(`"${name}" has no quantity and should not be on the print.`);
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) throw new InvalidDocumentError(`"${name}" appears twice on this order.`);
+    seen.add(key);
   }
 }

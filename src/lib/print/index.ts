@@ -40,6 +40,7 @@ export type {
   PreviousCollection,
   ProductionOrderDoc,
   ProductionOrderLine,
+  ProductionOrderPackingLine,
   ReceiptLine,
   SaleReceiptDoc,
 } from './receipt/types';

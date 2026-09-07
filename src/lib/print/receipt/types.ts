@@ -50,6 +50,12 @@ export interface SaleReceiptDoc {
   logo?: string | null;
 }
 
+export interface ProductionOrderPackingLine {
+  materialName: string;
+  /** The approved quantity — what ships. Always > 0 on the document. */
+  qty: number;
+}
+
 export interface ProductionOrderLine {
   productName: string;
   /** The APPROVED quantity — what actually ships. */
@@ -94,6 +100,15 @@ export interface ProductionOrderDoc {
   companyName?: string | null;
   currencySymbol: string;
   items: ProductionOrderLine[];
+  /**
+   * Packing materials the branch requested, at the APPROVED quantity — what
+   * actually goes out with the order, the same figures the A4 challan lists.
+   *
+   * Empty (or absent) when the branch requested none, and the receipt then
+   * prints no packing section at all. Never a price: packing materials are
+   * company service items and never fold into `grandTotal`.
+   */
+  packingItems?: ProductionOrderPackingLine[];
   grandTotal: number;
   /**
    * The previous delivery's collection, or `null` where there was no previous

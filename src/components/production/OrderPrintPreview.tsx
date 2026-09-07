@@ -438,6 +438,10 @@ function PreviewBody({
         amount: r.amount,
       })),
       grandTotal: totals.amount,
+      // The same packing lines the A4 challan lists, at the approved quantity.
+      // Only lines going out: a line approved at zero is not on the slip, and a
+      // demand with none has no packing section at all.
+      packingItems: packingPrintRows.filter((p) => p.qty > 0),
       // The same server figures the A4 challan's collection block prints, passed
       // through rather than re-derived. `undefined` while the query is still in
       // flight, so a slip printed early leaves the block off instead of printing

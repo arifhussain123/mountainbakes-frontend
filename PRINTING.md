@@ -52,6 +52,17 @@ width (80mm / 58mm), per device, in `receiptPaper.ts`, because no browser can re
 it off the driver and a receipt laid out for 72mm on a 48mm roll loses its
 amounts column.
 
+## Packing materials on the receipt
+
+The roll receipt lists the branch's requested packing materials (shoppers,
+boxes, spoons, writing cream — the Admin master list) in their own table under
+the total, at the approved quantity, exactly as the A4 challan does. The
+section is printed **only when the branch requested some**: a demand with none
+has no heading and no empty table. `validate.ts` refuses a zero-quantity or
+duplicate packing row, accepts a packing-only demand (total 0), and refuses an
+order with nothing going out at all, so a blank slip is never fed and cut.
+Packing materials carry no price and never fold into the total.
+
 ## The blank-page guard
 
 The failure this design answers: paper and PDF both came out completely white
