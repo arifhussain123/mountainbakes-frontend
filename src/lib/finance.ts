@@ -17,7 +17,10 @@ import type {
   FinanceReport,
   FinanceSettings,
   FinanceTicket,
+  FinanceTicketPage,
   FinanceTicketReferenceLookup,
+  FinanceTicketStats,
+  FinanceTicketVersion,
   FinanceTransaction,
   LedgerHead,
   LedgerPage,
@@ -444,12 +447,65 @@ export function useFinanceTickets(filters: Record<string, unknown> = {}) {
   return useQuery({
     queryKey: qk.financeTickets(filters),
     enabled: Boolean(token),
+    // Server-side pagination (§19): the previous page stays on screen while the
+    // next one loads, so paging does not flash an empty table.
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiCall<FinanceTicketPage>(`/api/finance/tickets${toQuery(filters)}`, {}, token),
+  });
+}
+
+/**
+ * The dashboard cards, counted in SQL over the WHOLE queue this caller may
+ * see — not over the page that happens to be loaded. Invalidated with every
+ * other finance query by `useFinanceMutation`.
+ */
+export function useFinanceTicketStats() {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTicketStats(),
+    enabled: Boolean(token),
     queryFn: async () =>
-      (await apiCall<{ tickets: FinanceTicket[] }>(
-        `/api/finance/tickets${toQuery(filters)}`,
+      (await apiCall<{ stats: FinanceTicketStats }>('/api/finance/tickets/stats', {}, token)).stats,
+  });
+}
+
+/**
+ * The people a query can be filtered by — everyone who may raise one, plus the
+ * admins who answer. Admin-only in practice (the filter is not offered to a
+ * raiser, whose queue is already their own), cached for the session.
+ */
+export function useFinanceHelpDeskUsers(enabled: boolean) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeHelpDeskUsers(),
+    enabled: Boolean(token) && enabled,
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      (await apiCall<{ users: { id: string; name?: string; email: string; role: string }[] }>(
+        '/api/users',
         {},
         token,
-      )).tickets,
+      )).users ?? [],
+  });
+}
+
+/**
+ * §7's View History — every version of one query, newest first. Lazy: enabled
+ * only while the history dialog is open, so opening a query never pays for a
+ * history nobody asked to see.
+ */
+export function useFinanceTicketHistory(id: string | null, enabled: boolean) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTicketHistory(id ?? ''),
+    enabled: Boolean(token) && Boolean(id) && enabled,
+    queryFn: async () =>
+      (await apiCall<{ versions: FinanceTicketVersion[] }>(
+        `/api/finance/tickets/${id}/history`,
+        {},
+        token,
+      )).versions,
   });
 }
 

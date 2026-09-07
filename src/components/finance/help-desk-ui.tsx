@@ -80,6 +80,8 @@ export function useHelpDeskAbilities(): HelpDeskAbilities {
  * before opening it, not after.
  */
 const STATUS_STYLES: Record<FinanceTicketStatus, string> = {
+  draft: 'bg-muted text-muted-foreground border border-dashed',
+  amended: 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300',
   open: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
   under_review: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
   waiting_for_finance: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',

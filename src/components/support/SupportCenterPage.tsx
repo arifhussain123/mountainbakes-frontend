@@ -24,8 +24,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
-import { useFinanceTickets } from '@/lib/finance';
-import { isBranchRole, isFinanceTicketLive } from '@mb/shared';
+import { useFinanceTicketStats } from '@/lib/finance';
+import { isBranchRole } from '@mb/shared';
 import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
@@ -283,11 +283,10 @@ export function SupportCenterPage() {
   // again with its own filters; this is the UNFILTERED count, which is what a
   // badge should show — a "(3)" that moved when you filtered inside the section
   // would be telling you about a different list than the one you were reading.
-  const { data: financeTickets = [] } = useFinanceTickets({});
-  const financeOpenCount = useMemo(
-    () => financeTickets.filter((t) => isFinanceTicketLive(t.status)).length,
-    [financeTickets],
-  );
+  const { data: financeStats } = useFinanceTicketStats();
+  const financeOpenCount = financeStats
+    ? financeStats.open + financeStats.underReview + financeStats.waiting + financeStats.amended + financeStats.reopened
+    : 0;
 
   const columns = [
     col.accessor('ticketNumber', {

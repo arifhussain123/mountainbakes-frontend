@@ -252,6 +252,10 @@ export const qk = {
    * happened to refetch.
    */
   financeTicket: (id: string) => ['finance', 'ticket', id] as const,
+  financeTicketHistory: (id: string) => ['finance', 'ticket', id, 'history'] as const,
+  financeTicketStats: () => ['finance', 'ticketStats'] as const,
+  /** Under 'users', not 'finance': a finance mutation must not refetch the user list. */
+  financeHelpDeskUsers: () => ['users', 'finance-help-desk'] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

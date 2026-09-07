@@ -63,6 +63,22 @@ interface DataTableProps<TData> {
    * side by side.
    */
   mobileLayout?: 'cards' | 'table';
+  /**
+   * SERVER-SIDE paging. When given, `data` is one page and the pager below the
+   * table drives the caller rather than TanStack's in-memory row model — the
+   * table shows every row it was handed and reports `total` as the count.
+   * The search box becomes a controlled input the caller debounces and sends
+   * to the API, because filtering one page in memory would hide rows that
+   * exist on the others.
+   */
+  manual?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    onPageChange: (page: number) => void;
+    search: string;
+    onSearchChange: (value: string) => void;
+  };
 }
 
 export function DataTable<TData>({
@@ -77,25 +93,46 @@ export function DataTable<TData>({
   columnVisibility,
   empty,
   mobileLayout = 'cards',
+  manual,
 }: DataTableProps<TData>) {
-  const [globalFilter, setGlobalFilter] = useState('');
+  const [localFilter, setLocalFilter] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
+
+  const globalFilter = manual ? manual.search : localFilter;
+  const setGlobalFilter = manual ? manual.onSearchChange : setLocalFilter;
 
   const table = useReactTable({
     data,
     columns,
-    state: { globalFilter, sorting, ...(columnVisibility ? { columnVisibility } : {}) },
-    onGlobalFilterChange: setGlobalFilter,
+    // With server paging the global filter is NOT applied in memory: the rows
+    // handed in are already the search result, and filtering them again by the
+    // same term would drop a row whose match is in a column not on screen.
+    state: {
+      globalFilter: manual ? '' : globalFilter,
+      sorting,
+      ...(columnVisibility ? { columnVisibility } : {}),
+    },
+    onGlobalFilterChange: manual ? undefined : setLocalFilter,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    initialState: { pagination: { pageSize } },
+    manualPagination: Boolean(manual),
+    ...(manual ? { pageCount: Math.max(1, Math.ceil(manual.total / manual.pageSize)) } : {}),
+    initialState: { pagination: { pageSize: manual ? manual.pageSize : pageSize } },
   });
 
   const cards = mobileLayout === 'cards';
   const emptyHint = globalFilter ? 'Try a different search term.' : undefined;
+
+  const pageIndex = manual ? manual.page - 1 : table.getState().pagination.pageIndex;
+  const pageCount = manual ? Math.max(1, Math.ceil(manual.total / manual.pageSize)) : table.getPageCount();
+  const canPrevious = manual ? manual.page > 1 : table.getCanPreviousPage();
+  const canNext = manual ? manual.page < pageCount : table.getCanNextPage();
+  const goPrevious = () => (manual ? manual.onPageChange(manual.page - 1) : table.previousPage());
+  const goNext = () => (manual ? manual.onPageChange(manual.page + 1) : table.nextPage());
+  const totalRows = manual ? manual.total : table.getFilteredRowModel().rows.length;
 
   /**
    * Whether any visible column asked for a totals row.
@@ -241,17 +278,17 @@ export function DataTable<TData>({
       {/* Pagination */}
       <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <span>
-          {table.getFilteredRowModel().rows.length} total
-          {globalFilter && ` (filtered from ${data.length})`}
+          {totalRows} total
+          {!manual && globalFilter && ` (filtered from ${data.length})`}
         </span>
         <div className="flex items-center gap-2">
-          <span>Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}</span>
+          <span>Page {pageIndex + 1} of {pageCount}</span>
           <Button
             variant="outline"
             size="icon"
             className="h-11 w-11 md:h-7 md:w-7"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={goPrevious}
+            disabled={!canPrevious}
             aria-label="Previous page"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -260,8 +297,8 @@ export function DataTable<TData>({
             variant="outline"
             size="icon"
             className="h-11 w-11 md:h-7 md:w-7"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            onClick={goNext}
+            disabled={!canNext}
             aria-label="Next page"
           >
             <ChevronRight className="h-3.5 w-3.5" />
