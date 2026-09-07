@@ -22,30 +22,48 @@ import { toast } from 'sonner';
 import {
   AlertOctagon,
   Archive,
+  ArchiveRestore,
+  Ban,
   Bell,
   CheckCircle2,
   CircleDot,
   Clock,
+  Copy,
   Eye,
   FileEdit,
   FileQuestion,
   Headset,
+  History,
   Inbox,
+  MoreHorizontal,
+  Pencil,
   Plus,
   RotateCcw,
+  Send,
   ShieldAlert,
   Timer,
   Trash2,
   Wand2,
 } from 'lucide-react';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   CreateFinanceTicketSchema,
   FINANCE_QUERY_PRIORITIES,
   FINANCE_QUERY_PRIORITY_LABELS,
   FINANCE_QUERY_TYPES,
   FINANCE_QUERY_TYPE_LABELS,
+  FINANCE_TICKET_REFERENCE_LABELS,
+  FINANCE_TICKET_REOPENABLE_STATUSES,
   FINANCE_TICKET_STATUSES,
   FINANCE_TICKET_STATUS_LABELS,
+  FINANCE_TICKET_TRANSITIONS,
+  isFinanceTicketTerminal,
   type Attachment,
   type FinanceQueryPriority,
   type FinanceQueryType,
@@ -60,7 +78,16 @@ import {
   useFinanceTickets,
 } from '@/lib/finance';
 import { FinancePageHeader, useMoney } from './finance-ui';
-import { FinanceQueryDetailDialog } from './FinanceQueryDetail';
+import {
+  DeleteQueryDialog,
+  FinanceQueryDetailDialog,
+  HistoryDialog,
+  QuickFeedDialog,
+  ReasonDialog,
+  ReopenDialog,
+  StatusDialog,
+  type QuickFeedMode,
+} from './FinanceQueryDetail';
 import { EMPTY_FEED, QueryFeedForm, feedToPayload, type FeedState } from './QueryFeedForm';
 import {
   QueryPriorityBadge,
@@ -97,6 +124,32 @@ import {
 const col = createColumnHelper<FinanceTicket>();
 
 type View = 'queue' | 'drafts' | 'deleted';
+
+/** A row action opened straight from the queue — the branch queue's shape. */
+type RowAction =
+  | { kind: QuickFeedMode; ticket: FinanceTicket }
+  | { kind: 'status'; ticket: FinanceTicket; target: FinanceTicketStatus }
+  | { kind: 'delete' | 'restore' | 'reopen' | 'history'; ticket: FinanceTicket };
+
+function IconBtn({
+  children,
+  title,
+  onClick,
+  className,
+  disabled,
+}: {
+  children: React.ReactNode;
+  title: string;
+  onClick: () => void;
+  className?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <Button variant="ghost" size="icon" className={`h-8 w-8 ${className ?? ''}`} title={title} onClick={onClick} disabled={disabled}>
+      {children}
+    </Button>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // New Query (§2)
@@ -254,7 +307,9 @@ export function FinanceHelpDeskPage({
   const [showNew, setShowNew] = useState(false);
   const [newKey, setNewKey] = useState(0);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [rowAction, setRowAction] = useState<RowAction | null>(null);
   const [moreFilters, setMoreFilters] = useState(false);
+  const rowMutation = useFinanceMutation();
 
   const debouncedSearch = useDebounce(search.trim(), 350);
   const debouncedQueryNo = useDebounce(queryNo.trim(), 350);
@@ -303,73 +358,98 @@ export function FinanceHelpDeskPage({
   const isOwnDraft = (t: FinanceTicket) => t.status === 'draft' && t.raisedBy === user?.uid;
 
   /**
-   * §1's columns: Query ID · Subject · Type · Amount · Status · Created By ·
-   * Created · Last Updated · Admin · Action.
-   *
-   * `meta.mobile` is what makes the same definition render as a full table above
-   * md and as one card per query below it — DataTable reads these annotations
-   * and needs no second implementation.
+   * The same shape as the branch queue in the Support Center: Query ID ·
+   * Reference · From · Issue · Amount · Status · a dense row of action icons
+   * on desktop that collapses to one menu on a phone. Edit, Amend, Resolve,
+   * Reject, Delete, Restore, Recreate and History all open straight from the
+   * row; View opens the full feeding form.
    */
   const columns = useMemo(
     () => [
       col.accessor('queryNo', {
         header: 'Query ID',
-        meta: { mobile: 'title' },
+        meta: { mobile: 'subtitle' },
         cell: ({ row }) => {
           const t = row.original;
           return (
             <div className="flex flex-col items-start gap-0.5">
-              {sourceTag && (
-                <Badge
-                  variant="secondary"
-                  className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300"
-                >
-                  Finance
-                </Badge>
-              )}
               <span className="font-mono text-xs">{t.queryNo}</span>
-              {t.reopenCount > 0 && (
-                <span className="text-[10px] text-fuchsia-700 dark:text-fuchsia-400">
-                  Reopened {t.reopenCount}×
-                </span>
-              )}
+              <span className="whitespace-nowrap text-[11px] text-muted-foreground">{formatQueryDate(t.createdAt, false)}</span>
               {t.amendCount > 0 && (
-                <span className="text-[10px] text-teal-700 dark:text-teal-400">
-                  Amended {t.amendCount}× · v{t.version}
-                </span>
+                <span className="text-[10px] text-teal-700 dark:text-teal-400">Amended {t.amendCount}× · v{t.version}</span>
               )}
-              {t.recreatedFromQueryNo && (
-                <span className="text-[10px] text-muted-foreground">From {t.recreatedFromQueryNo}</span>
+              {t.reopenCount > 0 && (
+                <span className="text-[10px] text-fuchsia-700 dark:text-fuchsia-400">Reopened {t.reopenCount}×</span>
               )}
-              {t.recreatedAsQueryNo && (
-                <span className="text-[10px] text-muted-foreground">Recreated as {t.recreatedAsQueryNo}</span>
-              )}
-              {t.deletedAt && (
-                <Badge variant="destructive" className="text-[10px]">
-                  Deleted
-                </Badge>
+              {t.recreatedFromQueryNo && <span className="text-[10px] text-muted-foreground">From {t.recreatedFromQueryNo}</span>}
+              {t.recreatedAsQueryNo && <span className="text-[10px] text-muted-foreground">→ {t.recreatedAsQueryNo}</span>}
+            </div>
+          );
+        },
+      }),
+      col.accessor((t) => t.referenceNo ?? t.transactionRef ?? t.expenseRef ?? t.incomeRef ?? '', {
+        id: 'reference',
+        header: 'Reference',
+        meta: { mobile: 'title' },
+        cell: ({ row }) => {
+          const t = row.original;
+          const ref = t.referenceNo ?? t.transactionRef ?? t.expenseRef ?? t.incomeRef ?? t.voucherRef;
+          return (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{FINANCE_QUERY_TYPE_LABELS[t.queryType]}</Badge>
+              <span className="font-medium">{ref ?? t.subject}</span>
+              {t.referenceType && ref === t.referenceNo && (
+                <span className="text-xs text-muted-foreground">{FINANCE_TICKET_REFERENCE_LABELS[t.referenceType]}</span>
               )}
             </div>
           );
         },
       }),
-      col.accessor('subject', {
-        header: 'Subject',
-        meta: { mobile: 'subtitle', mobileFull: true },
-        cell: ({ row }) => (
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{row.original.subject}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {row.original.referenceNo ?? row.original.transactionRef ?? row.original.expenseRef ?? row.original.incomeRef ?? ''}
-            </p>
-          </div>
-        ),
+      col.accessor('raisedByName', {
+        header: 'From',
+        meta: { mobileLabel: 'From' },
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center gap-2">
+                {sourceTag && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300"
+                  >
+                    Finance
+                  </Badge>
+                )}
+                <span>{t.branchName || '—'}</span>
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                {t.raisedByName || '—'}
+                {t.raisedByRole ? ` · ${t.raisedByRole.replace(/_/g, ' ')}` : ''}
+              </p>
+            </div>
+          );
+        },
       }),
-      col.accessor((t) => FINANCE_QUERY_TYPE_LABELS[t.queryType], {
-        id: 'type',
-        header: 'Type',
-        meta: { mobile: 'hidden' },
-        cell: ({ row }) => <span className="text-sm">{FINANCE_QUERY_TYPE_LABELS[row.original.queryType]}</span>,
+      col.accessor('subject', {
+        header: 'Issue',
+        meta: { mobileFull: true },
+        cell: ({ row }) => {
+          const t = row.original;
+          const answer = t.adminResponse ?? t.resolutionNote;
+          return (
+            <div className="max-w-[26rem] min-w-0">
+              <p className="truncate text-sm font-medium">{t.subject}</p>
+              <p className="line-clamp-2 text-xs text-muted-foreground">{t.message}</p>
+              {answer && (
+                <p className="mt-1 line-clamp-1 text-xs">
+                  <span className="text-muted-foreground">Admin: </span>
+                  {answer}
+                </p>
+              )}
+            </div>
+          );
+        },
       }),
       col.accessor('amount', {
         header: 'Amount',
@@ -388,89 +468,164 @@ export function FinanceHelpDeskPage({
       col.accessor('status', {
         header: 'Status',
         meta: { mobile: 'badge', align: 'center' },
-        cell: ({ row }) =>
-          row.original.deletedAt ? (
-            <Badge variant="destructive" className="whitespace-nowrap">Deleted</Badge>
-          ) : (
-            <QueryStatusBadge status={row.original.status} />
-          ),
-      }),
-      col.accessor('raisedByName', {
-        header: 'Created By',
-        meta: { mobileLabel: 'Created by' },
-        cell: ({ row }) => (
-          <div className="min-w-0">
-            <p className="truncate text-sm">{row.original.raisedByName || '—'}</p>
-            {row.original.branchName && (
-              <p className="truncate text-xs text-muted-foreground">{row.original.branchName}</p>
-            )}
-          </div>
-        ),
-      }),
-      col.accessor('createdAt', {
-        header: 'Created',
-        meta: { mobileLabel: 'Created' },
-        cell: (info) => <span className="whitespace-nowrap text-sm">{formatQueryDate(info.getValue())}</span>,
-      }),
-      col.accessor('updatedAt', {
-        id: 'lastUpdate',
-        header: 'Last Updated',
-        meta: { mobileFull: true, mobileLabel: 'Last update' },
         cell: ({ row }) => {
           const t = row.original;
-          const answer = t.adminResponse ?? t.resolutionNote;
           return (
-            <div className="min-w-0">
-              <p className="whitespace-nowrap text-sm">{formatQueryDate(t.updatedAt)}</p>
-              <p className="line-clamp-2 max-w-[16rem] text-xs text-muted-foreground">
-                {t.status === 'draft' ? 'Draft — not sent' : (answer ?? 'Awaiting Admin')}
-              </p>
+            <div className="flex flex-col items-center gap-0.5">
+              {t.deletedAt ? <Badge variant="destructive" className="whitespace-nowrap">Deleted</Badge> : <QueryStatusBadge status={t.status} />}
+              <span className="whitespace-nowrap text-[10px] text-muted-foreground">{formatQueryDate(t.updatedAt, false)}</span>
+              {(t.assignedToName ?? t.resolvedByName) && (
+                <span className="max-w-[8rem] truncate text-[10px] text-muted-foreground">{t.assignedToName ?? t.resolvedByName}</span>
+              )}
             </div>
-          );
-        },
-      }),
-      col.accessor((t) => t.assignedToName ?? t.respondedByName ?? t.resolvedByName ?? '', {
-        id: 'admin',
-        header: 'Admin',
-        meta: { mobile: 'hidden' },
-        cell: ({ row }) => {
-          const t = row.original;
-          const who = t.assignedToName ?? t.resolvedByName ?? t.respondedByName;
-          return who ? (
-            <span className="text-sm">{who}</span>
-          ) : (
-            <span className="text-xs text-muted-foreground">Unassigned</span>
           );
         },
       }),
       col.display({
         id: 'actions',
         header: '',
-        cell: ({ row }) => (
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setViewing(row.original.id)}
-              aria-label={`Open query ${row.original.queryNo}`}
-            >
-              {isOwnDraft(row.original) ? (
-                <>
-                  <FileEdit className="mr-1 h-4 w-4" /> Edit draft
-                </>
-              ) : (
-                <>
-                  <Eye className="mr-1 h-4 w-4" /> Open
-                </>
-              )}
-            </Button>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const t = row.original;
+          const deleted = Boolean(t.deletedAt);
+          const draft = t.status === 'draft';
+          const own = t.raisedBy === user?.uid;
+          const terminal = isFinanceTicketTerminal(t.status);
+          const nexts = deleted || draft ? [] : FINANCE_TICKET_TRANSITIONS[t.status];
+          const canResolve = nexts.includes('resolved');
+          const canReject = nexts.includes('rejected');
+          const canReopen = !deleted && (FINANCE_TICKET_REOPENABLE_STATUSES as readonly FinanceTicketStatus[]).includes(t.status);
+          const canFeed = abilities.admin && !deleted && !draft;
+
+          if (!abilities.admin) {
+            // A Finance user: open the query, or — on their own draft — edit and submit it.
+            return (
+              <div className="flex items-center justify-end gap-0.5">
+                <IconBtn title={draft && own ? 'Edit draft' : 'View'} onClick={() => setViewing(t.id)}>
+                  {draft && own ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </IconBtn>
+                {draft && own && (
+                  <IconBtn title="Submit to Admin" className="text-primary" onClick={() => void submitDraft(t)}>
+                    <Send className="h-3.5 w-3.5" />
+                  </IconBtn>
+                )}
+                {!draft && (
+                  <IconBtn title="History" onClick={() => setRowAction({ kind: 'history', ticket: t })}>
+                    <History className="h-3.5 w-3.5" />
+                  </IconBtn>
+                )}
+                {canReopen && own && (
+                  <IconBtn title="Request reopen" onClick={() => setRowAction({ kind: 'reopen', ticket: t })}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </IconBtn>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <>
+              {/* Desktop keeps the dense icon row — the branch queue's shape. */}
+              <div className="hidden items-center justify-end gap-0.5 md:flex">
+                <IconBtn title="View" onClick={() => setViewing(t.id)}><Eye className="h-3.5 w-3.5" /></IconBtn>
+                {deleted ? (
+                  <IconBtn title="Restore" className="text-emerald-600" onClick={() => setRowAction({ kind: 'restore', ticket: t })}>
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                  </IconBtn>
+                ) : (
+                  <>
+                    <IconBtn title="Edit" disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title={terminal ? 'Reopen to amend' : 'Amend'} disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}>
+                      <Wand2 className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    {canReopen ? (
+                      <IconBtn title="Reopen" onClick={() => setRowAction({ kind: 'reopen', ticket: t })}>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </IconBtn>
+                    ) : (
+                      <IconBtn title="Resolve" className="text-emerald-600" disabled={!canResolve} onClick={() => setRowAction({ kind: 'status', ticket: t, target: 'resolved' })}>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </IconBtn>
+                    )}
+                    <IconBtn title="Reject" className="text-amber-600" disabled={!canReject} onClick={() => setRowAction({ kind: 'status', ticket: t, target: 'rejected' })}>
+                      <Ban className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title={t.recreatedAsId ? `Recreated as ${t.recreatedAsQueryNo}` : 'Recreate'} disabled={Boolean(t.recreatedAsId) || draft} onClick={() => setRowAction({ kind: 'recreate', ticket: t })}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title="History" onClick={() => setRowAction({ kind: 'history', ticket: t })}>
+                      <History className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title="Delete" className="text-destructive" disabled={draft} onClick={() => setRowAction({ kind: 'delete', ticket: t })}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconBtn>
+                  </>
+                )}
+              </div>
+
+              {/* On a phone the icons collapse into one menu. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label={`Actions for ${t.queryNo}`}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:hidden"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setViewing(t.id)}><Eye className="h-4 w-4" /> View</DropdownMenuItem>
+                  {deleted ? (
+                    <DropdownMenuItem onClick={() => setRowAction({ kind: 'restore', ticket: t })}><ArchiveRestore className="h-4 w-4" /> Restore</DropdownMenuItem>
+                  ) : (
+                    <>
+                      <DropdownMenuItem disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                      <DropdownMenuItem disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}><Wand2 className="h-4 w-4" /> Amend</DropdownMenuItem>
+                      {nexts.map((s) => (
+                        <DropdownMenuItem key={s} onClick={() => setRowAction({ kind: 'status', ticket: t, target: s })}>
+                          {s === 'resolved' ? <CheckCircle2 className="h-4 w-4" /> : s === 'rejected' ? <Ban className="h-4 w-4" /> : <Timer className="h-4 w-4" />}
+                          {s === 'resolved' ? 'Resolve' : s === 'rejected' ? 'Reject' : s === 'closed' ? 'Close query' : FINANCE_TICKET_STATUS_LABELS[s]}
+                        </DropdownMenuItem>
+                      ))}
+                      {canReopen && (
+                        <DropdownMenuItem onClick={() => setRowAction({ kind: 'reopen', ticket: t })}><RotateCcw className="h-4 w-4" /> Reopen</DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem disabled={Boolean(t.recreatedAsId) || draft} onClick={() => setRowAction({ kind: 'recreate', ticket: t })}><Copy className="h-4 w-4" /> Recreate</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setRowAction({ kind: 'history', ticket: t })}><History className="h-4 w-4" /> History</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" disabled={draft} onClick={() => setRowAction({ kind: 'delete', ticket: t })}>
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          );
+        },
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sourceTag, money, user?.uid],
+    [sourceTag, money, user?.uid, abilities.admin],
   );
+
+  async function submitDraft(t: FinanceTicket) {
+    try {
+      await rowMutation.mutateAsync({ path: `/api/finance/tickets/${t.id}/submit`, method: 'POST' });
+      toast.success(`${t.queryNo} sent to the Admin`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The draft could not be submitted');
+    }
+  }
+
+  async function restore(t: FinanceTicket, reason: string) {
+    try {
+      await rowMutation.mutateAsync({ path: `/api/finance/tickets/${t.id}/restore`, method: 'POST', body: { reason } });
+      toast.success(`${t.queryNo} restored`);
+      setRowAction(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The query could not be restored');
+    }
+  }
 
   const select = 'h-9 rounded-md border bg-background px-2 text-sm';
 
@@ -695,6 +850,40 @@ export function FinanceHelpDeskPage({
           ticketId={viewing}
           onClose={() => setViewing(null)}
           onOpenOther={(id) => setViewing(id)}
+        />
+      )}
+
+      {/* Row actions — the same dialogs the detail screen uses, opened from the row. */}
+      {rowAction && (rowAction.kind === 'edit' || rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
+        <QuickFeedDialog
+          ticket={rowAction.ticket}
+          mode={rowAction.kind}
+          onClose={() => setRowAction(null)}
+          onDone={(result) => {
+            const wasRecreate = rowAction.kind === 'recreate';
+            setRowAction(null);
+            if (wasRecreate && result) setViewing(result.id);
+          }}
+        />
+      )}
+      {rowAction?.kind === 'status' && (
+        <StatusDialog ticket={rowAction.ticket} target={rowAction.target} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'delete' && (
+        <DeleteQueryDialog ticket={rowAction.ticket} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'reopen' && (
+        <ReopenDialog ticket={rowAction.ticket} isAdmin={abilities.admin} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'history' && <HistoryDialog ticket={rowAction.ticket} onClose={() => setRowAction(null)} />}
+      {rowAction?.kind === 'restore' && (
+        <ReasonDialog
+          title={`Restore — ${rowAction.ticket.queryNo}`}
+          description="Brings the query back to the desk exactly as it was when it was deleted, with its status and history."
+          confirmLabel="Restore query"
+          pending={rowMutation.isPending}
+          onConfirm={(r) => void restore(rowAction.ticket, r)}
+          onClose={() => setRowAction(null)}
         />
       )}
     </div>

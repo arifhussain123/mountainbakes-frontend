@@ -183,7 +183,7 @@ function AuditHistory({ entries }: { entries: FinanceTicketAuditEntry[] }) {
 // View History (§7) — the versions, lazily loaded
 // ---------------------------------------------------------------------------
 
-function HistoryDialog({ ticket, onClose }: { ticket: FinanceTicket; onClose: () => void }) {
+export function HistoryDialog({ ticket, onClose }: { ticket: FinanceTicket; onClose: () => void }) {
   const { data: versions, isLoading, error } = useFinanceTicketHistory(ticket.id, true);
 
   return (
@@ -385,7 +385,7 @@ function Conversation({ ticket, onPosted }: { ticket: FinanceTicket; onPosted: (
 // Reason dialog — Save Changes, Amend, Recreate, Restore all confirm through it
 // ---------------------------------------------------------------------------
 
-function ReasonDialog({
+export function ReasonDialog({
   title,
   description,
   confirmLabel,
@@ -706,7 +706,7 @@ function DeleteRecordDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket
 // Status (§10) — resolve / reject / review / wait / close
 // ---------------------------------------------------------------------------
 
-function StatusDialog({
+export function StatusDialog({
   ticket,
   target,
   onClose,
@@ -921,7 +921,7 @@ function AssignDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket; onCl
 // Delete the QUERY (§8) — soft, with reason
 // ---------------------------------------------------------------------------
 
-function DeleteQueryDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket; onClose: () => void; onDone: () => void }) {
+export function DeleteQueryDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket; onClose: () => void; onDone: () => void }) {
   const mutation = useFinanceMutation();
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
@@ -988,7 +988,7 @@ function DeleteQueryDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket;
 // Reopen (§10)
 // ---------------------------------------------------------------------------
 
-function ReopenDialog({ ticket, isAdmin, onClose, onDone }: { ticket: FinanceTicket; isAdmin: boolean; onClose: () => void; onDone: () => void }) {
+export function ReopenDialog({ ticket, isAdmin, onClose, onDone }: { ticket: FinanceTicket; isAdmin: boolean; onClose: () => void; onDone: () => void }) {
   const mutation = useFinanceMutation();
   const [reason, setReason] = useState('');
 
@@ -1164,6 +1164,118 @@ function ResponsePanel({ ticket, isAdmin, onSaved }: { ticket: FinanceTicket; is
         </>
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quick Edit / Amend / Recreate — the feeding form in its own dialog, opened
+// straight from a row in the queue (the branch queue's Edit-from-the-row shape)
+// ---------------------------------------------------------------------------
+
+export type QuickFeedMode = 'edit' | 'amend' | 'recreate';
+
+export function QuickFeedDialog({
+  ticket,
+  mode,
+  onClose,
+  onDone,
+}: {
+  ticket: FinanceTicket;
+  mode: QuickFeedMode;
+  onClose: () => void;
+  /** Called with the ticket the change produced — the NEW one on recreate. */
+  onDone: (result: FinanceTicket | null) => void;
+}) {
+  const { token } = useAuth();
+  const mutation = useFinanceMutation<{ ticket: FinanceTicket }>();
+  const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) });
+  const base = useMemo(() => feedFromTicket(ticket), [ticket]);
+  const [feed, setFeed] = useState<FeedState>(base);
+  const [reason, setReason] = useState('');
+  const diff = useMemo(() => feedDiff(base, feed), [base, feed]);
+  const dirty = Object.keys(diff).length > 0;
+  const incomplete = feed.subject.trim().length < 3 || feed.description.trim().length < 3;
+
+  const title = mode === 'edit' ? 'Edit' : mode === 'amend' ? 'Amend' : 'Recreate';
+  const description =
+    mode === 'edit'
+      ? 'Changes the query, not the financial record behind it. The previous values are kept as a version and the raiser is told why.'
+      : mode === 'amend'
+        ? 'Saves the form as a new version, marks the query AMENDED and keeps every previous version. Nothing on the books changes.'
+        : 'Creates a NEW query under a new Query ID with the form as it stands. This query is left as it is and both point at each other.';
+
+  async function submit() {
+    const path =
+      mode === 'edit'
+        ? `/api/finance/tickets/${ticket.id}`
+        : mode === 'amend'
+          ? `/api/finance/tickets/${ticket.id}/amend-query`
+          : `/api/finance/tickets/${ticket.id}/recreate`;
+    try {
+      const result = await mutation.mutateAsync({
+        path,
+        method: mode === 'edit' ? 'PATCH' : 'POST',
+        body: { ...diff, reason: reason.trim() },
+      });
+      toast.success(
+        mode === 'edit'
+          ? `${ticket.queryNo} updated`
+          : mode === 'amend'
+            ? `${ticket.queryNo} amended`
+            : `${result.ticket.queryNo} created from ${ticket.queryNo}`,
+      );
+      onDone(result.ticket ?? null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The change could not be saved');
+    }
+  }
+
+  const blocked =
+    mutation.isPending || incomplete || reason.trim().length < 3 || (mode === 'edit' && !dirty);
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            {title} <span className="font-mono">{ticket.queryNo}</span>
+            <QueryStatusBadge status={ticket.status} />
+            <Badge variant="outline" className="font-mono text-[10px]">v{ticket.version}</Badge>
+          </DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        <QueryFeedForm value={feed} onChange={setFeed} branches={branches} idPrefix={`qk-${mode}`} />
+
+        <div className="space-y-1">
+          <Label htmlFor="qk-reason">Reason</Label>
+          <Textarea
+            id="qk-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder={
+              mode === 'recreate' ? 'Why the original needs to be submitted again' : 'e.g. Corrected transaction amount'
+            }
+          />
+          {dirty && (
+            <p className="text-xs text-muted-foreground">Changing: {feedChangeLabels(diff).join(', ')}</p>
+          )}
+          {mode === 'edit' && !dirty && (
+            <p className="text-xs text-muted-foreground">Change a field above to enable Save.</p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>
+            Cancel
+          </Button>
+          <Button variant={mode === 'edit' ? 'default' : 'secondary'} disabled={blocked} onClick={() => void submit()}>
+            {mutation.isPending ? 'Saving…' : mode === 'edit' ? 'Save changes' : mode === 'amend' ? 'Amend query' : 'Recreate query'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
