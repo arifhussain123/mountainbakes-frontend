@@ -35,7 +35,9 @@ import { Lock, Pencil, Plus } from 'lucide-react';
  * Two rules the UI has to make visible, both enforced by database triggers:
  *
  *   * A SYSTEM head (the ones the automatic postings resolve by code) can be
- *     renamed but never deactivated. Its toggle is disabled and carries a lock.
+ *     renamed or hidden but never deleted or re-coded. Hiding it takes it out
+ *     of every picker; the workflow that owns it still posts to it (migration
+ *     107). It carries a lock so the reader knows why it is still there.
  *   * A head is never DELETED, only deactivated. Every voucher ever filed under
  *     it still names it, so there is no delete button anywhere on this page —
  *     the absence is the design, not an omission.
@@ -209,9 +211,9 @@ function HeadRow({
         <div className="flex flex-shrink-0 items-center gap-2">
           <Switch
             checked={head.isActive}
-            // A system head has nowhere for the automatic postings to go if it is
-            // switched off, so the trigger refuses it — do not offer the switch.
-            disabled={head.isSystem || mut.isPending}
+            // A hidden system head still receives its automatic postings
+            // (migration 107), so the switch is offered for every head.
+            disabled={mut.isPending}
             onCheckedChange={(checked) => void toggleActive(Boolean(checked))}
             aria-label={head.isActive ? `Deactivate ${head.name}` : `Reactivate ${head.name}`}
           />
