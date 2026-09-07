@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem } from '@mb/shared';
+import type { AppSettings, Branch, BranchProductionOrder } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
 import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -15,18 +15,24 @@ import { useDocumentPrint } from '@/hooks/useDocumentPrint';
 import { useCachedLogo } from '@/lib/print/logoCache';
 import { printTrace } from '@/lib/print/diagnostics';
 import { PopPrintButton, type PrintHooks } from '@/components/print/PopPrintButton';
-import { printProductionOrder } from '@/lib/print/systemPrinter';
+import { PosPrintError, printProductionOrder } from '@/lib/print/systemPrinter';
 import type { ProductionOrderDoc } from '@/lib/print/receipt/types';
+import { InvalidDocumentError } from '@/lib/print/receipt/validate';
+import {
+  getPrintData,
+  isFrozenOrder,
+  isPrintableLine,
+  orderReference,
+  resolvePackingLine,
+  resolveProductLine,
+  slipReference,
+  statusLabel,
+  type PrintQuantityEdits,
+} from '@/lib/print/productionOrderPrintData';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { COMPANY_NAME } from '@/utils/constants';
-import { formatDate, formatTime } from '@/utils/date';
-
-/** Human reference for the slip header (production_orders has no orderNumber field). */
-export function slipReference(order: Pick<BranchProductionOrder, 'date' | 'time'>): string {
-  return `PO-${(order.date || '').replace(/-/g, '')}-${(order.time || '').replace(':', '')}`;
-}
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -36,28 +42,11 @@ const STATUS_STYLES: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  awaiting_verification: 'Awaiting Verification',
-  verified: 'Verified — Awaiting Approval',
-};
-
-/** Every other status already reads fine capitalized as-is; only this one needs a real label. */
-function statusLabel(status: string): string {
-  return STATUS_LABELS[status] ?? status;
-}
-
 function digits(raw: string): string {
   return raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
 }
 
 const fmt = (n: number) => n.toLocaleString();
-
-/** `YYYY-MM-DD` as `DD/MM/YYYY`. String work, not Date work — these are already Karachi dates,
- *  and parsing them into a Date would reintroduce the timezone shift they were stored to avoid. */
-function compactDate(iso: string): string {
-  const [y, m, d] = (iso || '').split('-');
-  return y && m && d ? `${d}/${m}/${y}` : (iso || '—');
-}
 const money = (n: number, sym: string) => `${sym}${Math.round(n).toLocaleString()}`;
 
 /** Split into `parts` roughly-equal, contiguous chunks (drops empty tail chunks). */
@@ -75,6 +64,13 @@ export interface OrderPrintPreviewProps {
   review: (payload: ReviewOrderPayload) => Promise<unknown>;
   reviewing: boolean;
   markPrinted: (id: string) => Promise<unknown>;
+  /**
+   * The order as the server has it NOW. Every print starts here — a slip is
+   * printed from what this returns, never from the `order` prop, which is what
+   * the dialog was given when it opened. Returns null when the order is gone;
+   * throws when it cannot be fetched.
+   */
+  refreshOrder: (id: string) => Promise<BranchProductionOrder | null>;
   /** Production's closing sign-off on a branch-verified order. */
   finalApprove: (id: string) => Promise<unknown>;
   finalApproving: boolean;
@@ -88,7 +84,7 @@ export interface OrderPrintPreviewProps {
  * totals, the previous-day return items and the net amount to collect against the
  * previous demand (the Company Copy also carries the cash-payment acknowledgement).
  */
-export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted, finalApprove, finalApproving }: OrderPrintPreviewProps) {
+export function OrderPrintPreview({ open, onOpenChange, order, settings, token, review, reviewing, markPrinted, refreshOrder, finalApprove, finalApproving }: OrderPrintPreviewProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => !reviewing && onOpenChange(o)}>
       <DialogContent
@@ -105,6 +101,7 @@ export function OrderPrintPreview({ open, onOpenChange, order, settings, token, 
             review={review}
             reviewing={reviewing}
             markPrinted={markPrinted}
+            refreshOrder={refreshOrder}
             finalApprove={finalApprove}
             finalApproving={finalApproving}
             onClose={() => onOpenChange(false)}
@@ -116,7 +113,7 @@ export function OrderPrintPreview({ open, onOpenChange, order, settings, token, 
 }
 
 function PreviewBody({
-  order, settings, token, review, reviewing, markPrinted, finalApprove, finalApproving, onClose,
+  order, settings, token, review, reviewing, markPrinted, refreshOrder, finalApprove, finalApproving, onClose,
 }: {
   order: BranchProductionOrder;
   settings: AppSettings | null;
@@ -124,6 +121,7 @@ function PreviewBody({
   review: (payload: ReviewOrderPayload) => Promise<unknown>;
   reviewing: boolean;
   markPrinted: (id: string) => Promise<unknown>;
+  refreshOrder: (id: string) => Promise<BranchProductionOrder | null>;
   finalApprove: (id: string) => Promise<unknown>;
   finalApproving: boolean;
   onClose: () => void;
@@ -139,10 +137,7 @@ function PreviewBody({
   // `totalRequiredQty` still exist on historical rows — orders reviewed before
   // that migration were genuinely approved against prev + new — but nothing
   // computes with them any more, so they are not read here.
-  const frozen =
-    order.status === 'awaiting_verification' ||
-    order.status === 'verified' ||
-    order.status === 'approved';
+  const frozen = isFrozenOrder(order);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
@@ -150,6 +145,10 @@ function PreviewBody({
   // 'slip' = the Customer/Company Copy challan; 'check' = the simplified
   // Production Check sheet (branch, product, qty, amount only).
   const [printMode, setPrintMode] = useState<'slip' | 'check'>('slip');
+  // The document the A4 portal prints. Set on the press from a FRESH fetch of
+  // the order (`preparePrintData`), never from what this dialog already had.
+  const [printDoc, setPrintDoc] = useState<ProductionOrderDoc | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [addingProduct, setAddingProduct] = useState(false);
   const [addProductId, setAddProductId] = useState('');
   const [addQty, setAddQty] = useState('');
@@ -186,53 +185,41 @@ function PreviewBody({
   const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
   const sym = settings?.currencySymbol || 'Rs.';
 
-  function rowFor(it: BranchProductionOrderItem) {
-    // The fresh demand is the whole requirement, and the default approval. On a
-    // frozen order `approvedQty` is whatever was actually decided — on a
-    // pre-migration-74 order that figure may exceed `qty`, because it was
-    // approved against a carry-forward that no longer exists. Showing it as
-    // stored is the truth about that delivery; recomputing it would not be.
-    //
-    // A line Production added, or one found in the delivery at verification, was
-    // never demanded by the branch (migration 83). Its `qty` still carries the
-    // intended quantity and is still what the approval defaults to — changing
-    // that would change what ships — so the two are read apart here:
-    //
-    //   approvalDefault  what Production means to send        = qty, always
-    //   newDemand        what the BRANCH asked for            = 0 on an added line
-    //
-    // Collapsing them is the bug this fixes: an added line came out with Demand
-    // equal to Approved, so it read as though the branch had asked for exactly
-    // what was being sent, and the Demand total counted goods nobody requested.
-    const isAdded = it.addedByProduction === true;
-    const approvalDefault = it.qty;
-    const newDemand = isAdded ? 0 : it.qty;
-    const approved = frozen
-      ? (it.approvedQty ?? approvalDefault)
-      : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : approvalDefault);
-    // Snapshot first, live price only where there is no snapshot — see
-    // `livePriceById`. `rateOf` returns null rather than 0 for a missing
-    // snapshot, so `??` falls through on absence but NOT on a genuine zero: a
-    // line legitimately priced at 0 (a special item) stays at 0 instead of
-    // picking up whatever the catalogue says today.
-    const unitPrice = rateOf(it) ?? livePriceById.get(it.productId) ?? 0;
-    const amount = approved * unitPrice;
-    return { newDemand, approved, unitPrice, amount, isAdded };
-  }
+  // The quantities Production is typing, as numbers. Only meaningful while the
+  // order is still pending; the resolver ignores them after that.
+  const quantityEdits: PrintQuantityEdits = {
+    products: Object.fromEntries(Object.entries(edits).map(([id, raw]) => [id, parseInt(raw, 10) || 0])),
+    packing: Object.fromEntries(Object.entries(packingEdits).map(([id, raw]) => [id, parseInt(raw, 10) || 0])),
+  };
+  const lineCtx = { frozen, edits: order.status === 'pending' ? quantityEdits : undefined, livePriceById };
 
-  const rows = order.items.map((it) => ({ it, ...rowFor(it) }));
+  // ONE resolver for the screen and the paper. `resolveProductLine` is the same
+  // function `getPrintData` runs when a slip is printed, so the Demand / Approved
+  // / Amount the review table shows are by construction the figures that print.
+  //
+  //   newDemand  what the BRANCH asked for — 0 on a line Production added
+  //   approved   what ships: stored once frozen, else what is being typed
+  //
+  // See the resolver for why the two are read apart on an added line.
+  const rows = order.items.map((it) => {
+    const line = resolveProductLine(it, lineCtx);
+    return {
+      it,
+      line,
+      newDemand: line.demandQty ?? 0,
+      approved: line.changedQty,
+      unitPrice: line.unitPrice,
+      amount: line.amount,
+      isAdded: line.isAdded === true,
+    };
+  });
   const approvedItems = rows.map(({ it, approved }) => ({ productId: it.productId, approvedQty: approved }));
 
   // Packing materials. Much simpler than products: no previous balance and no
   // carry-forward, so requested is the only baseline and approved defaults to it.
-  const packingItems = order.packingItems ?? [];
-  const packingRows = packingItems.map((it) => {
-    const approved = frozen
-      ? (it.approvedQty ?? it.qty)
-      : (packingEdits[it.packingMaterialId] !== undefined
-          ? (parseInt(packingEdits[it.packingMaterialId]!, 10) || 0)
-          : it.qty);
-    return { it, requested: it.qty, approved };
+  const packingRows = (order.packingItems ?? []).map((it) => {
+    const line = resolvePackingLine(it, lineCtx);
+    return { it, line, requested: line.demandQty, approved: line.changedQty };
   });
   const approvedPackingItems = packingRows.map(({ it, approved }) => ({
     packingMaterialId: it.packingMaterialId,
@@ -248,29 +235,22 @@ function PreviewBody({
   // Filtered ONLY once the order is frozen. While it is still 'pending' every
   // line has to stay on screen — that table is the control Production sets the
   // quantities with, and hiding a line would remove the only way to give it one.
-  // After review, a line approved at zero is not going out, and the print slips
-  // have always dropped it; the screen the slip is generated from should not be
-  // the one place it survives.
+  // After review, the screen shows exactly the lines the slip prints
+  // (`isPrintableLine` — the same rule `getPrintData` applies), so the screen
+  // the slip is generated from is never the one place a line differs.
   //
   // `rows` / `packingRows` above are left whole on purpose: `approvedItems` is
   // built from them, and a short override list would let the RPC fall back to
   // its own default for the missing lines — silently re-approving in full
   // exactly what somebody had cut to zero. (That default is now the fresh
   // demand rather than prev + new, but the hazard is identical.)
-  const visibleRows = frozen ? rows.filter(({ approved }) => approved > 0) : rows;
-  const visiblePackingRows = frozen ? packingRows.filter(({ approved }) => approved > 0) : packingRows;
+  const visibleRows = frozen ? rows.filter(({ line }) => isPrintableLine(line)) : rows;
+  const visiblePackingRows = frozen ? packingRows.filter(({ line }) => isPrintableLine(line)) : packingRows;
 
-  const printRows: PrintRow[] = rows.map(({ it, ...r }) => ({ productName: it.productName, ...r }));
-  // The slip prints the APPROVED quantity, which is what actually ships.
-  const packingPrintRows = packingRows.map(({ it, approved }) => ({ materialName: it.materialName, qty: approved }));
-  const totals = printRows.reduce(
+  const totals = rows.reduce(
     (a, r) => ({ demand: a.demand + r.newDemand, approved: a.approved + r.approved, amount: a.amount + r.amount }),
     { demand: 0, approved: 0, amount: 0 },
   );
-
-  const now = new Date();
-  const printDate = formatDate(now);
-  const printTime = formatTime(now);
 
 
   // The receivable for the PREVIOUS delivery — server-computed, because
@@ -382,12 +362,73 @@ function PreviewBody({
     });
   }
 
+  /**
+   * The canonical print document, from a FRESH fetch.
+   *
+   *   refreshOrder() + previous balance  →  getPrintData()  →  validatePrintData()
+   *
+   * Every print — POP, A4 challan, check sheet — starts here, and none of them
+   * prints the `order` prop: that is what the dialog was handed when it opened,
+   * and anything reviewed, added or verified since is not in it. The fetch is
+   * awaited, and a fetch that fails is a print that does not happen; a slip
+   * printed from the cache "because the network was down" is exactly the stale
+   * document this exists to rule out.
+   *
+   * The one screen input that survives is the quantities being typed into a
+   * still-pending order — those are what Production is about to submit, and
+   * `getPrintData` applies them only while the fresh order is still pending.
+   */
+  async function preparePrintData(): Promise<ProductionOrderDoc> {
+    printTrace('refreshing order before print');
+    const [fresh, prevBal] = await Promise.all([
+      refreshOrder(order.id),
+      prevBalanceQ.refetch({ throwOnError: true }),
+    ]);
+    if (!fresh) throw new Error('This order could not be found on the server. Refresh the page and try again.');
+    printTrace('order refreshed', {
+      status: fresh.status,
+      items: fresh.items.length,
+      packing: (fresh.packingItems ?? []).length,
+    });
+    return getPrintData({
+      order: fresh,
+      edits: quantityEdits,
+      livePriceById,
+      branchName: branch?.name,
+      companyName: settings?.companyName ?? COMPANY_NAME,
+      currencySymbol: sym,
+      // Only when already inlined as bytes — the receipt never waits on a fetch.
+      logo: logo ?? null,
+      // The same server figures the screen's collection block shows, passed
+      // through rather than re-derived. `null` = no previous delivery.
+      previousBalance: prevBal.data ?? null,
+    });
+  }
+
+  /** One sentence for the toast, naming what stopped the print. */
+  function printProblem(err: unknown): string {
+    if (err instanceof InvalidDocumentError) return err.message;
+    const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
+    return `Could not refresh the order before printing${detail}. Check the connection and try again.`;
+  }
+
   // Print only prints — it no longer submits a pending demand as a side effect.
   // Submission is a deliberate action via the Submit for Verification button;
-  // Print previews/prints whatever is currently on screen (requested quantities
-  // while still pending).
-  function print() {
+  // Print prints the order as the server has it (with the quantities being
+  // typed, while still pending).
+  async function print() {
     setEditing(false);
+    setPreparing(true);
+    let doc: ProductionOrderDoc;
+    try {
+      doc = await preparePrintData();
+    } catch (err) {
+      toast.error('Nothing was printed', { description: printProblem(err) });
+      return;
+    } finally {
+      setPreparing(false);
+    }
+    setPrintDoc(doc);
     setPrintMode('slip');
     printTrace('markPrinted requested');
     markPrinted(order.id).then(() => printTrace('markPrinted done')).catch(() => printTrace('markPrinted failed'));
@@ -398,72 +439,43 @@ function PreviewBody({
   // only, laid out in 2-3 columns when there are many items so a long demand
   // still fits on one page. Doesn't touch markPrinted: that flag tracks the
   // official delivery slip, not this internal stock-check aid.
-  function printCheck() {
+  async function printCheck() {
     setEditing(false);
+    setPreparing(true);
+    let doc: ProductionOrderDoc;
+    try {
+      doc = await preparePrintData();
+    } catch (err) {
+      toast.error('Nothing was printed', { description: printProblem(err) });
+      return;
+    } finally {
+      setPreparing(false);
+    }
+    setPrintDoc(doc);
     setPrintMode('check');
     printAndClose();
   }
 
   /**
-   * The demand as the receipt — the canonical print document POP Print sends.
-   *
-   * Built from `printRows` and `totals` — the very rows and total the review
-   * table on screen is showing — rather than re-derived from `order.items`.
-   * That is the point: a slip the floor packs from must be the sheet the
-   * screen agreed to, and recomputing it at print time is how the two come to
-   * differ after someone edits a quantity.
-   *
-   * `requiredDate` is rendered as an em dash where the demand predates the field
-   * (migration 81) rather than falling back to `date`. Printing the raise date as
-   * a delivery commitment would put a promise on paper that nobody made.
+   * POP Print — the same canonical document, sent to the printer this computer
+   * has installed. `printProductionOrder` validates it again and reads the
+   * rendered frame back before any paper moves (systemPrinter.ts).
    */
-  function productionDoc(): ProductionOrderDoc {
-    return {
-      orderNumber: order.demandNumber || slipReference(order),
-      // Compact numeric dates, not the app's `dd MMM yyyy`: the header packs two
-      // label/value pairs onto a 48-character line, and "31 Aug 2026" twice does
-      // not fit beside its labels where "31/08/2026" does.
-      dateText: compactDate(order.date),
-      timeText: order.time || printTime,
-      requiredDateText: order.requiredDate ? compactDate(order.requiredDate) : '—',
-      branchName: branch?.name || order.branchName || '—',
-      companyName: settings?.companyName ?? COMPANY_NAME,
-      currencySymbol: sym,
-      // Only when already inlined as bytes — the receipt never waits on a fetch.
-      logo: logo ?? null,
-      items: printRows.map((r) => ({
-        productName: r.productName,
-        qty: r.approved,
-        unitPrice: r.unitPrice,
-        amount: r.amount,
-      })),
-      grandTotal: totals.amount,
-      // The same server figures the A4 challan's collection block prints, passed
-      // through rather than re-derived. `undefined` while the query is still in
-      // flight, so a slip printed early leaves the block off instead of printing
-      // a collection of zero against a delivery that has one.
-      previousCollection: prevBalanceQ.isLoading
-        ? undefined
-        : previousRef
-          ? {
-              reference: previousRef.demandNumber,
-              dateText: previousRef.date,
-              orderedValue: prevBal?.orderedValue ?? 0,
-              deliveredValue,
-              companyShare: companyShareValue,
-              returnsAmount,
-              discountsAmount,
-              amountToCollect: collectionAmount,
-            }
-          : null,
-    };
-  }
-
   async function printPop(hooks: PrintHooks) {
     setEditing(false);
+    let doc: ProductionOrderDoc;
+    try {
+      doc = await preparePrintData();
+    } catch (err) {
+      // Named for what it is: a document problem is not a printer problem, and
+      // neither is a network one — the button's generic "check the printer"
+      // advice would send someone to the wrong machine.
+      if (err instanceof InvalidDocumentError) throw new PosPrintError('invalid-document', err.message);
+      throw new PosPrintError('print-failed', printProblem(err));
+    }
     // Queued, not awaited on the main thread: systemPrinter hands this to the
     // print queue and the hooks let the button say Queued / Printing as it moves.
-    const result = await printProductionOrder(productionDoc(), { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate });
+    const result = await printProductionOrder(doc, { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate });
     printTrace('markPrinted requested');
     // Same flag the A4 slip sets, and set the same way — fire and forget, because
     // a failed bookkeeping call must not turn a receipt that DID print into an
@@ -924,33 +936,18 @@ function PreviewBody({
 
           Mounted only while a print is in progress. ── */}
       <PrintPortal active={documentPrinting}>
-        {printMode === 'slip' ? (
-          /* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
-             the bottom half, with a cut line between them. See `.print-sheet` /
-             `.print-half` in globals.css. */
-          <div className="print-sheet">
-            <PrintCopy
-              copyLabel="Customer Copy"
-              logo={logo} companyName={companyName} sym={sym} order={order}
-              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-              previousRef={previousRef} deliveredValue={deliveredValue}
-              companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
-              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
-            />
-            <PrintCopy
-              copyLabel="Company Copy"
-              logo={logo} companyName={companyName} sym={sym} order={order}
-              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-              previousRef={previousRef} deliveredValue={deliveredValue}
-              companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
-              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
-            />
-          </div>
-        ) : (
-          <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
-        )}
+        {printDoc &&
+          (printMode === 'slip' ? (
+            /* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
+               the bottom half, with a cut line between them. Both copies are the
+               same `printDoc`. See `.print-sheet` / `.print-half` in globals.css. */
+            <div className="print-sheet">
+              <PrintCopy copyLabel="Customer Copy" doc={printDoc} />
+              <PrintCopy copyLabel="Company Copy" doc={printDoc} />
+            </div>
+          ) : (
+            <ProductionCheckSheet doc={printDoc} />
+          ))}
       </PrintPortal>
 
       {/* Action bar — hidden on print */}
@@ -1004,7 +1001,7 @@ function PreviewBody({
             and prepare stock against a newly received order, so it has no purpose
             once the goods have gone out. */}
         {order.status === 'pending' && (
-          <Button variant="outline" onClick={printCheck} disabled={reviewing}>
+          <Button variant="outline" onClick={printCheck} disabled={reviewing || preparing}>
             <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
           </Button>
         )}
@@ -1021,26 +1018,18 @@ function PreviewBody({
         <PopPrintButton
           label="POP Print"
           print={printPop}
-          disabled={reviewing}
+          disabled={reviewing || preparing}
         />
         <PrintButton
           variant="secondary"
           onPrint={print}
-          disabled={reviewing}
+          disabled={reviewing || preparing}
           printLabel="A4 Challan"
           saveLabel="Save A4 PDF"
         />
       </div>
     </>
   );
-}
-
-interface PrintRow {
-  productName: string;
-  newDemand: number;
-  approved: number;
-  unitPrice: number;
-  amount: number;
 }
 
 function SlipHeader({ logo, companyName, status, branch, copyLabel }: { logo?: string; companyName: string; status: string; branch: Branch | null; copyLabel?: string }) {
@@ -1070,7 +1059,8 @@ function SlipHeader({ logo, companyName, status, branch, copyLabel }: { logo?: s
 function OrderMeta({ order }: { order: BranchProductionOrder }) {
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-3 text-[11px] sm:grid-cols-3">
-      <MetaKV k="Order #" v={slipReference(order)} mono />
+      <MetaKV k="Order #" v={orderReference(order)} mono />
+      <MetaKV k="Ref" v={slipReference(order)} mono />
       <MetaKV k="Demand Date" v={order.date} />
       {/* Beside the date it was RAISED, because the pair is the point: one is
           when the branch asked, the other is when they need it. Empty on demands
@@ -1097,58 +1087,65 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
 /**
  * One printed copy (Customer or Company) — HALF of an A4 delivery challan: the two
  * copies share one sheet, Customer on top, Company below the cut line. Both carry
- * identical information (spec); only the corner watermark label differs. The
- * product table lists approved products only, with derived amounts and grand total.
+ * identical information (spec); only the corner watermark label differs and the
+ * Company Copy adds the itemised deductions and the cash-collection log.
+ *
+ * Rendered from the canonical `ProductionOrderDoc` and nothing else — the same
+ * document the roll receipt prints. Every quantity, rate, amount and total is
+ * read off it; none is recomputed here.
  *
  * Everything here is sized for a half page, so the spacing/type scale is tighter
  * than a standalone document and the column split kicks in far sooner — see `cols`.
  */
-function PrintCopy({
-  copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
-  previousRef, deliveredValue, companyShareValue,
-  returnRows, returnsQty, returnsAmount, discountRows, discountsAmount, collectionAmount,
-}: {
-  copyLabel: string;
-  logo?: string;
-  companyName: string;
-  sym: string;
-  order: BranchProductionOrder;
-  printRows: PrintRow[];
-  /** Approved packing lines. Empty on a products-only demand. */
-  packingPrintRows: { materialName: string; qty: number }[];
-  printDate: string;
-  printTime: string;
-  /** The preceding delivered order this slip bills for; null if there isn't one. */
-  previousRef: { demandNumber: string; date: string } | null;
-  /** That order's delivered goods value (approved qty × unit price). */
-  deliveredValue: number;
-  /** deliveredValue × the branch's agreed company-share rate, computed server-side. */
-  companyShareValue: number;
-  /** Accepted returns received since the order being billed, itemised by the server. */
-  returnRows: { productName: string; qty: number; amount: number }[];
-  returnsQty: number;
-  returnsAmount: number;
-  /** Approved discount claims in the same window — the second deduction. */
-  discountRows: { demandNumber: string; amount: number }[];
-  discountsAmount: number;
-  /** companyShareValue less returnsAmount AND discountsAmount — what the rider
-   *  actually collects. */
-  collectionAmount: number;
-}) {
-  const items = printRows.filter((r) => r.approved > 0);
-  // Same rule as products: the slip is a delivery document, so it lists what is
-  // actually going out — a line approved down to zero is not delivered.
-  const packingItems = packingPrintRows.filter((p) => p.qty > 0);
-  const totalQty = items.reduce((a, r) => a + r.approved, 0);
-  const grandTotal = items.reduce((a, r) => a + r.amount, 0);
-  const hasPrevBalance = !!previousRef;
+function PrintCopy({ copyLabel, doc }: { copyLabel: string; doc: ProductionOrderDoc }) {
+  const sym = doc.currencySymbol;
+  const companyName = doc.companyName?.trim() || COMPANY_NAME;
+  const items = doc.items;
+  const packingItems = doc.packingItems;
+  const totalDemand = items.reduce((a, r) => a + (r.demandQty ?? 0), 0);
+  const totalQty = items.reduce((a, r) => a + r.changedQty, 0);
+  const pc = doc.previousCollection;
+  const returnRows = pc?.returnItems ?? [];
+  const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
+  const discountRows = pc?.discountItems ?? [];
   const isCompanyCopy = copyLabel === 'Company Copy';
-  // A long demand splits into 2-3 side-by-side columns so it still fits its half
-  // page instead of a long single-column list; the Totals recap below already
-  // covers the grand total, so split tables skip their own <tfoot>. Thresholds are
-  // roughly half the full-page ones, because a copy now gets half the height.
-  const cols = items.length > 16 ? 3 : items.length > 6 ? 2 : 1;
+  // A long demand splits into two side-by-side tables so it still fits its half
+  // page; the Totals recap below already carries the totals, so split tables
+  // skip their own <tfoot>. Five columns now, so two is the most that stays
+  // legible at this size.
+  const cols = items.length > 8 ? 2 : 1;
   const groups = chunk(items, cols);
+
+  const productHead = (
+    <thead>
+      <tr className="border-y border-neutral-400 text-left">
+        <th className="py-0.5 pr-1 font-semibold">Product</th>
+        <th className="px-1 py-0.5 text-right font-semibold">Demand Qty</th>
+        <th className="px-1 py-0.5 text-right font-semibold">Changed Qty</th>
+        <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
+        <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
+      </tr>
+    </thead>
+  );
+  const productRow = (r: ProductionOrderDoc['items'][number]) => (
+    <tr key={r.productId ?? r.productName} className="border-b border-neutral-200 align-top">
+      <td className="py-0.5 pr-1 font-medium">
+        {r.productName}
+        {r.isSpecial && (
+          <span className="ml-1 rounded border border-neutral-400 px-1 py-px text-[7px] font-bold uppercase">Special</span>
+        )}
+        {r.isAdded && (
+          <span className="ml-1 rounded border border-neutral-400 px-1 py-px text-[7px] font-bold uppercase text-neutral-600">Added</span>
+        )}
+        {r.isSpecial && r.description && <p className="text-[8px] font-normal italic text-neutral-600">{r.description}</p>}
+      </td>
+      {/* An added line has no branch demand to show — a dash, not a 0. */}
+      <td className="px-1 py-0.5 text-right tabular-nums">{r.demandQty === null ? '—' : fmt(r.demandQty)}</td>
+      <td className="px-1 py-0.5 text-right font-semibold tabular-nums">{fmt(r.changedQty)}</td>
+      <td className="px-1 py-0.5 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
+      <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
+    </tr>
+  );
 
   return (
     <div className="production-slip print-half relative mx-auto w-full max-w-[720px] bg-white px-5 py-3 text-black">
@@ -1162,9 +1159,9 @@ function PrintCopy({
           document. The watermark above and the meta grid below still identify it. */}
       <div className="avoid-break border-b-2 border-neutral-800 pb-1.5">
         <div className="flex items-start gap-2">
-          {logo && (
+          {doc.logo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logo} alt="logo" className="h-9 w-9 shrink-0 object-contain" />
+            <img src={doc.logo} alt="logo" className="h-9 w-9 shrink-0 object-contain" />
           )}
           {!isCompanyCopy && (
             <div className="min-w-0 flex-1">
@@ -1174,59 +1171,62 @@ function PrintCopy({
             </div>
           )}
         </div>
-        <div className="mt-1.5 grid grid-cols-3 gap-x-4 pr-20 text-[9px] leading-tight">
-          <MetaKV k="Production Order No" v={slipReference(order)} mono />
-          <MetaKV k="Demand Date" v={order.date} />
-          <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
-          <MetaKV k="Branch" v={order.branchName} />
-          <MetaKV k="Print Date" v={printDate} />
-          <MetaKV k="Print Time" v={printTime} />
-          <div className="min-w-0">
-            <span className="text-neutral-500">Status: </span>
-            <span className={`rounded-full px-1.5 text-[9px] font-semibold uppercase ${STATUS_STYLES[order.status] ?? 'bg-neutral-200 text-neutral-700'}`}>{statusLabel(order.status)}</span>
-          </div>
+        <div className="mt-1.5 grid grid-cols-4 gap-x-4 pr-20 text-[9px] leading-tight">
+          <MetaKV k="Production Order No" v={doc.orderNumber} mono />
+          <MetaKV k="Ref" v={doc.refText ?? ''} mono />
+          <MetaKV k="Business Date" v={doc.dateText} />
+          <MetaKV k="Required Date" v={doc.requiredDateText} />
+          <MetaKV k="Branch" v={doc.branchName} />
+          <MetaKV k="Print Date" v={doc.printDateText} />
+          <MetaKV k="Print Time" v={doc.printTimeText} />
+          <MetaKV k="Status" v={doc.statusText} />
         </div>
       </div>
 
       {/* Previous Order Balance — on BOTH copies.
 
-          It used to be Company Copy only, on the argument that this is internal
-          reconciliation and a customer does not need it on a delivery receipt.
-          That was wrong in the one way that matters: the rider COLLECTS this
-          amount in cash at the counter, and the branch handing the money over had
-          no printed statement of what it was for. Asking somebody to pay against
-          a figure they can only see on the other party's copy is not a document,
-          it is a request to take their word for it.
+          The rider COLLECTS this amount in cash at the counter, and the branch
+          handing the money over needs a printed statement of what it is for.
+          Asking somebody to pay against a figure they can only see on the other
+          party's copy is not a document, it is a request to take their word for it.
 
           The itemised Return Items and Discounts tables below stay Company Copy
           only. They are the working behind the two "Less …" lines, each copy gets
           half a page, and two more tables on the customer half would push the
           product list onto a second sheet — the summary lines are what the branch
-          needs to check the total, and the detail is one question away. */}
-      <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
-        <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
-        {hasPrevBalance ? (
-          // Full working shown, not just the total — this is counted out in
-          // cash at the counter and has to be verifiable line by line.
-          <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
-            <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
-            <MetaKV k="Previous Demand Date" v={previousRef!.date} />
-            <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
-            <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
-            <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
-            <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
-            <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
-          </div>
-        ) : (
-          <p className="text-[9px] font-medium text-neutral-500">
-            No previous delivery for this branch — nothing to collect.
-          </p>
-        )}
-      </div>
+          needs to check the total, and the detail is one question away.
 
-      {isCompanyCopy && (
+          Left off entirely (rather than printed as zeros) when the figures were
+          not loaded — which `preparePrintData` makes unreachable, since it waits
+          for them; the guard is here so a partial document can never print a
+          collection of zero against a delivery that has one. */}
+      {pc !== undefined && (
+        <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
+          {pc ? (
+            // Full working shown, not just the total — this is counted out in
+            // cash at the counter and has to be verifiable line by line.
+            <div className="grid grid-cols-4 gap-x-4 text-[9px] leading-tight">
+              <MetaKV k="Previous Order No" v={pc.reference} mono />
+              <MetaKV k="Previous Demand Date" v={pc.dateText} />
+              <MetaKV k="Previous Order" v={money(pc.orderedValue, sym)} />
+              <MetaKV k="Delivered Value" v={money(pc.deliveredValue, sym)} />
+              <MetaKV k="Company Share" v={money(pc.companyShare, sym)} />
+              <MetaKV k="Less Returns" v={pc.returnsAmount > 0 ? `${returnsQty > 0 ? `${fmt(returnsQty)} · ` : ''}${money(pc.returnsAmount, sym)}` : '—'} />
+              <MetaKV k="Less Discount" v={pc.discountsAmount > 0 ? money(pc.discountsAmount, sym) : '—'} />
+              <MetaKV k="Amount to Collect" v={money(pc.amountToCollect, sym)} />
+            </div>
+          ) : (
+            <p className="text-[9px] font-medium text-neutral-500">
+              No previous delivery for this branch — nothing to collect.
+            </p>
+          )}
+        </div>
+      )}
+
+      {isCompanyCopy && pc && (
         <>
-          {/* Return items — accepted the previous business day. Rendered only when
+          {/* Return items — accepted since the previous order. Rendered only when
               the branch actually returned something, so an ordinary slip is
               unchanged. */}
           {returnRows.length > 0 && (
@@ -1241,8 +1241,8 @@ function PrintCopy({
                   </tr>
                 </thead>
                 <tbody>
-                  {returnRows.map((r) => (
-                    <tr key={r.productName} className="border-b border-neutral-200">
+                  {returnRows.map((r, i) => (
+                    <tr key={`${r.productName}-${i}`} className="border-b border-neutral-200">
                       <td className="py-0.5 pr-1 font-medium">{r.productName}</td>
                       <td className="px-1 py-0.5 text-right tabular-nums">{fmt(r.qty)}</td>
                       <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
@@ -1253,7 +1253,7 @@ function PrintCopy({
                   <tr className="border-t-2 border-neutral-400 font-bold">
                     <td className="pt-0.5">Total</td>
                     <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(returnsQty)}</td>
-                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(returnsAmount, sym)}</td>
+                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(pc.returnsAmount, sym)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -1284,7 +1284,7 @@ function PrintCopy({
                 <tfoot>
                   <tr className="border-t-2 border-neutral-400 font-bold">
                     <td className="pt-0.5">Total</td>
-                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(discountsAmount, sym)}</td>
+                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(pc.discountsAmount, sym)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -1293,118 +1293,79 @@ function PrintCopy({
         </>
       )}
 
-      {/* Approved products */}
+      {/* PRODUCTS — Demand beside Changed, so the branch reads what it asked for
+          and what is coming in one glance. */}
+      <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wide text-neutral-500">Products</p>
       {items.length === 0 ? (
-        <table className="mt-1.5 w-full border-collapse text-[9px] leading-tight">
-          <thead>
-            <tr className="border-y border-neutral-400 text-left">
-              <th className="py-0.5 pr-1 font-semibold">Product</th>
-              <th className="px-1 py-0.5 text-right font-semibold">Approved Qty</th>
-              <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
-              <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
-            </tr>
-          </thead>
+        <table className="w-full border-collapse text-[9px] leading-tight">
+          {productHead}
           <tbody>
-            <tr><td colSpan={4} className="py-2 text-center text-neutral-500">No approved products.</td></tr>
+            <tr><td colSpan={5} className="py-2 text-center text-neutral-500">No products on this order.</td></tr>
           </tbody>
         </table>
       ) : cols === 1 ? (
-        <table className="mt-1.5 w-full border-collapse text-[9px] leading-tight">
-          <thead>
-            <tr className="border-y border-neutral-400 text-left">
-              <th className="py-0.5 pr-1 font-semibold">Product</th>
-              <th className="px-1 py-0.5 text-right font-semibold">Approved Qty</th>
-              <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
-              <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((r) => (
-              <tr key={r.productName} className="border-b border-neutral-200 align-top">
-                <td className="py-0.5 pr-1 font-medium">{r.productName}</td>
-                <td className="px-1 py-0.5 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
-                <td className="px-1 py-0.5 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
-                <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
-              </tr>
-            ))}
-          </tbody>
+        <table className="w-full border-collapse text-[9px] leading-tight">
+          {productHead}
+          <tbody>{items.map(productRow)}</tbody>
           <tfoot>
             <tr className="border-t-2 border-neutral-400 font-bold">
               <td className="pt-0.5">Totals</td>
+              <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(totalDemand)}</td>
               <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(totalQty)}</td>
               <td className="pt-0.5"></td>
-              <td className="pt-0.5 pl-1 text-right tabular-nums">{money(grandTotal, sym)}</td>
+              <td className="pt-0.5 pl-1 text-right tabular-nums">{money(doc.grandTotal, sym)}</td>
             </tr>
           </tfoot>
         </table>
       ) : (
-        <div className={`avoid-break mt-1.5 grid gap-x-3 ${cols === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <div className="avoid-break grid grid-cols-2 gap-x-3">
           {groups.map((group, gi) => (
             <table key={gi} className="w-full border-collapse text-[9px] leading-tight">
-              <thead>
-                {/* Headings match the single-column table above WORD FOR WORD.
-                    They used to be abbreviated to "Qty" / "Price" here, which
-                    meant the same two columns were named one thing on a demand
-                    of six items and another on a demand of twenty — on a
-                    document whose whole job is to be checked against goods. The
-                    longer words wrap to two lines in a narrow column; that costs
-                    one header row and is worth it. */}
-                <tr className="border-y border-neutral-400 text-left">
-                  <th className="py-0.5 pr-1 font-semibold">Product</th>
-                  <th className="px-1 py-0.5 text-right font-semibold">Approved Qty</th>
-                  <th className="px-1 py-0.5 text-right font-semibold">Unit Price</th>
-                  <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.map((r) => (
-                  <tr key={r.productName} className="border-b border-neutral-200 align-top">
-                    <td className="py-0.5 pr-1 font-medium">{r.productName}</td>
-                    <td className="px-1 py-0.5 text-right font-semibold tabular-nums">{fmt(r.approved)}</td>
-                    <td className="px-1 py-0.5 text-right tabular-nums">{money(r.unitPrice, sym)}</td>
-                    <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(r.amount, sym)}</td>
-                  </tr>
-                ))}
-              </tbody>
+              {/* Headings match the single-column table above WORD FOR WORD, on
+                  a document whose whole job is to be checked against goods. */}
+              {productHead}
+              <tbody>{group.map(productRow)}</tbody>
             </table>
           ))}
         </div>
       )}
 
-      {/* Totals recap */}
-      <div className="avoid-break mt-1 ml-auto w-full max-w-[220px] text-[9px] leading-tight">
-        <div className="flex justify-between"><span className="text-neutral-600">Total Qty</span><span className="font-semibold tabular-nums">{fmt(totalQty)}</span></div>
-        <div className="flex justify-between border-t border-neutral-300 text-[11px] font-bold"><span>Grand Total Amount</span><span className="tabular-nums">{money(grandTotal, sym)}</span></div>
+      {/* Totals recap — the document's own figures, never re-added here. */}
+      <div className="avoid-break mt-1 ml-auto w-full max-w-[240px] text-[9px] leading-tight">
+        <div className="flex justify-between"><span className="text-neutral-600">Total Demand Qty</span><span className="font-semibold tabular-nums">{fmt(totalDemand)}</span></div>
+        <div className="flex justify-between"><span className="text-neutral-600">Total Changed Qty</span><span className="font-semibold tabular-nums">{fmt(totalQty)}</span></div>
+        <div className="flex justify-between border-t border-neutral-300 text-[11px] font-bold"><span>Total Order Amount</span><span className="tabular-nums">{money(doc.grandTotal, sym)}</span></div>
       </div>
 
-      {/* Packing materials — its own table, below the products and outside the
-          money totals. These carry no price, so they must never fold into the
-          grand total. Omitted entirely when the demand has none, which keeps an
-          ordinary slip byte-identical to before. */}
+      {/* PACKING MATERIALS — its own table, below the products and outside the
+          money totals. These carry no price, so they never fold into the total.
+          Omitted entirely when the branch requested none: no heading, no empty
+          table. When it did, every requested line prints at its exact figures. */}
       {packingItems.length > 0 && (
         <div className="avoid-break mt-1.5">
           <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Packing Materials</p>
           <table className="w-full border-collapse text-[9px] leading-tight">
             <thead>
               <tr className="border-y border-neutral-400 text-left">
-                <th className="py-0.5 pr-1 font-semibold">Item</th>
-                <th className="py-0.5 pl-1 text-right font-semibold">Qty</th>
+                <th className="py-0.5 pr-1 font-semibold">Packing Material</th>
+                <th className="px-1 py-0.5 text-right font-semibold">Demand Qty</th>
+                <th className="py-0.5 pl-1 text-right font-semibold">Changed Qty</th>
               </tr>
             </thead>
             <tbody>
               {packingItems.map((p) => (
-                <tr key={p.materialName} className="border-b border-neutral-200">
+                <tr key={p.packingMaterialId || p.materialName} className="border-b border-neutral-200">
                   <td className="py-0.5 pr-1 font-medium">{p.materialName}</td>
-                  <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{fmt(p.qty)}</td>
+                  <td className="px-1 py-0.5 text-right tabular-nums">{fmt(p.demandQty)}</td>
+                  <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{fmt(p.changedQty)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-neutral-400 font-bold">
                 <td className="pt-0.5">Total</td>
-                <td className="pt-0.5 pl-1 text-right tabular-nums">
-                  {fmt(packingItems.reduce((a, p) => a + p.qty, 0))}
-                </td>
+                <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(packingItems.reduce((a, p) => a + p.demandQty, 0))}</td>
+                <td className="pt-0.5 pl-1 text-right tabular-nums">{fmt(packingItems.reduce((a, p) => a + p.changedQty, 0))}</td>
               </tr>
             </tfoot>
           </table>
@@ -1424,45 +1385,50 @@ function PrintCopy({
         </div>
       )}
 
+      {/* Signatures — on both copies: the copy the branch keeps is the one it
+          signs for, and the one Production keeps is the one it signs out. */}
+      <div className="avoid-break mt-2 grid grid-cols-3 gap-x-6">
+        <FillField label="Prepared By (Production)" />
+        <FillField label="Collected By (Rider)" />
+        <FillField label="Received By (Branch)" />
+      </div>
     </div>
   );
 }
 
 /**
  * Production Check sheet — a stripped-down stock-check aid for the floor, not a
- * customer/company document: just Branch, Product, Qty, Amount, no prices,
- * balances, returns or sign-offs. When a demand has many line items they're
- * split into 2-3 side-by-side columns so a long list still fits one page.
+ * customer/company document: just Branch, Product, Qty, Amount and the packing
+ * materials to gather, no balances, returns or sign-offs. When a demand has many
+ * line items they're split into 2-3 side-by-side columns so a long list still
+ * fits one page. Read off the same canonical document as the challan.
  */
-function ProductionCheckSheet({
-  order, printRows, sym, printDate,
-}: {
-  order: BranchProductionOrder;
-  printRows: PrintRow[];
-  sym: string;
-  printDate: string;
-}) {
-  const items = printRows.filter((r) => r.approved > 0).map((r) => ({ productName: r.productName, qty: r.approved, amount: r.amount }));
+function ProductionCheckSheet({ doc }: { doc: ProductionOrderDoc }) {
+  const sym = doc.currencySymbol;
+  // The floor makes what is going out; a line changed to zero is not made.
+  const items = doc.items.filter((r) => r.changedQty > 0);
+  const packing = doc.packingItems.filter((p) => p.changedQty > 0);
   const cols = items.length > 30 ? 3 : items.length > 12 ? 2 : 1;
   const groups = chunk(items, cols);
-  const totalQty = items.reduce((a, r) => a + r.qty, 0);
-  const totalAmount = items.reduce((a, r) => a + r.amount, 0);
+  const totalQty = items.reduce((a, r) => a + r.changedQty, 0);
 
   return (
     <div className="production-slip print-page relative mx-auto w-full max-w-[720px] bg-white p-6 text-black">
       <div className="avoid-break border-b-2 border-neutral-800 pb-3">
         <h2 className="text-lg font-bold uppercase tracking-wide">Production Check</h2>
         <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] sm:grid-cols-4">
-          <MetaKV k="Branch" v={order.branchName} />
-          <MetaKV k="Production Order No" v={slipReference(order)} mono />
-          <MetaKV k="Demand Date" v={order.date} />
-          <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
-          <MetaKV k="Print Date" v={printDate} />
+          <MetaKV k="Branch" v={doc.branchName} />
+          <MetaKV k="Production Order No" v={doc.orderNumber} mono />
+          <MetaKV k="Business Date" v={doc.dateText} />
+          <MetaKV k="Required Date" v={doc.requiredDateText} />
+          <MetaKV k="Print Date" v={doc.printDateText} />
+          <MetaKV k="Print Time" v={doc.printTimeText} />
+          <MetaKV k="Status" v={doc.statusText} />
         </div>
       </div>
 
       {items.length === 0 ? (
-        <p className="mt-4 text-center text-[11px] text-neutral-500">No approved products.</p>
+        <p className="mt-4 text-center text-[11px] text-neutral-500">No products to make on this order.</p>
       ) : (
         <div className={`avoid-break print-cols mt-3 grid gap-x-4 ${cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {groups.map((group, gi) => (
@@ -1476,9 +1442,9 @@ function ProductionCheckSheet({
               </thead>
               <tbody>
                 {group.map((r) => (
-                  <tr key={r.productName} className="border-b border-neutral-200 align-top">
+                  <tr key={r.productId ?? r.productName} className="border-b border-neutral-200 align-top">
                     <td className="py-1 pr-1 font-medium">{r.productName}</td>
-                    <td className="px-1 py-1 text-right tabular-nums">{fmt(r.qty)}</td>
+                    <td className="px-1 py-1 text-right tabular-nums">{fmt(r.changedQty)}</td>
                     <td className="py-1 pl-1 text-right tabular-nums">{money(r.amount, sym)}</td>
                   </tr>
                 ))}
@@ -1490,8 +1456,31 @@ function ProductionCheckSheet({
 
       <div className="avoid-break mt-3 flex justify-end gap-6 border-t-2 border-neutral-400 pt-2 text-[11px] font-bold">
         <span>Total Qty: {fmt(totalQty)}</span>
-        <span>Total Amount: {money(totalAmount, sym)}</span>
+        <span>Total Amount: {money(doc.grandTotal, sym)}</span>
       </div>
+
+      {/* Packing materials to gather alongside — only when the branch asked. */}
+      {packing.length > 0 && (
+        <div className="avoid-break mt-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Packing Materials</p>
+          <table className="w-full max-w-[360px] border-collapse text-[11px]">
+            <thead>
+              <tr className="border-y border-neutral-400 text-left">
+                <th className="py-1 pr-1 font-semibold">Packing Material</th>
+                <th className="py-1 pl-1 text-right font-semibold">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {packing.map((p) => (
+                <tr key={p.packingMaterialId || p.materialName} className="border-b border-neutral-200">
+                  <td className="py-1 pr-1 font-medium">{p.materialName}</td>
+                  <td className="py-1 pl-1 text-right tabular-nums">{fmt(p.changedQty)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

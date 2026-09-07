@@ -32,6 +32,21 @@ export { isRetryable, printErrorMessage, type PrintErrorCode } from './errors';
 export { PAPER_OPTIONS, readReceiptPaper, useReceiptPaper, writeReceiptPaper } from './receiptPaper';
 
 export { buildProductionOrderDocument } from './receipt/productionOrder';
+export {
+  getPrintData,
+  validatePrintData,
+  resolveProductLine,
+  resolvePackingLine,
+  isPrintableLine,
+  isFrozenOrder,
+  orderReference,
+  slipReference,
+  statusLabel,
+  compactDate,
+  type PrintDataInput,
+  type PrintQuantityEdits,
+} from './productionOrderPrintData';
+export { InvalidDocumentError } from './receipt/validate';
 export { buildSaleReceiptDocument } from './receipt/saleReceipt';
 export { PRINT_STYLES, PAPERS, DEFAULT_PAPER } from './receipt/styles';
 export type { PrintDocument } from './receipt/document';
@@ -40,6 +55,7 @@ export type {
   PreviousCollection,
   ProductionOrderDoc,
   ProductionOrderLine,
+  ProductionOrderPackingLine,
   ReceiptLine,
   SaleReceiptDoc,
 } from './receipt/types';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
 import type { BranchProductionOrder } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,7 +26,8 @@ import {
   livePackingItems,
   requestedTotals,
 } from '@/utils/demandLines';
-import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
+import { OrderPrintPreview } from './OrderPrintPreview';
+import { slipReference } from '@/lib/print/productionOrderPrintData';
 import { CollectionsExportModal } from './CollectionsExportModal';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -100,6 +101,20 @@ export function ProductionOrdersPage() {
   // work to do without becoming something nobody can account for.
   const waiting = useMemo(() => orders.filter(isWaitingOrder), [orders]);
   const selected = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
+
+  // The order AS THE SERVER HAS IT, for the moment of printing. The dialog's
+  // `selected` is whatever the last refresh returned; a slip must not be printed
+  // from that if anything has changed since, so the print buttons ask for the
+  // order again and print what comes back. Throws when it cannot be fetched —
+  // an unrefreshed order is not printed on the strength of the cache.
+  const refetchOrders = ordersQ.refetch;
+  const refreshOrder = useCallback(
+    async (id: string): Promise<BranchProductionOrder | null> => {
+      const result = await refetchOrders({ throwOnError: true });
+      return (result.data ?? []).find((o) => o.id === id) ?? null;
+    },
+    [refetchOrders],
+  );
 
   // Demand summary pivots: Product × Branch and Packing Material × Branch, both
   // over the waiting set above (not yet verified by the branch).
@@ -690,6 +705,7 @@ export function ProductionOrdersPage() {
         review={reviewMut.mutateAsync}
         reviewing={reviewMut.isPending}
         markPrinted={printedMut.mutateAsync}
+        refreshOrder={refreshOrder}
         finalApprove={finalApproveMut.mutateAsync}
         finalApproving={finalApproveMut.isPending}
       />

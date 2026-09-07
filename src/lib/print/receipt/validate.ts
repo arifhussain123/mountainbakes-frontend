@@ -50,19 +50,74 @@ export function validateSaleDoc(doc: SaleReceiptDoc): void {
  * the lines at print time is how a printed slip comes to disagree with the screen
  * it was printed from; this checks the two agree and prints the one the rest of
  * the app is using.
+ *
+ * The gate every destination passes before paper moves:
+ *
+ *   validatePrintData()
+ *         ↓
+ *   Has products or packing materials going out?
+ *         ↓
+ *   YES → build → print → cut        NO → stop; nothing is fed, nothing is cut
+ *
+ * A packing-only demand (shoppers and boxes, no cake) is a real order and goes
+ * through with a total of zero. An order with nothing going out at all — every
+ * line cut to zero, or no lines — does not.
  */
-export function validateProductionDoc(doc: ProductionOrderDoc): void {
+export function validatePrintData(doc: ProductionOrderDoc): void {
   if (!doc.orderNumber?.trim()) {
     throw new InvalidDocumentError('This order has no reference number to print.');
   }
-  const lines = doc.items.filter((i) => i.qty > 0);
-  if (lines.length === 0) {
-    throw new InvalidDocumentError('This order has no approved items to print.');
+  const items = doc.items ?? [];
+  const packing = doc.packingItems ?? [];
+
+  const shipping = items.filter((i) => i.changedQty > 0);
+  const packingShipping = packing.filter((p) => p.changedQty > 0);
+  if (shipping.length === 0 && packingShipping.length === 0) {
+    throw new InvalidDocumentError('This order has no approved products or packing materials to print.');
   }
-  const summed = lines.reduce((total, line) => total + line.amount, 0);
+
+  // Product lines: no line without a quantity behind it, and every amount is
+  // the line's own quantity at its own rate. Checked, not recomputed — a slip
+  // whose amount column differs from qty × rate is a slip assembled wrongly.
+  for (const line of items) {
+    const demand = line.demandQty ?? 0;
+    if (demand <= 0 && line.changedQty <= 0) {
+      throw new InvalidDocumentError(`"${line.productName}" has no quantity and should not be on the print.`);
+    }
+    if (Math.abs(line.changedQty * line.unitPrice - line.amount) > 1) {
+      throw new InvalidDocumentError(
+        `"${line.productName}" amount ${line.amount} is not ${line.changedQty} × ${line.unitPrice}.`,
+      );
+    }
+  }
+  const summed = items.reduce((total, line) => total + line.amount, 0);
   if (Math.abs(summed - doc.grandTotal) > 1) {
     throw new InvalidDocumentError(
       `The order lines do not add up to the total (${summed} ≠ ${doc.grandTotal}).`,
     );
   }
+
+  // Packing lines: only what was requested, once each, at the exact quantity.
+  // A zero row would print a material nobody asked for; a duplicate would print
+  // one request twice. Both are the caller's mistake and both stop the print.
+  const seen = new Set<string>();
+  for (const line of packing) {
+    if (!line.materialName?.trim()) {
+      throw new InvalidDocumentError('A packing material on this order has no name.');
+    }
+    if (!(line.demandQty > 0)) {
+      throw new InvalidDocumentError(`"${line.materialName}" was not requested and should not be on the print.`);
+    }
+    if (!(line.changedQty >= 0)) {
+      throw new InvalidDocumentError(`"${line.materialName}" has an invalid approved quantity.`);
+    }
+    const key = line.packingMaterialId || line.materialName.trim().toLowerCase();
+    if (seen.has(key)) {
+      throw new InvalidDocumentError(`"${line.materialName}" appears twice on this order.`);
+    }
+    seen.add(key);
+  }
 }
+
+/** @deprecated Use {@link validatePrintData}. Kept so older imports keep compiling. */
+export const validateProductionDoc = validatePrintData;
