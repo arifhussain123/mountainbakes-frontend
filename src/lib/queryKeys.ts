@@ -256,6 +256,18 @@ export const qk = {
   financeTicketStats: () => ['finance', 'ticketStats'] as const,
   /** Under 'users', not 'finance': a finance mutation must not refetch the user list. */
   financeHelpDeskUsers: () => ['users', 'finance-help-desk'] as const,
+
+  // Data Engine — the generic list endpoint (`/api/data/:resource`).
+  //
+  // Keyed by the resource name and the COMPLETE query string sent to the API,
+  // so two views with different filters are two cache entries and a stale
+  // response for one can never land under the other's heading. The prefix
+  // ['data', resource] is what a mutation invalidates: `qk.dataResource('orders')`
+  // refetches every page, sort and filter of that resource at once.
+  dataResource: (resource: string) => ['data', resource] as const,
+  data: (resource: string, query: string) => ['data', resource, 'list', query] as const,
+  dataAggregate: (resource: string, query: string) => ['data', resource, 'aggregate', query] as const,
+  dataMeta: (resource: string) => ['data', resource, 'meta'] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

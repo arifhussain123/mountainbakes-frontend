@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { EmptyState } from './EmptyState';
@@ -78,7 +78,25 @@ interface DataTableProps<TData> {
     onPageChange: (page: number) => void;
     search: string;
     onSearchChange: (value: string) => void;
+    /**
+     * SERVER-SIDE sorting. When given, clicking a sortable header reports the
+     * new state here instead of sorting the page in memory — one page sorted
+     * locally would only ever be the right order for that page.
+     */
+    sorting?: SortingState;
+    onSortingChange?: (sorting: SortingState) => void;
   };
+  /**
+   * Render a click-to-sort header on every column that allows sorting
+   * (TanStack's default is every accessor column; set `enableSorting: false`
+   * on a column to opt it out). Off by default so no existing table changes
+   * its heading row.
+   */
+  sortable?: boolean;
+  /** Hide the search/actions toolbar — when the caller renders its own filter bar. */
+  toolbar?: boolean;
+  /** Hide the built-in pager — when the caller renders its own (Data Engine's `Pagination`). */
+  pager?: boolean;
 }
 
 export function DataTable<TData>({
@@ -94,12 +112,23 @@ export function DataTable<TData>({
   empty,
   mobileLayout = 'cards',
   manual,
+  sortable = false,
+  toolbar = true,
+  pager = true,
 }: DataTableProps<TData>) {
   const [localFilter, setLocalFilter] = useState('');
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [localSorting, setLocalSorting] = useState<SortingState>([]);
 
   const globalFilter = manual ? manual.search : localFilter;
   const setGlobalFilter = manual ? manual.onSearchChange : setLocalFilter;
+
+  const manualSorting = Boolean(manual?.onSortingChange);
+  const sorting = manualSorting ? (manual?.sorting ?? []) : localSorting;
+  const setSorting = (updater: SortingState | ((old: SortingState) => SortingState)) => {
+    const next = typeof updater === 'function' ? updater(sorting) : updater;
+    if (manualSorting) manual!.onSortingChange!(next);
+    else setLocalSorting(next);
+  };
 
   const table = useReactTable({
     data,
@@ -114,6 +143,11 @@ export function DataTable<TData>({
     },
     onGlobalFilterChange: manual ? undefined : setLocalFilter,
     onSortingChange: setSorting,
+    manualSorting,
+    enableSorting: sortable,
+    // One sort key at a time: the API takes one `sort=` and a person reads
+    // one arrow at a time.
+    enableMultiSort: false,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -150,6 +184,7 @@ export function DataTable<TData>({
   return (
     <div className="space-y-4">
       {/* Toolbar — stacks on a phone so the search field gets the full width. */}
+      {toolbar && (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
         {leading}
@@ -175,6 +210,7 @@ export function DataTable<TData>({
           </div>
         )}
       </div>
+      )}
 
       {/* Desktop table. Markup unchanged — only the visibility wrapper is new.
           `print-table-wrap` forces this branch onto paper regardless of how the
@@ -196,8 +232,37 @@ export function DataTable<TData>({
                       'font-semibold text-xs uppercase tracking-wide',
                       alignClass(h.column.columnDef.meta?.align),
                     )}
+                    aria-sort={
+                      sortable && h.column.getCanSort()
+                        ? h.column.getIsSorted() === 'asc'
+                          ? 'ascending'
+                          : h.column.getIsSorted() === 'desc'
+                            ? 'descending'
+                            : 'none'
+                        : undefined
+                    }
                   >
-                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                    {h.isPlaceholder ? null : sortable && h.column.getCanSort() ? (
+                      <button
+                        type="button"
+                        onClick={h.column.getToggleSortingHandler()}
+                        className={cn(
+                          'inline-flex items-center gap-1 -mx-1 px-1 rounded hover:text-foreground',
+                          h.column.getIsSorted() ? 'text-foreground' : 'text-muted-foreground',
+                        )}
+                      >
+                        {flexRender(h.column.columnDef.header, h.getContext())}
+                        {h.column.getIsSorted() === 'asc' ? (
+                          <ArrowUp className="h-3 w-3" />
+                        ) : h.column.getIsSorted() === 'desc' ? (
+                          <ArrowDown className="h-3 w-3" />
+                        ) : (
+                          <ArrowUpDown className="h-3 w-3 opacity-50" />
+                        )}
+                      </button>
+                    ) : (
+                      flexRender(h.column.columnDef.header, h.getContext())
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -276,6 +341,7 @@ export function DataTable<TData>({
       )}
 
       {/* Pagination */}
+      {pager && (
       <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <span>
           {totalRows} total
@@ -305,6 +371,7 @@ export function DataTable<TData>({
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

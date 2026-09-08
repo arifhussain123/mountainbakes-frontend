@@ -1,34 +1,47 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { apiCall } from '@/utils/api';
-import { DataTable } from '@/components/shared/DataTable';
+import { useBranches } from '@/lib/queries';
+import { GenericDataTable } from '@/components/data-engine';
+import { useInvalidateResource } from '@/lib/data-engine/useResource';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CustomerForm } from './CustomerForm';
-import type { Customer } from '@mb/shared';
+import type { Customer, FilterConfig } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Pencil } from 'lucide-react';
 
 const col = createColumnHelper<Customer>();
 
+/**
+ * Customers — searched, sorted and paged in the database through the Data
+ * Engine (`resource="customers"`). A branch account is scoped to its own
+ * customers by the API; the Branch filter is only offered to an admin.
+ */
 export function CustomersPage() {
-  const { token } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { token, user } = useAuth();
+  const invalidate = useInvalidateResource();
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
 
-  const [refreshKey, setRefreshKey] = useState(0);
-  function load() { setRefreshKey((k) => k + 1); }
+  const isAdmin = user?.role === 'super_admin';
+  const branchesQ = useBranches(token, { enabled: isAdmin });
 
-  useEffect(() => {
-    if (!token) return;
-    apiCall<{ customers: Customer[] }>('/api/customers', {}, token)
-      .then((r) => setCustomers(r.customers))
-      .finally(() => setLoading(false));
-  }, [token, refreshKey]);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      ...(isAdmin ? [{ key: 'branchId', label: 'Branch', type: 'select', placeholder: 'All Branches', placement: 'bar' } as FilterConfig] : []),
+      { key: 'totalOrders', label: 'Orders', type: 'number-range' },
+      { key: 'totalSpent', label: 'Total spent (Rs.)', type: 'number-range' },
+      { key: 'createdAt', label: 'Customer since', type: 'date-range' },
+    ],
+    [isAdmin],
+  );
+  const filterOptions = useMemo(
+    () => ({ branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })) }),
+    [branchesQ.data],
+  );
 
   const columns = [
     col.accessor('name', {
@@ -42,12 +55,13 @@ export function CustomersPage() {
         </div>
       ),
     }),
-    col.accessor('phone', { header: 'Phone' }),
+    col.accessor('phone', { header: 'Phone', enableSorting: false }),
     col.accessor('branchName', { header: 'Branch' }),
     col.accessor('address', {
       header: 'Address',
+      enableSorting: false,
       meta: { mobileFull: true },
-      cell: (info) => <span className="text-sm text-muted-foreground">{info.getValue() || 'â€”'}</span>,
+      cell: (info) => <span className="text-sm text-muted-foreground">{info.getValue() || '—'}</span>,
     }),
     col.accessor('totalOrders', {
       header: 'Orders',
@@ -78,12 +92,25 @@ export function CustomersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Customers</h2>
-          <p className="text-sm text-muted-foreground">{customers.length} customers</p>
+          <p className="text-sm text-muted-foreground">
+            {total === null ? 'Loading…' : `${total.toLocaleString()} ${total === 1 ? 'customer' : 'customers'}`}
+          </p>
         </div>
         <Button onClick={() => { setEditCustomer(null); setShowForm(true); }}>+ Add Customer</Button>
       </div>
 
-      <DataTable columns={columns} data={customers} loading={loading} searchPlaceholder="Search customersâ€¦" />
+      <GenericDataTable<Customer>
+        resource="customers"
+        columns={columns}
+        filters={filters}
+        filterOptions={filterOptions}
+        defaultSort={{ key: 'createdAt', direction: 'desc' }}
+        searchPlaceholder="Search name, phone, email…"
+        cache="static"
+        exportFileName="mountain-bakes-customers"
+        onPage={(page) => setTotal(page.total)}
+        emptyTitle="No customers yet"
+      />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="md:max-w-md">
@@ -92,7 +119,7 @@ export function CustomersPage() {
           </DialogHeader>
           <CustomerForm
             customer={editCustomer}
-            onSuccess={() => { setShowForm(false); load(); }}
+            onSuccess={() => { setShowForm(false); void invalidate('customers'); }}
           />
         </DialogContent>
       </Dialog>

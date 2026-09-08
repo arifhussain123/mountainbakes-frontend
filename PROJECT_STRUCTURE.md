@@ -108,6 +108,9 @@ src/components/
 │   input-group label progress select separator sheet skeleton sonner switch
 │   table tabs textarea
 │
+├── data-engine/            GenericDataTable · FilterBar · FilterDrawer · ActiveFilters
+│                           Pagination · ExportMenu · filters (Search/Select/Date/Number…)
+│
 ├── shared/                 cross-feature building blocks
 │   DataTable · table-meta.ts (align + mobile ColumnMeta) · StatCard · EmptyState
 │   Fab · GlobalSearch · ExpandableText · ResponsiveMatrix
@@ -198,6 +201,8 @@ src/lib/
 ├── api/client.ts           apiCall + assertApiReachable() + 401 refresh-and-replay
 │                           + endDeadSession(); refuses non-GET while offline
 ├── queries.ts              ALL TanStack Query hooks (server state goes through here)
+├── data-engine/            listState (URL ↔ state) · useListQueryState · useResource
+│                           hooks over GET /api/data/:resource — see DATA-ENGINE.md
 ├── queryKeys.ts            `qk` — every cache key must come from here
 ├── supabase/client.ts      session storage adapter · setRememberMe()
 ├── offline/

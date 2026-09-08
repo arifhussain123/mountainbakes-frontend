@@ -1,22 +1,25 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { DataTable } from '@/components/shared/DataTable';
+import { useBranches } from '@/lib/queries';
+import { GenericDataTable } from '@/components/data-engine';
+import { useInvalidateResource } from '@/lib/data-engine/useResource';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { User, Branch, UserRole, BranchShift } from '@mb/shared';
+import type { User, UserRole, BranchShift, FilterConfig } from '@mb/shared';
 import {
   BRANCH_SHIFTS,
   BRANCH_SHIFT_LABELS,
   CreateUserSchema,
   FINANCE_ROLE_LABELS,
   FINANCE_ROLES,
+  USER_ROLES,
   isBranchRole,
   type CreateUserInput,
 } from '@mb/shared';
@@ -58,9 +61,10 @@ const ROLE_COLORS: Record<UserRole, string> = {
 
 export function UsersPage() {
   const { token } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidateResource();
+  const branchesQ = useBranches(token);
+  const branches = useMemo(() => branchesQ.data ?? [], [branchesQ.data]);
+  const [total, setTotal] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole>('branch_manager');
   const [submitting, setSubmitting] = useState(false);
@@ -72,22 +76,38 @@ export function UsersPage() {
     defaultValues: { email: '', displayName: '', phone: '', username: '', password: '', role: 'branch_manager', branchId: null },
   });
 
-  const [refreshKey, setRefreshKey] = useState(0);
-  function load() { setRefreshKey((k) => k + 1); }
+  /** After any write: every cached page of the users list refetches. */
+  function load() { void invalidate('users'); }
 
-  useEffect(() => {
-    if (!token) return;
-    Promise.all([
-      apiCall<{ users: User[] }>('/api/users', {}, token),
-      apiCall<{ branches: Branch[] }>('/api/branches', {}, token),
-    ]).then(([u, b]) => {
-      setUsers(u.users ?? []);
-      setBranches(b.branches ?? []);
-    }).catch((err) => {
-      console.error('Failed to load users or branches', err);
-      toast.error('Could not load users or branches');
-    }).finally(() => setLoading(false));
-  }, [token, refreshKey]);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'role',
+        label: 'Role',
+        type: 'select',
+        placeholder: 'All Roles',
+        placement: 'bar',
+        options: USER_ROLES.map((r) => ({ value: r, label: r.replace(/_/g, ' ') })),
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        type: 'select',
+        placeholder: 'All',
+        placement: 'bar',
+        options: [
+          { value: 'active', label: 'Active' },
+          { value: 'inactive', label: 'Inactive' },
+          { value: 'suspended', label: 'Suspended' },
+        ],
+      },
+      { key: 'branchId', label: 'Branch', type: 'select', placeholder: 'All Branches' },
+      { key: 'shift', label: 'Shift', type: 'select', placeholder: 'All', options: BRANCH_SHIFTS.map((v) => ({ value: v, label: BRANCH_SHIFT_LABELS[v] })) },
+      { key: 'lastLoginAt', label: 'Last login', type: 'date-range' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(() => ({ branchId: branches.map((b) => ({ value: b.id, label: b.name })) }), [branches]);
 
   async function onSubmit(data: CreateUserInput) {
     setSubmitting(true);
@@ -145,7 +165,7 @@ export function UsersPage() {
         </div>
       ),
     }),
-    col.accessor('username', { header: 'Username', meta: { mobile: 'subtitle' }, cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span> }),
+    col.accessor('username', { header: 'Username', enableSorting: false, meta: { mobile: 'subtitle' }, cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span> }),
     col.accessor('role', {
       header: 'Role',
       meta: { mobile: 'badge' },
@@ -161,6 +181,7 @@ export function UsersPage() {
     // otherwise indistinguishable in this list.
     col.accessor('shift', {
       header: 'Shift',
+      enableSorting: false,
       cell: (info) => {
         const shift = info.getValue();
         return shift
@@ -168,7 +189,7 @@ export function UsersPage() {
           : <span className="text-muted-foreground">â€”</span>;
       },
     }),
-    col.accessor('phone', { header: 'Phone' }),
+    col.accessor('phone', { header: 'Phone', enableSorting: false }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
@@ -226,7 +247,9 @@ export function UsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Users</h2>
-          <p className="text-sm text-muted-foreground">{users.length} total users</p>
+          <p className="text-sm text-muted-foreground">
+            {total === null ? 'Loading…' : `${total.toLocaleString()} total users`}
+          </p>
         </div>
         <Button onClick={() => setShowForm(true)}>+ Add User</Button>
       </div>
@@ -237,7 +260,19 @@ export function UsersPage() {
           <TabsTrigger value="activity">User Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="all">
-          <DataTable columns={columns} data={users} loading={loading} searchPlaceholder="Search usersâ€¦" />
+          <GenericDataTable<User>
+            resource="users"
+            columns={columns}
+            filters={filters}
+            filterOptions={filterOptions}
+            defaultSort={{ key: 'createdAt', direction: 'desc' }}
+            searchPlaceholder="Search name, email, username, code…"
+            cache="static"
+            exportFileName="mountain-bakes-users"
+            onPage={(page) => setTotal(page.total)}
+            emptyTitle="No users found"
+            className="mt-4"
+          />
         </TabsContent>
         <TabsContent value="activity">
           <UserActivity token={token} />
