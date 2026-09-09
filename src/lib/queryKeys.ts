@@ -86,8 +86,8 @@ export const qk = {
   // conversely, correcting a return here invalidates ['stock'] and the Stock
   // page, the history card and the dashboard's Stock Detail all follow.
   // Keyed by window length as well as branch, for the reason `stockHistory` is.
-  branchReturns: (branchId?: string | null, days?: number | null) =>
-    ['stock', 'returns', branchId ?? 'me', days ?? 90] as const,
+  branchReturns: (branchId?: string | null, days?: number | null, offset?: number | null) =>
+    ['stock', 'returns', branchId ?? 'me', days ?? 90, offset ?? 0] as const,
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and

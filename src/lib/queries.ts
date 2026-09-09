@@ -1331,18 +1331,23 @@ export function useRevokeAllSessions(token: string) {
 // because the units move on the Production side of the ledger as well.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useBranchReturns(token: string, opts?: { branchId?: string | null; days?: number }) {
+export function useBranchReturns(
+  token: string,
+  opts?: { branchId?: string | null; days?: number; limit?: number; offset?: number },
+) {
   const days = opts?.days ?? 90;
+  const offset = opts?.offset ?? 0;
   return useQuery({
-    queryKey: qk.branchReturns(opts?.branchId ?? null, days),
+    queryKey: qk.branchReturns(opts?.branchId ?? null, days, offset),
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
       // Only an admin may name a branch; the API ignores it for a branch role and
       // reads the JWT instead, so sending it is harmless either way.
       if (opts?.branchId) params.set('branchId', opts.branchId);
-      return apiCall<{ returns: ProductionReturn[] }>(`/api/stock/returns?${params.toString()}`, {}, token);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (offset) params.set('offset', String(offset));
+      return apiCall<{ returns: ProductionReturn[]; total: number }>(`/api/stock/returns?${params.toString()}`, {}, token);
     },
-    select: (r) => r.returns ?? [],
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });

@@ -29,8 +29,10 @@ import {
 import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+const PAGE_SIZE = 50;
 
 /**
  * Branch → Return Stock: everything this branch has sent back to production.
@@ -121,7 +123,8 @@ const col = createColumnHelper<ProductionReturn>();
 
 export function BranchReturnStockPage() {
   const { token } = useAuth();
-  const returnsQ = useBranchReturns(token);
+  const [page, setPage] = useState(0);
+  const returnsQ = useBranchReturns(token, { limit: PAGE_SIZE, offset: page * PAGE_SIZE });
   const reviseMut = useReviseBranchReturn(token);
   const withdrawMut = useWithdrawBranchReturn(token);
   const resubmitMut = useResubmitBranchReturn(token);
@@ -137,7 +140,9 @@ export function BranchReturnStockPage() {
   const [editQty, setEditQty] = useState('');
   const [editReason, setEditReason] = useState('');
 
-  const rows = returnsQ.data ?? [];
+  const rows = returnsQ.data?.returns ?? [];
+  const total = returnsQ.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (returnsQ.isError) toast.error('Could not load returns');
@@ -317,11 +322,14 @@ export function BranchReturnStockPage() {
         </div>
       </div>
 
+      {/* Search filters only the current page — the API has no server-side
+          search for this resource. */}
       <DataTable
         columns={columns}
         data={rows}
         loading={returnsQ.isLoading}
-        searchPlaceholder="Search returns…"
+        searchPlaceholder="Search this page…"
+        pager={false}
         empty={
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <Undo2 className="h-8 w-8 text-muted-foreground/50" />
@@ -332,6 +340,33 @@ export function BranchReturnStockPage() {
           </div>
         }
       />
+
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <span>{total} total</span>
+        <div className="flex items-center gap-2">
+          <span>Page {page + 1} of {pageCount}</span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 md:h-7 md:w-7"
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 md:h-7 md:w-7"
+            disabled={page + 1 >= pageCount}
+            onClick={() => setPage((p) => p + 1)}
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
 
       {/* ── View ────────────────────────────────────────────────────────────
           Read-only, so deliberately NOT behind GeofenceGate — being out of area
