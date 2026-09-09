@@ -1462,19 +1462,29 @@ export function useReviewReturn(token: string) {
 
 export function useBranchDiscounts(
   token: string,
-  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
+  opts?: {
+    branchId?: string | null;
+    days?: number;
+    status?: string | null;
+    limit?: number;
+    offset?: number;
+    enabled?: boolean;
+  },
 ) {
   const days = opts?.days ?? 90;
+  const offset = opts?.offset ?? 0;
   return useQuery({
-    queryKey: qk.branchDiscounts(opts?.branchId ?? null, days),
+    queryKey: qk.branchDiscounts(opts?.branchId ?? null, days, opts?.status, offset),
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
       // Only an admin may name a branch; the API ignores it for a branch role and
       // reads the JWT instead, so sending it is harmless either way.
       if (opts?.branchId) params.set('branchId', opts.branchId);
-      return apiCall<{ discounts: BranchDiscount[] }>(`/api/branch-discounts?${params.toString()}`, {}, token);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (offset) params.set('offset', String(offset));
+      return apiCall<{ discounts: BranchDiscount[]; total: number }>(`/api/branch-discounts?${params.toString()}`, {}, token);
     },
-    select: (r) => r.discounts ?? [],
     // `enabled` exists for the New Orders popup, which is mounted on every visit
     // to that page and opened on few of them — an ungated query there would put a
     // request on the busiest branch screen for a popup nobody asked for. The

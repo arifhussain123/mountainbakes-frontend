@@ -98,7 +98,7 @@ export function DiscountModal({
   loadingOrders: boolean;
 }) {
   const { token } = useAuth();
-  const discountsQ = useBranchDiscounts(token, { enabled: openedOnce });
+  const discountsQ = useBranchDiscounts(token, { enabled: openedOnce, limit: 200 });
   const createMut = useCreateBranchDiscount(token);
   const reviseMut = useReviseBranchDiscount(token);
   const withdrawMut = useWithdrawBranchDiscount(token);
@@ -112,7 +112,7 @@ export function DiscountModal({
   /** Set while the popup is turned over to the withdrawal confirmation. */
   const [withdrawing, setWithdrawing] = useState<BranchDiscount | null>(null);
 
-  const discounts = discountsQ.data ?? [];
+  const discounts = discountsQ.data?.discounts ?? [];
   const busy = createMut.isPending || reviseMut.isPending;
 
   /**

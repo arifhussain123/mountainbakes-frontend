@@ -144,8 +144,12 @@ export const qk = {
   // is: 'me' and a named branch are different answers, and an admin can ask for
   // either.
   productionDiscounts: () => ['discounts', 'production'] as const,
-  branchDiscounts: (branchId?: string | null, days?: number | null) =>
-    ['discounts', 'branch', branchId ?? 'me', days ?? 90] as const,
+  branchDiscounts: (
+    branchId?: string | null,
+    days?: number | null,
+    status?: string | null,
+    offset?: number | null,
+  ) => ['discounts', 'branch', branchId ?? 'me', days ?? 90, status ?? 'all', offset ?? 0] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
