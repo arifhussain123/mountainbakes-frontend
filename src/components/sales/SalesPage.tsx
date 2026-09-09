@@ -8,6 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useProducts, useProductionStock } from '@/lib/queries';
 import {
   CreateProductionSaleSchema,
+  type FilterConfig,
   type Order,
   type Branch,
   type StockRow,
@@ -22,7 +23,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { DataTable } from '@/components/shared/DataTable';
+import { GenericDataTable } from '@/components/data-engine';
+import { useInvalidateResource } from '@/lib/data-engine/useResource';
 import { Fab } from '@/components/shared/Fab';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PopPrintButton } from '@/components/print/PopPrintButton';
@@ -134,6 +136,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   const { token, user } = useAuth();
   const { settings } = useSettings();
   const qc = useQueryClient();
+  const invalidateResource = useInvalidateResource();
   const isProduction = mode === 'production';
   const [branch, setBranch] = useState<Branch | null>(null);
   const [sales, setSales] = useState<Order[]>([]);
@@ -294,6 +297,10 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
      * than up to two seconds later.
      */
     qc.invalidateQueries({ queryKey: ['salesAnalytics'] });
+    // The table below is on the Data Engine now — its own cache, separate from
+    // the full-day fetch that feeds the Daily Summary — so a fresh sale needs
+    // its own invalidation to show up without a manual refresh.
+    void invalidateResource('sales');
     // A new sale always books against the business day in progress, so snap the
     // filter back to it — otherwise the cashier rings up a sale while browsing an
     // older date and the table appears not to have recorded it. Re-read the date
@@ -399,6 +406,21 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     const rows = [...byProduct.values()].sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name));
     return { rows, totalQty };
   }, [sales]);
+
+  // Payment options mirror `methods` — production adds the unpaid 'staff'
+  // method, so the filter must not offer a value the resource can't have.
+  const paymentFilters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'paymentMethod',
+        label: 'Payment',
+        type: 'select',
+        placeholder: 'All methods',
+        options: methods.map((m) => ({ value: m, label: PAYMENT_METHOD_LABELS[m] ?? m })),
+      },
+    ],
+    [methods],
+  );
 
   const columns = [
     col.accessor('orderNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
@@ -620,14 +642,29 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
       )}
 
-      {/* Placeholder names the fields, following ProductionOrdersPage: "Search
-          sales…" gave no reason to think a product name would work, so nobody
-          tried it. */}
-      <DataTable
+      {/* Reads through the Data Engine (resource="sales", same rows as
+          "orders") — the browser downloads one page of this business day's
+          sales, not the whole thing, unlike the Daily Summary above which
+          deliberately still fetches every sale of the day so it reconciles
+          with the drawer and the closing report. `key={date}` remounts on a
+          date change so a page number from one day is never carried into a
+          different day's (possibly shorter) result set.
+          Search covers customer, phone and order # — not product name, which
+          the generic engine has no join for; the old client-side table could
+          match a product because everything was already downloaded. */}
+      <GenericDataTable<Order>
+        key={date}
+        resource="sales"
         columns={columns}
-        data={sales}
-        loading={loading}
-        searchPlaceholder="Search product, customer, ID…"
+        fixedFilters={[
+          { key: 'status', op: 'eq', value: 'delivered' },
+          { key: 'businessDate', op: 'eq', value: date },
+        ]}
+        filters={paymentFilters}
+        defaultSort={{ key: 'createdAt', direction: 'desc' }}
+        searchPlaceholder="Search customer, phone, order #…"
+        namespace={isProduction ? 'production-sales' : 'branch-sales'}
+        emptyTitle="No sales recorded"
       />
 
       {/* New Sale dialog */}
