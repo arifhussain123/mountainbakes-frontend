@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
-import type { BranchProductionOrder } from '@mb/shared';
+import { createColumnHelper } from '@tanstack/react-table';
+import type { BranchProductionOrder, FilterConfig } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import {
+  useBranches,
   useProductionOrders,
   useProductionStock,
   useReviewProductionOrder,
@@ -14,7 +15,7 @@ import {
 } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DataTable } from '@/components/shared/DataTable';
+import { GenericDataTable } from '@/components/data-engine';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Eye, FileSpreadsheet, Sparkles } from 'lucide-react';
 import {
@@ -22,8 +23,6 @@ import {
   effectiveQty,
   fulfilledTotals,
   isWaitingOrder,
-  liveItems,
-  livePackingItems,
   requestedTotals,
 } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
@@ -49,20 +48,8 @@ const STATUS_LABELS: Record<string, string> = {
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 const col = createColumnHelper<BranchProductionOrder>();
 
-/**
- * Sum a per-demand figure for the totals row.
- *
- * Over `getFilteredRowModel()`, not `getRowModel()`: the latter is ONE page, so
- * on a list that spans pages the total would change as you paged through and
- * read like a bug. Filtered means the total follows the search box, which is
- * what someone typing in it is asking about.
- */
-function sumRows(
-  table: TanstackTable<BranchProductionOrder>,
-  pick: (o: BranchProductionOrder) => number,
-): number {
-  return table.getFilteredRowModel().rows.reduce((sum, r) => sum + pick(r.original), 0);
-}
+const STATUS_OPTIONS = ['pending', 'awaiting_verification', 'verified', 'approved', 'rejected', 'cancelled']
+  .map((value) => ({ value, label: STATUS_LABELS[value] ?? value }));
 
 export function ProductionOrdersPage() {
   const { token } = useAuth();
@@ -77,6 +64,25 @@ export function ProductionOrdersPage() {
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);
   const finalApproveMut = useFinalApproveProductionOrder(token);
+
+  // Orders list below: Production sees every branch's demand (production_user
+  // is not a branch role, so the resource's branchScope() doesn't restrict it —
+  // same as today), so the Branch filter is always offered here, unlike
+  // OrdersPage.tsx which hides it from non-admins.
+  const branchesQ = useBranches(token);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, placeholder: 'All Statuses', placement: 'bar' },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+      { key: 'branchId', label: 'Branch', type: 'select', placeholder: 'All Branches' },
+      { key: 'requiredDate', label: 'Required Date', type: 'date-range' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({ branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })) }),
+    [branchesQ.data],
+  );
 
   // Track just the id and derive `selected` from the live query, rather than
   // storing a snapshot — that way, once Production adds a product to an open
@@ -312,11 +318,14 @@ export function ProductionOrdersPage() {
           </div>
         );
       },
-      footer: (p) => (
-        <span className="tabular-nums font-semibold">
-          {sumRows(p.table, (o) => requestedTotals(o).qty).toLocaleString()}
-        </span>
-      ),
+      // No footer total here any more: the table is now server-paginated
+      // (GenericDataTable), so `getFilteredRowModel()` would only see the
+      // current page's rows — exactly the "changes as you page through and
+      // reads like a bug" failure DataTable's own footer comment warns about,
+      // just triggered by pagination instead of search. productionOrders has
+      // no aggregatableFields (the qty lives on the embedded items table, not
+      // a top-level column), so there's no honest whole-filtered-set total to
+      // show without new backend aggregate work.
     }),
     col.accessor('status', {
       header: 'Status',
@@ -345,23 +354,6 @@ export function ProductionOrdersPage() {
         </Button>
       ),
     }),
-    // Hidden, search-only. The global filter can only match what a column accessor
-    // exposes, so this is what lets someone find a demand by a product, packing
-    // material OR special item name without adding any as a visible column.
-    // Special item DESCRIPTIONS are included too — "blue writing" is how someone
-    // will look for that cake, and it is not in any name.
-    // Zero lines are excluded here too. Matching a demand on a product that was
-    // cut to nothing surfaces a row whose product appears on none of the tables
-    // or slips behind it — the search would be pointing at something that is not
-    // there.
-    col.accessor(
-      (o) =>
-        [
-          ...liveItems(o.items).map((i) => `${i.productName} ${i.isSpecial ? (i.description ?? '') : ''}`),
-          ...livePackingItems(o.packingItems).map((p) => p.materialName),
-        ].join(' '),
-      { id: 'contents', header: '' },
-    ),
   ];
 
   return (
@@ -657,11 +649,20 @@ export function ProductionOrdersPage() {
         </CardContent>
       </Card>
 
-      {/* Orders list */}
+      {/* Orders list — server-side filtered/searched/paginated via the Data
+          Engine (resource="productionOrders"), decoupled from the Demand
+          Summary above: that card stays fed by `orders`/`waiting`, the last
+          7 business days, unconditionally — this table can page back further
+          and filter by date/branch/status without touching what the floor
+          reads as "what to prepare right now". Search covers Demand ID /
+          Branch / Raised-by only (server-side, top-level columns); it can no
+          longer match a product or packing-material name the way the old
+          client-side filter did, since that data lives in a joined child
+          table the generic search can't reach. */}
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Orders</h2>
-          {/* Not wired to DataTable's `onExport`: that exports the table you are
+          {/* Not wired to the table's own export: that exports the table you are
               looking at, and this is a different question — a window of
               deliveries and what is owed on them, which needs its own branch and
               date range. Kept beside the table it relates to rather than buried
@@ -670,12 +671,15 @@ export function ProductionOrdersPage() {
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Collections
           </Button>
         </div>
-        <DataTable
+        <GenericDataTable<BranchProductionOrder>
+          resource="productionOrders"
           columns={columns}
-          data={orders}
-          loading={ordersQ.isLoading}
-          searchPlaceholder="Search orders, products, packing materials…"
-          columnVisibility={{ contents: false }}
+          filters={filters}
+          filterOptions={filterOptions}
+          defaultSort={{ key: 'businessDate', direction: 'desc' }}
+          searchPlaceholder="Search demand #, branch, raised by…"
+          exportFileName="production-orders"
+          emptyTitle="No orders found"
         />
       </div>
 
