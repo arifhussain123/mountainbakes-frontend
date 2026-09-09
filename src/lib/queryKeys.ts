@@ -204,8 +204,7 @@ export const qk = {
   // settings change can drop the whole module with one
   // `invalidateQueries({ queryKey: ['finance'] })` prefix match, without also
   // clearing the operations caches sitting next to it.
-  financeDashboard: (businessDate?: string | null) =>
-    ['finance', 'dashboard', businessDate ?? 'today'] as const,
+  financeDashboard: (filters: Record<string, unknown>) => ['finance', 'dashboard', filters] as const,
   // The ledger key carries its full filter object: the Daily Ledger page changes
   // date, branch and head independently, and a key that dropped any of them
   // would serve one filter's rows under another's heading.

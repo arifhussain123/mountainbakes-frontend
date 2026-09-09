@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { businessDateStr } from '@mb/shared';
+import { useMemo, useState } from 'react';
+import { businessDateStr, businessDaysAgoStr } from '@mb/shared';
 import { useFinanceDashboard } from '@/lib/finance';
+import { useAuth } from '@/hooks/useAuth';
+import { useBranches } from '@/lib/queries';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,6 +13,8 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { ROUTES } from '@/utils/routes';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities, useMoney } from './finance-ui';
+import { DateFilter, FilterBar, FilterField, FilterSelect, type SelectOption } from './finance-actions';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertCircle,
   ArrowDownRight,
@@ -24,21 +29,83 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
 
+/** The dashboard's own date-range presets — every card's period, not the fixed
+ *  trailing-week trend chart underneath, which always shows the last 7 days. */
+const RANGE_PRESETS: SelectOption[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last7', label: 'Last 7 Days' },
+  { value: 'last30', label: 'Last 30 Days' },
+  { value: 'thisMonth', label: 'This Month' },
+  { value: 'prevMonth', label: 'Previous Month' },
+  { value: 'custom', label: 'Custom Range' },
+];
+
+/**
+ * Resolve a preset to a business-date `[from, to]` pair.
+ *
+ * Plain calendar stepping on already-resolved 'YYYY-MM-DD' business-date
+ * strings — the 2 AM rollover itself lives only in `businessDateStr()` /
+ * `businessDaysAgoStr()`; this never recomputes it.
+ */
+function presetRange(preset: string, customFrom: string, customTo: string): { from: string; to: string } {
+  const today = businessDateStr();
+  switch (preset) {
+    case 'yesterday': {
+      const d = businessDaysAgoStr(1);
+      return { from: d, to: d };
+    }
+    case 'last7':
+      return { from: businessDaysAgoStr(6), to: today };
+    case 'last30':
+      return { from: businessDaysAgoStr(29), to: today };
+    case 'thisMonth':
+      return { from: `${today.slice(0, 7)}-01`, to: today };
+    case 'prevMonth': {
+      const [y, m] = today.split('-').map(Number) as [number, number];
+      const prevM = m === 1 ? 12 : m - 1;
+      const prevY = m === 1 ? y - 1 : y;
+      const first = `${prevY}-${String(prevM).padStart(2, '0')}-01`;
+      const lastDay = new Date(Date.UTC(prevY, prevM, 0)).getUTCDate();
+      const last = `${prevY}-${String(prevM).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      return { from: first, to: last };
+    }
+    case 'custom':
+      return { from: customFrom || today, to: customTo || today };
+    default:
+      return { from: today, to: today };
+  }
+}
+
 /**
  * The Finance dashboard — the nine summary cards the brief specifies, plus the
  * two things a finance user actually does next: look at what is waiting for
  * approval, and glance at the last week's shape.
  *
  * The cards are ordered as three groups of three, and the grouping is the point:
- *   row 1  today's movement      — income, expenses, net position
+ *   row 1  the selected period   — income, expenses, net position
  *   row 2  where the money is    — cash, bank, and the two share figures
  *   row 3  what needs a decision — the two approval queues
  * Someone opening this screen in the morning reads down it in that order.
  */
 export function FinanceDashboardPage() {
   const abilities = useFinanceAbilities();
-  const businessDate = businessDateStr();
-  const { data, isLoading, isError, error, refetch } = useFinanceDashboard(businessDate);
+  const { token } = useAuth();
+  const branchesQ = useBranches(token ?? '');
+
+  const [preset, setPreset] = useState('today');
+  const [customFrom, setCustomFrom] = useState(businessDateStr());
+  const [customTo, setCustomTo] = useState(businessDateStr());
+  const [branchId, setBranchId] = useState('');
+
+  const { from, to } = useMemo(() => presetRange(preset, customFrom, customTo), [preset, customFrom, customTo]);
+  const isRangeOfOne = from === to;
+
+  const { data, isLoading, isError, error, refetch } = useFinanceDashboard({ from, to, branchId: branchId || undefined });
+
+  const branchOptions: SelectOption[] = (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }));
+  const branchLabel = branchId ? (branchOptions.find((b) => b.value === branchId)?.label ?? 'Selected branch') : 'All Branches';
+  const periodLabel = RANGE_PRESETS.find((p) => p.value === preset)?.label ?? 'Today';
 
   if (isError) {
     return (
@@ -59,7 +126,7 @@ export function FinanceDashboardPage() {
     <div className="space-y-6">
       <FinancePageHeader
         title="Finance Dashboard"
-        description={`Business date ${businessDate} · balances carry forward automatically`}
+        description={`${periodLabel} (${from}${isRangeOfOne ? '' : ` – ${to}`}) · ${branchLabel} · balances carry forward automatically`}
         actions={
           /* nativeButton={false} on every Button that renders a Link: Base UI
              assumes a real <button> underneath and warns otherwise, because the
@@ -79,17 +146,47 @@ export function FinanceDashboardPage() {
 
       <ReadOnlyNotice abilities={abilities} />
 
-      {/* Today's movement */}
+      <FilterBar>
+        <FilterField label="Period">
+          <Select value={preset} onValueChange={(v) => setPreset((v as string) ?? 'today')}>
+            <SelectTrigger className="h-11 w-full md:h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RANGE_PRESETS.map((p) => (
+                <SelectItem key={p.value} value={p.value}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+        {preset === 'custom' && (
+          <>
+            <FilterField label="From">
+              <DateFilter value={customFrom} onChange={setCustomFrom} max={customTo} />
+            </FilterField>
+            <FilterField label="To">
+              <DateFilter value={customTo} onChange={setCustomTo} max={businessDateStr()} />
+            </FilterField>
+          </>
+        )}
+        <FilterField label="Branch">
+          <FilterSelect value={branchId} onChange={setBranchId} options={branchOptions} allLabel="All Branches" />
+        </FilterField>
+      </FilterBar>
+
+      {/* The selected period's movement */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <FinanceStat
-          label="Today's Total Income"
+          label={isRangeOfOne ? "Total Income" : 'Total Income (period)'}
           value={data?.todayIncome}
           icon={ArrowUpRight}
           tone="emerald"
           loading={isLoading}
         />
         <FinanceStat
-          label="Today's Total Expenses"
+          label={isRangeOfOne ? 'Total Expenses' : 'Total Expenses (period)'}
           value={data?.todayExpenses}
           icon={ArrowDownRight}
           tone="red"
@@ -101,21 +198,35 @@ export function FinanceDashboardPage() {
           icon={Scale}
           tone="primary"
           loading={isLoading}
-          hint="Opening balance carried in, plus today"
+          hint={`As of ${to} · opening balance carried in · company-wide`}
         />
       </div>
 
       {/* Where the money is */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <FinanceStat label="Cash in Hand" value={data?.cashInHand} icon={Banknote} tone="amber" loading={isLoading} />
-        <FinanceStat label="Bank Balance" value={data?.bankBalance} icon={Landmark} tone="blue" loading={isLoading} />
+        <FinanceStat
+          label="Cash in Hand"
+          value={data?.cashInHand}
+          icon={Banknote}
+          tone="amber"
+          loading={isLoading}
+          hint="Company-wide"
+        />
+        <FinanceStat
+          label="Bank Balance"
+          value={data?.bankBalance}
+          icon={Landmark}
+          tone="blue"
+          loading={isLoading}
+          hint="Company-wide"
+        />
         <FinanceStat
           label="Company Share"
           value={data?.companyShare}
           icon={Building2}
           tone="primary"
           loading={isLoading}
-          hint="Posted today"
+          hint="Posted in period"
         />
         <FinanceStat
           label="Branch Share"
@@ -123,7 +234,7 @@ export function FinanceDashboardPage() {
           icon={Store}
           tone="slate"
           loading={isLoading}
-          hint="Posted today"
+          hint="Posted in period"
         />
       </div>
 
@@ -142,7 +253,7 @@ export function FinanceDashboardPage() {
           amount={data?.pendingExpenseAmount ?? 0}
           href={ROUTES.FINANCE_ENTRIES}
           loading={isLoading}
-          hint="Manual entries, salaries and partner expenses"
+          hint={branchId ? 'Manual entries for this branch' : 'Manual entries, salaries and partner expenses'}
         />
       </div>
 

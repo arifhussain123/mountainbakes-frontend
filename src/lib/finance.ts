@@ -75,17 +75,24 @@ function useToken() {
 // Dashboard, ledger, heads
 // ---------------------------------------------------------------------------
 
-export function useFinanceDashboard(businessDate?: string) {
+// A `type`, not an `interface` — see the note on LedgerFilters below: only a
+// type alias gets the implicit index signature `qk.financeDashboard` needs.
+export type FinanceDashboardFilters = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+};
+
+export function useFinanceDashboard(filters: FinanceDashboardFilters = {}) {
   const token = useToken();
   return useQuery({
-    queryKey: qk.financeDashboard(businessDate),
+    queryKey: qk.financeDashboard(filters),
     enabled: Boolean(token),
     // 15s, matching the app's LIVE_STALE_TIME convention for intraday figures:
     // the dashboard is what a finance user leaves open while approving, and a
     // 60s default would show pending counts that are already dealt with.
     staleTime: 15_000,
-    queryFn: () =>
-      apiCall<FinanceDashboard>(`/api/finance/dashboard${toQuery({ date: businessDate })}`, {}, token),
+    queryFn: () => apiCall<FinanceDashboard>(`/api/finance/dashboard${toQuery(filters)}`, {}, token),
   });
 }
 
