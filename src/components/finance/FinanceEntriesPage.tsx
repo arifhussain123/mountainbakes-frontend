@@ -32,6 +32,7 @@ import { Eye, Pencil, Plus } from 'lucide-react';
 
 const col = createColumnHelper<FinanceTransaction>();
 const BASE_PATH = '/api/finance/income/entries';
+const PAGE_SIZE = 50;
 
 export function FinanceEntriesPage() {
   const { token } = useAuth();
@@ -43,9 +44,19 @@ export function FinanceEntriesPage() {
   const [ledgerHeadId, setLedgerHeadId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [viewing, setViewing] = useState<FinanceTransaction | null>(null);
+
+  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -56,9 +67,13 @@ export function FinanceEntriesPage() {
     ledgerHeadId: ledgerHeadId || undefined,
     from: from || undefined,
     to: to || undefined,
+    search: search || undefined,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   });
 
-  const rows = data ?? [];
+  const rows = data?.entries ?? [];
+  const total = data?.total ?? 0;
 
   const columns = [
     col.accessor('txnNo', {
@@ -180,7 +195,7 @@ export function FinanceEntriesPage() {
         <FilterField label="Status">
           <FilterSelect
             value={status}
-            onChange={setStatus}
+            onChange={setFilter(setStatus)}
             allLabel="Any status"
             options={[
               { value: 'pending', label: 'Pending Approval' },
@@ -194,7 +209,7 @@ export function FinanceEntriesPage() {
         <FilterField label="Type">
           <FilterSelect
             value={type}
-            onChange={setType}
+            onChange={setFilter(setType)}
             allLabel="Income & expense"
             options={[
               { value: 'income', label: 'Income' },
@@ -205,7 +220,7 @@ export function FinanceEntriesPage() {
         <FilterField label="Ledger head">
           <FilterSelect
             value={ledgerHeadId}
-            onChange={setLedgerHeadId}
+            onChange={setFilter(setLedgerHeadId)}
             allLabel="All heads"
             options={(headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name }))}
           />
@@ -213,16 +228,16 @@ export function FinanceEntriesPage() {
         <FilterField label="Branch">
           <FilterSelect
             value={branchId}
-            onChange={setBranchId}
+            onChange={setFilter(setBranchId)}
             allLabel="All branches"
             options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
           />
         </FilterField>
         <FilterField label="From">
-          <DateFilter value={from} onChange={setFrom} />
+          <DateFilter value={from} onChange={setFilter(setFrom)} />
         </FilterField>
         <FilterField label="To">
-          <DateFilter value={to} onChange={setTo} />
+          <DateFilter value={to} onChange={setFilter(setTo)} />
         </FilterField>
       </FilterBar>
 
@@ -231,6 +246,14 @@ export function FinanceEntriesPage() {
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search entries…"
+        manual={{
+          page,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>

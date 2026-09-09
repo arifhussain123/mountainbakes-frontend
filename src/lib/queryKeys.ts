@@ -23,7 +23,8 @@ export const qk = {
   branchLocations: () => ['branchLocations'] as const,
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
-  priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
+  priceHistory: (productId?: string | null, offset?: number) =>
+    ['priceHistory', productId ?? 'all', offset ?? 0] as const,
   reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null, fields?: string | null) =>
     ['reportSummary', period, branchId ?? null, from ?? null, to ?? null, fields ?? 'full'] as const,
   // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —

@@ -158,18 +158,18 @@ export type IncomeFilters = {
   to?: string;
 };
 
-export function useIncomeApprovals(filters: IncomeFilters) {
+export function useIncomeApprovals(filters: IncomeFilters & { limit?: number; offset?: number }) {
   const token = useToken();
   return useQuery({
     queryKey: qk.financeIncome(filters as Record<string, unknown>),
     enabled: Boolean(token),
     staleTime: 15_000,
-    queryFn: async () =>
-      (await apiCall<{ approvals: FinanceIncomeApproval[] }>(
+    queryFn: () =>
+      apiCall<{ approvals: FinanceIncomeApproval[]; total: number }>(
         `/api/finance/income${toQuery(filters)}`,
         {},
         token,
-      )).approvals,
+      ),
   });
 }
 
@@ -182,12 +182,12 @@ export function useFinanceEntries(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financeEntries(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ entries: FinanceTransaction[] }>(
+    queryFn: () =>
+      apiCall<{ entries: FinanceTransaction[]; total: number }>(
         `/api/finance/income/entries${toQuery(filters)}`,
         {},
         token,
-      )).entries,
+      ),
   });
 }
 
@@ -196,12 +196,12 @@ export function useSalaryPayments(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financeSalaries(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ salaries: SalaryPayment[] }>(
+    queryFn: () =>
+      apiCall<{ salaries: SalaryPayment[]; total: number }>(
         `/api/finance/payroll/salaries${toQuery(filters)}`,
         {},
         token,
-      )).salaries,
+      ),
   });
 }
 
@@ -240,12 +240,12 @@ export function useEmployeeAdvances(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financeAdvances(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ advances: EmployeeAdvance[] }>(
+    queryFn: () =>
+      apiCall<{ advances: EmployeeAdvance[]; total: number }>(
         `/api/finance/payroll/advances${toQuery(filters)}`,
         {},
         token,
-      )).advances,
+      ),
   });
 }
 
@@ -276,12 +276,12 @@ export function usePartnerExpenses(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financePartnerExpenses(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ expenses: PartnerExpense[] }>(
+    queryFn: () =>
+      apiCall<{ expenses: PartnerExpense[]; total: number }>(
         `/api/finance/partner-expenses${toQuery(filters)}`,
         {},
         token,
-      )).expenses,
+      ),
   });
 }
 

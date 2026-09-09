@@ -129,22 +129,23 @@ export function useCategories(token: string, opts?: { enabled?: boolean }) {
 
 export function usePriceHistory(
   token: string,
-  opts?: { productId?: string; limit?: number; enabled?: boolean },
+  opts?: { productId?: string; limit?: number; offset?: number; enabled?: boolean },
 ) {
+  const offset = opts?.offset ?? 0;
   const params = new URLSearchParams();
   if (opts?.productId) params.set('productId', opts.productId);
   if (opts?.limit) params.set('limit', String(opts.limit));
+  if (offset) params.set('offset', String(offset));
   const qs = params.toString();
 
   return useQuery({
-    queryKey: qk.priceHistory(opts?.productId),
+    queryKey: qk.priceHistory(opts?.productId, offset),
     queryFn: () =>
       apiCall<{ history: PriceHistoryDoc[]; total: number }>(
         `/api/products/price/history${qs ? `?${qs}` : ''}`,
         {},
         token,
       ),
-    select: (r) => r.history ?? [],
     enabled: !!token && (opts?.enabled ?? true),
   });
 }
