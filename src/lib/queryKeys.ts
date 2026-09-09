@@ -24,8 +24,8 @@ export const qk = {
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
   priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
-  reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null) =>
-    ['reportSummary', period, branchId ?? null, from ?? null, to ?? null] as const,
+  reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null, fields?: string | null) =>
+    ['reportSummary', period, branchId ?? null, from ?? null, to ?? null, fields ?? 'full'] as const,
   // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —
   // window, branch, ranking depth and whether the comparison window was asked
   // for. Dropping any of them from the key serves one range's figures under

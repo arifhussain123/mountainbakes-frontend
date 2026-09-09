@@ -237,7 +237,11 @@ export function SupportCenterPage() {
 
   useEffect(() => {
     if (!token) return;
-    apiCall<{ tickets: SupportTicket[] }>('/api/support', {}, token)
+    // This screen computes its per-source open counts and search over the whole
+    // live queue client-side (not the branch Help Desk's paginated view), so it
+    // asks for the endpoint's full cap explicitly rather than the new 20-row
+    // default (see GET /api/support in support.routes.ts).
+    apiCall<{ tickets: SupportTicket[] }>('/api/support?pageSize=500', {}, token)
       .then((r) => setTickets(r.tickets))
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load tickets'))
       .finally(() => setLoading(false));

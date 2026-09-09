@@ -319,16 +319,22 @@ export function useReportSummary(
   period: string,
   branchId?: string | null,
   range?: { fromISO: string; toISO: string } | null,
+  // 'basic' skips the server-side branchData/topProducts/categoryBreakdown/
+  // paymentMethodBreakdown group-bys (and the order_items embed they read) —
+  // for a caller like the Branch Dashboard that only renders the top-level
+  // totals + dailyData. Omit for callers (Reports, Admin Dashboard) that do.
+  fields?: 'basic' | 'full',
 ) {
   const effectivePeriod = range ? 'custom' : period;
   const rangeParams = range
     ? `&from=${encodeURIComponent(range.fromISO)}&to=${encodeURIComponent(range.toISO)}`
     : '';
+  const fieldsParam = fields === 'basic' ? '&fields=basic' : '';
   return useQuery({
-    queryKey: qk.reportSummary(effectivePeriod, branchId, range?.fromISO, range?.toISO),
+    queryKey: qk.reportSummary(effectivePeriod, branchId, range?.fromISO, range?.toISO, fields),
     queryFn: () =>
       apiCall<ReportSummary>(
-        `/api/reports/summary?period=${effectivePeriod}${branchId ? `&branchId=${branchId}` : ''}${rangeParams}`,
+        `/api/reports/summary?period=${effectivePeriod}${branchId ? `&branchId=${branchId}` : ''}${rangeParams}${fieldsParam}`,
         {},
         token,
       ),

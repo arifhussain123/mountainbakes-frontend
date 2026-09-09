@@ -65,6 +65,10 @@ export function BranchDashboard() {
     period,
     user?.branchId ?? null,
     isSpecificDate ? businessDayBounds(summaryDate) : null,
+    // This screen only reads totals + dailyData (see the SalesVsExpensesChart
+    // below) — branchData/topProducts/paymentMethodBreakdown come from
+    // useSalesAnalytics instead, so the server can skip computing them.
+    'basic',
   );
   const summary = summaryQ.data ?? null;
   const loading = !token || summaryQ.isLoading;
