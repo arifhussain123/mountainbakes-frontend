@@ -16,3 +16,12 @@ export function OrderStatusBadge({ status }: { status: OrderStatus }) {
     </span>
   );
 }
+
+/**
+ * The five statuses as filter options, derived from {@link CONFIGS} so a
+ * filter's label can never drift from the label on the badge it filters for.
+ */
+export const ORDER_STATUS_OPTIONS = (Object.keys(CONFIGS) as OrderStatus[]).map((value) => ({
+  value,
+  label: CONFIGS[value].label,
+}));

@@ -6,7 +6,7 @@ import { apiCall } from '@/utils/api';
 import { useBranches } from '@/lib/queries';
 import { GenericDataTable } from '@/components/data-engine';
 import { useInvalidateResource } from '@/lib/data-engine/useResource';
-import { OrderStatusBadge } from './OrderStatusBadge';
+import { ORDER_STATUS_OPTIONS, OrderStatusBadge } from './OrderStatusBadge';
 import { Button } from '@/components/ui/button';
 import type { FilterConfig, Order, OrderStatus } from '@mb/shared';
 import { businessDateStr } from '@mb/shared';
@@ -18,14 +18,6 @@ import { FileSpreadsheet } from 'lucide-react';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 
 const col = createColumnHelper<Order>();
-
-const STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'preparing', label: 'Preparing' },
-  { value: 'ready', label: 'Ready' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-];
 
 const PAYMENT_OPTIONS = ['cash', 'easypaisa', 'foodpanda', 'bank_account', 'staff'].map((value) => ({
   value,
@@ -65,7 +57,7 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
 
   const filterOptions = useMemo(
     () => ({
-      status: STATUS_OPTIONS,
+      status: ORDER_STATUS_OPTIONS,
       branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })),
     }),
     [branchesQ.data],
