@@ -24,6 +24,7 @@ import type {
   FinanceTransaction,
   LedgerHead,
   LedgerPage,
+  LedgerSummary,
   PartnerExpense,
   PartnerShareSummary,
   SalaryPayment,
@@ -127,6 +128,29 @@ export function useLedger(filters: LedgerFilters) {
     enabled: Boolean(token),
     staleTime: 15_000,
     queryFn: () => apiCall<LedgerPage>(`/api/finance/ledger${toQuery(filters)}`, {}, token),
+  });
+}
+
+// A `type`, for the same index-signature reason as `LedgerFilters` above.
+export type LedgerSummaryFilters = {
+  date: string;
+  branchId?: string;
+};
+
+/**
+ * The Daily Ledger's top summary — month-to-date as of `date`, and NOT
+ * derived from `useLedger()`'s page-scoped `openingBalance`/`closingBalance`.
+ * Deliberately excludes the table's other filters (ledgerHeadId, type,
+ * account, status, search, amount range) — the summary's scope is fixed to
+ * date + branch, per the feature's own spec.
+ */
+export function useLedgerSummary(filters: LedgerSummaryFilters) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeLedgerSummary(filters as Record<string, unknown>),
+    enabled: Boolean(token),
+    staleTime: 15_000,
+    queryFn: () => apiCall<LedgerSummary>(`/api/finance/ledger/summary${toQuery(filters)}`, {}, token),
   });
 }
 

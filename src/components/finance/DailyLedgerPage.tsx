@@ -25,6 +25,7 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
+import { LedgerSummaryCards } from './LedgerSummaryCards';
 import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateCcw, Search, Undo2 } from 'lucide-react';
 
 /**
@@ -261,6 +262,8 @@ export function DailyLedgerPage() {
       />
 
       <ReadOnlyNotice abilities={abilities} />
+
+      <LedgerSummaryCards date={query.to ?? today} branchId={query.branchId} />
 
       <FilterBar>
         <FilterField label="From">

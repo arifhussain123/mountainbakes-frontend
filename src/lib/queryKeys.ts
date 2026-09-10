@@ -215,6 +215,10 @@ export const qk = {
   // would serve one filter's rows under another's heading.
   financeLedger: (filters: Record<string, unknown>) => ['finance', 'ledger', filters] as const,
   financeLedgerEntry: (id: string) => ['finance', 'ledgerEntry', id] as const,
+  // The top summary cards — a different query from `financeLedger` above (its
+  // own month-to-date scope, not the table's arbitrary from/to), so it needs
+  // its own key even though both read `ledger_entries`.
+  financeLedgerSummary: (filters: Record<string, unknown>) => ['finance', 'ledgerSummary', filters] as const,
   financeHeads: (includeInactive?: boolean) =>
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
   financeIncome: (filters: Record<string, unknown>) => ['finance', 'income', filters] as const,
