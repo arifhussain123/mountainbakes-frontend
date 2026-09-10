@@ -8,11 +8,13 @@ const BRAND = 'MOUNTAIN BAKES';
 /**
  * The sale slip as the canonical print document.
  *
- * **No marketing footer, and that is a requirement rather than an omission.**
- * `settings.receiptFooter` is read by `InvoiceView` for the A4 copy and is
- * deliberately NOT read here: the till receipt ends at the payment method. Do not
- * add it back because the on-screen invoice has it — the two documents are asked
- * for different things, and this one is a till record.
+ * **The footer below is fixed contact copy, not `settings.receiptFooter`.**
+ * `InvoiceView` reads that setting for the A4 copy; this till receipt prints a
+ * short, hardcoded thank-you note instead, the same way `productionOrder.ts`
+ * prints its own fixed credit line — neither reads settings. Keep it to the one
+ * line-set below rather than growing it toward the A4 footer's free text: this
+ * document is a till record first, and centring/wrapping are tuned for exactly
+ * this wording at 58mm.
  */
 export function buildSaleReceiptDocument(doc: SaleReceiptDoc, paper: PaperWidth): PrintDocument {
   validateSaleDoc(doc);
@@ -60,6 +62,12 @@ ${kv('TOTAL', total, 'total')}
 ${doc.receivedCash != null ? kv('Cash Received', money(doc.receivedCash, symbol)) + kv('Cash Returned', money(doc.cashReturned ?? 0, symbol)) : ''}
 ${rule()}
 <div class="b up">Payment Method: ${escapeHtml(doc.paymentMethodLabel)}</div>
+<div class="footer">
+  <div>************************</div>
+  <div>Phone: +92 347 9782409</div>
+  <div>Thank you for choosing Mountain Bakes! We truly appreciate your support. Best wishes!</div>
+  <div>************************</div>
+</div>
 `;
 
   return {
