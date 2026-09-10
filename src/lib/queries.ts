@@ -1333,19 +1333,45 @@ export function useRevokeAllSessions(token: string) {
 
 export function useBranchReturns(
   token: string,
-  opts?: { branchId?: string | null; days?: number; limit?: number; offset?: number },
+  opts?: {
+    branchId?: string | null;
+    days?: number;
+    limit?: number;
+    offset?: number;
+    productId?: string | null;
+    status?: string | null;
+    search?: string | null;
+    from?: string | null;
+    to?: string | null;
+  },
 ) {
   const days = opts?.days ?? 90;
   const offset = opts?.offset ?? 0;
+  const key = {
+    branchId: opts?.branchId ?? null,
+    days,
+    offset,
+    limit: opts?.limit ?? null,
+    productId: opts?.productId ?? null,
+    status: opts?.status ?? null,
+    search: opts?.search ?? null,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+  };
   return useQuery({
-    queryKey: qk.branchReturns(opts?.branchId ?? null, days, offset),
+    queryKey: qk.branchReturns(key),
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
       // Only an admin may name a branch; the API ignores it for a branch role and
       // reads the JWT instead, so sending it is harmless either way.
       if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
       if (opts?.limit) params.set('limit', String(opts.limit));
       if (offset) params.set('offset', String(offset));
+      if (opts?.productId) params.set('productId', opts.productId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
       return apiCall<{ returns: ProductionReturn[]; total: number }>(`/api/stock/returns?${params.toString()}`, {}, token);
     },
     enabled: !!token,
@@ -1402,11 +1428,47 @@ export function useResubmitBranchReturn(token: string) {
   });
 }
 
-export function useProductionReturns(token: string) {
+export function useProductionReturns(
+  token: string,
+  opts?: {
+    page?: number;
+    limit?: number;
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    productId?: string | null;
+    status?: string | null;
+    search?: string | null;
+  },
+) {
+  const limit = opts?.limit ?? 20;
+  const offset = ((opts?.page ?? 1) - 1) * limit;
+  const key = {
+    offset,
+    limit,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+    branchId: opts?.branchId ?? null,
+    productId: opts?.productId ?? null,
+    status: opts?.status ?? null,
+    search: opts?.search ?? null,
+  };
   return useQuery({
-    queryKey: qk.productionReturns(),
-    queryFn: () => apiCall<{ returns: ProductionReturn[] }>('/api/production-returns', {}, token),
-    select: (r) => r.returns ?? [],
+    queryKey: qk.productionReturns(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.productId) params.set('productId', opts.productId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
+      return apiCall<{ returns: ProductionReturn[]; total: number }>(
+        `/api/production-returns?${params.toString()}`,
+        {},
+        token,
+      );
+    },
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });
@@ -1468,13 +1530,26 @@ export function useBranchDiscounts(
     status?: string | null;
     limit?: number;
     offset?: number;
+    search?: string | null;
+    from?: string | null;
+    to?: string | null;
     enabled?: boolean;
   },
 ) {
   const days = opts?.days ?? 90;
   const offset = opts?.offset ?? 0;
+  const key = {
+    branchId: opts?.branchId ?? null,
+    days,
+    status: opts?.status ?? null,
+    offset,
+    limit: opts?.limit ?? null,
+    search: opts?.search ?? null,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+  };
   return useQuery({
-    queryKey: qk.branchDiscounts(opts?.branchId ?? null, days, opts?.status, offset),
+    queryKey: qk.branchDiscounts(key),
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
       // Only an admin may name a branch; the API ignores it for a branch role and
@@ -1483,6 +1558,9 @@ export function useBranchDiscounts(
       if (opts?.status) params.set('status', opts.status);
       if (opts?.limit) params.set('limit', String(opts.limit));
       if (offset) params.set('offset', String(offset));
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
       return apiCall<{ discounts: BranchDiscount[]; total: number }>(`/api/branch-discounts?${params.toString()}`, {}, token);
     },
     // `enabled` exists for the New Orders popup, which is mounted on every visit
@@ -1533,11 +1611,44 @@ export function useWithdrawBranchDiscount(token: string) {
   });
 }
 
-export function useProductionDiscounts(token: string) {
+export function useProductionDiscounts(
+  token: string,
+  opts?: {
+    page?: number;
+    limit?: number;
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    status?: string | null;
+    search?: string | null;
+  },
+) {
+  const limit = opts?.limit ?? 20;
+  const offset = ((opts?.page ?? 1) - 1) * limit;
+  const key = {
+    offset,
+    limit,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+    branchId: opts?.branchId ?? null,
+    status: opts?.status ?? null,
+    search: opts?.search ?? null,
+  };
   return useQuery({
-    queryKey: qk.productionDiscounts(),
-    queryFn: () => apiCall<{ discounts: BranchDiscount[] }>('/api/production-discounts', {}, token),
-    select: (r) => r.discounts ?? [],
+    queryKey: qk.productionDiscounts(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
+      return apiCall<{ discounts: BranchDiscount[]; total: number }>(
+        `/api/production-discounts?${params.toString()}`,
+        {},
+        token,
+      );
+    },
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });

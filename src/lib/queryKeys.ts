@@ -85,9 +85,11 @@ export const qk = {
   // `useStockRealtime`'s prefix invalidation already refreshes this list — and
   // conversely, correcting a return here invalidates ['stock'] and the Stock
   // page, the history card and the dashboard's Stock Detail all follow.
-  // Keyed by window length as well as branch, for the reason `stockHistory` is.
-  branchReturns: (branchId?: string | null, days?: number | null, offset?: number | null) =>
-    ['stock', 'returns', branchId ?? 'me', days ?? 90, offset ?? 0] as const,
+  // Keyed by the whole filter object, same convention as `loginHistoryPage` /
+  // `productionStockLedger`: product, status, search and date range each select
+  // a different set of rows, and a key that ignored any of them would serve one
+  // filter's answer to another.
+  branchReturns: (params: Record<string, unknown>) => ['stock', 'returns', params] as const,
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and
@@ -133,23 +135,19 @@ export const qk = {
   productionStockDetail: (productId: string, date: string) =>
     ['productionStock', 'detail', productId, date] as const,
   productionBranchStock: () => ['productionBranchStock'] as const,
-  productionReturns: () => ['productionReturns'] as const,
+  // Keyed by the whole filter object — branch, product, status, search and date
+  // range each select a different set of rows, same convention as `branchReturns`.
+  productionReturns: (params: Record<string, unknown>) => ['productionReturns', params] as const,
   // Discounts, keyed as their own family rather than under ['stock'] the way
   // `branchReturns` is — and the difference is not cosmetic. A return moves units,
   // so it belongs under the prefix `useStockRealtime` invalidates; a discount
   // moves none, so hanging it there would refetch this list on every unrelated
   // stock movement and, worse, imply the two are views of one thing.
   //
-  // The branch list is keyed by branch and window for the reason `branchReturns`
-  // is: 'me' and a named branch are different answers, and an admin can ask for
-  // either.
-  productionDiscounts: () => ['discounts', 'production'] as const,
-  branchDiscounts: (
-    branchId?: string | null,
-    days?: number | null,
-    status?: string | null,
-    offset?: number | null,
-  ) => ['discounts', 'branch', branchId ?? 'me', days ?? 90, status ?? 'all', offset ?? 0] as const,
+  // Both lists are keyed by their whole filter object for the reason
+  // `branchReturns` is.
+  productionDiscounts: (params: Record<string, unknown>) => ['discounts', 'production', params] as const,
+  branchDiscounts: (params: Record<string, unknown>) => ['discounts', 'branch', params] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.

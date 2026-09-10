@@ -9,6 +9,7 @@ import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount 
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -93,9 +94,15 @@ const STATUSES: BranchDiscountStatus[] = ['pending', 'approved', 'rejected', 're
 export function BranchDiscountsPage() {
   const { token } = useAuth();
   const [status, setStatus] = useState<string>(ALL_STATUSES);
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [page, setPage] = useState(0);
   const discountsQ = useBranchDiscounts(token, {
     status: status === ALL_STATUSES ? undefined : status,
+    search: search || undefined,
+    from: from || undefined,
+    to: to || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   });
@@ -108,9 +115,16 @@ export function BranchDiscountsPage() {
   const [editAmount, setEditAmount] = useState('');
   const [editReason, setEditReason] = useState('');
 
+  /** Every filter/search change resets to page 0 — a stale page on a narrowed result set reads as "nothing claimed". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(0);
+    };
+  }
+
   function changeStatus(v: string) {
-    setStatus(v ?? ALL_STATUSES);
-    setPage(0);
+    setFilter(setStatus)(v ?? ALL_STATUSES);
   }
 
   const rows = discountsQ.data?.discounts ?? [];
@@ -269,33 +283,69 @@ export function BranchDiscountsPage() {
       </div>
 
       {/* Status narrows the table ahead of the search box within it, matching
-          the Production Discounts/Returns boards. Server-side here (status is
-          sent to the API), unlike search, which the API has no server-side
-          filter for and so stays scoped to the current page. */}
+          the Production Discounts/Returns boards. Both are server-side: the
+          search box sends `search` to the API rather than filtering the
+          current page in memory. */}
       <DataTable
         columns={columns}
         data={rows}
         loading={discountsQ.isLoading}
-        searchPlaceholder="Search this page…"
+        searchPlaceholder="Search demand # or reason…"
         pager={false}
+        manual={{
+          page: page + 1,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: (p) => setPage(p - 1),
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
         leading={
-          <div className="space-y-1">
-            <Label htmlFor="discount-status-filter" className="sr-only">
-              Status
-            </Label>
-            <Select value={status} onValueChange={(v) => changeStatus((v as string) ?? ALL_STATUSES)}>
-              <SelectTrigger id="discount-status-filter" className="h-11 w-full sm:h-9 sm:w-48">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {discountStatusLabel(s)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="discount-status-filter" className="text-xs text-muted-foreground">
+                Status
+              </Label>
+              <Select value={status} onValueChange={(v) => changeStatus((v as string) ?? ALL_STATUSES)}>
+                <SelectTrigger id="discount-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {discountStatusLabel(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="discount-from-filter" className="text-xs text-muted-foreground">
+                From
+              </Label>
+              <Input
+                id="discount-from-filter"
+                type="date"
+                value={from}
+                max={to || undefined}
+                onChange={(e) => setFilter(setFrom)(e.target.value)}
+                className="h-11 sm:h-9"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="discount-to-filter" className="text-xs text-muted-foreground">
+                To
+              </Label>
+              <Input
+                id="discount-to-filter"
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(e) => setFilter(setTo)(e.target.value)}
+                className="h-11 sm:h-9"
+              />
+            </div>
           </div>
         }
         empty={

@@ -6,6 +6,7 @@ import type { ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useBranchReturns,
+  useProducts,
   useResubmitBranchReturn,
   useReviseBranchReturn,
   useWithdrawBranchReturn,
@@ -18,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -119,12 +121,39 @@ function lockReason(r: ProductionReturn): string {
   return 'This return can no longer be changed.';
 }
 
+// Sentinel rather than an empty string: Base UI's Select treats an absent value
+// as "show the placeholder", so '' as a real option would render as no value.
+const ALL_STATUSES = 'all';
+
 const col = createColumnHelper<ProductionReturn>();
 
 export function BranchReturnStockPage() {
   const { token } = useAuth();
   const [page, setPage] = useState(0);
-  const returnsQ = useBranchReturns(token, { limit: PAGE_SIZE, offset: page * PAGE_SIZE });
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES);
+  const [productFilter, setProductFilter] = useState<string>(ALL_STATUSES);
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+
+  /** Every filter/search change resets to page 0 — a stale page on a narrowed result set reads as "nothing returned". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(0);
+    };
+  }
+
+  const productsQ = useProducts(token);
+  const returnsQ = useBranchReturns(token, {
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+    status: statusFilter === ALL_STATUSES ? undefined : statusFilter,
+    productId: productFilter === ALL_STATUSES ? undefined : productFilter,
+    search: search || undefined,
+    from: from || undefined,
+    to: to || undefined,
+  });
   const reviseMut = useReviseBranchReturn(token);
   const withdrawMut = useWithdrawBranchReturn(token);
   const resubmitMut = useResubmitBranchReturn(token);
@@ -322,14 +351,85 @@ export function BranchReturnStockPage() {
         </div>
       </div>
 
-      {/* Search filters only the current page — the API has no server-side
-          search for this resource. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="return-status-filter" className="text-xs text-muted-foreground">
+            Status
+          </Label>
+          <Select value={statusFilter} onValueChange={(v) => setFilter(setStatusFilter)((v as string) ?? ALL_STATUSES)}>
+            <SelectTrigger id="return-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
+              {Object.keys(STATUS_LABELS).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {statusLabel(s)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-product-filter" className="text-xs text-muted-foreground">
+            Product
+          </Label>
+          <Select value={productFilter} onValueChange={(v) => setFilter(setProductFilter)(v ?? ALL_STATUSES)}>
+            <SelectTrigger id="return-product-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All products" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All products</SelectItem>
+              {(productsQ.data ?? []).map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-from-filter" className="text-xs text-muted-foreground">
+            From
+          </Label>
+          <Input
+            id="return-from-filter"
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFilter(setFrom)(e.target.value)}
+            className="h-11 sm:h-9"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-to-filter" className="text-xs text-muted-foreground">
+            To
+          </Label>
+          <Input
+            id="return-to-filter"
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setFilter(setTo)(e.target.value)}
+            className="h-11 sm:h-9"
+          />
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
         loading={returnsQ.isLoading}
-        searchPlaceholder="Search this page…"
+        searchPlaceholder="Search reason or product…"
         pager={false}
+        manual={{
+          page: page + 1,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: (p) => setPage(p - 1),
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
         empty={
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <Undo2 className="h-8 w-8 text-muted-foreground/50" />

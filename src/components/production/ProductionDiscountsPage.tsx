@@ -4,11 +4,13 @@ import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchDiscount, BranchDiscountStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProductionDiscounts, useReviewDiscount } from '@/lib/queries';
+import { useBranches, useProductionDiscounts, useReviewDiscount } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import {
@@ -74,6 +76,10 @@ const STATUS_LABELS: Record<string, string> = {
   returned: 'Sent Back to Branch',
 };
 
+// Sentinel rather than an empty string: Base UI's Select treats an absent value
+// as "show the placeholder", so '' as a real option would render as no value.
+const ALL_STATUSES = 'all';
+
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 
 /** First uuid segment — the same short reference, and reasoning, as the Returns page. */
@@ -104,10 +110,10 @@ function confirmCopy(d: BranchDiscount, status: BranchDiscountStatus): { title: 
 
 const col = createColumnHelper<BranchDiscount>();
 
+const PAGE_SIZE = 20;
+
 export function ProductionDiscountsPage() {
   const { token } = useAuth();
-  const discountsQ = useProductionDiscounts(token);
-  const reviewMut = useReviewDiscount(token);
 
   // The row open in the dialog, and — once one is picked — the action awaiting
   // confirmation. Two pieces of state rather than one union because the row
@@ -116,6 +122,37 @@ export function ProductionDiscountsPage() {
   const [viewRow, setViewRow] = useState<BranchDiscount | null>(null);
   const [pendingAction, setPendingAction] = useState<BranchDiscountStatus | null>(null);
   const [note, setNote] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES);
+  const [branchFilter, setBranchFilter] = useState<string>(ALL_STATUSES);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
+
+  const branchesQ = useBranches(token);
+  const discountsQ = useProductionDiscounts(token, {
+    page,
+    limit: PAGE_SIZE,
+    from: from || undefined,
+    to: to || undefined,
+    branchId: branchFilter === ALL_STATUSES ? undefined : branchFilter,
+    status: statusFilter === ALL_STATUSES ? undefined : statusFilter,
+    search: search || undefined,
+  });
+  const reviewMut = useReviewDiscount(token);
+
+  // Server-filtered and server-paginated — the query above already narrows to
+  // the selected branch/status/date range and this page's slice.
+  const rows = discountsQ.data?.discounts ?? [];
+  const total = discountsQ.data?.total ?? 0;
 
   function closeDialog() {
     if (reviewMut.isPending) return;
@@ -223,15 +260,88 @@ export function ProductionDiscountsPage() {
       <div>
         <h2 className="text-lg font-semibold">Discounts</h2>
         <p className="text-sm text-muted-foreground">
-          Last 30 days · open a claim to approve it, reject it, or send it back to the branch to correct
+          Last 30 days by default · open a claim to approve it, reject it, or send it back to the branch to correct
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="discount-status-filter" className="text-xs text-muted-foreground">
+            Status
+          </Label>
+          <Select value={statusFilter} onValueChange={(v) => setFilter(setStatusFilter)((v as string) ?? ALL_STATUSES)}>
+            <SelectTrigger id="discount-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
+              {(Object.keys(STATUS_LABELS) as BranchDiscountStatus[]).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="discount-branch-filter" className="text-xs text-muted-foreground">
+            Branch
+          </Label>
+          <Select value={branchFilter} onValueChange={(v) => setFilter(setBranchFilter)(v ?? ALL_STATUSES)}>
+            <SelectTrigger id="discount-branch-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All branches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All branches</SelectItem>
+              {(branchesQ.data ?? []).map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {short(b.name)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="discount-from-filter" className="text-xs text-muted-foreground">
+            From
+          </Label>
+          <Input
+            id="discount-from-filter"
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFilter(setFrom)(e.target.value)}
+            className="h-11 sm:h-9"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="discount-to-filter" className="text-xs text-muted-foreground">
+            To
+          </Label>
+          <Input
+            id="discount-to-filter"
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setFilter(setTo)(e.target.value)}
+            className="h-11 sm:h-9"
+          />
+        </div>
       </div>
 
       <DataTable
         columns={columns}
-        data={discountsQ.data ?? []}
+        data={rows}
         loading={discountsQ.isLoading}
-        searchPlaceholder="Search discounts…"
+        searchPlaceholder="Search demand #, reason or branch…"
+        manual={{
+          page,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
       />
 
       {/* ── View, and decide ────────────────────────────────────────────────

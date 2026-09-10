@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { ProductionReturn, ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useProductionReturns, useReviewReturn } from '@/lib/queries';
+import { useBranches, useProducts, useProductionReturns, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
@@ -17,6 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
@@ -84,6 +87,10 @@ const STATUS_LABELS: Record<string, string> = {
   returned: 'Sent Back to Branch',
 };
 
+// Sentinel rather than an empty string: Base UI's Select treats an absent value
+// as "show the placeholder", so '' as a real option would render as no value.
+const ALL_STATUSES = 'all';
+
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 
 /**
@@ -126,10 +133,10 @@ function confirmCopy(r: ProductionReturn, status: ProductionReturnStatus): { tit
 
 const col = createColumnHelper<ProductionReturn>();
 
+const PAGE_SIZE = 20;
+
 export function ProductionReturnsPage() {
   const { token } = useAuth();
-  const returnsQ = useProductionReturns(token);
-  const reviewMut = useReviewReturn(token);
 
   // The row open in the dialog, and — once one is picked — the action awaiting
   // confirmation. `pendingAction` null means the dialog is showing the record;
@@ -138,6 +145,40 @@ export function ProductionReturnsPage() {
   // of a confirmation returns to the detail rather than closing the dialog.
   const [viewRow, setViewRow] = useState<ProductionReturn | null>(null);
   const [pendingAction, setPendingAction] = useState<ProductionReturnStatus | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES);
+  const [branchFilter, setBranchFilter] = useState<string>(ALL_STATUSES);
+  const [productFilter, setProductFilter] = useState<string>(ALL_STATUSES);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
+
+  const branchesQ = useBranches(token);
+  const productsQ = useProducts(token);
+  const returnsQ = useProductionReturns(token, {
+    page,
+    limit: PAGE_SIZE,
+    from: from || undefined,
+    to: to || undefined,
+    branchId: branchFilter === ALL_STATUSES ? undefined : branchFilter,
+    productId: productFilter === ALL_STATUSES ? undefined : productFilter,
+    status: statusFilter === ALL_STATUSES ? undefined : statusFilter,
+    search: search || undefined,
+  });
+  const reviewMut = useReviewReturn(token);
+
+  // Server-filtered and server-paginated — the query above already narrows to
+  // the selected branch/product/status/date range and this page's slice.
+  const rows = returnsQ.data?.returns ?? [];
+  const total = returnsQ.data?.total ?? 0;
 
   function closeDialog() {
     if (reviewMut.isPending) return;
@@ -226,11 +267,107 @@ export function ProductionReturnsPage() {
       <div>
         <h2 className="text-lg font-semibold">Product Returns</h2>
         <p className="text-sm text-muted-foreground">
-          Last 30 days · open a return to approve it, reject it, or send it back to the branch to correct
+          Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
         </p>
       </div>
 
-      <DataTable columns={columns} data={returnsQ.data ?? []} loading={returnsQ.isLoading} searchPlaceholder="Search returns…" />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="return-status-filter" className="text-xs text-muted-foreground">
+            Status
+          </Label>
+          <Select value={statusFilter} onValueChange={(v) => setFilter(setStatusFilter)((v as string) ?? ALL_STATUSES)}>
+            <SelectTrigger id="return-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
+              {(Object.keys(STATUS_LABELS) as ProductionReturnStatus[]).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-branch-filter" className="text-xs text-muted-foreground">
+            Branch
+          </Label>
+          <Select value={branchFilter} onValueChange={(v) => setFilter(setBranchFilter)(v ?? ALL_STATUSES)}>
+            <SelectTrigger id="return-branch-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All branches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All branches</SelectItem>
+              {(branchesQ.data ?? []).map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {short(b.name)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-product-filter" className="text-xs text-muted-foreground">
+            Product
+          </Label>
+          <Select value={productFilter} onValueChange={(v) => setFilter(setProductFilter)(v ?? ALL_STATUSES)}>
+            <SelectTrigger id="return-product-filter" className="h-11 w-full sm:h-9 sm:w-44">
+              <SelectValue placeholder="All products" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_STATUSES}>All products</SelectItem>
+              {(productsQ.data ?? []).map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-from-filter" className="text-xs text-muted-foreground">
+            From
+          </Label>
+          <Input
+            id="return-from-filter"
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFilter(setFrom)(e.target.value)}
+            className="h-11 sm:h-9"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="return-to-filter" className="text-xs text-muted-foreground">
+            To
+          </Label>
+          <Input
+            id="return-to-filter"
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setFilter(setTo)(e.target.value)}
+            className="h-11 sm:h-9"
+          />
+        </div>
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={returnsQ.isLoading}
+        searchPlaceholder="Search reason, product or branch…"
+        manual={{
+          page,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
+      />
 
       {/* ── View, and decide ────────────────────────────────────────────────
           One dialog, two faces. It opens on the record; picking an action turns
