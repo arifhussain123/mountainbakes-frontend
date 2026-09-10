@@ -30,9 +30,18 @@ const col = createColumnHelper<BranchUserRequest>();
  * history. The list itself is not filtered, so an admin can still find what they
  * approved last week by searching for it.
  */
+const PAGE_SIZE = 20;
+
 export function AccountRequestsPage() {
   const { token } = useAuth();
-  const { data: requests = [], isLoading } = useBranchUserRequests(token);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const { data, isLoading } = useBranchUserRequests(token, { page, limit: PAGE_SIZE, search: search || undefined });
+  const total = data?.total ?? 0;
+  // A cheap `total`-only read for the header count — it has to span every
+  // pending request in the queue, not just the current page.
+  const { data: pendingData } = useBranchUserRequests(token, { status: 'pending', limit: 1 });
+  const pendingCount = pendingData?.total ?? 0;
   const approve = useApproveBranchUserRequest(token);
   const reject = useRejectBranchUserRequest(token);
 
@@ -42,16 +51,18 @@ export function AccountRequestsPage() {
   const [username, setUsername] = useState('');
   const [reason, setReason] = useState('');
 
+  // Pending rows sort to the top within the current page — server-side
+  // pagination means this can no longer promise every pending row surfaces
+  // ahead of every decided one across the whole queue, but within a 20-row
+  // page (freshest first) it still reads as a work queue.
   const rows = useMemo(
     () =>
-      [...requests].sort((a, b) => {
+      [...(data?.requests ?? [])].sort((a, b) => {
         if (a.status === b.status) return b.createdAt.localeCompare(a.createdAt);
         return a.status === 'pending' ? -1 : b.status === 'pending' ? 1 : 0;
       }),
-    [requests],
+    [data?.requests],
   );
-
-  const pendingCount = requests.filter((r) => r.status === 'pending').length;
 
   function openApprove(request: BranchUserRequest) {
     setPassword('');
@@ -161,6 +172,14 @@ export function AccountRequestsPage() {
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search requests…"
+        manual={{
+          page,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: setPage,
+          search,
+          onSearchChange: (v) => { setSearch(v); setPage(1); },
+        }}
         empty={
           <EmptyState
             icon={Inbox}

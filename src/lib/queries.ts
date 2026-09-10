@@ -129,17 +129,18 @@ export function useCategories(token: string, opts?: { enabled?: boolean }) {
 
 export function usePriceHistory(
   token: string,
-  opts?: { productId?: string; limit?: number; offset?: number; enabled?: boolean },
+  opts?: { productId?: string; limit?: number; offset?: number; search?: string; enabled?: boolean },
 ) {
   const offset = opts?.offset ?? 0;
   const params = new URLSearchParams();
   if (opts?.productId) params.set('productId', opts.productId);
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (offset) params.set('offset', String(offset));
+  if (opts?.search) params.set('search', opts.search);
   const qs = params.toString();
 
   return useQuery({
-    queryKey: qk.priceHistory(opts?.productId, offset),
+    queryKey: qk.priceHistory(opts?.productId, offset, opts?.search),
     queryFn: () =>
       apiCall<{ history: PriceHistoryDoc[]; total: number }>(
         `/api/products/price/history${qs ? `?${qs}` : ''}`,
@@ -1977,12 +1978,35 @@ export function useRegenerateEventSchedule(token: string) {
 // both pages, and the mutations differ only in who is allowed to call them.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useBranchUserRequests(token: string, opts?: { enabled?: boolean }) {
+export function useBranchUserRequests(
+  token: string,
+  opts?: {
+    enabled?: boolean;
+    page?: number;
+    limit?: number;
+    search?: string | null;
+    status?: string | null;
+  },
+) {
+  // `limit` defaults to 200, not a real 20-row page — a branch manager's own
+  // queue (the only other caller) is a handful of shift requests and has no
+  // page control; AccountRequestsPage.tsx (the admin's cross-branch view) is
+  // the one that actually pages, and passes both explicitly.
+  const page = opts?.page ?? 1;
+  const limit = opts?.limit ?? 200;
+  const key = { page, limit, search: opts?.search ?? null, status: opts?.status ?? null };
   return useQuery({
-    queryKey: qk.branchUserRequests(),
-    queryFn: () =>
-      apiCall<{ requests: BranchUserRequest[] }>('/api/branch-user-requests', {}, token),
-    select: (r) => r.requests ?? [],
+    queryKey: qk.branchUserRequests(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.status) params.set('status', opts.status);
+      return apiCall<{ requests: BranchUserRequest[]; total: number }>(
+        `/api/branch-user-requests?${params.toString()}`,
+        {},
+        token,
+      );
+    },
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
   });
@@ -1999,7 +2023,7 @@ export function useCreateBranchUserRequest(token: string) {
         token,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
     },
   });
 }
@@ -2019,7 +2043,7 @@ export function useApproveBranchUserRequest(token: string) {
         token,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
       qc.invalidateQueries({ queryKey: ['users'] });
     },
   });
@@ -2035,7 +2059,7 @@ export function useRejectBranchUserRequest(token: string) {
         token,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
     },
   });
 }

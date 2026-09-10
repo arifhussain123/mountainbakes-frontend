@@ -156,6 +156,7 @@ export type IncomeFilters = {
   branchId?: string;
   from?: string;
   to?: string;
+  search?: string;
 };
 
 export function useIncomeApprovals(filters: IncomeFilters & { limit?: number; offset?: number }) {

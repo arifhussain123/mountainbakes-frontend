@@ -57,6 +57,7 @@ export function BranchIncomePage() {
   const [branchId, setBranchId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
 
   /** Every filter setter resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
@@ -86,6 +87,7 @@ export function BranchIncomePage() {
     branchId: branchId || undefined,
     from: from || undefined,
     to: to || undefined,
+    search: search || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   });
@@ -292,14 +294,20 @@ export function BranchIncomePage() {
         </FilterField>
       </FilterBar>
 
-      {/* Search filters only the current page — the API has no server-side
-          search for this resource. */}
       <DataTable
         columns={columns}
         data={tableRows}
         loading={isLoading}
         searchPlaceholder="Search by branch or reference…"
         pager={false}
+        manual={{
+          page: page + 1,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: (p) => setPage(p - 1),
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
       />
 
       <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">

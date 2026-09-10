@@ -23,8 +23,8 @@ export const qk = {
   branchLocations: () => ['branchLocations'] as const,
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
-  priceHistory: (productId?: string | null, offset?: number) =>
-    ['priceHistory', productId ?? 'all', offset ?? 0] as const,
+  priceHistory: (productId?: string | null, offset?: number, search?: string | null) =>
+    ['priceHistory', productId ?? 'all', offset ?? 0, search ?? ''] as const,
   reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null, fields?: string | null) =>
     ['reportSummary', period, branchId ?? null, from ?? null, to ?? null, fields ?? 'full'] as const,
   // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —
@@ -167,7 +167,9 @@ export const qk = {
   // the queue: the endpoint scopes itself from the JWT, so a manager and an
   // admin asking for the same key are asking for different rows and never share
   // a cache entry — the token they read with differs, and signing out clears it.
-  branchUserRequests: () => ['branchUserRequests'] as const,
+  // Keyed by the whole filter object — page/limit/search/status each select a
+  // different set of rows, same convention as `branchReturns`.
+  branchUserRequests: (params: Record<string, unknown>) => ['branchUserRequests', params] as const,
 
   // Branch Closing. One key for the whole sheet rather than three: the orders,
   // expenses and stock behind it are read together, for one business date, and

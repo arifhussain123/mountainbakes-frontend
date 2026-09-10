@@ -222,29 +222,72 @@ interface StockCorrectionResult {
   movements: { type: string; delta: number }[];
 }
 
+const PAGE_SIZE = 20;
+
 export function SupportCenterPage() {
   const [source, setSource] = useState<SupportSource>('all');
   const { token } = useAuth();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [active, setActive] = useState<SupportTicket | null>(null);
   const [mode, setMode] = useState<DialogMode>(null);
+  // Open-ticket counts by source, for the Source filter's badges — these have
+  // to reflect the WHOLE open queue regardless of which page the table below
+  // is showing, so they come from their own lightweight endpoint rather than
+  // from `tickets` (now just one page).
+  const [stats, setStats] = useState({ branchOpen: 0, productionOpen: 0 });
 
   function reload() { setRefreshKey((k) => k + 1); }
   function openDialog(ticket: SupportTicket, m: DialogMode) { setActive(ticket); setMode(m); }
   function closeDialog() { setMode(null); setActive(null); }
 
+  /** Every filter/search change resets to page 1 — a stale page on a narrowed result set reads as "no queries". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
+
+  // Which queues the chosen source shows. 'all' shows both, stacked under their
+  // own headings; every other value shows exactly one.
+  const showFinance = source === 'all' || source === 'finance';
+  const showOperations = source !== 'finance';
+
+  // Server-filtered and server-paginated: branch/production tickets, the
+  // selected source, search and page all reach GET /api/support directly.
+  // Skipped entirely while only the Finance section is showing.
+  useEffect(() => {
+    if (!token || !showOperations) return;
+    let stale = false;
+    void (async () => {
+      setLoading(true);
+      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (search.trim()) params.set('search', search.trim());
+      if (source === 'branch' || source === 'production') params.set('source', source);
+      try {
+        const r = await apiCall<{ tickets: SupportTicket[]; total: number }>(`/api/support?${params}`, {}, token);
+        if (stale) return;
+        setTickets(r.tickets);
+        setTotal(r.total);
+      } catch (err) {
+        if (!stale) toast.error(err instanceof Error ? err.message : 'Failed to load tickets');
+      } finally {
+        if (!stale) setLoading(false);
+      }
+    })();
+    return () => { stale = true; };
+  }, [token, refreshKey, page, search, source, showOperations]);
+
   useEffect(() => {
     if (!token) return;
-    // This screen computes its per-source open counts and search over the whole
-    // live queue client-side (not the branch Help Desk's paginated view), so it
-    // asks for the endpoint's full cap explicitly rather than the new 20-row
-    // default (see GET /api/support in support.routes.ts).
-    apiCall<{ tickets: SupportTicket[] }>('/api/support?pageSize=500', {}, token)
-      .then((r) => setTickets(r.tickets))
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load tickets'))
-      .finally(() => setLoading(false));
+    apiCall<{ branchOpen: number; productionOpen: number }>('/api/support/stats', {}, token)
+      .then(setStats)
+      .catch(() => { /* badges just stay at their last known value */ });
   }, [token, refreshKey]);
 
   // Archives rather than deletes (migration 76). The row survives — it is the only
@@ -260,28 +303,6 @@ export function SupportCenterPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to archive');
     }
   }
-
-  // Which queues the chosen source shows. 'all' shows both, stacked under their
-  // own headings; every other value shows exactly one.
-  const showFinance = source === 'all' || source === 'finance';
-  const showOperations = source !== 'finance';
-
-  const visibleTickets = useMemo(
-    () =>
-      source === 'all' || source === 'finance'
-        ? tickets
-        : tickets.filter((t) => sourceOfTicket(t) === source),
-    [tickets, source],
-  );
-
-  const branchOpenCount = useMemo(
-    () => tickets.filter((t) => t.status === 'open' && sourceOfTicket(t) === 'branch').length,
-    [tickets],
-  );
-  const productionOpenCount = useMemo(
-    () => tickets.filter((t) => t.status === 'open' && sourceOfTicket(t) === 'production').length,
-    [tickets],
-  );
 
   // Just for the Finance button's badge. The Finance section fetches the queue
   // again with its own filters; this is the UNFILTERED count, which is what a
@@ -448,7 +469,7 @@ export function SupportCenterPage() {
               key={s}
               type="button"
               aria-pressed={source === s}
-              onClick={() => setSource(s)}
+              onClick={() => setFilter(setSource)(s)}
               className={cn(
                 'h-9 rounded px-3 text-sm transition-colors',
                 source === s
@@ -458,8 +479,8 @@ export function SupportCenterPage() {
             >
               {SOURCE_LABELS[s]}
               {s === 'finance' && financeOpenCount > 0 ? ` (${financeOpenCount})` : ''}
-              {s === 'branch' && branchOpenCount > 0 ? ` (${branchOpenCount})` : ''}
-              {s === 'production' && productionOpenCount > 0 ? ` (${productionOpenCount})` : ''}
+              {s === 'branch' && stats.branchOpen > 0 ? ` (${stats.branchOpen})` : ''}
+              {s === 'production' && stats.productionOpen > 0 ? ` (${stats.productionOpen})` : ''}
             </button>
           ))}
         </div>
@@ -471,8 +492,7 @@ export function SupportCenterPage() {
             <h3 className="text-sm font-semibold">Branches &amp; Production</h3>
           )}
           <p className="text-sm text-muted-foreground">
-            {visibleTickets.filter((t) => t.status === 'open').length} open ·{' '}
-            {visibleTickets.length} total — queries raised from{' '}
+            {total} quer{total === 1 ? 'y' : 'ies'} raised from{' '}
             {source === 'branch'
               ? 'branches'
               : source === 'production'
@@ -482,9 +502,17 @@ export function SupportCenterPage() {
           </p>
           <DataTable
             columns={columns}
-            data={visibleTickets}
+            data={tickets}
             loading={loading}
             searchPlaceholder="Search tickets…"
+            manual={{
+              page,
+              pageSize: PAGE_SIZE,
+              total,
+              onPageChange: setPage,
+              search,
+              onSearchChange: setFilter(setSearch),
+            }}
           />
         </section>
       )}

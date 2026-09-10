@@ -28,8 +28,9 @@ export function PriceHistoryPage() {
   const { user, token } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(0);
+  const [search, setSearch] = useState('');
 
-  const historyQ = usePriceHistory(token, { limit: PAGE_SIZE, offset: page * PAGE_SIZE });
+  const historyQ = usePriceHistory(token, { limit: PAGE_SIZE, offset: page * PAGE_SIZE, search: search || undefined });
   const rows = historyQ.data?.history ?? [];
   const total = historyQ.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -99,15 +100,20 @@ export function PriceHistoryPage() {
           </Button>
         </div>
       </div>
-      {/* Search filters only the current page — the API has no server-side
-          search for this resource yet, and filtering across all pages would
-          need one. */}
       <DataTable
         columns={columns}
         data={rows}
         loading={loading}
-        searchPlaceholder="Search this page…"
+        searchPlaceholder="Search product, code or reason…"
         pager={false}
+        manual={{
+          page: page + 1,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: (p) => setPage(p - 1),
+          search,
+          onSearchChange: (v) => { setSearch(v); setPage(0); },
+        }}
       />
 
       <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
