@@ -66,7 +66,7 @@ ${rule()}
 ${packing.length > 0 ? packingHtml(packing) : ''}
 ${doc.previousCollection === undefined ? '' : previousCollectionHtml(doc.previousCollection, symbol)}
 <div class="sign"><div>Collected By</div><div>Received By</div></div>
-<div class="footer">************************<br>Design &amp; developed by<br>arifsiksavi@gmail.com<br>0322-2050545<br>************************</div>
+<div class="footer">* Design &amp; developed by arifsiksavi@gmail.com | 0322-2050545 *</div>
 `;
 
   return {

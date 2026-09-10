@@ -41,10 +41,12 @@ export const PRINT_STYLES = {
   sectionPx: 12,
   /** Order information, product rows, the collection working. */
   bodyPx: 11,
-  /** Column headings, footer, signature captions. */
+  /** Column headings, signature captions. */
   smallPx: 9.5,
   /** TOTAL and AMOUNT TO COLLECT. */
   totalPx: 13,
+  /** The one-line contact footer — sized to stay on one line at 80mm; smallPx does not fit it. */
+  footerPx: 9,
   lineHeight: 1.3,
 } as const;
 
@@ -147,7 +149,7 @@ export function receiptCss(paper: PaperSpec): string {
   .note { font-size: ${px(s.bodyPx)}; }
   .sign { display: flex; gap: 4mm; margin-top: 5mm; }
   .sign > div { flex: 1 1 0; border-top: 1px solid #000; padding-top: 0.6mm; font-size: ${px(s.smallPx)}; text-transform: uppercase; }
-  .footer { font-size: ${px(s.smallPx)}; text-align: center; margin-top: 2mm; }
+  .footer { font-size: ${px(s.footerPx)}; text-align: center; margin-top: 2mm; }
   img.logo { display: block; margin: 0 auto 1mm; height: 12mm; width: auto; max-width: 28mm; }
   #mb-gauge { position: absolute; top: 0; left: 0; width: ${paper.paperWidthMm}mm; height: 0; visibility: hidden; }
   @media print { #mb-gauge { display: none; } }
