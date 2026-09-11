@@ -125,6 +125,7 @@ export const qk = {
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   productionOverview: () => ['productionOverview'] as const,
+  productionQueue: () => ['productionQueue'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })
   // after a prepare or an adjustment refreshes the table, the ledger and any open

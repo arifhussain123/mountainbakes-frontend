@@ -851,6 +851,35 @@ export function useProductionOverview(token: string) {
   });
 }
 
+export type ProductionQueueOrder = Order;
+
+export interface ProductionQueueStats {
+  waitingCount: number;
+  preparingCount: number;
+  readyCount: number;
+  totalActive: number;
+}
+
+/**
+ * The pending/preparing/ready board every branch is feeding. `staleTime`
+ * matches the other live screens — freshness comes from the app's 2-second
+ * refetch tick (`AppRefreshProvider`), not a subscription or a bespoke
+ * interval opened by this hook.
+ */
+export function useProductionQueue(token: string) {
+  return useQuery({
+    queryKey: qk.productionQueue(),
+    queryFn: () =>
+      apiCall<{ queue: Record<string, ProductionQueueOrder[]>; stats: ProductionQueueStats }>(
+        '/api/production/queue',
+        {},
+        token,
+      ),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
 /**
  * Central production-pool table for a Karachi day (defaults to today).
  *
