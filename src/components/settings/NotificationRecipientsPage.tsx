@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { NotificationRecipient, NotificationLogRecord, NotificationChannel, Branch, ClosingDispatchResult } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Send, ScrollText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const col = createColumnHelper<NotificationRecipient>();
 
@@ -199,7 +199,7 @@ export function NotificationRecipientsPage() {
           onSaved={() => { setCreating(false); setEditing(null); reload(); }}
         />
       )}
-      {showLogs && <LogsDialog onClose={() => setShowLogs(false)} />}
+      {showLogs && <LogsDialog onClose={() => setShowLogs(false)} recipients={recipients} />}
     </div>
   );
 }
@@ -370,17 +370,53 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
 // --- Delivery log -----------------------------------------------------------
 type LogRow = NotificationLogRecord & { recipientName?: string | null; mobileNumber?: string | null };
 
-function LogsDialog({ onClose }: { onClose: () => void }) {
+const LOGS_PAGE_SIZE = 20;
+
+interface LogsFilterState {
+  businessDate: string;
+  status: string;
+  channel: string;
+  recipientId: string;
+}
+
+/**
+ * Every send attempt, server-filtered and server-paged — this table grows one
+ * row per recipient × channel × business day, so loading it all (the backend
+ * used to hard-cap at 500, unfiltered) silently dropped older attempts once
+ * that cap was passed. `limit`/`offset` + `count: 'exact'` on the backend are
+ * what make the total below trustworthy.
+ */
+function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: NotificationRecipient[] }) {
   const { token } = useAuth();
   const [logs, setLogs] = useState<LogRow[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [filters, setFilters] = useState<LogsFilterState>({
+    businessDate: '', status: '', channel: '', recipientId: '',
+  });
+
+  function setFilter<K extends keyof LogsFilterState>(key: K, value: LogsFilterState[K]) {
+    setFilters((f) => ({ ...f, [key]: value }));
+    setPage(0);
+  }
 
   useEffect(() => {
-    apiCall<{ logs: LogRow[] }>('/api/closing-notifications/logs', {}, token)
-      .then((r) => setLogs(r.logs ?? []))
+    const params = new URLSearchParams();
+    if (filters.businessDate) params.set('businessDate', filters.businessDate);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.channel) params.set('channel', filters.channel);
+    if (filters.recipientId) params.set('recipientId', filters.recipientId);
+    params.set('limit', String(LOGS_PAGE_SIZE));
+    params.set('offset', String(page * LOGS_PAGE_SIZE));
+
+    apiCall<{ logs: LogRow[]; total: number }>(`/api/closing-notifications/logs?${params}`, {}, token)
+      .then((r) => { setLogs(r.logs ?? []); setTotal(r.total ?? 0); })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load logs'))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, filters, page]);
+
+  const pageCount = Math.max(1, Math.ceil(total / LOGS_PAGE_SIZE));
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -390,11 +426,56 @@ function LogsDialog({ onClose }: { onClose: () => void }) {
           <DialogDescription>Every closing-summary send attempt, newest first.</DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="space-y-1">
+            <Label className="text-xs">Business date</Label>
+            <Input
+              type="date"
+              value={filters.businessDate}
+              onChange={(e) => setFilter('businessDate', e.target.value)}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Status</Label>
+            <Select value={filters.status || '__all__'} onValueChange={(v) => setFilter('status', v === '__all__' ? '' : (v ?? ''))}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Any status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Channel</Label>
+            <Select value={filters.channel || '__all__'} onValueChange={(v) => setFilter('channel', v === '__all__' ? '' : (v ?? ''))}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Any channel</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Recipient</Label>
+            <Select value={filters.recipientId || '__all__'} onValueChange={(v) => setFilter('recipientId', v === '__all__' ? '' : (v ?? ''))}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Any recipient</SelectItem>
+                {recipients.map((r) => <SelectItem key={r.id} value={r.id}>{r.recipientName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="max-h-[50vh] overflow-y-auto">
           {loading ? (
             <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
           ) : logs.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Nothing sent yet.</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">No delivery attempts for this selection.</p>
           ) : (
             <div className="space-y-2">
               {logs.map((l) => (
@@ -418,6 +499,33 @@ function LogsDialog({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           )}
+        </div>
+
+        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>{total === 0 ? 'No attempts' : `${total} ${total === 1 ? 'attempt' : 'attempts'}`}</span>
+          <div className="flex items-center gap-2">
+            <span>Page {page + 1} of {pageCount}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              aria-label="Previous page"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              aria-label="Next page"
+              disabled={page + 1 >= pageCount}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
 
         <DialogFooter>
