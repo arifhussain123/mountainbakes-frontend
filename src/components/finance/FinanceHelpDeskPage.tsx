@@ -1,12 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
+import { useDebounce } from '@/hooks/useDebounce';
+import { DataTable } from '@/components/shared/DataTable';
+import { StatCard } from '@/components/shared/StatCard';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -15,215 +17,214 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { toast } from 'sonner';
-import { Headset, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import {
+  AlertOctagon,
+  Archive,
+  ArchiveRestore,
+  Ban,
+  Bell,
+  CheckCircle2,
+  CircleDot,
+  Clock,
+  Copy,
+  Eye,
+  FileEdit,
+  FileQuestion,
+  Headset,
+  History,
+  Inbox,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Send,
+  ShieldAlert,
+  Timer,
+  Trash2,
+  Wand2,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   CreateFinanceTicketSchema,
+  FINANCE_QUERY_PRIORITIES,
+  FINANCE_QUERY_PRIORITY_LABELS,
+  FINANCE_QUERY_TYPES,
+  FINANCE_QUERY_TYPE_LABELS,
   FINANCE_TICKET_REFERENCE_LABELS,
-  FINANCE_TICKET_PREFIXES,
+  FINANCE_TICKET_REOPENABLE_STATUSES,
+  FINANCE_TICKET_STATUSES,
+  FINANCE_TICKET_STATUS_LABELS,
+  FINANCE_TICKET_TRANSITIONS,
+  isFinanceTicketTerminal,
+  type Attachment,
+  type FinanceQueryPriority,
+  type FinanceQueryType,
   type FinanceTicket,
-  type FinanceTicketReferenceLookup,
+  type FinanceTicketStatus,
 } from '@mb/shared';
+import { useBranches } from '@/lib/queries';
 import {
-  lookupFinanceReference,
+  useFinanceHelpDeskUsers,
   useFinanceMutation,
+  useFinanceTicketStats,
   useFinanceTickets,
 } from '@/lib/finance';
-import { FinancePageHeader, useFinanceAbilities } from './finance-ui';
+import { FinancePageHeader, useMoney } from './finance-ui';
+import {
+  DeleteQueryDialog,
+  FinanceQueryDetailDialog,
+  HistoryDialog,
+  QuickFeedDialog,
+  ReasonDialog,
+  ReopenDialog,
+  StatusDialog,
+  type QuickFeedMode,
+} from './FinanceQueryDetail';
+import { EMPTY_FEED, QueryFeedForm, feedToPayload, type FeedState } from './QueryFeedForm';
+import {
+  QueryPriorityBadge,
+  QueryStatusBadge,
+  formatQueryDate,
+  useHelpDeskAbilities,
+} from './help-desk-ui';
 
 /**
  * Finance Help Desk.
  *
+ *     Finance User  →  Finance Help Desk  →  ADMIN
+ *
  * One page for both sides of the queue, because they are the same list seen from
- * two angles: an Accountant raises a query and watches it; a Finance Admin works
- * through everything outstanding. Splitting them into two screens would duplicate
- * the card, the filters and the empty states to change one verb.
+ * two angles: a Finance user raises a query and watches it; an Admin works
+ * through everything outstanding. Splitting them into two screens would
+ * duplicate the cards, the filters, the table and the empty states in order to
+ * change which buttons the detail screen offers.
  *
- * Every control here is decided by `useFinanceAbilities()` plus the role, and
- * every one of them calls an endpoint that decides the same thing again from the
- * JWT. Hiding a button is courtesy; the API is the boundary.
+ * Every control here is decided by `useHelpDeskAbilities()`, and every one of
+ * them calls an endpoint that decides the same thing again from the JWT. Hiding
+ * a button is courtesy; the API is the boundary — which is §13 stated as code.
+ *
+ * The list is ONE PAGE of the queue (§19): the API paginates, searches and
+ * filters, and the cards are counted in SQL over the whole queue rather than
+ * over the rows on screen. The search box is debounced so a person typing a
+ * Query ID does not fire a request per keystroke.
+ *
+ * The same component backs the Admin Support Center's Finance Queries tab, so an
+ * admin never has to go looking in the finance module for work addressed to them
+ * (§3). `embedded` drops the page heading there; nothing else differs.
  */
 
-const STATUS_VARIANT: Record<FinanceTicket['status'], 'default' | 'secondary' | 'destructive'> = {
-  open: 'default',
-  resolved: 'secondary',
-  rejected: 'destructive',
-};
+const col = createColumnHelper<FinanceTicket>();
 
-const PREFIX_HINT = FINANCE_TICKET_PREFIXES.map((p) => `${p}-…`).join(', ');
+type View = 'queue' | 'drafts' | 'deleted';
 
-/**
- * The referenced record's figures.
- *
- * The snapshot is a whole API row, so the keys are whatever that table has. It is
- * rendered generically rather than per-type: a hand-written field list for six
- * record types is six lists to forget to update, and the point of the snapshot is
- * to show what was there, not a curated view of it.
- */
-function ReferenceDetail({
-  snapshot,
-  heading,
+/** A row action opened straight from the queue — the branch queue's shape. */
+type RowAction =
+  | { kind: QuickFeedMode; ticket: FinanceTicket }
+  | { kind: 'status'; ticket: FinanceTicket; target: FinanceTicketStatus }
+  | { kind: 'delete' | 'restore' | 'reopen' | 'history'; ticket: FinanceTicket };
+
+function IconBtn({
+  children,
+  title,
+  onClick,
+  className,
+  disabled,
 }: {
-  snapshot: Record<string, unknown> | null;
-  heading: string;
+  children: React.ReactNode;
+  title: string;
+  onClick: () => void;
+  className?: string;
+  disabled?: boolean;
 }) {
-  const rows = useMemo(() => {
-    if (!snapshot) return [];
-    return Object.entries(snapshot)
-      // Ids and the snapshot's own plumbing are noise to a human reading a query.
-      .filter(([k, v]) => !k.endsWith('Id') && k !== 'id' && v !== null && v !== '' && typeof v !== 'object')
-      .slice(0, 12);
-  }, [snapshot]);
-
-  if (!snapshot) return null;
-
   return (
-    <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
-      <p className="text-sm font-semibold">{heading}</p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        {rows.map(([key, value]) => (
-          <div key={key} className="contents">
-            <dt className="text-muted-foreground capitalize">
-              {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
-            </dt>
-            <dd className="truncate text-right font-medium">{String(value)}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+    <Button variant="ghost" size="icon" className={`h-8 w-8 ${className ?? ''}`} title={title} onClick={onClick} disabled={disabled}>
+      {children}
+    </Button>
   );
 }
 
-function NewQueryDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
+// ---------------------------------------------------------------------------
+// New Query (§2)
+// ---------------------------------------------------------------------------
+
+function NewQueryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { token } = useAuth();
-  const mutation = useFinanceMutation();
-  const [referenceNo, setReferenceNo] = useState('');
-  const [reference, setReference] = useState<FinanceTicketReferenceLookup | null>(null);
-  const [looking, setLooking] = useState(false);
-  const [lookupError, setLookupError] = useState('');
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
+  const mutation = useFinanceMutation<{ ticket: FinanceTicket }>();
+  const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) && open });
+
+  const [feed, setFeed] = useState<FeedState>(EMPTY_FEED);
+  const [photos, setPhotos] = useState<Attachment[]>([]);
+  const [saving, setSaving] = useState<'submit' | 'draft' | null>(null);
   // Remounted via `key` each time it opens, so state starts fresh with no reset effect.
 
-  async function handleLookup() {
-    const ref = referenceNo.trim();
-    if (!ref) return;
-    setLooking(true);
-    setLookupError('');
-    setReference(null);
-    try {
-      setReference(await lookupFinanceReference(ref, token));
-    } catch (err) {
-      setLookupError(err instanceof Error ? err.message : 'Could not find that reference');
-    } finally {
-      setLooking(false);
-    }
-  }
-
-  async function handleSubmit() {
+  async function save(draft: boolean) {
     const parsed = CreateFinanceTicketSchema.safeParse({
-      referenceNo: reference?.referenceNo ?? referenceNo,
-      subject,
-      message,
+      ...feedToPayload(feed),
+      attachmentIds: photos.map((p) => p.id),
+      draft,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? 'Please complete the form');
       return;
     }
+    setSaving(draft ? 'draft' : 'submit');
     try {
-      await mutation.mutateAsync({ path: '/api/finance/tickets', body: parsed.data });
-      toast.success('Query sent to the Finance Admin');
+      const { ticket } = await mutation.mutateAsync({ path: '/api/finance/tickets', body: parsed.data });
+      toast.success(draft ? `Draft ${ticket.queryNo} saved` : `${ticket.queryNo} sent to the Admin`);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send query');
+      toast.error(err instanceof Error ? err.message : 'Failed to save the query');
+    } finally {
+      setSaving(null);
     }
   }
+
+  const incomplete = feed.subject.trim().length < 3 || feed.description.trim().length < 3;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="md:max-w-lg">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New Finance Query</DialogTitle>
+          <DialogTitle>New Query</DialogTitle>
           <DialogDescription>
-            Enter the reference of the finance record in question ({PREFIX_HINT}). Its figures load
-            automatically and are attached to the query, so they stay readable even if the record
-            changes later.
+            Report a financial issue, an incorrect transaction, a calculation problem or a data
+            discrepancy. It goes straight to the Admin — the Query ID is assigned when you save.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <Label>Reference number</Label>
-            <div className="flex gap-2">
-              <Input
-                value={referenceNo}
-                onChange={(e) => setReferenceNo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void handleLookup();
-                  }
-                }}
-                placeholder="e.g. RV-000001"
-                autoFocus
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void handleLookup()}
-                disabled={looking || !referenceNo.trim()}
-              >
-                {looking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                <span className="ml-1">Find</span>
-              </Button>
-            </div>
-            {lookupError && <p className="text-xs text-destructive">{lookupError}</p>}
-          </div>
+        <QueryFeedForm value={feed} onChange={setFeed} branches={branches} idPrefix="nq" />
 
-          {reference && (
-            <ReferenceDetail
-              snapshot={reference.snapshot}
-              heading={`${reference.label} · ${reference.referenceNo}`}
-            />
-          )}
+        <PhotoCapture
+          entity="finance_ticket"
+          value={photos}
+          onChange={setPhotos}
+          label="Attachments"
+          hint="Optional — a photo of the slip, statement or screen"
+        />
 
-          <div className="space-y-1">
-            <Label>Subject</Label>
-            <Input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Short summary, e.g. Amount does not match the deposit slip"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label>Describe the issue</Label>
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="What looks wrong with this record?"
-              rows={4}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving !== null}>
             Cancel
           </Button>
           <Button
-            onClick={() => void handleSubmit()}
-            disabled={
-              mutation.isPending || !reference || subject.trim().length < 3 || message.trim().length < 3
-            }
+            variant="secondary"
+            onClick={() => void save(true)}
+            disabled={saving !== null || incomplete}
+            title="Keep it with you. Nothing is sent until you submit."
           >
-            {mutation.isPending ? 'Sending…' : 'Submit to Finance Admin'}
+            <FileEdit className="mr-1 h-4 w-4" />
+            {saving === 'draft' ? 'Saving…' : 'Save Draft'}
+          </Button>
+          <Button onClick={() => void save(false)} disabled={saving !== null || incomplete}>
+            {saving === 'submit' ? 'Sending…' : 'Submit Query'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -231,304 +232,660 @@ function NewQueryDialog({
   );
 }
 
-function ResolveDialog({
-  ticket,
-  onClose,
-}: {
-  ticket: FinanceTicket | null;
-  onClose: () => void;
-}) {
-  const mutation = useFinanceMutation();
-  const [note, setNote] = useState('');
+// ---------------------------------------------------------------------------
+// Dashboard cards (§1)
+// ---------------------------------------------------------------------------
 
-  async function close(status: 'resolved' | 'rejected') {
-    if (!ticket) return;
-    try {
-      await mutation.mutateAsync({
-        path: `/api/finance/tickets/${ticket.id}/resolve`,
-        method: 'PATCH',
-        body: { status, resolutionNote: note },
-      });
-      toast.success(`Query ${ticket.ticketNo} ${status}`);
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to close the query');
-    }
-  }
-
+function DashboardCards({ isAdmin }: { isAdmin: boolean }) {
+  const { data: s, isLoading } = useFinanceTicketStats();
+  const v = (n: number | undefined) => n ?? 0;
   return (
-    <Dialog open={Boolean(ticket)} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="md:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Close query {ticket?.ticketNo}</DialogTitle>
-          <DialogDescription>
-            Your note goes back to whoever raised it. Closing is final — a query cannot be reopened,
-            so a further problem with the same record is a new query.
-          </DialogDescription>
-        </DialogHeader>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <StatCard title="Pending" value={v(s?.open)} icon={CircleDot} color="blue" loading={isLoading} />
+      <StatCard title="In Review" value={v(s?.underReview)} icon={Timer} color="orange" loading={isLoading} />
+      <StatCard title="High Priority" value={v(s?.highPriority)} icon={ShieldAlert} color="red" loading={isLoading} />
+      <StatCard title="Waiting for Finance" value={v(s?.waiting)} icon={Clock} color="brown" loading={isLoading} />
+      <StatCard title="Resolved" value={v(s?.resolved)} icon={CheckCircle2} color="green" loading={isLoading} />
+      <StatCard title="Amended" value={v(s?.amended)} icon={Wand2} color="brown" loading={isLoading} />
 
-        <div className="space-y-1">
-          <Label>Resolution note</Label>
-          <Textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="What was done, or why this is not an error"
-            rows={4}
-            autoFocus
-          />
-        </div>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="destructive" disabled={mutation.isPending} onClick={() => void close('rejected')}>
-            Reject
-          </Button>
-          <Button disabled={mutation.isPending} onClick={() => void close('resolved')}>
-            {mutation.isPending ? 'Saving…' : 'Resolve'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TicketCard({
-  ticket,
-  isAdmin,
-  onResolve,
-  onDelete,
-}: {
-  ticket: FinanceTicket;
-  isAdmin: boolean;
-  onResolve: (t: FinanceTicket) => void;
-  onDelete: (t: FinanceTicket) => void;
-}) {
-  return (
-    <div className="space-y-2 rounded-lg border p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs text-muted-foreground">{ticket.ticketNo}</span>
-          <Badge variant="outline">{ticket.referenceNo}</Badge>
-          <span className="text-xs text-muted-foreground">
-            {FINANCE_TICKET_REFERENCE_LABELS[ticket.referenceType] ?? ticket.referenceType}
-          </span>
-        </div>
-        <Badge variant={STATUS_VARIANT[ticket.status]} className="capitalize">
-          {ticket.status}
-        </Badge>
-      </div>
-
-      <p className="font-medium">{ticket.subject}</p>
-
-      <ReferenceDetail
-        snapshot={ticket.referenceSnapshot}
-        heading={`${FINANCE_TICKET_REFERENCE_LABELS[ticket.referenceType] ?? 'Record'} · ${ticket.referenceNo}`}
-      />
-
-      <p className="text-sm">
-        <span className="text-muted-foreground">Issue: </span>
-        {ticket.message}
-      </p>
-
-      {ticket.resolutionNote && (
-        <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">Finance Admin: </span>
-          {ticket.resolutionNote}
-        </p>
+      {isAdmin && (
+        <>
+          <StatCard title="Reopened" value={v(s?.reopened)} icon={RotateCcw} color="red" loading={isLoading} />
+          <StatCard title="All Queries" value={v(s?.total)} icon={Inbox} color="blue" loading={isLoading} />
+          <StatCard title="Unassigned" value={v(s?.unassigned)} icon={FileQuestion} color="orange" loading={isLoading} />
+          <StatCard title="Urgent" value={v(s?.urgent)} icon={AlertOctagon} color="red" loading={isLoading} />
+          <StatCard title="Recently Updated" value={v(s?.recent)} icon={Bell} color="green" loading={isLoading} />
+          <StatCard title="Deleted" value={v(s?.deleted)} icon={Archive} color="brown" loading={isLoading} />
+        </>
       )}
-
-      <div className="flex items-center justify-between gap-2 pt-1">
-        <p className="text-xs text-muted-foreground">
-          Raised by {ticket.raisedByName || 'unknown'} ·{' '}
-          {new Date(ticket.createdAt).toLocaleString('en-PK')}
-          {ticket.resolvedByName && ` · closed by ${ticket.resolvedByName}`}
-        </p>
-        {isAdmin && (
-          <div className="flex shrink-0 gap-2">
-            {ticket.status === 'open' && (
-              <Button size="sm" variant="secondary" onClick={() => onResolve(ticket)}>
-                Resolve
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive"
-              onClick={() => onDelete(ticket)}
-              aria-label={`Delete query ${ticket.ticketNo}`}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-      </div>
+      {!isAdmin && (
+        <StatCard title="My Drafts" value={v(s?.draft)} icon={FileEdit} color="brown" loading={isLoading} />
+      )}
     </div>
   );
 }
 
-export function FinanceHelpDeskPage() {
-  const { user } = useAuth();
-  const abilities = useFinanceAbilities();
-  const mutation = useFinanceMutation();
+// ---------------------------------------------------------------------------
+// The page
+// ---------------------------------------------------------------------------
 
-  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved' | 'rejected'>('all');
+const PAGE_SIZE = 25;
+
+export function FinanceHelpDeskPage({
+  embedded = false,
+  sourceTag = false,
+}: {
+  embedded?: boolean;
+  /**
+   * Renders the FINANCE badge beside every Query ID — on inside the Admin
+   * Support Center, where this table sits beside the branch and production
+   * queue and the tag is how a row says which desk it came from.
+   */
+  sourceTag?: boolean;
+}) {
+  const abilities = useHelpDeskAbilities();
+  const { token, user } = useAuth();
+  const { format: money } = useMoney();
+
+  const [view, setView] = useState<View>('queue');
+  const [status, setStatus] = useState<FinanceTicketStatus | 'all'>('all');
+  const [queryType, setQueryType] = useState<FinanceQueryType | 'all'>('all');
+  const [priority, setPriority] = useState<FinanceQueryPriority | 'all'>('all');
+  const [branchId, setBranchId] = useState('');
+  const [raisedBy, setRaisedBy] = useState('');
+  const [queryNo, setQueryNo] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  // The page is stored WITH the filter identity it belongs to, so a filter
+  // change lands on page 1 by derivation rather than by an effect that
+  // resets state after a render has already asked for a page that no longer
+  // exists.
+  const [pageState, setPageState] = useState<{ key: string; page: number }>({ key: '', page: 1 });
   const [showNew, setShowNew] = useState(false);
   const [newKey, setNewKey] = useState(0);
-  const [resolving, setResolving] = useState<FinanceTicket | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<FinanceTicket | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const [rowAction, setRowAction] = useState<RowAction | null>(null);
+  const [moreFilters, setMoreFilters] = useState(false);
+  const rowMutation = useFinanceMutation();
 
-  const { data: tickets = [], isLoading } = useFinanceTickets(
-    statusFilter === 'all' ? {} : { status: statusFilter },
+  const debouncedSearch = useDebounce(search.trim(), 350);
+  const debouncedQueryNo = useDebounce(queryNo.trim(), 350);
+  const debouncedAmountMin = useDebounce(amountMin.trim(), 350);
+  const debouncedAmountMax = useDebounce(amountMax.trim(), 350);
+
+  const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) });
+  const { data: users = [] } = useFinanceHelpDeskUsers(abilities.admin);
+
+  const scope = useMemo(
+    () => ({
+      ...(view === 'drafts'
+        ? { status: 'draft', mine: true }
+        : view === 'deleted'
+          ? { deletedOnly: true, ...(status !== 'all' ? { status } : {}) }
+          : status !== 'all'
+            ? { status }
+            : {}),
+      ...(queryType !== 'all' ? { queryType } : {}),
+      ...(priority !== 'all' ? { priority } : {}),
+      ...(branchId ? { branchId } : {}),
+      ...(raisedBy ? { raisedBy } : {}),
+      ...(debouncedQueryNo ? { queryNo: debouncedQueryNo } : {}),
+      ...(debouncedAmountMin ? { amountMin: debouncedAmountMin } : {}),
+      ...(debouncedAmountMax ? { amountMax: debouncedAmountMax } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    }),
+    [
+      view, status, queryType, priority, branchId, raisedBy, debouncedQueryNo,
+      debouncedAmountMin, debouncedAmountMax, from, to, debouncedSearch,
+    ],
   );
 
-  // Mirrors requireFinanceTicketAdmin() on the API. The server decides for real.
-  const isAdmin = user?.role === 'finance_admin' || user?.role === 'super_admin';
+  const scopeKey = JSON.stringify(scope);
+  const page = pageState.key === scopeKey ? pageState.page : 1;
+  const setPage = (next: number) => setPageState({ key: scopeKey, page: next });
 
-  const open = tickets.filter((t) => t.status === 'open');
-  const past = tickets.filter((t) => t.status !== 'open');
+  const filters = useMemo(() => ({ ...scope, page, pageSize: PAGE_SIZE }), [scope, page]);
 
-  async function confirmDelete() {
-    if (!pendingDelete) return;
+  const { data, isLoading, isFetching } = useFinanceTickets(filters);
+  const tickets = data?.tickets ?? [];
+  const total = data?.total ?? 0;
+
+  const isOwnDraft = (t: FinanceTicket) => t.status === 'draft' && t.raisedBy === user?.uid;
+
+  /**
+   * The same shape as the branch queue in the Support Center: Query ID ·
+   * Reference · From · Issue · Amount · Status · a dense row of action icons
+   * on desktop that collapses to one menu on a phone. Edit, Amend, Resolve,
+   * Reject, Delete, Restore, Recreate and History all open straight from the
+   * row; View opens the full feeding form.
+   */
+  const columns = useMemo(
+    () => [
+      col.accessor('queryNo', {
+        header: 'Query ID',
+        meta: { mobile: 'subtitle' },
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <div className="flex flex-col items-start gap-0.5">
+              <span className="font-mono text-xs">{t.queryNo}</span>
+              <span className="whitespace-nowrap text-[11px] text-muted-foreground">{formatQueryDate(t.createdAt, false)}</span>
+              {t.amendCount > 0 && (
+                <span className="text-[10px] text-teal-700 dark:text-teal-400">Amended {t.amendCount}× · v{t.version}</span>
+              )}
+              {t.reopenCount > 0 && (
+                <span className="text-[10px] text-fuchsia-700 dark:text-fuchsia-400">Reopened {t.reopenCount}×</span>
+              )}
+              {t.recreatedFromQueryNo && <span className="text-[10px] text-muted-foreground">From {t.recreatedFromQueryNo}</span>}
+              {t.recreatedAsQueryNo && <span className="text-[10px] text-muted-foreground">→ {t.recreatedAsQueryNo}</span>}
+            </div>
+          );
+        },
+      }),
+      col.accessor((t) => t.referenceNo ?? t.transactionRef ?? t.expenseRef ?? t.incomeRef ?? '', {
+        id: 'reference',
+        header: 'Reference',
+        meta: { mobile: 'title' },
+        cell: ({ row }) => {
+          const t = row.original;
+          const ref = t.referenceNo ?? t.transactionRef ?? t.expenseRef ?? t.incomeRef ?? t.voucherRef;
+          return (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{FINANCE_QUERY_TYPE_LABELS[t.queryType]}</Badge>
+              <span className="font-medium">{ref ?? t.subject}</span>
+              {t.referenceType && ref === t.referenceNo && (
+                <span className="text-xs text-muted-foreground">{FINANCE_TICKET_REFERENCE_LABELS[t.referenceType]}</span>
+              )}
+            </div>
+          );
+        },
+      }),
+      col.accessor('raisedByName', {
+        header: 'From',
+        meta: { mobileLabel: 'From' },
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center gap-2">
+                {sourceTag && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300"
+                  >
+                    Finance
+                  </Badge>
+                )}
+                <span>{t.branchName || '—'}</span>
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                {t.raisedByName || '—'}
+                {t.raisedByRole ? ` · ${t.raisedByRole.replace(/_/g, ' ')}` : ''}
+              </p>
+            </div>
+          );
+        },
+      }),
+      col.accessor('subject', {
+        header: 'Issue',
+        meta: { mobileFull: true },
+        cell: ({ row }) => {
+          const t = row.original;
+          const answer = t.adminResponse ?? t.resolutionNote;
+          return (
+            <div className="max-w-[26rem] min-w-0">
+              <p className="truncate text-sm font-medium">{t.subject}</p>
+              <p className="line-clamp-2 text-xs text-muted-foreground">{t.message}</p>
+              {answer && (
+                <p className="mt-1 line-clamp-1 text-xs">
+                  <span className="text-muted-foreground">Admin: </span>
+                  {answer}
+                </p>
+              )}
+            </div>
+          );
+        },
+      }),
+      col.accessor('amount', {
+        header: 'Amount',
+        meta: { align: 'right', mobileLabel: 'Amount' },
+        cell: ({ row }) => (
+          <span className="tabular-nums text-sm">
+            {row.original.amount === null ? <span className="text-muted-foreground">—</span> : money(row.original.amount)}
+          </span>
+        ),
+      }),
+      col.accessor('priority', {
+        header: 'Priority',
+        meta: { mobile: 'badge', align: 'center' },
+        cell: (info) => <QueryPriorityBadge priority={info.getValue()} />,
+      }),
+      col.accessor('status', {
+        header: 'Status',
+        meta: { mobile: 'badge', align: 'center' },
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <div className="flex flex-col items-center gap-0.5">
+              {t.deletedAt ? <Badge variant="destructive" className="whitespace-nowrap">Deleted</Badge> : <QueryStatusBadge status={t.status} />}
+              <span className="whitespace-nowrap text-[10px] text-muted-foreground">{formatQueryDate(t.updatedAt, false)}</span>
+              {(t.assignedToName ?? t.resolvedByName) && (
+                <span className="max-w-[8rem] truncate text-[10px] text-muted-foreground">{t.assignedToName ?? t.resolvedByName}</span>
+              )}
+            </div>
+          );
+        },
+      }),
+      col.display({
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => {
+          const t = row.original;
+          const deleted = Boolean(t.deletedAt);
+          const draft = t.status === 'draft';
+          const own = t.raisedBy === user?.uid;
+          const terminal = isFinanceTicketTerminal(t.status);
+          const nexts = deleted || draft ? [] : FINANCE_TICKET_TRANSITIONS[t.status];
+          const canResolve = nexts.includes('resolved');
+          const canReject = nexts.includes('rejected');
+          const canReopen = !deleted && (FINANCE_TICKET_REOPENABLE_STATUSES as readonly FinanceTicketStatus[]).includes(t.status);
+          const canFeed = abilities.admin && !deleted && !draft;
+
+          if (!abilities.admin) {
+            // A Finance user: open the query, or — on their own draft — edit and submit it.
+            return (
+              <div className="flex items-center justify-end gap-0.5">
+                <IconBtn title={draft && own ? 'Edit draft' : 'View'} onClick={() => setViewing(t.id)}>
+                  {draft && own ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </IconBtn>
+                {draft && own && (
+                  <IconBtn title="Submit to Admin" className="text-primary" onClick={() => void submitDraft(t)}>
+                    <Send className="h-3.5 w-3.5" />
+                  </IconBtn>
+                )}
+                {!draft && (
+                  <IconBtn title="History" onClick={() => setRowAction({ kind: 'history', ticket: t })}>
+                    <History className="h-3.5 w-3.5" />
+                  </IconBtn>
+                )}
+                {canReopen && own && (
+                  <IconBtn title="Request reopen" onClick={() => setRowAction({ kind: 'reopen', ticket: t })}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </IconBtn>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <>
+              {/* Desktop keeps the dense icon row — the branch queue's shape. */}
+              <div className="hidden items-center justify-end gap-0.5 md:flex">
+                <IconBtn title="View" onClick={() => setViewing(t.id)}><Eye className="h-3.5 w-3.5" /></IconBtn>
+                {deleted ? (
+                  <IconBtn title="Restore" className="text-emerald-600" onClick={() => setRowAction({ kind: 'restore', ticket: t })}>
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                  </IconBtn>
+                ) : (
+                  <>
+                    <IconBtn title="Edit" disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title={terminal ? 'Reopen to amend' : 'Amend'} disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}>
+                      <Wand2 className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    {canReopen ? (
+                      <IconBtn title="Reopen" onClick={() => setRowAction({ kind: 'reopen', ticket: t })}>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </IconBtn>
+                    ) : (
+                      <IconBtn title="Resolve" className="text-emerald-600" disabled={!canResolve} onClick={() => setRowAction({ kind: 'status', ticket: t, target: 'resolved' })}>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </IconBtn>
+                    )}
+                    <IconBtn title="Reject" className="text-amber-600" disabled={!canReject} onClick={() => setRowAction({ kind: 'status', ticket: t, target: 'rejected' })}>
+                      <Ban className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title={t.recreatedAsId ? `Recreated as ${t.recreatedAsQueryNo}` : 'Recreate'} disabled={Boolean(t.recreatedAsId) || draft} onClick={() => setRowAction({ kind: 'recreate', ticket: t })}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title="History" onClick={() => setRowAction({ kind: 'history', ticket: t })}>
+                      <History className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title="Delete" className="text-destructive" disabled={draft} onClick={() => setRowAction({ kind: 'delete', ticket: t })}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconBtn>
+                  </>
+                )}
+              </div>
+
+              {/* On a phone the icons collapse into one menu. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label={`Actions for ${t.queryNo}`}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:hidden"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setViewing(t.id)}><Eye className="h-4 w-4" /> View</DropdownMenuItem>
+                  {deleted ? (
+                    <DropdownMenuItem onClick={() => setRowAction({ kind: 'restore', ticket: t })}><ArchiveRestore className="h-4 w-4" /> Restore</DropdownMenuItem>
+                  ) : (
+                    <>
+                      <DropdownMenuItem disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                      <DropdownMenuItem disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}><Wand2 className="h-4 w-4" /> Amend</DropdownMenuItem>
+                      {nexts.map((s) => (
+                        <DropdownMenuItem key={s} onClick={() => setRowAction({ kind: 'status', ticket: t, target: s })}>
+                          {s === 'resolved' ? <CheckCircle2 className="h-4 w-4" /> : s === 'rejected' ? <Ban className="h-4 w-4" /> : <Timer className="h-4 w-4" />}
+                          {s === 'resolved' ? 'Resolve' : s === 'rejected' ? 'Reject' : s === 'closed' ? 'Close query' : FINANCE_TICKET_STATUS_LABELS[s]}
+                        </DropdownMenuItem>
+                      ))}
+                      {canReopen && (
+                        <DropdownMenuItem onClick={() => setRowAction({ kind: 'reopen', ticket: t })}><RotateCcw className="h-4 w-4" /> Reopen</DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem disabled={Boolean(t.recreatedAsId) || draft} onClick={() => setRowAction({ kind: 'recreate', ticket: t })}><Copy className="h-4 w-4" /> Recreate</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setRowAction({ kind: 'history', ticket: t })}><History className="h-4 w-4" /> History</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" disabled={draft} onClick={() => setRowAction({ kind: 'delete', ticket: t })}>
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          );
+        },
+      }),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceTag, money, user?.uid, abilities.admin],
+  );
+
+  async function submitDraft(t: FinanceTicket) {
     try {
-      await mutation.mutateAsync({
-        path: `/api/finance/tickets/${pendingDelete.id}`,
-        method: 'DELETE',
-      });
-      toast.success(`Query ${pendingDelete.ticketNo} deleted`);
-      setPendingDelete(null);
+      await rowMutation.mutateAsync({ path: `/api/finance/tickets/${t.id}/submit`, method: 'POST' });
+      toast.success(`${t.queryNo} sent to the Admin`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete the query');
+      toast.error(err instanceof Error ? err.message : 'The draft could not be submitted');
     }
   }
 
+  async function restore(t: FinanceTicket, reason: string) {
+    try {
+      await rowMutation.mutateAsync({ path: `/api/finance/tickets/${t.id}/restore`, method: 'POST', body: { reason } });
+      toast.success(`${t.queryNo} restored`);
+      setRowAction(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The query could not be restored');
+    }
+  }
+
+  const select = 'h-9 rounded-md border bg-background px-2 text-sm';
+
+  const filterControls = (
+    <div className="flex flex-wrap items-center gap-2">
+      {(abilities.report || abilities.admin) && (
+        <div className="flex rounded-md border p-0.5" role="tablist" aria-label="Which queries">
+          <Button
+            size="sm"
+            variant={view === 'queue' ? 'default' : 'ghost'}
+            className="h-8"
+            onClick={() => setView('queue')}
+            role="tab"
+            aria-selected={view === 'queue'}
+          >
+            <Inbox className="mr-1 h-3.5 w-3.5" /> Queue
+          </Button>
+          {abilities.report && (
+            <Button
+              size="sm"
+              variant={view === 'drafts' ? 'default' : 'ghost'}
+              className="h-8"
+              onClick={() => setView('drafts')}
+              role="tab"
+              aria-selected={view === 'drafts'}
+            >
+              <FileEdit className="mr-1 h-3.5 w-3.5" /> My Drafts
+            </Button>
+          )}
+          {abilities.admin && (
+            <Button
+              size="sm"
+              variant={view === 'deleted' ? 'default' : 'ghost'}
+              className="h-8"
+              onClick={() => setView('deleted')}
+              role="tab"
+              aria-selected={view === 'deleted'}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Deleted
+            </Button>
+          )}
+        </div>
+      )}
+      {view !== 'drafts' && (
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as typeof status)}
+          className={select}
+          aria-label="Filter by status"
+        >
+          <option value="all">All statuses</option>
+          {FINANCE_TICKET_STATUSES.filter((s) => s !== 'draft').map((s) => (
+            <option key={s} value={s}>
+              {FINANCE_TICKET_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      )}
+      <select
+        value={queryType}
+        onChange={(e) => setQueryType(e.target.value as typeof queryType)}
+        className={select}
+        aria-label="Filter by query type"
+      >
+        <option value="all">All types</option>
+        {FINANCE_QUERY_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {FINANCE_QUERY_TYPE_LABELS[t]}
+          </option>
+        ))}
+      </select>
+      <Button size="sm" variant={moreFilters ? 'secondary' : 'outline'} className="h-9" onClick={() => setMoreFilters((v) => !v)}>
+        {moreFilters ? 'Fewer filters' : 'More filters'}
+      </Button>
+    </div>
+  );
+
+  const extraFilters = moreFilters && (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-3">
+      <select
+        value={priority}
+        onChange={(e) => setPriority(e.target.value as typeof priority)}
+        className={select}
+        aria-label="Filter by priority"
+      >
+        <option value="all">All priorities</option>
+        {FINANCE_QUERY_PRIORITIES.map((p) => (
+          <option key={p} value={p}>
+            {FINANCE_QUERY_PRIORITY_LABELS[p]}
+          </option>
+        ))}
+      </select>
+      <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={select} aria-label="Filter by branch">
+        <option value="">All branches</option>
+        {branches.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+      </select>
+      {abilities.admin && (
+        <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)} className={select} aria-label="Filter by user">
+          <option value="">All users</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name || u.email}
+            </option>
+          ))}
+        </select>
+      )}
+      <Input
+        value={queryNo}
+        onChange={(e) => setQueryNo(e.target.value)}
+        placeholder="Exact Query ID"
+        className="h-9 w-44 font-mono"
+        aria-label="Exact Query ID"
+      />
+      <Input
+        value={amountMin}
+        onChange={(e) => setAmountMin(e.target.value.replace(/[^\d.]/g, ''))}
+        placeholder="Amount from"
+        inputMode="decimal"
+        className="h-9 w-32 tabular-nums"
+        aria-label="Amount from"
+      />
+      <Input
+        value={amountMax}
+        onChange={(e) => setAmountMax(e.target.value.replace(/[^\d.]/g, ''))}
+        placeholder="Amount to"
+        inputMode="decimal"
+        className="h-9 w-32 tabular-nums"
+        aria-label="Amount to"
+      />
+      <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-auto" aria-label="From date" />
+      <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-auto" aria-label="To date" />
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-9"
+        onClick={() => {
+          setPriority('all');
+          setBranchId('');
+          setRaisedBy('');
+          setQueryNo('');
+          setAmountMin('');
+          setAmountMax('');
+          setFrom('');
+          setTo('');
+        }}
+      >
+        Clear
+      </Button>
+    </div>
+  );
+
+  const newButton = abilities.report ? (
+    <Button
+      size={embedded ? 'sm' : 'default'}
+      onClick={() => {
+        setNewKey((k) => k + 1);
+        setShowNew(true);
+      }}
+    >
+      <Plus className="mr-1 h-4 w-4" /> New Query
+    </Button>
+  ) : undefined;
+
   return (
     <div className="space-y-6">
-      <FinancePageHeader
-        title="Finance Help Desk"
-        description={
-          isAdmin
-            ? 'Queries raised against finance records. Resolve, reject or permanently delete them — every action is written to the audit trail.'
-            : 'Something wrong with a voucher, salary or expense? Raise it here and the Finance Admin will respond.'
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="h-9 rounded-md border bg-background px-2 text-sm"
-              aria-label="Filter by status"
-            >
-              <option value="all">All statuses</option>
-              <option value="open">Open</option>
-              <option value="resolved">Resolved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            {abilities.create && (
-              <Button
-                onClick={() => {
-                  setNewKey((k) => k + 1);
-                  setShowNew(true);
-                }}
-              >
-                <Plus className="mr-1 h-4 w-4" /> New Query
-              </Button>
-            )}
+      {!embedded && (
+        <FinancePageHeader
+          title="Finance Help Desk"
+          description={
+            abilities.admin
+              ? 'Queries raised by Finance. Open one to feed, amend, resolve, delete, restore or recreate it — every change is versioned and written to the audit trail, and none of it touches the books until you correct the record itself.'
+              : 'Report an incorrect transaction, a calculation problem or a data discrepancy directly to the Admin. Save a draft, submit when ready, follow the response here.'
+          }
+          actions={newButton}
+        />
+      )}
+
+      <DashboardCards isAdmin={abilities.admin} />
+
+      {extraFilters}
+
+      <DataTable
+        columns={columns}
+        data={tickets}
+        loading={isLoading || (isFetching && tickets.length === 0)}
+        searchPlaceholder="Search Query ID, reference, subject, user or branch…"
+        leading={filterControls}
+        actions={embedded ? newButton : undefined}
+        manual={{
+          page,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setSearch,
+        }}
+        empty={
+          <div className="p-10 text-center text-muted-foreground">
+            <Headset className="mx-auto mb-2 h-8 w-8 opacity-50" />
+            <p className="text-sm">
+              {view === 'deleted'
+                ? 'No deleted queries.'
+                : view === 'drafts'
+                  ? 'No drafts. Save one from “New Query”.'
+                  : abilities.admin
+                    ? 'No queries here. Finance has nothing outstanding with you.'
+                    : abilities.report
+                      ? 'No queries here. Raise one with “New Query”.'
+                      : 'No queries have been raised.'}
+            </p>
           </div>
         }
       />
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : tickets.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
-          <Headset className="mx-auto mb-2 h-8 w-8 opacity-50" />
-          <p className="text-sm">
-            {abilities.create
-              ? 'No queries here. Raise one with “New Query”.'
-              : 'No queries have been raised.'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {open.length > 0 && (
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground">
-                {isAdmin ? `Awaiting you (${open.length})` : `Awaiting Finance Admin (${open.length})`}
-              </h3>
-              {open.map((t) => (
-                <TicketCard
-                  key={t.id}
-                  ticket={t}
-                  isAdmin={isAdmin}
-                  onResolve={setResolving}
-                  onDelete={setPendingDelete}
-                />
-              ))}
-            </section>
-          )}
-          {past.length > 0 && (
-            <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground">Resolved &amp; rejected</h3>
-              {past.map((t) => (
-                <TicketCard
-                  key={t.id}
-                  ticket={t}
-                  isAdmin={isAdmin}
-                  onResolve={setResolving}
-                  onDelete={setPendingDelete}
-                />
-              ))}
-            </section>
-          )}
-        </div>
+      <NewQueryDialog key={newKey} open={showNew} onOpenChange={setShowNew} />
+      {viewing && (
+        <FinanceQueryDetailDialog
+          ticketId={viewing}
+          onClose={() => setViewing(null)}
+          onOpenOther={(id) => setViewing(id)}
+        />
       )}
 
-      <NewQueryDialog key={newKey} open={showNew} onOpenChange={setShowNew} />
-      <ResolveDialog ticket={resolving} onClose={() => setResolving(null)} />
-
-      <Dialog open={Boolean(pendingDelete)} onOpenChange={(v) => !v && setPendingDelete(null)}>
-        <DialogContent className="md:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete query {pendingDelete?.ticketNo} and record {pendingDelete?.referenceNo}?</DialogTitle>
-            <DialogDescription>
-              This deletes two things, both permanently and neither recoverable.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <ul className="list-disc space-y-1 pl-5">
-              <li>the query itself — subject, message and attached figures</li>
-              <li>
-                <span className="font-medium text-foreground">
-                  {pendingDelete
-                    ? `${FINANCE_TICKET_REFERENCE_LABELS[pendingDelete.referenceType] ?? 'the record'} ${pendingDelete.referenceNo}`
-                    : 'the referenced record'}
-                </span>{' '}
-                — removed from the books entirely
-              </li>
-            </ul>
-            {pendingDelete?.referenceType === 'ledger_entry' && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-destructive">
-                This is a posted ledger voucher. Deleting it does not recompute the running balance
-                on later entries for that day, so the ledger and the day&apos;s totals will
-                disagree. To correct a wrong figure without this, cancel and post a reversing entry
-                instead.
-              </p>
-            )}
-            <p>The audit trail records that you deleted both, but not what the query said.</p>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" disabled={mutation.isPending} onClick={() => void confirmDelete()}>
-              {mutation.isPending ? 'Deleting…' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Row actions — the same dialogs the detail screen uses, opened from the row. */}
+      {rowAction && (rowAction.kind === 'edit' || rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
+        <QuickFeedDialog
+          ticket={rowAction.ticket}
+          mode={rowAction.kind}
+          onClose={() => setRowAction(null)}
+          onDone={(result) => {
+            const wasRecreate = rowAction.kind === 'recreate';
+            setRowAction(null);
+            if (wasRecreate && result) setViewing(result.id);
+          }}
+        />
+      )}
+      {rowAction?.kind === 'status' && (
+        <StatusDialog ticket={rowAction.ticket} target={rowAction.target} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'delete' && (
+        <DeleteQueryDialog ticket={rowAction.ticket} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'reopen' && (
+        <ReopenDialog ticket={rowAction.ticket} isAdmin={abilities.admin} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'history' && <HistoryDialog ticket={rowAction.ticket} onClose={() => setRowAction(null)} />}
+      {rowAction?.kind === 'restore' && (
+        <ReasonDialog
+          title={`Restore — ${rowAction.ticket.queryNo}`}
+          description="Brings the query back to the desk exactly as it was when it was deleted, with its status and history."
+          confirmLabel="Restore query"
+          pending={rowMutation.isPending}
+          onConfirm={(r) => void restore(rowAction.ticket, r)}
+          onClose={() => setRowAction(null)}
+        />
+      )}
     </div>
   );
 }

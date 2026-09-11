@@ -76,15 +76,62 @@ function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBReque
 }
 
 /**
+ * What each successful query's data WAS at the last save, by query hash.
+ *
+ * React Query's structural sharing hands a query the same `data` object back
+ * when a refetch returns identical rows, so object identity is a free and exact
+ * "has anything changed" test — no walking, no hashing. It is what lets the
+ * 1-second refresh tick, which touches every active query sixty times a
+ * minute, cost this module nothing on a quiet till.
+ */
+let savedIdentity: Map<string, unknown> | null = null;
+
+function successfulQueries(client: QueryClient) {
+  return client.getQueryCache().getAll().filter((q) => q.state.status === 'success');
+}
+
+/** `true` when at least one successful query holds different data than the last save wrote. */
+export function cacheChangedSinceSave(client: QueryClient): boolean {
+  const queries = successfulQueries(client);
+  if (!savedIdentity || savedIdentity.size !== queries.length) return true;
+  for (const q of queries) {
+    if (savedIdentity.get(q.queryHash) !== q.state.data) return true;
+  }
+  return false;
+}
+
+/**
  * Write the current cache to disk.
  *
  * Only SUCCESSFUL queries are kept. Persisting an error state would restore a
  * screen already showing a failure that has nothing to do with the current
  * connection, and persisting a pending one restores a spinner that never
  * resolves.
+ *
+ * ---------------------------------------------------------------------------
+ * This is the one main-thread cost in the app that grows through the day
+ * ---------------------------------------------------------------------------
+ * `dehydrate` walks every cached query and `JSON.stringify` walks the result;
+ * with `gcTime` at a day, that is every screen anyone has opened this shift.
+ * Serialising a few hundred kilobytes takes tens of milliseconds and a few
+ * megabytes takes hundreds — a stall a person feels as the page "catching up"
+ * right after they did something, because doing something is what changes the
+ * cache and schedules the save. Two things keep it off the path a person is on:
+ *
+ * - **Nothing changed, nothing written.** `cacheChangedSinceSave` is checked
+ *   first, so a save scheduled by a refetch that returned the same rows costs
+ *   an identity comparison per query and stops there. `force` (used when the
+ *   tab is being hidden or closed) skips the check: those are the last events
+ *   a browser reliably delivers, and a stale-by-a-refetch snapshot is worse
+ *   than a redundant write.
+ * - **The caller runs it in idle time.** See `OfflineCache`. This function does
+ *   the work whenever it is called; when it is called is the caller's job.
  */
-export async function saveSnapshot(client: QueryClient, userId: string): Promise<void> {
+export async function saveSnapshot(client: QueryClient, userId: string, opts: { force?: boolean } = {}): Promise<void> {
   try {
+    if (!opts.force && !cacheChangedSinceSave(client)) return;
+
+    const queries = successfulQueries(client);
     const state = dehydrate(client, {
       shouldDehydrateQuery: (q) => q.state.status === 'success',
     });
@@ -93,11 +140,16 @@ export async function saveSnapshot(client: QueryClient, userId: string): Promise
     const serialised = JSON.stringify(snapshot);
     if (serialised.length > MAX_SNAPSHOT_BYTES) {
       // Leave whatever smaller snapshot is already there — it is older but whole.
+      // Remembered as "saved" all the same: the cache that was too big a moment
+      // ago is still too big, and re-serialising it every ten seconds to find
+      // that out again is the stall this guard exists to prevent.
+      savedIdentity = new Map(queries.map((q) => [q.queryHash, q.state.data]));
       console.warn('[offline] cache snapshot over budget, not saved');
       return;
     }
 
     await tx('readwrite', (store) => store.put(serialised, KEY));
+    savedIdentity = new Map(queries.map((q) => [q.queryHash, q.state.data]));
   } catch (err) {
     // Private browsing, a full disk, or a browser that refuses IndexedDB. Losing
     // the snapshot costs offline reading, never correctness, so it must not take
@@ -141,6 +193,7 @@ export async function restoreSnapshot(client: QueryClient, userId: string): Prom
 
 /** Wipe it. Called on sign-out — a shared branch phone must not keep the last user's figures. */
 export async function clearSnapshot(): Promise<void> {
+  savedIdentity = null;
   try {
     await tx('readwrite', (store) => store.delete(KEY));
   } catch {

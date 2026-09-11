@@ -30,7 +30,8 @@ const col = createColumnHelper<BranchUserRequest>();
  */
 export function BranchUserRequestsPage() {
   const { token } = useAuth();
-  const { data: requests = [], isLoading } = useBranchUserRequests(token);
+  const { data, isLoading } = useBranchUserRequests(token);
+  const requests = data?.requests ?? [];
   const [showForm, setShowForm] = useState(false);
 
   const columns = [

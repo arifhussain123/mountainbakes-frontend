@@ -23,9 +23,33 @@ export const qk = {
   branchLocations: () => ['branchLocations'] as const,
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
-  priceHistory: (productId?: string | null) => ['priceHistory', productId ?? 'all'] as const,
-  reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null) =>
-    ['reportSummary', period, branchId ?? null, from ?? null, to ?? null] as const,
+  priceHistory: (productId?: string | null, offset?: number, search?: string | null) =>
+    ['priceHistory', productId ?? 'all', offset ?? 0, search ?? ''] as const,
+  reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null, fields?: string | null) =>
+    ['reportSummary', period, branchId ?? null, from ?? null, to ?? null, fields ?? 'full'] as const,
+  // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —
+  // window, branch, ranking depth and whether the comparison window was asked
+  // for. Dropping any of them from the key serves one range's figures under
+  // another's heading, which is the one bug an analytics card must not have.
+  //
+  // NOT under the ['reportSummary'] prefix: it is a different endpoint with a
+  // different aggregation, and sharing a prefix would make one invalidation
+  // refetch both — twice the traffic for one screen's worth of data.
+  salesAnalytics: (filters: {
+    from: string;
+    to: string;
+    branchId?: string | null;
+    topLimit?: number;
+    compare?: boolean;
+  }) =>
+    [
+      'salesAnalytics',
+      filters.from,
+      filters.to,
+      filters.branchId ?? null,
+      filters.topLimit ?? 5,
+      filters.compare ?? false,
+    ] as const,
   stock: (branchId?: string | null) => ['stock', branchId ?? 'me'] as const,
   // Admin → Branch Stock. A SEPARATE key from `stock` above because it is
   // date-scoped: the admin page reads any branch on any past business day, and
@@ -61,22 +85,69 @@ export const qk = {
   // `useStockRealtime`'s prefix invalidation already refreshes this list — and
   // conversely, correcting a return here invalidates ['stock'] and the Stock
   // page, the history card and the dashboard's Stock Detail all follow.
-  // Keyed by window length as well as branch, for the reason `stockHistory` is.
-  branchReturns: (branchId?: string | null, days?: number | null) =>
-    ['stock', 'returns', branchId ?? 'me', days ?? 90] as const,
+  // Keyed by the whole filter object, same convention as `loginHistoryPage` /
+  // `productionStockLedger`: product, status, search and date range each select
+  // a different set of rows, and a key that ignored any of them would serve one
+  // filter's answer to another.
+  branchReturns: (params: Record<string, unknown>) => ['stock', 'returns', params] as const,
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and
-  // it is refetched by the ordinary 2-minute active-query refresh.
+  // it is refetched by the ordinary active-query refresh tick.
   loginHistory: (scope?: string | null, days?: number | null) =>
     ['loginHistory', scope ?? 'all', days ?? 90] as const,
+  // Admin → Security. All three live under the 'loginHistory' prefix so ONE
+  // invalidation after a revoke refreshes the table, the live roster and any
+  // open detail dialog together — they are three views of one set of rows, and a
+  // revoke that repainted only the button it was clicked on would leave the
+  // other two showing a session it had just ended.
+  //
+  // The paged list is keyed by the whole filter object rather than by a scope
+  // string: page, page size, search, state, country and date range each select a
+  // different set of rows, and a key that ignored any of them would serve one
+  // filter's answer to another.
+  loginHistoryPage: (params: Record<string, unknown>) =>
+    ['loginHistory', 'page', params] as const,
+  activeSessions: () => ['loginHistory', 'active'] as const,
+  loginSession: (id: string) => ['loginHistory', 'session', id] as const,
+  // The country / city / browser dropdown values. Under the same prefix so a
+  // revoke refreshes them too — a revocation cannot add a country, but the
+  // prefix is what keeps this screen's caches from having to be reasoned about
+  // one at a time.
+  loginFilters: () => ['loginHistory', 'filters'] as const,
+  // Failed sign-ins. Under 'loginHistory' as well, because the Security screen
+  // shows it as a third tab beside the other two and an admin switching tabs
+  // after a revoke should not find one of them stale. Keyed by the whole filter
+  // object for the reason the paged history list is.
+  loginAttempts: (params: Record<string, unknown>) =>
+    ['loginHistory', 'attempts', params] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   productionOverview: () => ['productionOverview'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
+  // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })
+  // after a prepare or an adjustment refreshes the table, the ledger and any open
+  // product detail together — they are three views of one thing and must never
+  // repaint out of step.
+  productionStockLedger: (params: Record<string, unknown>) =>
+    ['productionStock', 'ledger', params] as const,
+  productionStockDetail: (productId: string, date: string) =>
+    ['productionStock', 'detail', productId, date] as const,
   productionBranchStock: () => ['productionBranchStock'] as const,
-  productionReturns: () => ['productionReturns'] as const,
+  // Keyed by the whole filter object — branch, product, status, search and date
+  // range each select a different set of rows, same convention as `branchReturns`.
+  productionReturns: (params: Record<string, unknown>) => ['productionReturns', params] as const,
+  // Discounts, keyed as their own family rather than under ['stock'] the way
+  // `branchReturns` is — and the difference is not cosmetic. A return moves units,
+  // so it belongs under the prefix `useStockRealtime` invalidates; a discount
+  // moves none, so hanging it there would refetch this list on every unrelated
+  // stock movement and, worse, imply the two are views of one thing.
+  //
+  // Both lists are keyed by their whole filter object for the reason
+  // `branchReturns` is.
+  productionDiscounts: (params: Record<string, unknown>) => ['discounts', 'production', params] as const,
+  branchDiscounts: (params: Record<string, unknown>) => ['discounts', 'branch', params] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
@@ -96,26 +167,58 @@ export const qk = {
   // the queue: the endpoint scopes itself from the JWT, so a manager and an
   // admin asking for the same key are asking for different rows and never share
   // a cache entry — the token they read with differs, and signing out clears it.
-  branchUserRequests: () => ['branchUserRequests'] as const,
+  // Keyed by the whole filter object — page/limit/search/status each select a
+  // different set of rows, same convention as `branchReturns`.
+  branchUserRequests: (params: Record<string, unknown>) => ['branchUserRequests', params] as const,
 
   // Branch Closing. One key for the whole sheet rather than three: the orders,
   // expenses and stock behind it are read together, for one business date, and
   // are only meaningful together — a cache that could serve one date's sales
   // beside another's stock is a reconciliation bug waiting to be filed.
-  branchClosing: (businessDate: string) => ['branchClosing', businessDate] as const,
+  // Under the ['stock'] prefix like `stockDay` and `stockHistory`, for the same
+  // reason: a return, a Production approval or an admin correction moves the
+  // Closing Stock rows, and every one of those already invalidates ['stock'].
+  // A sheet left open would otherwise keep a product that has since moved, or
+  // miss one that has.
+  branchClosing: (businessDate: string) => ['stock', 'closing', businessDate] as const,
+
+  // ── Daily Sale Record ──
+  // Every key starts with the literal 'dailySale' so one mutation can drop the
+  // whole module with a single prefix invalidation: a manual feed changes the
+  // list, the record and (for an override) the audit trail, and the three are
+  // never usefully invalidated apart.
+  //
+  // The list key carries its full window AND branch, for the same reason
+  // `salesAnalytics` does: serving one range's figures under another's heading is
+  // the one bug a reconciliation board must not have. 'me' rather than null for
+  // the absent branch, so a branch account's own key never collides with the
+  // admin's consolidated one.
+  dailySaleRecords: (filters: { from: string; to: string; branchId?: string | null }) =>
+    ['dailySale', 'records', filters.from, filters.to, filters.branchId ?? 'me'] as const,
+  // Its own key rather than reading the row out of the list's cache: the list
+  // deliberately does not carry the audit history or the branch address the View
+  // popup and the print sheet need, so serving them from it would show an empty
+  // history on every record until the list happened to refetch.
+  dailySaleRecord: (id: string) => ['dailySale', 'record', id] as const,
+  dailySaleLocks: (branchId?: string | null) => ['dailySale', 'locks', branchId ?? 'me'] as const,
+  dailySaleAudit: (branchId?: string | null, days?: number | null) =>
+    ['dailySale', 'audit', branchId ?? 'me', days ?? 30] as const,
 
   // ── Finance Ledger ──
   // Every finance key starts with the literal 'finance' so a sign-out or a
   // settings change can drop the whole module with one
   // `invalidateQueries({ queryKey: ['finance'] })` prefix match, without also
   // clearing the operations caches sitting next to it.
-  financeDashboard: (businessDate?: string | null) =>
-    ['finance', 'dashboard', businessDate ?? 'today'] as const,
+  financeDashboard: (filters: Record<string, unknown>) => ['finance', 'dashboard', filters] as const,
   // The ledger key carries its full filter object: the Daily Ledger page changes
   // date, branch and head independently, and a key that dropped any of them
   // would serve one filter's rows under another's heading.
   financeLedger: (filters: Record<string, unknown>) => ['finance', 'ledger', filters] as const,
   financeLedgerEntry: (id: string) => ['finance', 'ledgerEntry', id] as const,
+  // The top summary cards — a different query from `financeLedger` above (its
+  // own month-to-date scope, not the table's arbitrary from/to), so it needs
+  // its own key even though both read `ledger_entries`.
+  financeLedgerSummary: (filters: Record<string, unknown>) => ['finance', 'ledgerSummary', filters] as const,
   financeHeads: (includeInactive?: boolean) =>
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
   financeIncome: (filters: Record<string, unknown>) => ['finance', 'income', filters] as const,
@@ -147,6 +250,32 @@ export const qk = {
   // not serve the first one's figures under the new heading.
   financeTickets: (filters: Record<string, unknown>) => ['finance', 'tickets', filters] as const,
   financeTicketLookup: (referenceNo: string) => ['finance', 'ticketLookup', referenceNo] as const,
+  /**
+   * One query in full — its conversation, its amendments, its photos and (for an
+   * admin) the live record behind it.
+   *
+   * Its own key rather than reading the row out of the queue's cached list: the
+   * list endpoint deliberately does not carry any of those, so serving the View
+   * popup from it would show an empty thread on every query until the queue
+   * happened to refetch.
+   */
+  financeTicket: (id: string) => ['finance', 'ticket', id] as const,
+  financeTicketHistory: (id: string) => ['finance', 'ticket', id, 'history'] as const,
+  financeTicketStats: () => ['finance', 'ticketStats'] as const,
+  /** Under 'users', not 'finance': a finance mutation must not refetch the user list. */
+  financeHelpDeskUsers: () => ['users', 'finance-help-desk'] as const,
+
+  // Data Engine — the generic list endpoint (`/api/data/:resource`).
+  //
+  // Keyed by the resource name and the COMPLETE query string sent to the API,
+  // so two views with different filters are two cache entries and a stale
+  // response for one can never land under the other's heading. The prefix
+  // ['data', resource] is what a mutation invalidates: `qk.dataResource('orders')`
+  // refetches every page, sort and filter of that resource at once.
+  dataResource: (resource: string) => ['data', resource] as const,
+  data: (resource: string, query: string) => ['data', resource, 'list', query] as const,
+  dataAggregate: (resource: string, query: string) => ['data', resource, 'aggregate', query] as const,
+  dataMeta: (resource: string) => ['data', resource, 'meta'] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

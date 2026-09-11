@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { AppSettings, Branch, BranchProductionOrder, BranchProductionOrderItem } from '@mb/shared';
+import { rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
 import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,12 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
+import { useDocumentPrint } from '@/hooks/useDocumentPrint';
+import { useCachedLogo } from '@/lib/print/logoCache';
+import { printTrace } from '@/lib/print/diagnostics';
+import { PopPrintButton, type PrintHooks } from '@/components/print/PopPrintButton';
+import { printProductionOrder } from '@/lib/print/systemPrinter';
+import type { ProductionOrderDoc } from '@/lib/print/receipt/types';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -45,6 +51,13 @@ function digits(raw: string): string {
 }
 
 const fmt = (n: number) => n.toLocaleString();
+
+/** `YYYY-MM-DD` as `DD/MM/YYYY`. String work, not Date work — these are already Karachi dates,
+ *  and parsing them into a Date would reintroduce the timezone shift they were stored to avoid. */
+function compactDate(iso: string): string {
+  const [y, m, d] = (iso || '').split('-');
+  return y && m && d ? `${d}/${m}/${y}` : (iso || '—');
+}
 const money = (n: number, sym: string) => `${sym}${Math.round(n).toLocaleString()}`;
 
 /** Split into `parts` roughly-equal, contiguous chunks (drops empty tail chunks). */
@@ -145,13 +158,31 @@ function PreviewBody({
   const [returnQty, setReturnQty] = useState('');
   const [returnReason, setReturnReason] = useState('');
 
+  // The A4 print DOM is mounted only for the duration of a print — see
+  // useDocumentPrint. Until the press it does not exist, so editing quantities
+  // re-renders the review, not two invisible copies of the slip as well.
+  const { printing: documentPrinting, print: printViaBrowser } = useDocumentPrint();
+  // Fetched once per session and inlined, so the preview never waits on the
+  // storage host for the logo.
+  const logo = useCachedLogo(settings?.logoUrl);
+
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
   const addItemMut = useAddProductionOrderItem(token);
   const createReturnMut = useCreateReturn(token);
   const prevBalanceQ = usePreviousOrderBalance(token, order.id);
 
-  const priceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
+  /**
+   * FALLBACK ONLY. The rate a printed challan bills at is the SNAPSHOT on the
+   * order line (`unitPrice`, §18) — this map covers lines raised before that
+   * column existed, and lines Production added at review, which never went
+   * through order creation and so were never snapshotted.
+   *
+   * It must not be the primary source. Pricing a challan from the live list means
+   * reprinting a six-week-old delivery note produces a different total than the
+   * one the branch was given, silently, every time Admin edits a rate.
+   */
+  const livePriceById = new Map((productsQ.data ?? []).map((p) => [p.id, p.price]));
   const branch = (branchesQ.data ?? []).find((b) => b.id === order.branchId) ?? null;
   const sym = settings?.currencySymbol || 'Rs.';
 
@@ -179,7 +210,12 @@ function PreviewBody({
     const approved = frozen
       ? (it.approvedQty ?? approvalDefault)
       : (edits[it.productId] !== undefined ? (parseInt(edits[it.productId]!, 10) || 0) : approvalDefault);
-    const unitPrice = priceById.get(it.productId) ?? 0;
+    // Snapshot first, live price only where there is no snapshot — see
+    // `livePriceById`. `rateOf` returns null rather than 0 for a missing
+    // snapshot, so `??` falls through on absence but NOT on a genuine zero: a
+    // line legitimately priced at 0 (a special item) stays at 0 instead of
+    // picking up whatever the catalogue says today.
+    const unitPrice = rateOf(it) ?? livePriceById.get(it.productId) ?? 0;
     const amount = approved * unitPrice;
     return { newDemand, approved, unitPrice, amount, isAdded };
   }
@@ -248,9 +284,12 @@ function PreviewBody({
   const returnRows = prevBal?.returnItems ?? [];
   const returnsQty = returnRows.reduce((a, r) => a + r.qty, 0);
   const deliveredValue = prevBal?.deliveredValue ?? 0;
-  const companySharePct = prevBal?.companySharePct ?? 0;
   const companyShareValue = prevBal?.companyShareValue ?? 0;
   const returnsAmount = prevBal?.returnsValue ?? 0;
+  // The second deduction from the company share, netted server-side exactly as
+  // returns are. No quantity: a claim is an amount, not units.
+  const discountRows = prevBal?.discountItems ?? [];
+  const discountsAmount = prevBal?.discountsValue ?? 0;
   const collectionAmount = prevBal?.amountToCollect ?? 0;
   const previousRef = prevBal?.previous ?? null;
   const hasPrevBalance = !!previousRef;
@@ -328,21 +367,19 @@ function PreviewBody({
     }
   }
 
-  // Wait for the browser's own 'afterprint' signal before closing the dialog,
-  // instead of closing right after calling window.print(). window.print() does
-  // NOT reliably block script execution across browsers — closing immediately
-  // can unmount the print-only content (and the dialog itself) before the
-  // browser has actually captured it, which is what made the preview look
-  // empty. 'afterprint' fires once the print dialog is dismissed either way
-  // (printed or cancelled), so the content is guaranteed to still be in the
-  // DOM while printing happens.
+  // The A4 challan — a real document on a real sheet, so the browser dialog is
+  // the right tool and stays. The receipt is a different document with a
+  // different reader and goes through POP Print below.
   function printAndClose() {
-    function done() {
-      window.removeEventListener('afterprint', done);
-      onClose();
-    }
-    window.addEventListener('afterprint', done);
-    window.print();
+    // `printDocument` (behind useDocumentPrint) owns the afterprint cleanup — see
+    // its header for why the close has to wait for the browser's own signal. The
+    // hook mounts the print DOM first and prints once it has laid out.
+    printViaBrowser({
+      onAfterPrint: () => {
+        printTrace('closing order dialog');
+        onClose();
+      },
+    });
   }
 
   // Print only prints — it no longer submits a pending demand as a side effect.
@@ -352,8 +389,9 @@ function PreviewBody({
   function print() {
     setEditing(false);
     setPrintMode('slip');
-    markPrinted(order.id).catch(() => {});
-    setTimeout(printAndClose, 300);
+    printTrace('markPrinted requested');
+    markPrinted(order.id).then(() => printTrace('markPrinted done')).catch(() => printTrace('markPrinted failed'));
+    printAndClose();
   }
 
   // A separate, simplified sheet for the floor — branch, product, qty, amount
@@ -363,10 +401,81 @@ function PreviewBody({
   function printCheck() {
     setEditing(false);
     setPrintMode('check');
-    setTimeout(printAndClose, 300);
+    printAndClose();
   }
 
-  const logo = settings?.logoUrl ?? undefined;
+  /**
+   * The demand as the receipt — the canonical print document POP Print sends.
+   *
+   * Built from `printRows` and `totals` — the very rows and total the review
+   * table on screen is showing — rather than re-derived from `order.items`.
+   * That is the point: a slip the floor packs from must be the sheet the
+   * screen agreed to, and recomputing it at print time is how the two come to
+   * differ after someone edits a quantity.
+   *
+   * `requiredDate` is rendered as an em dash where the demand predates the field
+   * (migration 81) rather than falling back to `date`. Printing the raise date as
+   * a delivery commitment would put a promise on paper that nobody made.
+   */
+  function productionDoc(): ProductionOrderDoc {
+    return {
+      orderNumber: order.demandNumber || slipReference(order),
+      // Compact numeric dates, not the app's `dd MMM yyyy`: the header packs two
+      // label/value pairs onto a 48-character line, and "31 Aug 2026" twice does
+      // not fit beside its labels where "31/08/2026" does.
+      dateText: compactDate(order.date),
+      timeText: order.time || printTime,
+      requiredDateText: order.requiredDate ? compactDate(order.requiredDate) : '—',
+      branchName: branch?.name || order.branchName || '—',
+      companyName: settings?.companyName ?? COMPANY_NAME,
+      currencySymbol: sym,
+      // Only when already inlined as bytes — the receipt never waits on a fetch.
+      logo: logo ?? null,
+      items: printRows.map((r) => ({
+        productName: r.productName,
+        qty: r.approved,
+        unitPrice: r.unitPrice,
+        amount: r.amount,
+      })),
+      grandTotal: totals.amount,
+      // The same packing lines the A4 challan lists, at the approved quantity.
+      // Only lines going out: a line approved at zero is not on the slip, and a
+      // demand with none has no packing section at all.
+      packingItems: packingPrintRows.filter((p) => p.qty > 0),
+      // The same server figures the A4 challan's collection block prints, passed
+      // through rather than re-derived. `undefined` while the query is still in
+      // flight, so a slip printed early leaves the block off instead of printing
+      // a collection of zero against a delivery that has one.
+      previousCollection: prevBalanceQ.isLoading
+        ? undefined
+        : previousRef
+          ? {
+              reference: previousRef.demandNumber,
+              dateText: previousRef.date,
+              orderedValue: prevBal?.orderedValue ?? 0,
+              deliveredValue,
+              companyShare: companyShareValue,
+              returnsAmount,
+              discountsAmount,
+              amountToCollect: collectionAmount,
+            }
+          : null,
+    };
+  }
+
+  async function printPop(hooks: PrintHooks) {
+    setEditing(false);
+    // Queued, not awaited on the main thread: systemPrinter hands this to the
+    // print queue and the hooks let the button say Queued / Printing as it moves.
+    const result = await printProductionOrder(productionDoc(), { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate });
+    printTrace('markPrinted requested');
+    // Same flag the A4 slip sets, and set the same way — fire and forget, because
+    // a failed bookkeeping call must not turn a receipt that DID print into an
+    // error the counter has to interpret.
+    markPrinted(order.id).catch(() => {});
+    return result;
+  }
+
   const companyName = settings?.companyName || COMPANY_NAME;
 
   return (
@@ -714,8 +823,9 @@ function PreviewBody({
             </div>
           )}
 
-          {/* Previous balance & returns — same figures the Company Copy prints,
-              shown on screen too so this isn't only visible after clicking Print. */}
+          {/* Previous balance & returns — the same figures both printed copies
+              carry, shown on screen too so this isn't only visible after clicking
+              Print. The itemised tables below print on the Company Copy only. */}
           <div className="mt-6">
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-600">
               Previous Order Balance
@@ -725,11 +835,15 @@ function PreviewBody({
             ) : hasPrevBalance ? (
               // Every step is shown, not just the total: this is collected in
               // cash at the counter, so the figure has to be checkable by hand.
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-5">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-6">
                 <Field label="Previous Order" value={`${previousRef!.demandNumber} · ${previousRef!.date}`} />
                 <Field label="Delivered Value" value={money(deliveredValue, sym)} />
-                <Field label={`Company Share (${companySharePct}%)`} value={money(companyShareValue, sym)} />
+                <Field label="Company Share" value={money(companyShareValue, sym)} />
                 <Field label="Less Returns" value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+                {/* Beside Less Returns, and before the total, because the two are
+                    the same kind of thing: deductions from the company share.
+                    Money only — there are no units behind a discount. */}
+                <Field label="Less Discount" value={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
                 <Field label="Amount to Collect" value={money(collectionAmount, sym)} strong />
               </div>
             ) : (
@@ -760,6 +874,34 @@ function PreviewBody({
                 </table>
               </div>
             )}
+
+            {/* Which claims made up the deduction. Rendered only when there are
+                any, so an ordinary slip is unchanged — the same rule the return
+                table above follows. Two columns, not three: a discount has no
+                quantity behind it. */}
+            {discountRows.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-y border-neutral-300 text-left">
+                      <th className="py-1.5 pr-2 font-semibold">Discount Against (Since Last Order)</th>
+                      <th className="py-1.5 pl-2 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {discountRows.map((d, i) => (
+                      // Keyed by index alongside the demand number: a branch can
+                      // raise more than one approved claim against the same
+                      // demand, so the number alone is not unique.
+                      <tr key={`${d.demandNumber}-${i}`} className="border-b border-neutral-200">
+                        <td className="py-1.5 pr-2 font-medium">{d.demandNumber}</td>
+                        <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">{money(d.amount, sym)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {editing && !readOnly && changed && (
@@ -770,7 +912,7 @@ function PreviewBody({
           )}
 
           <p className="mt-6 text-center text-[11px] text-neutral-400">
-            Print produces one page — Customer Copy on top, Company Copy below the cut line.
+            POP Print sends the receipt to this computer&apos;s printer. A4 Challan prints one page — Customer Copy on top, Company Copy below the cut line.
           </p>
         </div>
 
@@ -782,8 +924,10 @@ function PreviewBody({
           Portalled to <body> deliberately. Left inside the dialog it is an
           absolutely positioned box inside a fixed, translated, overflow-clipped
           ancestor, and the printer only ever gets the part that fits the dialog
-          — see PrintPortal. ── */}
-      <PrintPortal>
+          — see PrintPortal.
+
+          Mounted only while a print is in progress. ── */}
+      <PrintPortal active={documentPrinting}>
         {printMode === 'slip' ? (
           /* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
              the bottom half, with a cut line between them. See `.print-sheet` /
@@ -794,16 +938,18 @@ function PreviewBody({
               logo={logo} companyName={companyName} sym={sym} order={order}
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
-              companySharePct={companySharePct} companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
+              companyShareValue={companyShareValue}
+              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
+              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             />
             <PrintCopy
               copyLabel="Company Copy"
               logo={logo} companyName={companyName} sym={sym} order={order}
               printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
               previousRef={previousRef} deliveredValue={deliveredValue}
-              companySharePct={companySharePct} companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount} collectionAmount={collectionAmount}
+              companyShareValue={companyShareValue}
+              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
+              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             />
           </div>
         ) : (
@@ -866,8 +1012,28 @@ function PreviewBody({
             <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
           </Button>
         )}
-        {/* Says "Print" or "Save as PDF" depending on the device — same action either way. */}
-        <PrintButton variant="secondary" onPrint={print} disabled={reviewing} />
+        {/* Two documents, two buttons, and neither falls back to the other.
+
+            POP Print sends the receipt — the canonical print document — to the
+            printer this computer has installed. No setup, no printer to pick:
+            the operating system's default printer is the printer.
+
+            A4 Challan is the signed delivery document on a sheet, two copies
+            per page, and keeps the browser dialog because that is the right
+            tool for a sheet. Its menu is where a device with no printer says
+            so and gets "Save as PDF" wording instead. */}
+        <PopPrintButton
+          label="POP Print"
+          print={printPop}
+          disabled={reviewing}
+        />
+        <PrintButton
+          variant="secondary"
+          onPrint={print}
+          disabled={reviewing}
+          printLabel="A4 Challan"
+          saveLabel="Save A4 PDF"
+        />
       </div>
     </>
   );
@@ -943,8 +1109,8 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
  */
 function PrintCopy({
   copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
-  previousRef, deliveredValue, companySharePct, companyShareValue,
-  returnRows, returnsQty, returnsAmount, collectionAmount,
+  previousRef, deliveredValue, companyShareValue,
+  returnRows, returnsQty, returnsAmount, discountRows, discountsAmount, collectionAmount,
 }: {
   copyLabel: string;
   logo?: string;
@@ -960,14 +1126,17 @@ function PrintCopy({
   previousRef: { demandNumber: string; date: string } | null;
   /** That order's delivered goods value (approved qty × unit price). */
   deliveredValue: number;
-  companySharePct: number;
-  /** deliveredValue × companySharePct. */
+  /** deliveredValue × the branch's agreed company-share rate, computed server-side. */
   companyShareValue: number;
   /** Accepted returns received since the order being billed, itemised by the server. */
   returnRows: { productName: string; qty: number; amount: number }[];
   returnsQty: number;
   returnsAmount: number;
-  /** companyShareValue less returnsAmount — what the rider actually collects. */
+  /** Approved discount claims in the same window — the second deduction. */
+  discountRows: { demandNumber: string; amount: number }[];
+  discountsAmount: number;
+  /** companyShareValue less returnsAmount AND discountsAmount — what the rider
+   *  actually collects. */
   collectionAmount: number;
 }) {
   const items = printRows.filter((r) => r.approved > 0);
@@ -1023,31 +1192,44 @@ function PrintCopy({
         </div>
       </div>
 
-      {/* Previous order balance + return netting — Company Copy only. This is
-          internal reconciliation between production and the branch; the customer
-          doesn't need it on their delivery receipt. */}
+      {/* Previous Order Balance — on BOTH copies.
+
+          It used to be Company Copy only, on the argument that this is internal
+          reconciliation and a customer does not need it on a delivery receipt.
+          That was wrong in the one way that matters: the rider COLLECTS this
+          amount in cash at the counter, and the branch handing the money over had
+          no printed statement of what it was for. Asking somebody to pay against
+          a figure they can only see on the other party's copy is not a document,
+          it is a request to take their word for it.
+
+          The itemised Return Items and Discounts tables below stay Company Copy
+          only. They are the working behind the two "Less …" lines, each copy gets
+          half a page, and two more tables on the customer half would push the
+          product list onto a second sheet — the summary lines are what the branch
+          needs to check the total, and the detail is one question away. */}
+      <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
+        <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
+        {hasPrevBalance ? (
+          // Full working shown, not just the total — this is counted out in
+          // cash at the counter and has to be verifiable line by line.
+          <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
+            <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
+            <MetaKV k="Previous Demand Date" v={previousRef!.date} />
+            <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
+            <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
+            <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+            <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
+            <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
+          </div>
+        ) : (
+          <p className="text-[9px] font-medium text-neutral-500">
+            No previous delivery for this branch — nothing to collect.
+          </p>
+        )}
+      </div>
+
       {isCompanyCopy && (
         <>
-          <div className="avoid-break mt-1.5 rounded border border-neutral-300 bg-neutral-50 px-2 py-1">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Previous Order Balance</p>
-            {hasPrevBalance ? (
-              // Full working shown, not just the total — this is counted out in
-              // cash at the counter and has to be verifiable line by line.
-              <div className="grid grid-cols-3 gap-x-4 text-[9px] leading-tight">
-                <MetaKV k="Previous Order No" v={previousRef!.demandNumber} mono />
-                <MetaKV k="Previous Demand Date" v={previousRef!.date} />
-                <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
-                <MetaKV k={`Company Share (${companySharePct}%)`} v={money(companyShareValue, sym)} />
-                <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
-                <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
-              </div>
-            ) : (
-              <p className="text-[9px] font-medium text-neutral-500">
-                No previous delivery for this branch — nothing to collect.
-              </p>
-            )}
-          </div>
-
           {/* Return items — accepted the previous business day. Rendered only when
               the branch actually returned something, so an ordinary slip is
               unchanged. */}
@@ -1076,6 +1258,37 @@ function PrintCopy({
                     <td className="pt-0.5">Total</td>
                     <td className="px-1 pt-0.5 text-right tabular-nums">{fmt(returnsQty)}</td>
                     <td className="pt-0.5 pl-1 text-right tabular-nums">{money(returnsAmount, sym)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Discounts, itemised the way returns are — this is counted out in
+              cash at the counter, so every line of the deduction has to be
+              checkable by hand rather than appearing as one total. */}
+          {discountRows.length > 0 && (
+            <div className="avoid-break mt-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Discounts (Since Last Order)</p>
+              <table className="w-full border-collapse text-[9px] leading-tight">
+                <thead>
+                  <tr className="border-y border-neutral-400 text-left">
+                    <th className="py-0.5 pr-1 font-semibold">Against Demand</th>
+                    <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discountRows.map((d, i) => (
+                    <tr key={`${d.demandNumber}-${i}`} className="border-b border-neutral-200">
+                      <td className="py-0.5 pr-1 font-medium">{d.demandNumber}</td>
+                      <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(d.amount, sym)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-neutral-400 font-bold">
+                    <td className="pt-0.5">Total</td>
+                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(discountsAmount, sym)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -1255,7 +1468,7 @@ function ProductionCheckSheet({
       {items.length === 0 ? (
         <p className="mt-4 text-center text-[11px] text-neutral-500">No approved products.</p>
       ) : (
-        <div className={`avoid-break mt-3 grid gap-x-4 ${cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`avoid-break print-cols mt-3 grid gap-x-4 ${cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {groups.map((group, gi) => (
             <table key={gi} className="w-full border-collapse text-[11px]">
               <thead>

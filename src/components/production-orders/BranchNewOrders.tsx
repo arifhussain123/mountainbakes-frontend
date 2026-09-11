@@ -10,6 +10,7 @@ import {
   useProducts,
   useProductionOrders,
   useStock,
+  useStockRows,
   useSubmitProductionOrder,
 } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Eye, Package, Plus, Trash2 } from 'lucide-react';
 import {
   fulfilledTotals,
@@ -30,6 +32,8 @@ import { cn } from '@/lib/utils';
 import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 import { BranchOrderDetail } from './BranchOrderDetail';
+import { DiscountModal } from './DiscountModal';
+import { ReturnItemsModal } from '@/components/stock/ReturnItemsModal';
 
 const col = createColumnHelper<BranchProductionOrder>();
 
@@ -105,11 +109,29 @@ export function BranchNewOrders() {
   const [deleteReason, setDeleteReason] = useState('');
   /** The demand whose total is on screen. Null when the box is closed. */
   const [demandFor, setDemandFor] = useState<BranchProductionOrder | null>(null);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  /**
+   * Whether the Return Items popup has ever been opened.
+   *
+   * Separate from `openedOnce`, which gates the New Order popup's data, because
+   * the two popups want different things: the order form needs the product
+   * catalogue, and the return form needs the stock ROWS (code, name, balance) it
+   * validates a return against. Keeping the flags apart means opening one does
+   * not fetch for the other, on a page most branches open to read the table and
+   * nothing else.
+   */
+  const [returnOpenedOnce, setReturnOpenedOnce] = useState(false);
 
   // Products/stock load lazily on first open; both are cached across reopens.
   const productsQ = useProducts(token, { isActive: true, enabled: openedOnce });
   const stockQ = useStock(token, { enabled: openedOnce });
   const ordersQ = useProductionOrders(token);
+  // TODAY's rows, deliberately undated: a return moves live stock, so validating
+  // one against a past day's balances is the mistake the Stock page's own date
+  // picker had to be guarded from. There is no date to pick here at all.
+  const stockRowsQ = useStockRows(token, { enabled: returnOpenedOnce });
   const submitMut = useSubmitProductionOrder(token);
   const cancelMut = useCancelProductionOrder(token);
 
@@ -120,7 +142,55 @@ export function BranchNewOrders() {
     qc.invalidateQueries({ queryKey: ['stock'] });
   }
 
-  const historyRows = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
+  function openDiscount() {
+    setDiscountOpenedOnce(true);
+    setDiscountOpen(true);
+  }
+
+  function openReturn() {
+    setReturnOpenedOnce(true);
+    setReturnOpen(true);
+    // Same refresh-on-open as the order popup, and it matters more here: the
+    // modal refuses a return larger than the balance, so a stale figure is the
+    // difference between a clear error and a rejected save.
+    qc.invalidateQueries({ queryKey: ['stock'] });
+  }
+
+  /**
+   * The queue is split in two (§20).
+   *
+   * ACTIVE is what the branch still has to do something about: a demand it has
+   * submitted and Production has not reviewed, or one Production has sent that
+   * nobody has counted in yet. HISTORY is everything settled — verified, approved,
+   * rejected, deleted.
+   *
+   * They were one list, and that was the bug: a demand verified last Tuesday sat
+   * in the same table as this morning's delivery with nothing but a status pill
+   * between them, so the branch re-read completed records as though they were
+   * waiting on something. Splitting them means the active tab is a worklist that
+   * empties, which is the only way "nothing to verify" is ever visible.
+   *
+   * Nothing is hidden or deleted — History holds every record it always did, and
+   * the tab carries a count so it never looks empty.
+   */
+  const { activeRows, historyRows } = useMemo(() => {
+    const all = ordersQ.data ?? [];
+    const isActive = (o: BranchProductionOrder) =>
+      o.status === 'pending' || o.status === 'awaiting_verification';
+    return {
+      activeRows: all.filter(isActive),
+      historyRows: all.filter((o) => !isActive(o)),
+    };
+  }, [ordersQ.data]);
+
+  /**
+   * Which tab is showing. Starts on Active and STAYS wherever the branch put it —
+   * deliberately not derived from `activeRows.length`, because a list that
+   * empties while someone is reading it would yank them to another tab
+   * mid-sentence. The badge is how an emptied queue announces itself.
+   */
+  const [tab, setTab] = useState<'active' | 'history'>('active');
+  const rows = tab === 'active' ? activeRows : historyRows;
 
   function openView(order: BranchProductionOrder) {
     setViewOrder(order);
@@ -290,12 +360,7 @@ export function BranchNewOrders() {
       id: 'reason',
       header: 'Reason',
       meta: { mobileFull: true },
-      cell: (i) =>
-        i.getValue() ? (
-          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
-        ) : (
-          <span className="text-sm text-muted-foreground/50">—</span>
-        ),
+      cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" />,
     }),
     col.display({
       id: 'actions',
@@ -338,20 +403,82 @@ export function BranchNewOrders() {
 
   return (
     <div className="space-y-4">
-      {/* New Order button (top-left) + section heading */}
+      {/* New Order button (top-left) + section heading.
+
+          RETURN ITEMS AND DISCOUNT ARE NOT HERE — they are in the New Order
+          form's own header, reached by opening it. The branch is already inside
+          that screen when it remembers there is stock to send back or money to
+          claim, and both popups layer over it without disturbing a half-entered
+          order. The two dialogs are still mounted HERE, at the bottom of this
+          component: the page owns the stock rows the return form validates
+          against, and being siblings of the order form rather than children of
+          it is what lets them open over it. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Mobile gets this as the FAB at the bottom of this component. */}
         <Button size="lg" className="hidden md:inline-flex" onClick={openModal}>
           <Plus className="mr-1.5 h-4 w-4" /> New Order
         </Button>
         <div className="text-right">
-          <h3 className="text-base font-semibold">Production Order History</h3>
+          <h3 className="text-base font-semibold">Production Orders</h3>
           <p className="text-xs text-muted-foreground">Last 7 days</p>
         </div>
       </div>
 
-      {/* Order history — one row per demand submission; open View for line items. */}
-      <DataTable columns={columns} data={historyRows} loading={ordersQ.isLoading} searchPlaceholder="Search order history…" />
+      {/* Active vs History (§20). A completed demand is still one click away, it
+          just stops competing for attention with the ones that need acting on. */}
+      <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+        {([
+          { key: 'active' as const, label: 'Needs action', count: activeRows.length },
+          { key: 'history' as const, label: 'History', count: historyRows.length },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              tab === t.key ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t.label}
+            <span
+              className={cn(
+                'ml-1.5 rounded-full px-1.5 py-0.5 text-xs tabular-nums',
+                // Amber only on the ACTIVE tab, and only when it has something in
+                // it: a count is a nudge, and a grey 0 is the message that there
+                // is nothing to do.
+                t.key === 'active' && t.count > 0
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* One row per demand submission; open View for line items. */}
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={ordersQ.isLoading}
+        searchPlaceholder={tab === 'active' ? 'Search active demands…' : 'Search order history…'}
+        empty={
+          rows.length === 0 && !ordersQ.isLoading ? (
+            <div className="py-12 text-center">
+              <p className="text-sm font-medium">
+                {tab === 'active' ? 'Nothing waiting on you' : 'No completed demands in the last 7 days'}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {tab === 'active'
+                  ? 'Demands appear here while Production is reviewing them, and again when a delivery is ready to verify.'
+                  : 'Verified, approved, rejected and deleted demands collect here.'}
+              </p>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* Demand detail — read-only, except an 'awaiting_verification' order,
           where the branch checks physical items and verifies. */}
@@ -371,6 +498,8 @@ export function BranchNewOrders() {
         userName={userName}
         submit={(payload) => submitMut.mutateAsync(payload)}
         submitting={submitMut.isPending}
+        onOpenReturn={openReturn}
+        onOpenDiscount={openDiscount}
       />
 
       {/* Delete a demand Production has not started on. The reason is mandatory
@@ -442,6 +571,34 @@ export function BranchNewOrders() {
           <Button variant="outline" onClick={() => setDemandFor(null)}>Close</Button>
         </DialogContent>
       </Dialog>
+
+      {/* Return Items — off the Stock page, opened from the New Order form's
+          header. Loads today's stock rows on first open and validates every line
+          against the balance. Mounted here rather than inside that form so the
+          rows are fetched once by the page and so it can layer over it. */}
+      <ReturnItemsModal
+        open={returnOpen}
+        onOpenChange={setReturnOpen}
+        rows={stockRowsQ.data ?? []}
+        branchName={user?.branchName ?? ''}
+        // The modal saved a return, which moved branch stock — refetch the rows
+        // it validates against so a second return in the same visit is checked
+        // against the balance the first one left behind.
+        onSaved={() => stockRowsQ.refetch()}
+      />
+
+      {/* Raise a discount claim, and manage the ones already raised. Fed the
+          same order list the table above is showing, so the picker offers exactly
+          what the branch can see. Branch → Discounts carries the same claims in
+          full; the rules the two share live in `discountShared.tsx` so they
+          cannot drift. */}
+      <DiscountModal
+        open={discountOpen}
+        onOpenChange={setDiscountOpen}
+        openedOnce={discountOpenedOnce}
+        orders={ordersQ.data ?? []}
+        loadingOrders={ordersQ.isLoading}
+      />
 
       <Fab onClick={openModal} icon={Plus} label="New production order" />
     </div>

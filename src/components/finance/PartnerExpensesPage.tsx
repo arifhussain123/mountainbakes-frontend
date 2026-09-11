@@ -120,6 +120,7 @@ export function PartnerExpensesPage() {
 
 const expenseCol = createColumnHelper<PartnerExpense>();
 const PARTNER_BASE_PATH = '/api/finance/partner-expenses';
+const PARTNER_PAGE_SIZE = 100;
 
 function PartnerLedgerTab({
   txnKind,
@@ -132,9 +133,19 @@ function PartnerLedgerTab({
   const [partnerId, setPartnerId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PartnerExpense | null>(null);
   const [viewing, setViewing] = useState<PartnerExpense | null>(null);
+
+  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
 
   const partnersQ = useFinancePartners();
   const { data, isLoading } = usePartnerExpenses({
@@ -143,9 +154,17 @@ function PartnerLedgerTab({
     partnerId: partnerId || undefined,
     from: from || undefined,
     to: to || undefined,
+    search: search || undefined,
+    limit: PARTNER_PAGE_SIZE,
+    offset: (page - 1) * PARTNER_PAGE_SIZE,
   });
 
-  const rows = data ?? [];
+  const rows = data?.expenses ?? [];
+  const grandTotal = data?.total ?? 0;
+  // Struck over the CURRENT page only — advances/draws are a low-volume
+  // journal (four partners), so in practice one page covers a whole
+  // selection, but this under-counts rather than silently including rows
+  // from other pages if that ever stops being true.
   const total = rows.reduce((sum, r) => sum + r.amount, 0);
   const label = txnKind === 'advance' ? 'Advance' : 'Draw';
 
@@ -202,7 +221,7 @@ function PartnerLedgerTab({
         <FilterField label="Status">
           <FilterSelect
             value={status}
-            onChange={setStatus}
+            onChange={setFilter(setStatus)}
             allLabel="Any status"
             options={[
               { value: 'pending', label: 'Pending Approval' },
@@ -216,16 +235,16 @@ function PartnerLedgerTab({
         <FilterField label="Partner">
           <FilterSelect
             value={partnerId}
-            onChange={setPartnerId}
+            onChange={setFilter(setPartnerId)}
             allLabel="All partners"
             options={(partnersQ.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
           />
         </FilterField>
         <FilterField label="From">
-          <DateFilter value={from} onChange={setFrom} />
+          <DateFilter value={from} onChange={setFilter(setFrom)} />
         </FilterField>
         <FilterField label="To">
-          <DateFilter value={to} onChange={setTo} />
+          <DateFilter value={to} onChange={setFilter(setTo)} />
         </FilterField>
         <div className="ml-auto flex items-end gap-3">
           {rows.length > 0 && (
@@ -248,6 +267,14 @@ function PartnerLedgerTab({
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search by partner…"
+        manual={{
+          page,
+          pageSize: PARTNER_PAGE_SIZE,
+          total: grandTotal,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
         empty={
           <div className="p-6">
             <HandCoins className="mx-auto mb-2 h-8 w-8 text-muted-foreground/60" aria-hidden />
@@ -596,8 +623,8 @@ function AddPartnerDetailFlow({
 }
 
 function PartnerHistoryDetail({ row }: { row: PartnerShareRow }) {
-  const { data, isLoading } = usePartnerExpenses({ partnerId: row.id });
-  const txns = data ?? [];
+  const { data, isLoading } = usePartnerExpenses({ partnerId: row.id, limit: 500 });
+  const txns = data?.expenses ?? [];
 
   return (
     <div className="space-y-4 text-sm">

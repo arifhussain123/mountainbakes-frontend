@@ -1,0 +1,4 @@
+# The live config names this till's printers and may carry a shared token.
+# Only the example belongs in git.
+print-agent.config.json
+node_modules/

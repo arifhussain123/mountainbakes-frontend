@@ -23,7 +23,9 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect, RejectDialog } from './finance-actions';
-import { ArrowDownToLine, BadgeCheck, Check, Eye, Info, X } from 'lucide-react';
+import { ArrowDownToLine, BadgeCheck, Check, ChevronLeft, ChevronRight, Eye, Info, X } from 'lucide-react';
+
+const PAGE_SIZE = 100;
 
 /**
  * Branch Income — the pending list the brief's workflow ends at.
@@ -55,6 +57,16 @@ export function BranchIncomePage() {
   const [branchId, setBranchId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+
+  /** Every filter setter resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(0);
+    };
+  }
   const [importing, setImporting] = useState(false);
   const [approving, setApproving] = useState<FinanceIncomeApproval | null>(null);
   /**
@@ -75,12 +87,22 @@ export function BranchIncomePage() {
     branchId: branchId || undefined,
     from: from || undefined,
     to: to || undefined,
+    search: search || undefined,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
 
   const verifyMut = useFinanceMutation();
   const canVerify = VERIFIER_ROLES.includes(user?.role ?? '');
 
-  const rows = data ?? [];
+  const rows = data?.approvals ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Awaiting-decision total and the zero-collection count are struck over the
+  // CURRENT page only. Pending approvals are a working queue that is expected
+  // to clear regularly, not an archive, so in normal operation it fits on one
+  // page — but if it ever doesn't, these two figures under-count rather than
+  // silently including rows from other pages.
   const pendingTotal = rows
     .filter((r) => r.status === 'pending_verification' || r.status === 'pending_approval')
     .reduce((sum, r) => sum + r.totalAmount, 0);
@@ -245,7 +267,7 @@ export function BranchIncomePage() {
         <FilterField label="Status">
           <FilterSelect
             value={status}
-            onChange={setStatus}
+            onChange={setFilter(setStatus)}
             allLabel="All"
             options={[
               { value: 'pending', label: 'Pending (any stage)' },
@@ -259,16 +281,16 @@ export function BranchIncomePage() {
         <FilterField label="Branch">
           <FilterSelect
             value={branchId}
-            onChange={setBranchId}
+            onChange={setFilter(setBranchId)}
             allLabel="All branches"
             options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
           />
         </FilterField>
         <FilterField label="From">
-          <DateFilter value={from} onChange={setFrom} max={today} />
+          <DateFilter value={from} onChange={setFilter(setFrom)} max={today} />
         </FilterField>
         <FilterField label="To">
-          <DateFilter value={to} onChange={setTo} max={today} />
+          <DateFilter value={to} onChange={setFilter(setTo)} max={today} />
         </FilterField>
       </FilterBar>
 
@@ -277,7 +299,43 @@ export function BranchIncomePage() {
         data={tableRows}
         loading={isLoading}
         searchPlaceholder="Search by branch or reference…"
+        pager={false}
+        manual={{
+          page: page + 1,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: (p) => setPage(p - 1),
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
       />
+
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <span>{total} total</span>
+        <div className="flex items-center gap-2">
+          <span>Page {page + 1} of {pageCount}</span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 md:h-7 md:w-7"
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 md:h-7 md:w-7"
+            disabled={page + 1 >= pageCount}
+            onClick={() => setPage((p) => p + 1)}
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
 
       <ImportDialog open={importing} onOpenChange={setImporting} />
 

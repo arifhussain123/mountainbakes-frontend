@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 // Aliased: `setRememberMe` is already the useState setter for the checkbox below.
 import { supabase, setRememberMe as persistRememberMeChoice } from '@/lib/supabase/client';
+import { isGoogleSignInEnabled, signInWithGoogle } from '@/lib/supabase/google';
 import { getRoleHome, isValidRole } from '@/utils/roleHome';
 import { COMPANY_NAME, APP_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
+import { loginFailureReason, recordFailedLogin } from '@/lib/loginHistory';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
 
@@ -32,6 +34,58 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showForgot, setShowForgot] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Offer Google only when the project actually has the provider on. Decided
+  // from Supabase's own settings, so this page cannot disagree with the
+  // dashboard; until then the form is the only way in.
+  useEffect(() => {
+    let active = true;
+    void isGoogleSignInEnabled().then((on) => { if (active) setGoogleEnabled(on); });
+    return () => { active = false; };
+  }, []);
+
+  /*
+   * The return leg of a Google sign-in. Supabase sends the browser back here
+   * with the session in the URL; the client picks it up and AuthProvider applies
+   * it, and RouteGuard then moves a user WITH a role to their home. What neither
+   * of them says anything about is a Google account that is not linked to any
+   * staff account: Supabase creates a fresh user for it, the app refuses it for
+   * having no role, and without this the person would be dropped back on this
+   * form with no idea why. Told plainly, and the half-made session dropped.
+   */
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== 'SIGNED_IN' || !session) return;
+      const provider = (session.user.app_metadata as { provider?: string } | null)?.provider;
+      const role = (session.user.app_metadata as { role?: string } | null)?.role;
+      if (provider === 'google' && !isValidRole(role)) {
+        void supabase.auth.signOut();
+        setError(
+          `${session.user.email ?? 'That Google account'} is not connected to a Mountain Bakes account. ` +
+            'Sign in with your email and password, then use "Connect Google account" on your dashboard.',
+        );
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  async function handleGoogle() {
+    setError('');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setError('You are offline. Signing in needs a connection — reconnect and try again.');
+      return;
+    }
+    setGoogleLoading(true);
+    try {
+      persistRememberMeChoice(rememberMe);
+      await signInWithGoogle('/login/'); // leaves the page
+    } catch (err) {
+      setGoogleLoading(false);
+      setError((err as Error).message || 'Google sign-in could not start. Please try again.');
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -91,6 +145,18 @@ export default function LoginPage() {
       let message = ERROR_MESSAGES[code];
       if (!message && /invalid login credentials/i.test(msg)) message = 'Invalid email or password.';
       setError(message || msg || 'Login failed. Please try again.');
+
+      // Tell the API a sign-in was refused, so Admin → Security can show it.
+      //
+      // HERE AND NOT IN A `signInWithPassword` WRAPPER, because this catch also
+      // covers the fail-closed role check above — an account that authenticated
+      // but carries no role claim was still refused entry, and 'no_role' is a
+      // materially different thing for an admin to see than a wrong password.
+      //
+      // The address only, never the password, and not awaited: the person is
+      // already reading the error above and must not wait on our bookkeeping.
+      // The call swallows its own failures — see recordFailedLogin.
+      recordFailedLogin(email, loginFailureReason(err));
     } finally {
       setLoading(false);
     }
@@ -235,6 +301,37 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {/* Google sign-in — only offered when the Supabase project has the
+              provider enabled. What it buys, beyond convenience: a session opened
+              this way records the Google account it was signed in with in the
+              login history, which a password login cannot. */}
+          {googleEnabled && (
+            <div className="mt-5">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/60" /></div>
+                <div className="relative flex justify-center text-[11px] uppercase tracking-wide">
+                  <span className="bg-card px-2 text-muted-foreground">or</span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-11 text-sm font-medium"
+                onClick={handleGoogle}
+                disabled={loading || googleLoading}
+              >
+                {googleLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.3-1.6 3.8-5.4 3.8-3.3 0-5.9-2.7-5.9-6s2.6-6 5.9-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.3 14.6 2.4 12 2.4 6.7 2.4 2.4 6.7 2.4 12S6.7 21.6 12 21.6c5.5 0 9.2-3.9 9.2-9.3 0-.6-.1-1.1-.2-1.6H12z" />
+                  </svg>
+                )}
+                Continue with Google
+              </Button>
+            </div>
+          )}
 
           {/* Footer note */}
           <div className="mt-6 pt-5 border-t border-border/60">

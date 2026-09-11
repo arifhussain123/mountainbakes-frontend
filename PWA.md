@@ -23,16 +23,28 @@ offline experience and an install prompt.
 | Icons + splash screens | `public/icons/*`, `public/splash/*` |
 | Metadata / theme / Apple splash links | `src/app/layout.tsx` (`metadata` + `viewport`) |
 
-## Staying current: the Refresh button and the 2-minute tick
+## Staying current: the Refresh button and the refresh tick
 
-`AppRefreshProvider` (dashboard layout) runs one 2-minute tick that keeps a
+`AppRefreshProvider` (dashboard layout) runs one 2-second tick that keeps a
 running tab current in two different ways, because the two carry very different
-costs:
+costs — and only the cheap half runs at that speed:
 
 | | How | When it runs |
 | --- | --- | --- |
-| **Data** | `refetchQueries({ type: 'active' })` — React Query swaps rows in behind what is rendered. No reload, no flash. | Every tick, unless a Dialog is open. |
-| **Frontend** | `window.location.reload()` — the only way to pick up a new build, and it destroys anything unsaved. | Only when a new build exists *and* nobody is mid-entry. |
+| **Data** | `refetchQueries({ type: 'active' })` — React Query swaps rows in behind what is rendered. No reload, no flash. | Every tick (2s), unless the tab is hidden, a Dialog is open, a mutation is in flight, or the previous refetch has not finished. |
+| **Frontend** | `window.location.reload()` — the only way to pick up a new build, and it destroys anything unsaved. | Every sixtieth tick (2 min), and only when a new build exists *and* nobody is mid-entry. |
+
+The Login History ping (`pingLoginSession`) rides the same sixtieth tick. Both it and
+the build check were left at 2 minutes when the data tick sped up: one writes to the
+session row, the other can reload the page, and neither gets better by happening sixty
+times as often. The ping is the one job that runs even while hidden — a backgrounded
+tab is still a live session, and skipping it would close the row out from under it.
+
+The data guards are not optional decoration. At 2s a forced refetch is ~30 round-trips a
+minute per tab (`staleTime` does not apply to `refetchQueries`), so the hidden-tab check is
+what stops a forgotten tab billing traffic all night, and the one-at-a-time ref is what
+stops a slow connection queueing rounds behind each other — `setInterval` does not wait for
+an async callback.
 
 A new build is found by polling `/version.json`, whose `buildId` is rewritten by
 `scripts/generate-version.mjs` on every `pnpm build`. **The service worker cannot
@@ -44,7 +56,7 @@ stamp is generated, not committed (`.gitignore`), and Firebase serves it
 "Mid-entry" (`isBusy`) means any of: a Dialog is open, focus is in an
 input/textarea/select/contenteditable, a mutation is in flight, or the app was
 touched in the last 30s. Fail any check and the update is *not* applied — the
-Topbar's Refresh button lights up instead, and the next tick tries again. A
+Topbar's Refresh button lights up instead, and the next session tick tries again. A
 missed update costs two minutes; an update applied over a half-typed sale costs
 the sale.
 

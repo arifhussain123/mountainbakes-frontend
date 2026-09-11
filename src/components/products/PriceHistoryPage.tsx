@@ -4,13 +4,16 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePriceHistory } from '@/lib/queries';import { exportPriceHistory, formatBusinessDate } from '@/utils/productPrice';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
 import type { PriceHistoryDoc } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { FileSpreadsheet, FileText } from 'lucide-react';
+import { FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const col = createColumnHelper<PriceHistoryDoc>();
+
+const PAGE_SIZE = 50;
 
 /** Trims an ISO timestamp to its date part before formatting as DD-MM-YYYY. */
 const dmy = (d?: string | null) => formatBusinessDate(d ? String(d).slice(0, 10) : d);
@@ -24,9 +27,13 @@ const STATUS_PILL: Record<string, string> = {
 export function PriceHistoryPage() {
   const { user, token } = useAuth();
   const [exporting, setExporting] = useState(false);
+  const [page, setPage] = useState(0);
+  const [search, setSearch] = useState('');
 
-  const historyQ = usePriceHistory(token);
-  const rows = historyQ.data ?? [];
+  const historyQ = usePriceHistory(token, { limit: PAGE_SIZE, offset: page * PAGE_SIZE, search: search || undefined });
+  const rows = historyQ.data?.history ?? [];
+  const total = historyQ.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const loading = historyQ.isLoading;
 
   useEffect(() => {
@@ -74,7 +81,7 @@ export function PriceHistoryPage() {
         </span>
       ),
     }),
-    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" /> }),
   ];
 
   return (
@@ -93,7 +100,48 @@ export function PriceHistoryPage() {
           </Button>
         </div>
       </div>
-      <DataTable columns={columns} data={rows} loading={loading} searchPlaceholder="Search product, code, reason…" />
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={loading}
+        searchPlaceholder="Search product, code or reason…"
+        pager={false}
+        manual={{
+          page: page + 1,
+          pageSize: PAGE_SIZE,
+          total,
+          onPageChange: (p) => setPage(p - 1),
+          search,
+          onSearchChange: (v) => { setSearch(v); setPage(0); },
+        }}
+      />
+
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <span>{total} recorded {total === 1 ? 'change' : 'changes'}</span>
+        <div className="flex items-center gap-2">
+          <span>Page {page + 1} of {pageCount}</span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 md:h-7 md:w-7"
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 md:h-7 md:w-7"
+            disabled={page + 1 >= pageCount}
+            onClick={() => setPage((p) => p + 1)}
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

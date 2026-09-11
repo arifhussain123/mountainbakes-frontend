@@ -12,9 +12,9 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import dynamic from 'next/dynamic';
-import { RecentOrdersTable } from './RecentOrdersTable';
 import { BranchStockHistoryCard } from './BranchStockHistoryCard';
 import { BranchDailyStockCard } from './BranchDailyStockCard';
+import { DailySalesSection } from './daily-sales/DailySalesSection';
 import { GeofenceStatusCard } from '@/components/geofence/GeofenceStatusCard';
 import { ShoppingCart, DollarSign, Receipt, TrendingUp, Percent } from 'lucide-react';
 import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
@@ -33,9 +33,7 @@ const PERIODS = [
 ];
 
 // Charts pull in recharts; load lazily on the client to keep the initial bundle lean.
-const SalesChart = dynamic(() => import('./SalesChart').then((m) => m.SalesChart), { ssr: false });
 const SalesVsExpensesChart = dynamic(() => import('./SalesVsExpensesChart').then((m) => m.SalesVsExpensesChart), { ssr: false });
-const TopProductsChart = dynamic(() => import('./TopProductsChart').then((m) => m.TopProductsChart), { ssr: false });
 
 export function BranchDashboard() {
   const { token, user } = useAuth();
@@ -67,6 +65,10 @@ export function BranchDashboard() {
     period,
     user?.branchId ?? null,
     isSpecificDate ? businessDayBounds(summaryDate) : null,
+    // This screen only reads totals + dailyData (see the SalesVsExpensesChart
+    // below) — branchData/topProducts/paymentMethodBreakdown come from
+    // useSalesAnalytics instead, so the server can skip computing them.
+    'basic',
   );
   const summary = summaryQ.data ?? null;
   const loading = !token || summaryQ.isLoading;
@@ -171,15 +173,37 @@ export function BranchDashboard() {
         <BranchDailyStockCard date={stockDate} onDateChange={setStockDate} branchId={user?.branchId ?? null} />
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2"><SalesChart data={summary?.dailyData ?? []} loading={loading} /></div>
-        <div><TopProductsChart data={summary?.topProducts ?? []} loading={loading} /></div>
-      </div>
+      {/* Daily Sales.
+
+          The same section the Admin dashboard renders, and deliberately the same
+          component rather than a branch-shaped copy: the only difference between
+          the two surfaces is whether a branch may be chosen, and the API decides
+          that from the JWT, not the screen. A branch account gets no picker and
+          is pinned to its own shop server-side.
+
+          It replaces the SalesChart + TopProductsChart pair that used to sit
+          here. Both drew slices of `/api/reports/summary` — a report aggregated
+          in Node over every order AND every order line in range — and the
+          section owns its own date range, aggregates in Postgres, and already
+          renders the product ranking the second card was for. Keeping
+          TopProductsChart alongside it would put the same ranking on the screen
+          twice, over two different windows.
+
+          Its range is its own, NOT the period select above: that control reframes
+          the money figures for one window, while this is a trend a manager wants
+          to lengthen without reframing every stat on the screen — the same
+          reasoning that gives the stock cards their own depth control. Both
+          components are untouched and still used by the Reports page. */}
+      <DailySalesSection />
 
       <SalesVsExpensesChart data={summary?.dailyData ?? []} loading={loading} />
 
-      <RecentOrdersTable branchId={user?.branchId ?? undefined} />
+      {/* No Recent Orders table here. The branch's sale history lives on the
+          Sales page, which lists it in full with its own date filter and
+          search — repeating a truncated copy on the dashboard gave two places
+          to look for one thing, and the shorter one was never the answer.
+          The Admin dashboard keeps its copy: an admin has no per-branch Sales
+          page to be sent to instead. */}
 
       {/* Login History. On every dashboard, but not showing the same thing on
           each: the API gives a super admin every account's sessions and pins

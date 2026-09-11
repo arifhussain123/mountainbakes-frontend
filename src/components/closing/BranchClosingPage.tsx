@@ -1,17 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Banknote, Boxes, Receipt, ShoppingCart, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useBranchClosing } from '@/lib/queries';
-import { businessDateStr, businessDaysAgoStr } from '@mb/shared';
+import { useStockRealtime } from '@/hooks/useStockRealtime';
+import { businessDateStr, businessDaysAgoStr, computeClosingTotals } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
 import { PrintButton } from '@/components/shared/PrintButton';
+import { printDocument } from '@/lib/print/browser/documentPrint';
+import { Button } from '@/components/ui/button';
+import { ClosingExportModal } from './ClosingExportModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { FileSpreadsheet } from 'lucide-react';
 
 /**
  * The shop's end-of-day sheet.
@@ -32,12 +39,24 @@ import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 // PaymentMethod), so it is not a row in the payment breakdown either.
 const PAID_METHODS = ['cash', 'easypaisa', 'foodpanda', 'bank_account'] as const;
 
+// recharts is heavy; keep it out of the closing sheet's initial bundle.
+const ClosingStockHistogram = dynamic(
+  () => import('./ClosingStockHistogram').then((m) => m.ClosingStockHistogram),
+  { ssr: false, loading: () => <Skeleton className="h-48 w-full" /> },
+);
+
 export function BranchClosingPage() {
   const { token, user } = useAuth();
   const { settings } = useSettings();
   const [date, setDate] = useState(() => businessDateStr());
+  const [exportOpen, setExportOpen] = useState(false);
 
   const { data, isLoading } = useBranchClosing(token, date);
+  // Closing Stock lists only products that moved or hold stock, so a Production
+  // approval or an admin correction landing while the sheet is open can add a
+  // row or empty one. This refreshes the sheet on those events the same way the
+  // Stock page refreshes itself.
+  useStockRealtime();
   const cur = settings?.currencySymbol || 'Rs.';
   const money = (n: number) => `${cur}${Math.round(n).toLocaleString()}`;
 
@@ -53,9 +72,11 @@ export function BranchClosingPage() {
     // never as revenue.
     const paid = live.filter((o) => o.paymentMethod !== 'staff');
 
-    const sales = paid.reduce((s, o) => s + (o.grandTotal || 0), 0);
-    const discounts = live.reduce((s, o) => s + (o.discountTotal || 0), 0);
-    const expenses = (data?.expenses ?? []).reduce((s, e) => s + (e.amount || 0), 0);
+    // The money figures come from @mb/shared rather than being summed here, so
+    // this screen and the Excel export of the same window cannot disagree about
+    // a number that has to reconcile with the drawer. The breakdowns below stay
+    // local — they are how this page displays the day, not what it owes.
+    const figures = computeClosingTotals(orders, data?.expenses ?? []);
 
     const byMethod = PAID_METHODS.map((m) => ({
       method: m,
@@ -70,34 +91,28 @@ export function BranchClosingPage() {
       }, {}),
     ).sort((a, b) => b[1] - a[1]);
 
-    // Cash in the drawer: cash taken in, less what was paid out of it. Card and
-    // wallet takings never touch the till, so they are not in this number.
-    const cashSales = paid
-      .filter((o) => o.paymentMethod === 'cash')
-      .reduce((s, o) => s + (o.grandTotal || 0), 0);
-    const cashExpenses = (data?.expenses ?? [])
-      .filter((e) => e.paymentMethod === 'cash')
-      .reduce((s, e) => s + (e.amount || 0), 0);
-
-    return {
-      sales,
-      discounts,
-      expenses,
-      net: sales - expenses,
-      orderCount: live.length,
-      cancelled: orders.length - live.length,
-      byMethod,
-      byCategory,
-      cashSales,
-      cashExpenses,
-      cashInHand: cashSales - cashExpenses,
-    };
+    return { ...figures, byMethod, byCategory };
   }, [data]);
 
   const stock = data?.stock ?? [];
-  const stockOnHand = stock.reduce((s, r) => s + (r.balance || 0), 0);
-  const soldUnits = stock.reduce((s, r) => s + (r.sold || 0), 0);
-  const returnedUnits = stock.reduce((s, r) => s + (r.returned || 0), 0);
+
+  // Every stock column totalled in one pass. The footer row, the caption above the
+  // table and the Stock on Hand card all read from this — three places that must
+  // agree, and did not have to when each summed the rows for itself.
+  const stockTotals = useMemo(
+    () =>
+      (data?.stock ?? []).reduce(
+        (t, r) => ({
+          opening: t.opening + (r.opening || 0),
+          newQty: t.newQty + (r.newQty || 0),
+          sold: t.sold + (r.sold || 0),
+          returned: t.returned + (r.returned || 0),
+          balance: t.balance + (r.balance || 0),
+        }),
+        { opening: 0, newQty: 0, sold: 0, returned: 0, balance: 0 },
+      ),
+    [data],
+  );
 
   return (
     <div className="space-y-6">
@@ -119,7 +134,13 @@ export function BranchClosingPage() {
               className="h-9 w-40"
             />
           </div>
-          <PrintButton onPrint={() => window.print()} printLabel="Print" saveLabel="Save PDF" size="sm" />
+          {/* Beside Print, because both answer "get this off the screen" — one
+              for the folder on the wall, one for a spreadsheet. Print is the
+              single day on show; this one takes a window. */}
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setExportOpen(true)}>
+            <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Excel
+          </Button>
+          <PrintButton onPrint={() => printDocument()} printLabel="Print" saveLabel="Save PDF" size="sm" />
         </div>
       </div>
 
@@ -128,7 +149,7 @@ export function BranchClosingPage() {
         <StatCard title="Expenses" value={isLoading ? '…' : money(totals.expenses)} icon={Receipt} color="red" loading={isLoading} />
         <StatCard title="Net" value={isLoading ? '…' : money(totals.net)} icon={TrendingUp} color="orange" loading={isLoading} />
         <StatCard title="Cash in Hand" value={isLoading ? '…' : money(totals.cashInHand)} icon={Banknote} color="brown" loading={isLoading} />
-        <StatCard title="Stock on Hand" value={isLoading ? '…' : stockOnHand.toLocaleString()} icon={Boxes} color="blue" loading={isLoading} />
+        <StatCard title="Stock on Hand" value={isLoading ? '…' : stockTotals.balance.toLocaleString()} icon={Boxes} color="blue" loading={isLoading} />
       </div>
 
       {expensesOutOfRange && (
@@ -193,8 +214,8 @@ export function BranchClosingPage() {
         </CardHeader>
         <CardContent>
           <p className="mb-3 text-xs text-muted-foreground">
-            {soldUnits.toLocaleString()} units sold · {returnedUnits.toLocaleString()} returned to production ·{' '}
-            {stockOnHand.toLocaleString()} left on the shelf
+            {stockTotals.sold.toLocaleString()} units sold · {stockTotals.returned.toLocaleString()} returned to production ·{' '}
+            {stockTotals.balance.toLocaleString()} left on the shelf
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -212,8 +233,12 @@ export function BranchClosingPage() {
                 {isLoading && (
                   <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">Loading…</td></tr>
                 )}
+                {/* The API returns only products with a non-zero Opening,
+                    Received, Sold, Returned or Balance, so an empty list means
+                    nothing moved and nothing is on the shelf — not that stock
+                    was never set up. */}
                 {!isLoading && stock.length === 0 && (
-                  <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No stock rows for this date.</td></tr>
+                  <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No stock activity for this business day.</td></tr>
                 )}
                 {stock.map((r) => (
                   <tr key={r.productId} className="border-b last:border-0">
@@ -226,10 +251,54 @@ export function BranchClosingPage() {
                   </tr>
                 ))}
               </tbody>
+              {/* Only when there are rows to total. A Total line under "No stock
+                  activity for this business day" would be five zeroes dressed up
+                  as a finding. In <tfoot>, so a printed sheet that runs to a second
+                  page repeats it — this page has a Print button and the sheet is
+                  what a shift hands over on. */}
+              {!isLoading && stock.length > 0 && (
+                <tfoot>
+                  <tr data-table-foot className="border-t-2 font-semibold">
+                    <td className="py-2 pr-3">
+                      Total
+                      <span className="ml-1 font-normal text-xs text-muted-foreground">
+                        ({stock.length} product{stock.length === 1 ? '' : 's'})
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.opening.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.newQty.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.sold.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{stockTotals.returned.toLocaleString()}</td>
+                    <td className="py-2 pl-3 text-right tabular-nums">{stockTotals.balance.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </CardContent>
       </Card>
+
+      {/* The same `stock` rows and `stockTotals` the table above just printed —
+          the graph is the table drawn, not a second read of the day. Kept off
+          the printed sheet (`print:hidden`): the table is the handover record
+          and the export keeps its own format. */}
+      <Card className="print:hidden">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Closing Stock Histogram</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ClosingStockHistogram rows={stock} totals={stockTotals} loading={isLoading} />
+        </CardContent>
+      </Card>
+
+      {/* Seeded with the day on screen, so "export this day" is one click and a
+          wider window is a deliberate widening rather than a default. */}
+      <ClosingExportModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        token={token}
+        defaultDate={date}
+      />
     </div>
   );
 }

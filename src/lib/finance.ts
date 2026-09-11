@@ -17,10 +17,14 @@ import type {
   FinanceReport,
   FinanceSettings,
   FinanceTicket,
+  FinanceTicketPage,
   FinanceTicketReferenceLookup,
+  FinanceTicketStats,
+  FinanceTicketVersion,
   FinanceTransaction,
   LedgerHead,
   LedgerPage,
+  LedgerSummary,
   PartnerExpense,
   PartnerShareSummary,
   SalaryPayment,
@@ -72,17 +76,24 @@ function useToken() {
 // Dashboard, ledger, heads
 // ---------------------------------------------------------------------------
 
-export function useFinanceDashboard(businessDate?: string) {
+// A `type`, not an `interface` — see the note on LedgerFilters below: only a
+// type alias gets the implicit index signature `qk.financeDashboard` needs.
+export type FinanceDashboardFilters = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+};
+
+export function useFinanceDashboard(filters: FinanceDashboardFilters = {}) {
   const token = useToken();
   return useQuery({
-    queryKey: qk.financeDashboard(businessDate),
+    queryKey: qk.financeDashboard(filters),
     enabled: Boolean(token),
     // 15s, matching the app's LIVE_STALE_TIME convention for intraday figures:
     // the dashboard is what a finance user leaves open while approving, and a
     // 60s default would show pending counts that are already dealt with.
     staleTime: 15_000,
-    queryFn: () =>
-      apiCall<FinanceDashboard>(`/api/finance/dashboard${toQuery({ date: businessDate })}`, {}, token),
+    queryFn: () => apiCall<FinanceDashboard>(`/api/finance/dashboard${toQuery(filters)}`, {}, token),
   });
 }
 
@@ -120,6 +131,29 @@ export function useLedger(filters: LedgerFilters) {
   });
 }
 
+// A `type`, for the same index-signature reason as `LedgerFilters` above.
+export type LedgerSummaryFilters = {
+  date: string;
+  branchId?: string;
+};
+
+/**
+ * The Daily Ledger's top summary — month-to-date as of `date`, and NOT
+ * derived from `useLedger()`'s page-scoped `openingBalance`/`closingBalance`.
+ * Deliberately excludes the table's other filters (ledgerHeadId, type,
+ * account, status, search, amount range) — the summary's scope is fixed to
+ * date + branch, per the feature's own spec.
+ */
+export function useLedgerSummary(filters: LedgerSummaryFilters) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeLedgerSummary(filters as Record<string, unknown>),
+    enabled: Boolean(token),
+    staleTime: 15_000,
+    queryFn: () => apiCall<LedgerSummary>(`/api/finance/ledger/summary${toQuery(filters)}`, {}, token),
+  });
+}
+
 export function useLedgerHeads(includeInactive = false) {
   const token = useToken();
   return useQuery({
@@ -146,20 +180,21 @@ export type IncomeFilters = {
   branchId?: string;
   from?: string;
   to?: string;
+  search?: string;
 };
 
-export function useIncomeApprovals(filters: IncomeFilters) {
+export function useIncomeApprovals(filters: IncomeFilters & { limit?: number; offset?: number }) {
   const token = useToken();
   return useQuery({
     queryKey: qk.financeIncome(filters as Record<string, unknown>),
     enabled: Boolean(token),
     staleTime: 15_000,
-    queryFn: async () =>
-      (await apiCall<{ approvals: FinanceIncomeApproval[] }>(
+    queryFn: () =>
+      apiCall<{ approvals: FinanceIncomeApproval[]; total: number }>(
         `/api/finance/income${toQuery(filters)}`,
         {},
         token,
-      )).approvals,
+      ),
   });
 }
 
@@ -172,12 +207,12 @@ export function useFinanceEntries(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financeEntries(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ entries: FinanceTransaction[] }>(
+    queryFn: () =>
+      apiCall<{ entries: FinanceTransaction[]; total: number }>(
         `/api/finance/income/entries${toQuery(filters)}`,
         {},
         token,
-      )).entries,
+      ),
   });
 }
 
@@ -186,12 +221,12 @@ export function useSalaryPayments(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financeSalaries(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ salaries: SalaryPayment[] }>(
+    queryFn: () =>
+      apiCall<{ salaries: SalaryPayment[]; total: number }>(
         `/api/finance/payroll/salaries${toQuery(filters)}`,
         {},
         token,
-      )).salaries,
+      ),
   });
 }
 
@@ -230,12 +265,12 @@ export function useEmployeeAdvances(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financeAdvances(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ advances: EmployeeAdvance[] }>(
+    queryFn: () =>
+      apiCall<{ advances: EmployeeAdvance[]; total: number }>(
         `/api/finance/payroll/advances${toQuery(filters)}`,
         {},
         token,
-      )).advances,
+      ),
   });
 }
 
@@ -266,12 +301,12 @@ export function usePartnerExpenses(filters: Record<string, unknown>) {
   return useQuery({
     queryKey: qk.financePartnerExpenses(filters),
     enabled: Boolean(token),
-    queryFn: async () =>
-      (await apiCall<{ expenses: PartnerExpense[] }>(
+    queryFn: () =>
+      apiCall<{ expenses: PartnerExpense[]; total: number }>(
         `/api/finance/partner-expenses${toQuery(filters)}`,
         {},
         token,
-      )).expenses,
+      ),
   });
 }
 
@@ -444,12 +479,96 @@ export function useFinanceTickets(filters: Record<string, unknown> = {}) {
   return useQuery({
     queryKey: qk.financeTickets(filters),
     enabled: Boolean(token),
+    // Server-side pagination (§19): the previous page stays on screen while the
+    // next one loads, so paging does not flash an empty table.
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiCall<FinanceTicketPage>(`/api/finance/tickets${toQuery(filters)}`, {}, token),
+  });
+}
+
+/**
+ * The dashboard cards, counted in SQL over the WHOLE queue this caller may
+ * see — not over the page that happens to be loaded. Invalidated with every
+ * other finance query by `useFinanceMutation`.
+ */
+export function useFinanceTicketStats() {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTicketStats(),
+    enabled: Boolean(token),
     queryFn: async () =>
-      (await apiCall<{ tickets: FinanceTicket[] }>(
-        `/api/finance/tickets${toQuery(filters)}`,
+      (await apiCall<{ stats: FinanceTicketStats }>('/api/finance/tickets/stats', {}, token)).stats,
+  });
+}
+
+/**
+ * The people a query can be filtered by — everyone who may raise one, plus the
+ * admins who answer. Admin-only in practice (the filter is not offered to a
+ * raiser, whose queue is already their own), cached for the session.
+ */
+export function useFinanceHelpDeskUsers(enabled: boolean) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeHelpDeskUsers(),
+    enabled: Boolean(token) && enabled,
+    staleTime: 5 * 60_000,
+    queryFn: async () =>
+      (await apiCall<{ users: { id: string; name?: string; email: string; role: string }[] }>(
+        '/api/users',
         {},
         token,
-      )).tickets,
+      )).users ?? [],
+  });
+}
+
+/**
+ * §7's View History — every version of one query, newest first. Lazy: enabled
+ * only while the history dialog is open, so opening a query never pays for a
+ * history nobody asked to see.
+ */
+export function useFinanceTicketHistory(id: string | null, enabled: boolean) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTicketHistory(id ?? ''),
+    enabled: Boolean(token) && Boolean(id) && enabled,
+    queryFn: async () =>
+      (await apiCall<{ versions: FinanceTicketVersion[] }>(
+        `/api/finance/tickets/${id}/history`,
+        {},
+        token,
+      )).versions,
+  });
+}
+
+/**
+ * One query in full — the View popup (§5).
+ *
+ * A second endpoint rather than picking the row out of `useFinanceTickets`: the
+ * list deliberately carries no conversation, no amendments and no photos,
+ * because a queue of 500 queries does not need 500 threads. Reading the popup
+ * from the list would show an empty thread on every query.
+ *
+ * `liveRecord` comes back only for an Admin, and it is what the Amend dialog
+ * reads its current values from — the snapshot on the query is how the record
+ * looked when it was raised, which is exactly the figure NOT to write back.
+ */
+export function useFinanceTicket(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeTicket(id ?? ''),
+    enabled: Boolean(token) && Boolean(id),
+    // The conversation is the one part of this module people watch in real time
+    // — an admin asks a question and waits for the answer.
+    staleTime: 15_000,
+    queryFn: async () =>
+      (
+        await apiCall<{ ticket: FinanceTicket & { liveRecord?: Record<string, unknown> | null } }>(
+          `/api/finance/tickets/${id}`,
+          {},
+          token,
+        )
+      ).ticket,
   });
 }
 

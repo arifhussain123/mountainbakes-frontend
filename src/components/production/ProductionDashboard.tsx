@@ -36,7 +36,16 @@ export function ProductionDashboard() {
     { title: 'Total Branches', value: c?.totalBranches ?? 0, icon: Store, color: 'brown' },
     { title: 'Total Products', value: c?.totalProducts ?? 0, icon: Package, color: 'orange' },
     { title: 'Total Demand Qty', value: c?.totalDemandQty ?? 0, icon: BarChart3, color: 'blue' },
-    { title: 'Available Prod. Stock', value: c?.availableProductionStock ?? 0, icon: Boxes, color: 'green' },
+    // The pool is day-scoped and carries nothing forward, so this can go NEGATIVE
+    // — more left the pool today than entered it, and the difference is production
+    // still to do. Red when it does: a green card reading -40 would state a
+    // shortfall in the colour of a healthy shelf.
+    {
+      title: 'Available Prod. Stock',
+      value: c?.availableProductionStock ?? 0,
+      icon: Boxes,
+      color: (c?.availableProductionStock ?? 0) < 0 ? 'red' : 'green',
+    },
   ];
 
   const weekly = useMemo(() => {

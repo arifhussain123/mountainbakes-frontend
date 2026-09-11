@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounce } from '@/hooks/useDebounce';
 import { apiCall } from '@/utils/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Pagination } from '@/components/data-engine';
 import type { SupportTicket, SupportReference } from '@mb/shared';
-import { CreateSupportTicketSchema } from '@mb/shared';
+import { CreateSupportTicketSchema, DEFAULT_PAGE_SIZE, type PageSize } from '@mb/shared';
 import { toast } from 'sonner';
 import { Plus, Search, Loader2, Headset } from 'lucide-react';
 
@@ -143,22 +145,82 @@ function NewQueryDialog({ open, onOpenChange, onCreated }: {
 
 export function HelpDeskPage() {
   const { token } = useAuth();
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // "Awaiting admin" is a work queue, not history — nobody should be able to
+  // page past an old-but-still-open query and miss it, so it's fetched in full
+  // (capped generously, not paginated). §21: this is live operational data.
+  const [openTickets, setOpenTickets] = useState<SupportTicket[]>([]);
+  const [openLoading, setOpenLoading] = useState(true);
+
+  // "Resolved & rejected" is the unbounded part — this used to arrive as part
+  // of the same flat `.limit(500)` fetch as the open queue (support.routes.ts),
+  // so a branch with a long history downloaded and rendered all of it on every
+  // visit. Now server-paged + server-searched, same shape as Finance Help Desk.
+  const [historyTickets, setHistoryTickets] = useState<SupportTicket[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search.trim(), 350);
+
   const [showNew, setShowNew] = useState(false);
   const [newKey, setNewKey] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Page resets to 1 the moment someone edits the search box, not when the
+  // debounced value later settles — the eventual query should always start on
+  // its first page, and doing it here (an event handler) rather than an effect
+  // keyed on the debounced value avoids a synchronous setState-in-effect.
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    setPage(1);
+  }
+
   useEffect(() => {
     if (!token) return;
-    apiCall<{ tickets: SupportTicket[] }>('/api/support', {}, token)
-      .then((r) => setTickets(r.tickets))
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load queries'))
-      .finally(() => setLoading(false));
+    void (async () => {
+      try {
+        const r = await apiCall<{ tickets: SupportTicket[] }>('/api/support?status=open&pageSize=100', {}, token);
+        setOpenTickets(r.tickets);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load queries');
+      } finally {
+        setOpenLoading(false);
+      }
+    })();
   }, [token, refreshKey]);
 
-  const open = tickets.filter((t) => t.status === 'open');
-  const past = tickets.filter((t) => t.status !== 'open');
+  // Guards against an old page's response landing after a newer one — a fast
+  // search edit or page change can resolve out of order over a slow connection.
+  useEffect(() => {
+    if (!token) return;
+    let stale = false;
+    void (async () => {
+      setHistoryLoading(true);
+      const params = new URLSearchParams({
+        excludeStatus: 'open',
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      try {
+        const r = await apiCall<{ tickets: SupportTicket[]; total: number }>(`/api/support?${params}`, {}, token);
+        if (stale) return;
+        setHistoryTickets(r.tickets);
+        setHistoryTotal(r.total);
+      } catch (err) {
+        if (!stale) toast.error(err instanceof Error ? err.message : 'Failed to load history');
+      } finally {
+        if (!stale) setHistoryLoading(false);
+      }
+    })();
+    return () => { stale = true; };
+  }, [token, refreshKey, page, pageSize, debouncedSearch]);
+
+  const loading = openLoading && historyLoading;
+  const nothingAtAll = !openLoading && !historyLoading
+    && openTickets.length === 0 && historyTickets.length === 0 && !debouncedSearch;
 
   return (
     <div className="space-y-6">
@@ -176,25 +238,53 @@ export function HelpDeskPage() {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : tickets.length === 0 ? (
+      ) : nothingAtAll ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           <Headset className="h-8 w-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No queries yet. Raise one with “New Query”.</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {open.length > 0 && (
+          {openTickets.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground">Awaiting admin ({open.length})</h3>
-              {open.map((t) => <TicketCard key={t.id} ticket={t} />)}
+              <h3 className="text-sm font-semibold text-muted-foreground">Awaiting admin ({openTickets.length})</h3>
+              {openTickets.map((t) => <TicketCard key={t.id} ticket={t} />)}
             </section>
           )}
-          {past.length > 0 && (
-            <section className="space-y-3">
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-muted-foreground">Resolved & rejected</h3>
-              {past.map((t) => <TicketCard key={t.id} ticket={t} />)}
-            </section>
-          )}
+              <div className="relative w-full max-w-[16rem]">
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Search history…"
+                  className="pl-8"
+                />
+              </div>
+            </div>
+            {historyLoading && historyTickets.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">Loading…</p>
+            ) : historyTickets.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">
+                {debouncedSearch ? 'No history matches that search.' : 'No resolved or rejected queries yet.'}
+              </p>
+            ) : (
+              <>
+                {historyTickets.map((t) => <TicketCard key={t.id} ticket={t} />)}
+                <Pagination
+                  page={page}
+                  pageSize={pageSize}
+                  total={historyTotal}
+                  onPageChange={setPage}
+                  onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+                  loading={historyLoading}
+                />
+              </>
+            )}
+          </section>
         </div>
       )}
 

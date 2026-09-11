@@ -136,8 +136,9 @@ export function BranchStockHistoryCard({
       {header}
       <CardContent className="p-0">
         {/* Phone cards. Six figure groups will not fit a 360px table at any
-            column-hiding setting, so below `lg` the same row renders as a card —
-            the pattern RecentOrdersTable already uses. */}
+            column-hiding setting, so below `lg` the same row renders as a card.
+            Hand-rolled rather than DataTable's `mobileLayout="cards"`, because
+            this card's rows are figure groups, not a label/value grid. */}
         <div className="space-y-3 p-4 lg:hidden">
           {rows.map((r) => (
             <div key={r.date} className="rounded-lg border p-3">

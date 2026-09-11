@@ -23,9 +23,64 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
+import { useFinanceTicketStats } from '@/lib/finance';
+import { isBranchRole } from '@mb/shared';
 import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
+
+/**
+ * §5's Source filter — WHERE a query came from, which is the axis an admin
+ * working this desk actually filters on. "The branches are complaining about
+ * stock" and "Finance has three unanswered queries" are two different jobs, and
+ * before this the desk could only be read as one list of everything.
+ *
+ * Source is not the same thing as the reference type. A stock query and a sale
+ * query both come from a branch; a demand comes from a branch but is worked by
+ * Production. It is derived from `raisedByRole`, which is who actually raised it.
+ */
+type SupportSource = 'all' | 'finance' | 'branch' | 'production';
+
+const SOURCE_LABELS: Record<SupportSource, string> = {
+  all: 'All',
+  finance: 'Finance',
+  branch: 'Branch',
+  production: 'Production',
+};
+
+const SOURCES = ['all', 'finance', 'branch', 'production'] as const satisfies readonly SupportSource[];
+
+/**
+ * A ticket's source, from the role that raised it.
+ *
+ * 'system' tickets — opened by an unattended job that failed, with no human
+ * raiser — have no role and no source. They surface under All and under no
+ * narrower filter, which is right: they belong to nobody's queue but the
+ * admin's, and hiding them behind a source that does not describe them would be
+ * worse than showing them only in the unfiltered view.
+ */
+function sourceOfTicket(ticket: SupportTicket): Exclude<SupportSource, 'all'> | null {
+  const role = ticket.raisedByRole;
+  if (isBranchRole(role)) return 'branch';
+  if (role === 'production_user') return 'production';
+  return null;
+}
+
+/** The badge that makes §5's "FINANCE / FIN-HD-…" identification literal. */
+const SOURCE_BADGE: Record<Exclude<SupportSource, 'all'>, string> = {
+  finance: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+  branch: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+  production: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+};
+
+export function SourceBadge({ source }: { source: Exclude<SupportSource, 'all'> }) {
+  return (
+    <Badge variant="secondary" className={cn('text-[10px] uppercase tracking-wide', SOURCE_BADGE[source])}>
+      {SOURCE_LABELS[source]}
+    </Badge>
+  );
+}
 
 const STATUS_VARIANT: Record<SupportTicket['status'], 'default' | 'secondary' | 'destructive'> = {
   open: 'default',
@@ -167,24 +222,72 @@ interface StockCorrectionResult {
   movements: { type: string; delta: number }[];
 }
 
+const PAGE_SIZE = 20;
+
 export function SupportCenterPage() {
+  const [source, setSource] = useState<SupportSource>('all');
   const { token } = useAuth();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [active, setActive] = useState<SupportTicket | null>(null);
   const [mode, setMode] = useState<DialogMode>(null);
+  // Open-ticket counts by source, for the Source filter's badges — these have
+  // to reflect the WHOLE open queue regardless of which page the table below
+  // is showing, so they come from their own lightweight endpoint rather than
+  // from `tickets` (now just one page).
+  const [stats, setStats] = useState({ branchOpen: 0, productionOpen: 0 });
 
   function reload() { setRefreshKey((k) => k + 1); }
   function openDialog(ticket: SupportTicket, m: DialogMode) { setActive(ticket); setMode(m); }
   function closeDialog() { setMode(null); setActive(null); }
 
+  /** Every filter/search change resets to page 1 — a stale page on a narrowed result set reads as "no queries". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
+
+  // Which queues the chosen source shows. 'all' shows both, stacked under their
+  // own headings; every other value shows exactly one.
+  const showFinance = source === 'all' || source === 'finance';
+  const showOperations = source !== 'finance';
+
+  // Server-filtered and server-paginated: branch/production tickets, the
+  // selected source, search and page all reach GET /api/support directly.
+  // Skipped entirely while only the Finance section is showing.
+  useEffect(() => {
+    if (!token || !showOperations) return;
+    let stale = false;
+    void (async () => {
+      setLoading(true);
+      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (search.trim()) params.set('search', search.trim());
+      if (source === 'branch' || source === 'production') params.set('source', source);
+      try {
+        const r = await apiCall<{ tickets: SupportTicket[]; total: number }>(`/api/support?${params}`, {}, token);
+        if (stale) return;
+        setTickets(r.tickets);
+        setTotal(r.total);
+      } catch (err) {
+        if (!stale) toast.error(err instanceof Error ? err.message : 'Failed to load tickets');
+      } finally {
+        if (!stale) setLoading(false);
+      }
+    })();
+    return () => { stale = true; };
+  }, [token, refreshKey, page, search, source, showOperations]);
+
   useEffect(() => {
     if (!token) return;
-    apiCall<{ tickets: SupportTicket[] }>('/api/support', {}, token)
-      .then((r) => setTickets(r.tickets))
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load tickets'))
-      .finally(() => setLoading(false));
+    apiCall<{ branchOpen: number; productionOpen: number }>('/api/support/stats', {}, token)
+      .then(setStats)
+      .catch(() => { /* badges just stay at their last known value */ });
   }, [token, refreshKey]);
 
   // Archives rather than deletes (migration 76). The row survives — it is the only
@@ -201,7 +304,14 @@ export function SupportCenterPage() {
     }
   }
 
-  const openCount = useMemo(() => tickets.filter((t) => t.status === 'open').length, [tickets]);
+  // Just for the Finance button's badge. The Finance section fetches the queue
+  // again with its own filters; this is the UNFILTERED count, which is what a
+  // badge should show — a "(3)" that moved when you filtered inside the section
+  // would be telling you about a different list than the one you were reading.
+  const { data: financeStats } = useFinanceTicketStats();
+  const financeOpenCount = financeStats
+    ? financeStats.open + financeStats.underReview + financeStats.waiting + financeStats.amended + financeStats.reopened
+    : 0;
 
   const columns = [
     col.accessor('ticketNumber', {
@@ -223,12 +333,20 @@ export function SupportCenterPage() {
     }),
     col.accessor('branchName', {
       header: 'From',
-      cell: ({ row }) => (
-        <div className="text-sm">
-          <p>{row.original.branchName || '—'}</p>
-          <p className="text-xs text-muted-foreground capitalize">{(row.original.raisedByRole || '').replace('_', ' ')}</p>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const src = sourceOfTicket(row.original);
+        return (
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center gap-2">
+              {src ? <SourceBadge source={src} /> : <Badge variant="outline">System</Badge>}
+              <span>{row.original.branchName || '—'}</span>
+            </div>
+            <p className="text-xs text-muted-foreground capitalize">
+              {(row.original.raisedByRole || '').replace('_', ' ')}
+            </p>
+          </div>
+        );
+      },
     }),
     col.accessor('message', {
       header: 'Issue',
@@ -317,12 +435,100 @@ export function SupportCenterPage() {
         <div>
           <h2 className="text-lg font-semibold">Support Center</h2>
           <p className="text-sm text-muted-foreground">
-            {openCount} open · {tickets.length} total — resolve queries raised from branches & production.
+            Queries raised from branches, production and Finance — all of them land here.
           </p>
         </div>
       </div>
 
-      <DataTable columns={columns} data={tickets} loading={loading} searchPlaceholder="Search tickets…" />
+      {/* §5's Source filter.
+          
+          It replaces a two-tab layout, and it is a filter rather than four tabs
+          because "All" has to mean all: an admin opening this desk in the
+          morning wants everything outstanding, from every source, without
+          picking a tab first.
+          
+          What it does NOT do is merge the two queues into one table, and that
+          restraint is deliberate. They share a shape and nothing else: an
+          operations ticket corrects a sale or a demand and is resolved by an
+          admin OR a manager, while a finance query corrects the BOOKS, can only
+          be resolved by an admin, and carries a reason, an amendment record and
+          a Query ID on every change. One table would mean an Action column that
+          means two different things depending on the row, and one Delete button
+          with two sets of consequences. Under "All" they are two sections with
+          two headings, each keeping its own controls — which is what §5 asks for
+          ("Finance queries must be clearly identified") rather than what it
+          would forbid. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Source</span>
+        {/* flex-wrap on the group, not just its container: four labels with
+            counts overflow a narrow phone in one row, and §20 asks that this
+            desk stay operable there. */}
+        <div className="inline-flex flex-wrap rounded-md border p-0.5" role="group" aria-label="Filter by source">
+          {SOURCES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={source === s}
+              onClick={() => setFilter(setSource)(s)}
+              className={cn(
+                'h-9 rounded px-3 text-sm transition-colors',
+                source === s
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              {SOURCE_LABELS[s]}
+              {s === 'finance' && financeOpenCount > 0 ? ` (${financeOpenCount})` : ''}
+              {s === 'branch' && stats.branchOpen > 0 ? ` (${stats.branchOpen})` : ''}
+              {s === 'production' && stats.productionOpen > 0 ? ` (${stats.productionOpen})` : ''}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {showOperations && (
+        <section className="space-y-3">
+          {source === 'all' && (
+            <h3 className="text-sm font-semibold">Branches &amp; Production</h3>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {total} quer{total === 1 ? 'y' : 'ies'} raised from{' '}
+            {source === 'branch'
+              ? 'branches'
+              : source === 'production'
+                ? 'production'
+                : 'branches & production'}
+            .
+          </p>
+          <DataTable
+            columns={columns}
+            data={tickets}
+            loading={loading}
+            searchPlaceholder="Search tickets…"
+            manual={{
+              page,
+              pageSize: PAGE_SIZE,
+              total,
+              onPageChange: setPage,
+              search,
+              onSearchChange: setFilter(setSearch),
+            }}
+          />
+        </section>
+      )}
+
+      {/* The Finance Help Desk itself, not a copy of it. The page already renders
+          the admin half of the queue for anyone `financeHelpDeskCan` says may
+          respond, so embedding it here gives the admin the same controls in both
+          places rather than a second implementation that drifts. `embedded`
+          drops its own page heading; `sourceTag` adds the FINANCE badge §5 asks
+          for beside every Query ID. */}
+      {showFinance && (
+        <section className="space-y-3">
+          {source === 'all' && <h3 className="text-sm font-semibold">Finance Queries</h3>}
+          <FinanceHelpDeskPage embedded sourceTag />
+        </section>
+      )}
 
       {active && mode === 'view' && <ViewDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
       {active && mode === 'edit' && <EditDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
@@ -1618,7 +1824,7 @@ interface ProductionCorrectionResult {
 
 const PRODUCTION_FIELDS = [
   { key: 'preparedToday', label: 'Prepared Today', hint: 'units made today' },
-  { key: 'approvedQty', label: 'Approved Qty', hint: 'units sent out on demands' },
+  { key: 'demandFulfilled', label: 'Demand Fulfilled', hint: 'units verified out to branches' },
   { key: 'soldToday', label: 'Sold', hint: 'units sold at the counter' },
   { key: 'returned', label: 'Returned', hint: 'units taken back from branches' },
 ] as const;
@@ -1631,16 +1837,17 @@ const PRODUCTION_FIELDS = [
  * server sizes one compensating movement per figure.
  *
  * Two differences from the branch editor, both following the pool's own model:
- *   · There is no Opening. The pool carries one running balance and no per-day
- *     open/close, so the four movement figures plus Pool Balance are the whole
- *     row. Total Stock and Today's Balance are shown above them as derived
- *     read-outs, matching what the Production Stock page reports for the day.
- *   · A negative Balance is ALLOWED — the pool is flagged when negative, never
- *     blocked, and a product already negative has to stay correctable. It is warned
- *     about rather than refused.
+ *   · There is no Opening, and no running pool total either. The pool is
+ *     day-scoped — nothing carries forward — so the four movement figures plus
+ *     Today's Balance are the whole row, and every one of them is about the
+ *     business day the ticket was raised on.
+ *   · A negative Today's Balance is ALLOWED — it is the shortfall the floor still
+ *     has to bake, flagged in red on the Production Stock page and never blocked,
+ *     and a product already negative has to stay correctable. It is warned about
+ *     rather than refused.
  *
- * Total Stock is shown but not editable: it is balance + approved + sold, so it
- * follows the figures above it and has no movement of its own to correct.
+ * Total Stock is shown but not editable: it is prepared + returned, so it follows
+ * the figures above it and has no movement of its own to correct.
  */
 function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const { token } = useAuth();
@@ -1660,25 +1867,26 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
     ...(figures
       ? {
           preparedToday: String(figures.preparedToday),
-          approvedQty: String(figures.approvedQty),
+          approvedQty: String(figures.demandFulfilled),
           soldToday: String(figures.soldToday),
           returned: String(figures.returned),
         }
       : {}),
     ...edited,
   };
-  // Until the admin edits Balance themselves, it tracks the four figures above it.
+  // Until the admin edits Today's Balance themselves, it tracks the four figures
+  // above it.
   const balanceTouched = edited['balance'] !== undefined;
 
   /**
-   * Balance implied by the figures as typed. Prepared and returned add to the pool;
-   * approved and sold take from it — the same arithmetic the server applies, so the
-   * preview and the write agree.
+   * Today's balance implied by the figures as typed. Prepared and returned add to
+   * the day; approved and sold take from it — the same arithmetic the server
+   * applies (migration 88), so the preview and the write agree.
    */
   const implied = figures
     ? figures.balance +
       (num(t['preparedToday']) - figures.preparedToday) -
-      (num(t['approvedQty']) - figures.approvedQty) +
+      (num(t['approvedQty']) - figures.demandFulfilled) +
       (num(t['returned']) - figures.returned) -
       (num(t['soldToday']) - figures.soldToday)
     : 0;
@@ -1698,7 +1906,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
       const v = num(t[f.key]);
       return t[f.key] === '' || !Number.isFinite(v) || v < 0;
     }) ||
-    // A cleared Balance is not "zero" — it is no figure at all.
+    // A cleared Today's Balance is not "zero" — it is no figure at all.
     (balanceTouched && (t['balance'] === '' || !Number.isFinite(num(t['balance']))));
 
   /**
@@ -1728,7 +1936,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
       );
       toast.success(
         res.productionStock?.applied
-          ? `Production stock corrected — balance ${res.productionStock.before.balance} → ${res.productionStock.after.balance}`
+          ? `Production stock corrected — today's balance ${res.productionStock.before.balance} → ${res.productionStock.after.balance}`
           : 'Production stock already matched — query resolved',
       );
       onDone();
@@ -1755,17 +1963,12 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
         ) : (
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
-              {/* No Opening row, unlike the branch dialog. The Production Stock
-                  page reads the pool as the day it had — nothing carried over —
-                  so a query raised from that page has to resolve against the same
-                  figures, and an opening balance here would not be one of them.
-                  Both rows are derived, so neither is editable. */}
+              {/* No Opening row, unlike the branch dialog, and no running pool
+                  total. The Production Stock page reads the pool as the day it had
+                  — nothing carried over — so a query raised from that page has to
+                  resolve against the same figures, and a carried-forward balance
+                  here would not be one of them. Derived, so not editable. */}
               <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="prepared + returned today" />
-              <FigureRow
-                label="Today's Balance"
-                value={String(figures.dayBalance)}
-                hint="what the Production Stock page shows"
-              />
               {figures.adjustment !== 0 && (
                 <FigureRow
                   label="Adjustment so far"
@@ -1794,10 +1997,10 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
 
             <div className="space-y-1">
               <div className="flex items-baseline justify-between gap-2">
-                {/* The RUNNING pool total, not the day figure above it. This is
-                    the one the pool actually stores and the one a correction
-                    writes to, so the two can legitimately differ. */}
-                <Label>Pool Balance</Label>
+                {/* THE pool figure — there is no running total behind it. It is
+                    the residual of the four above, so setting it by hand books the
+                    one adjustment that closes the gap to what the shelf says. */}
+                <Label>Today&apos;s Balance</Label>
                 <span className="text-xs text-muted-foreground">
                   now {figures.balance} · {balanceTouched ? 'set by hand' : 'follows the figures above'}
                 </span>
@@ -1815,8 +2018,9 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
               )}
               {finalBalance < 0 && (
                 <p className="text-xs text-amber-600">
-                  This leaves the pool negative. Allowed — the Production Stock page flags
-                  it in red — but check it is really what the shelf says.
+                  This leaves the day negative — production still to do before what has
+                  already gone out is covered. Allowed, and flagged in red on the
+                  Production Stock page, but check it is really what the shelf says.
                 </p>
               )}
             </div>

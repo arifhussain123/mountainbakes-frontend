@@ -1,10 +1,12 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { useProducts } from '@/lib/queries';import { DataTable } from '@/components/shared/DataTable';
+import { useCategories } from '@/lib/queries';
+import { qk } from '@/lib/queryKeys';
+import { GenericDataTable } from '@/components/data-engine';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PackingMaterialsPage } from '@/components/packing-materials/PackingMaterialsPage';
 import { ProductForm } from './ProductForm';
 import { ChangePriceDialog } from './ChangePriceDialog';
-import type { Product } from '@mb/shared';
+import type { FilterConfig, Product } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Pencil, Trash2, Coins, Power, Plus } from 'lucide-react';
@@ -28,17 +30,40 @@ export function ProductsPage() {
   const [pricingProduct, setPricingProduct] = useState<Product | null>(null);
   const [showPricing, setShowPricing] = useState(false);
 
-  // A price change on another device reaches this table without a reload.
-  const productsQ = useProducts(token);
-  const products = productsQ.data ?? [];
-  const loading = productsQ.isLoading;
+  const [total, setTotal] = useState<number | null>(null);
+  const categoriesQ = useCategories(token);
 
-  /** Shared cache invalidation — refreshes this table and every other price consumer. */
-  function loadProducts() { qc.invalidateQueries({ queryKey: ['products'] }); }
+  /**
+   * Shared cache invalidation — refreshes this table and every other price
+   * consumer. Two prefixes: the POS and price screens read `['products']`,
+   * this table reads the Data Engine's `['data', 'products']`.
+   */
+  function loadProducts() {
+    qc.invalidateQueries({ queryKey: ['products'] });
+    qc.invalidateQueries({ queryKey: qk.dataResource('products') });
+  }
 
-  useEffect(() => {
-    if (productsQ.isError) toast.error('Failed to load products');
-  }, [productsQ.isError]);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'categoryId', label: 'Category', type: 'select', placeholder: 'All Categories', placement: 'bar' },
+      {
+        key: 'isActive',
+        label: 'Status',
+        type: 'boolean',
+        placement: 'bar',
+        options: [
+          { value: 'true', label: 'Active' },
+          { value: 'false', label: 'Inactive' },
+        ],
+      },
+      { key: 'price', label: 'Price (Rs.)', type: 'number-range' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({ categoryId: (categoriesQ.data ?? []).map((c) => ({ value: c.id, label: c.name })) }),
+    [categoriesQ.data],
+  );
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Remove "${name}" from the catalog?`)) return;
@@ -84,6 +109,7 @@ export function ProductsPage() {
     }),
     col.accessor('isActive', {
       header: 'Status',
+      enableSorting: false,
       meta: { mobile: 'badge' },
       cell: (info) => (
         <Badge variant={info.getValue() ? 'default' : 'secondary'}>
@@ -154,7 +180,9 @@ export function ProductsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">Products</h2>
-              <p className="text-sm text-muted-foreground">{products.length} products in catalog</p>
+              <p className="text-sm text-muted-foreground">
+                {total === null ? 'Loading…' : `${total.toLocaleString()} products in catalog`}
+              </p>
             </div>
             {/* Mobile gets this as the FAB below instead. */}
             <Button
@@ -165,7 +193,18 @@ export function ProductsPage() {
             </Button>
           </div>
 
-          <DataTable columns={columns} data={products} loading={loading} searchPlaceholder="Search products, SKUâ€¦" />
+          <GenericDataTable<Product>
+            resource="products"
+            columns={columns}
+            filters={filters}
+            filterOptions={filterOptions}
+            defaultSort={{ key: 'name', direction: 'asc' }}
+            searchPlaceholder="Search products, SKU, code…"
+            cache="static"
+            exportFileName="mountain-bakes-products"
+            onPage={(page) => setTotal(page.total)}
+            emptyTitle="No products found"
+          />
 
           {/* Inside the tab panel on purpose: the Packing Materials tab owns its
               own add action, so a FAB rendered at page level would fire the wrong

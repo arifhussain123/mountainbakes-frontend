@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { businessDateStr, FINANCE_ACCOUNT_LABELS, type LedgerEntry } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +25,7 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
+import { LedgerSummaryCards } from './LedgerSummaryCards';
 import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateCcw, Search, Undo2 } from 'lucide-react';
 
 /**
@@ -146,24 +147,94 @@ interface LedgerFilterState {
   maxAmount: string;
 }
 
+function defaultLedgerFilters(today: string): LedgerFilterState {
+  return {
+    from: today, to: today, branchId: '', ledgerHeadId: '', type: '',
+    account: '', status: '', search: '', minAmount: '', maxAmount: '',
+  };
+}
+
+interface LedgerUrlState {
+  filters: LedgerFilterState;
+  page: number;
+}
+
+function readLedgerUrlState(today: string): LedgerUrlState {
+  const defaults = defaultLedgerFilters(today);
+  if (typeof window === 'undefined') return { filters: defaults, page: 0 };
+  const params = new URLSearchParams(window.location.search);
+  const get = (key: keyof LedgerFilterState) => params.get(key) ?? defaults[key];
+  const filters: LedgerFilterState = {
+    from: get('from'), to: get('to'), branchId: get('branchId'), ledgerHeadId: get('ledgerHeadId'),
+    type: get('type'), account: get('account'), status: get('status'), search: get('search'),
+    minAmount: get('minAmount'), maxAmount: get('maxAmount'),
+  };
+  const page = Math.max(0, (Number(params.get('page')) || 1) - 1);
+  return { filters, page };
+}
+
+function writeLedgerParams(state: LedgerUrlState, today: string, currentSearch: string): URLSearchParams {
+  const defaults = defaultLedgerFilters(today);
+  const params = new URLSearchParams(currentSearch);
+  for (const key of Object.keys(defaults) as (keyof LedgerFilterState)[]) {
+    const value = state.filters[key];
+    if (value === defaults[key]) params.delete(key);
+    else params.set(key, value);
+  }
+  if (state.page > 0) params.set('page', String(state.page + 1));
+  else params.delete('page');
+  return params;
+}
+
+/**
+ * Mirrors filters + page into the address bar with `window.history`, not
+ * `useSearchParams` — this is a static export, and Next requires a Suspense
+ * boundary around every `useSearchParams` consumer or the whole route bails
+ * out of prerendering. Same mechanics as the Data Engine's
+ * `useListQueryState` (lib/data-engine/), reimplemented here for this page's
+ * flat filter shape since it deliberately isn't a DataTable (see the header
+ * comment above). `pushState` for a filter or page change, `replaceState`
+ * for search, so the back button steps through meaningful views without one
+ * history entry per keystroke.
+ */
+function useLedgerUrlState(today: string) {
+  const [state, setState] = useState<LedgerUrlState>(() => readLedgerUrlState(today));
+
+  useEffect(() => {
+    const onPop = () => setState(readLedgerUrlState(today));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [today]);
+
+  const pendingMode = useRef<'push' | 'replace' | null>(null);
+  useEffect(() => {
+    if (!pendingMode.current) return;
+    const mode = pendingMode.current;
+    pendingMode.current = null;
+    const params = writeLedgerParams(state, today, window.location.search);
+    const qs = params.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next === current) return;
+    if (mode === 'push') window.history.pushState(window.history.state, '', next);
+    else window.history.replaceState(window.history.state, '', next);
+  }, [state, today]);
+
+  const update = useCallback((mode: 'push' | 'replace', fn: (s: LedgerUrlState) => LedgerUrlState) => {
+    pendingMode.current = mode;
+    setState(fn);
+  }, []);
+
+  return { state, update };
+}
+
 export function DailyLedgerPage() {
   const { token } = useAuth();
   const abilities = useFinanceAbilities();
   const today = businessDateStr();
 
-  const [filters, setFilters] = useState<LedgerFilterState>({
-    from: today,
-    to: today,
-    branchId: '',
-    ledgerHeadId: '',
-    type: '',
-    account: '',
-    status: '',
-    search: '',
-    minAmount: '',
-    maxAmount: '',
-  });
-  const [page, setPage] = useState(0);
+  const { state: urlState, update } = useLedgerUrlState(today);
+  const { filters, page } = urlState;
   const [adjusting, setAdjusting] = useState<LedgerEntry | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'excel' | null>(null);
 
@@ -193,16 +264,11 @@ export function DailyLedgerPage() {
   const { data, isLoading, isError, error, refetch } = useLedger(query);
 
   function set<K extends keyof LedgerFilterState>(key: K, value: LedgerFilterState[K]) {
-    setFilters((f) => ({ ...f, [key]: value }));
-    setPage(0);
+    update(key === 'search' ? 'replace' : 'push', (s) => ({ filters: { ...s.filters, [key]: value }, page: 0 }));
   }
 
   function resetFilters() {
-    setFilters({
-      from: today, to: today, branchId: '', ledgerHeadId: '', type: '',
-      account: '', status: '', search: '', minAmount: '', maxAmount: '',
-    });
-    setPage(0);
+    update('push', () => ({ filters: defaultLedgerFilters(today), page: 0 }));
   }
 
   // Branch income posts as two real ledger entries (company share + branch
@@ -261,6 +327,8 @@ export function DailyLedgerPage() {
       />
 
       <ReadOnlyNotice abilities={abilities} />
+
+      <LedgerSummaryCards date={query.to ?? today} branchId={query.branchId} />
 
       <FilterBar>
         <FilterField label="From">
@@ -507,7 +575,7 @@ export function DailyLedgerPage() {
                 className="h-11 w-11 md:h-7 md:w-7"
                 aria-label="Previous page"
                 disabled={page === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                onClick={() => update('push', (s) => ({ ...s, page: Math.max(0, s.page - 1) }))}
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
               </Button>
@@ -517,7 +585,7 @@ export function DailyLedgerPage() {
                 className="h-11 w-11 md:h-7 md:w-7"
                 aria-label="Next page"
                 disabled={page + 1 >= pageCount}
-                onClick={() => setPage((p) => p + 1)}
+                onClick={() => update('push', (s) => ({ ...s, page: s.page + 1 }))}
               >
                 <ChevronRight className="h-3.5 w-3.5" />
               </Button>

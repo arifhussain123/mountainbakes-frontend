@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import type { Attachment, BranchProductionOrder } from '@mb/shared';
+import { useCallback, useMemo, useState } from 'react';
+import { type Attachment, type BranchProductionOrder, rateOf } from '@mb/shared';
 import { liveItems, livePackingItems } from '@/utils/demandLines';
+import { formatCurrency as money } from '@/utils/currency';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,7 +60,39 @@ export function BranchOrderDetail({
   token: string;
 }) {
   const awaitingVerification = order?.status === 'awaiting_verification';
-  const productsQ = useProducts(token, { enabled: awaitingVerification });
+  // Loaded whenever a demand is open, not only while verifying: the live price
+  // list is the fallback rate for lines that carry no snapshot (see `rateFor`).
+  const productsQ = useProducts(token, { enabled: !!order });
+
+  /**
+   * The rate to bill a line at.
+   *
+   * SNAPSHOT FIRST. `unitPrice` is what the branch actually agreed to when the
+   * demand was raised, and it is the only figure that keeps a historical order
+   * worth what it was worth after Admin edits a price.
+   *
+   * Falling back to the LIVE price is a display convenience for lines that have
+   * no snapshot — demands raised before the column existed, lines Production
+   * added at verification, and (right now) any response from an API that has not
+   * been deployed yet. Without it the amount column reads "Rs. 0", which is worse
+   * than an estimate: it looks like a real figure that says the goods were free.
+   *
+   * `?? ` and not `||` — a genuine rate of 0 (a special item) is a real answer and
+   * must not fall through to the catalogue price.
+   */
+  const priceById = useMemo(
+    () => new Map((productsQ.data ?? []).map((pr) => [pr.id, Number(pr.price) || 0])),
+    [productsQ.data],
+  );
+  const rateFor = useCallback(
+    (it: { productId: string; unitPrice?: number }): { rate: number | null; estimated: boolean } => {
+      const snapshot = rateOf(it);
+      if (snapshot !== null) return { rate: snapshot, estimated: false };
+      const live = priceById.get(it.productId);
+      return live === undefined ? { rate: null, estimated: false } : { rate: live, estimated: true };
+    },
+    [priceById],
+  );
   const verifyMut = useVerifyProductionOrder(token);
 
   const [verifiedQtys, setVerifiedQtys] = useState<Record<string, string>>({});
@@ -106,14 +139,48 @@ export function BranchOrderDetail({
         0,
       ) + newItems.reduce((sum, it) => sum + it.qty, 0);
     const pending = shownItems.reduce((sum, it) => sum + (Number(it.remainingBalanceQty) || 0), 0);
+
+    /**
+     * Money, billed on the VERIFIED quantity (§21).
+     *
+     * Verified, not requested and not approved: the branch pays for what it
+     * actually received. Requested is what it asked for and approved is what
+     * Production intended to send; neither is a fact about the delivery, and
+     * billing either would charge for goods that never arrived.
+     *
+     * `totalsFor` reads each line's `unitPrice` SNAPSHOT (@mb/shared) — never the
+     * live product price — so reopening a six-week-old demand shows the figure
+     * agreed on the day, not what the product costs now (§18).
+     *
+     * `hasCompleteRates` is false when a line predates the rate column and its
+     * backfill could not resolve one. Those lines still count toward quantity but
+     * not toward money, and the UI says the total is partial rather than quietly
+     * understating what is owed.
+     */
+    let amount = 0;
+    let priced = 0;
+    let estimated = false;
+    for (const it of shownItems) {
+      const { rate, estimated: est } = rateFor(it);
+      if (rate === null) continue;
+      if (est) estimated = true;
+      priced += 1;
+      amount += rate * num(verifiedQtys[it.productId] ?? String(it.approvedQty ?? it.qty));
+    }
+
     return {
       products: shownItems.length + newItems.length,
       requested,
       approved,
       verified,
       pending,
+      amount,
+      /** How many lines contributed a figure. 0 means the total is meaningless. */
+      priced,
+      /** At least one line was priced from the live list rather than its snapshot. */
+      estimated,
     };
-  }, [shownItems, newItems, verifiedQtys]);
+  }, [shownItems, newItems, verifiedQtys, rateFor]);
 
   function resetLocalState() {
     setVerifiedQtys({});
@@ -217,6 +284,7 @@ export function BranchOrderDetail({
                             do not shift when the order changes status. Only the
                             product name stays left. */}
                         <th className="px-3 py-2 font-medium">Product</th>
+                        <th className="px-3 py-2 text-right font-medium">Rate</th>
                         <th className="px-3 py-2 text-center font-medium">Requested</th>
                         <th className="px-3 py-2 text-center font-medium">Approved</th>
                         {awaitingVerification ? (
@@ -224,6 +292,11 @@ export function BranchOrderDetail({
                         ) : (
                           <th className="px-3 py-2 text-center font-medium">Pending</th>
                         )}
+                        {/* Amount is billed on the VERIFIED quantity, so it moves
+                            as the counter types. That is the point: the branch
+                            sees what it is agreeing to owe while it is still
+                            deciding. */}
+                        <th className="px-3 py-2 text-right font-medium">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -232,7 +305,7 @@ export function BranchOrderDetail({
                           bare header the counter has to interpret. */}
                       {shownItems.length === 0 && newItems.length === 0 && (
                         <tr className="border-t">
-                          <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                          <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                             No products were sent on this demand.
                           </td>
                         </tr>
@@ -253,6 +326,15 @@ export function BranchOrderDetail({
                             {it.isSpecial && it.description && (
                               <p className="mt-0.5 text-xs font-normal text-muted-foreground">{it.description}</p>
                             )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            {/* Just the rate. A marker on EVERY row is noise that
+                                gets trained away — where the figure came from is
+                                said once, in words, under the table. */}
+                            {(() => {
+                              const { rate } = rateFor(it);
+                              return rate === null ? '—' : money(rate);
+                            })()}
                           </td>
                           <td className="px-3 py-2 text-center tabular-nums">{it.qty}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{it.approvedQty ?? '—'}</td>
@@ -278,6 +360,19 @@ export function BranchOrderDetail({
                               ) : '—'}
                             </td>
                           )}
+                          {/* Rate x VERIFIED qty (§21) — what this line is worth
+                              given what actually arrived, recomputed live as the
+                              counter types. A dash where the line carries no rate
+                              snapshot: 0 would read as "free". */}
+                          <td className="px-3 py-2 text-right font-medium tabular-nums">
+                            {(() => {
+                              const qty = parseInt(verifiedQtys[it.productId] ?? String(it.approvedQty ?? it.qty), 10) || 0;
+                              const { rate } = rateFor(it);
+                              return rate === null
+                                ? <span className="text-muted-foreground">—</span>
+                                : money(rate * qty);
+                            })()}
+                          </td>
                         </tr>
                       ))}
                       {newItems.map((it, idx) => (
@@ -285,6 +380,12 @@ export function BranchOrderDetail({
                           <td className="px-3 py-2 font-medium">
                             {it.productName} <span className="text-xs font-normal text-emerald-600">(new)</span>
                           </td>
+                          {/* Rate, Requested and Approved are all dashes on a line
+                              that arrived undemanded: nobody asked for it and
+                              nobody priced it on this order. It is still counted
+                              and still verified — it just carries no agreed rate,
+                              so it contributes quantity and no amount. */}
+                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
                           <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">—</td>
                           <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">—</td>
                           <td className="px-3 py-1.5 text-center">
@@ -302,6 +403,7 @@ export function BranchOrderDetail({
                               </button>
                             </div>
                           </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
                         </tr>
                       ))}
                     </tbody>
@@ -318,6 +420,11 @@ export function BranchOrderDetail({
                               {totals.products} product{totals.products === 1 ? '' : 's'}
                             </span>
                           </td>
+                          {/* Rates do not sum — a total of two different unit
+                              prices is not a number that means anything. An
+                              explicit dash says "deliberately blank"; an empty
+                              cell just looks like the column failed to render. */}
+                          <td className="px-3 py-2 text-right text-muted-foreground">—</td>
                           <td className="px-3 py-2 text-center tabular-nums">{totals.requested}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{totals.approved}</td>
                           {awaitingVerification ? (
@@ -340,10 +447,41 @@ export function BranchOrderDetail({
                               {totals.pending || '—'}
                             </td>
                           )}
+                          {/* Total Verified Amount (§22). Flagged as partial when
+                              any line carried no rate snapshot — understating what
+                              is owed without saying so is the one thing a total
+                              must never do. */}
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {/* A dash, NOT "Rs. 0", when nothing could be priced.
+                                Zero is a real figure meaning the goods were free;
+                                "we cannot price this" is a different statement and
+                                has to look different. */}
+                            {totals.priced === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              money(totals.amount)
+                            )}
+                          </td>
                         </tr>
                       </tfoot>
                     )}
                   </table>
+                  {/* Spelled out, not left as a bare asterisk. A symbol next to a
+                      money total that nobody can decode is worse than no symbol —
+                      it makes the figure look wrong without saying how. */}
+                  {totals.estimated && (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      Rates come from the Admin product price. Some lines have no rate stored
+                      against this order, so they use the current price — if Admin has changed
+                      it since, those amounts reflect today&apos;s rate rather than the one
+                      agreed when the demand was raised.
+                    </p>
+                  )}
+                  {totals.priced === 0 && totals.products > 0 && (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      No rates could be resolved for this demand, so no amount is shown.
+                    </p>
+                  )}
                 </div>
                 ) : (
                   <div className="rounded-lg border">
@@ -365,8 +503,30 @@ export function BranchOrderDetail({
                             <dd className="text-base font-semibold tabular-nums">{totals.pending || '—'}</dd>
                           </div>
                         </dl>
+                        {/* The money, given its own row rather than a fourth
+                            column: it is the figure the branch is agreeing to owe
+                            and it deserves more than a third of a phone's width.
+                            Verified quantity is beside it because the amount is
+                            computed from that one and not from Requested. */}
+                        <div className="flex items-baseline justify-between gap-3 border-t px-3 py-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total verified qty</p>
+                            <p className="text-base font-semibold tabular-nums">{totals.verified}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">Total verified amount</p>
+                            <p className="text-lg font-bold tabular-nums">
+                              {totals.priced === 0 ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                money(totals.amount)
+                              )}
+                            </p>
+                          </div>
+                        </div>
                         <p className="border-t px-3 py-2 text-center text-xs text-muted-foreground">
                           {totals.products} product{totals.products === 1 ? '' : 's'}
+                          {totals.estimated && ' · rates from the current Admin price'}
                         </p>
                       </>
                     ) : (

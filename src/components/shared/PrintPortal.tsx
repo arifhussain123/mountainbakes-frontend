@@ -22,14 +22,25 @@ const noop = () => () => {};
  * Portalling to `<body>` removes every one of those ancestors, so the print
  * rules apply against the page box as they were written to.
  *
+ * ---------------------------------------------------------------------------
+ * `active` — mount the document only while it is being printed
+ * ---------------------------------------------------------------------------
+ * Pass `printing` from `useDocumentPrint`. While it is `false` nothing is
+ * rendered at all — not hidden, absent — so the dialog's own re-renders (every
+ * keystroke in a quantity field) no longer rebuild two invisible copies of the
+ * slip, and the browser's print pass lays out one document rather than the
+ * biggest DOM on the screen. Omitting it keeps the old always-mounted
+ * behaviour, for a surface whose print DOM is small and whose button cannot
+ * wait a frame.
+ *
  * Children stay hidden on screen — the wrapper carries `print-only`, so do NOT
  * put anything here that needs to be visible in the browser.
  */
-export function PrintPortal({ children }: { children: ReactNode }) {
+export function PrintPortal({ children, active = true }: { children: ReactNode; active?: boolean }) {
   // The static export prerenders this on the server, where `document` does not
   // exist; gate on hydration so the portal is only created in the browser.
   const mounted = useSyncExternalStore(noop, () => true, () => false);
 
-  if (!mounted) return null;
+  if (!mounted || !active) return null;
   return createPortal(<div className="print-area print-only">{children}</div>, document.body);
 }

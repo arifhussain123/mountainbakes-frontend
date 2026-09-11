@@ -26,9 +26,19 @@ import { ChevronDown, ChevronRight, Monitor, ShieldCheck, Wifi } from 'lucide-re
 
 const PAGE_SIZE = 50;
 
+/**
+ * Every action `logFinanceAudit` can write, in FinanceAuditAction's own order.
+ *
+ * The Help Desk's five — resolved, reopened, reopen_requested, deleted and
+ * salary_revised — were missing while the trail was already recording them, so
+ * a Query ID could be searched for but its resolution could not be filtered to.
+ * §3 asks that the Query ID be visible in the audit history; a filter that
+ * cannot name the action that produced the row is half of that.
+ */
 const ACTIONS = [
   'created', 'updated', 'submitted', 'verified', 'approved', 'rejected',
   'posted', 'reversed', 'adjusted', 'locked', 'imported', 'settings_updated',
+  'salary_revised', 'resolved', 'reopened', 'reopen_requested', 'deleted',
 ];
 
 const ENTITIES = [
@@ -42,6 +52,11 @@ const ENTITIES = [
   { value: 'employee', label: 'Employee' },
   { value: 'day_closing', label: 'Day closing' },
   { value: 'settings', label: 'Settings' },
+  { value: 'branch_share_payment', label: 'Branch share payment' },
+  { value: 'finance_partner', label: 'Partner' },
+  // The Help Desk query itself. `entityRef` on these rows is the Query ID, which
+  // is what makes FIN-HD-… searchable here (§3).
+  { value: 'finance_ticket', label: 'Help Desk query' },
 ];
 
 /** Colour by consequence, matching the status vocabulary used across the module. */
@@ -53,6 +68,10 @@ const ACTION_STYLES: Record<string, string> = {
   adjusted: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
   locked: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   settings_updated: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
+  resolved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  reopened: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-300',
+  reopen_requested: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950 dark:text-fuchsia-300',
+  deleted: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
 };
 
 export function FinanceAuditPage() {

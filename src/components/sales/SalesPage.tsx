@@ -4,8 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { apiCall } from '@/utils/api';
-import { useProducts, useProductionStock } from '@/lib/queries';import {
+import { useQueryClient } from '@tanstack/react-query';
+import { useProducts, useProductionStock } from '@/lib/queries';
+import {
   CreateProductionSaleSchema,
+  type FilterConfig,
   type Order,
   type Branch,
   type StockRow,
@@ -20,9 +23,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { DataTable } from '@/components/shared/DataTable';
+import { GenericDataTable } from '@/components/data-engine';
+import { useInvalidateResource } from '@/lib/data-engine/useResource';
 import { Fab } from '@/components/shared/Fab';
 import { PrintButton } from '@/components/shared/PrintButton';
+import { PopPrintButton } from '@/components/print/PopPrintButton';
+import { printSaleReceipt } from '@/lib/print/systemPrinter';
+import { useCachedLogo } from '@/lib/print/logoCache';
+import { useDocumentPrint } from '@/hooks/useDocumentPrint';
 import { cn } from '@/lib/utils';
 import { SaleForm } from './SaleForm';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
@@ -37,7 +45,56 @@ import {
   UNPAID_PAYMENT_METHOD,
 } from '@/utils/constants';
 
+import type { SaleReceiptDoc } from '@/lib/print/receipt/types';
+
 const col = createColumnHelper<Order>();
+
+/**
+ * An invoice as the thermal receipt document.
+ *
+ * Every figure is taken from the saved sale and none is recomputed: `subtotal` on
+ * `InvoiceData` is already the GROSS (see `orderToInvoice`), `discountTotal` and
+ * `grandTotal` are the stored ones, and the receipt formatter refuses to print if
+ * they do not reconcile. Doing the arithmetic again here is how a printed total
+ * comes to differ from the record by a rupee, which is an argument at the counter
+ * that nobody can settle.
+ *
+ * The payment method is humanised here rather than in the formatter, because
+ * `PAYMENT_METHOD_LABELS` is where this app's method vocabulary lives — including
+ * the legacy values still sitting on old orders — and the printing layer should
+ * not grow a second copy of it.
+ */
+function invoiceToReceipt(
+  inv: InvoiceData,
+  opts: { branchName?: string | null; companyName?: string | null; currencySymbol: string; logo?: string | null },
+): SaleReceiptDoc {
+  const created = new Date(inv.createdAt);
+  return {
+    saleId: inv.orderNumber,
+    logo: opts.logo ?? null,
+    dateText: karachiDateStr(created),
+    timeText: karachiTimeStr(created),
+    customerName: inv.customerName,
+    customerPhone: inv.customerPhone,
+    branchName: opts.branchName ?? null,
+    companyName: opts.companyName ?? null,
+    currencySymbol: opts.currencySymbol,
+    items: inv.items.map((it) => ({
+      productName: it.productName,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      lineTotal: it.lineTotal,
+    })),
+    grossTotal: inv.subtotal,
+    discountTotal: inv.discountTotal,
+    taxAmount: inv.taxAmount,
+    grandTotal: inv.grandTotal,
+    paymentMethodLabel: PAYMENT_METHOD_LABELS[inv.paymentMethod] ?? inv.paymentMethod,
+    ...(inv.paymentMethod === 'cash' && inv.receivedCash != null
+      ? { receivedCash: inv.receivedCash, cashReturned: inv.cashReturned ?? 0 }
+      : {}),
+  };
+}
 
 /** Map a stored order to the invoice shape. `subtotal` is the gross (Σ qty×rate). */
 function orderToInvoice(o: Order): InvoiceData {
@@ -78,6 +135,8 @@ function orderToInvoice(o: Order): InvoiceData {
 export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' }) {
   const { token, user } = useAuth();
   const { settings } = useSettings();
+  const qc = useQueryClient();
+  const invalidateResource = useInvalidateResource();
   const isProduction = mode === 'production';
   const [branch, setBranch] = useState<Branch | null>(null);
   const [sales, setSales] = useState<Order[]>([]);
@@ -98,6 +157,11 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   const isToday = date === today;
 
   const cur = settings?.currencySymbol || 'Rs.';
+
+  // The A4 invoice DOM exists only while the browser dialog is open.
+  const { printing: documentPrinting, print: printViaBrowser } = useDocumentPrint();
+  // Inlined once per session so the receipt can carry it without a fetch.
+  const logo = useCachedLogo(settings?.logoUrl);
 
   // A price change — from this browser or another device — refreshes the product
   // list backing the New Sale form, so the cashier never quotes a stale rate.
@@ -145,10 +209,22 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     else loadBranchStock();
   }, [isProduction, refetchPool, loadBranchStock]);
 
-  // One shape for SaleForm regardless of which ledger backs it.
+  /**
+   * One shape for SaleForm regardless of which ledger backs it.
+   *
+   * `available`, NOT the raw `balance`. What the counter may sell is what the pool
+   * holds LESS what branches have already been promised: goods sitting on the
+   * shelf against an unverified demand are spoken for, and selling them leaves a
+   * branch short with nothing having said so at the till.
+   *
+   * This is the same figure the server blocks on (migration 90 —
+   * `balance − outstanding demand`), so the form and a 409 cannot disagree. A
+   * product missing from the response has no movement and no claim, and correctly
+   * reads 0.
+   */
   const poolStockById = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const row of poolQ.data ?? []) m[row.productId] = row.balance;
+    for (const row of poolQ.data ?? []) m[row.productId] = row.available;
     return m;
   }, [poolQ.data]);
 
@@ -190,16 +266,41 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   }
   useEffect(loadSales, [token, date, isProduction]);
 
-  // Auto-open the browser print dialog when a sale is saved with "Save & Print"
-  useEffect(() => {
-    if (invoiceOpen) {
-      const id = setTimeout(() => window.print(), 350);
-      return () => clearTimeout(id);
-    }
-  }, [invoiceOpen]);
+  /*
+   * "Save & Print" used to call `window.print()` on a timer here, which is what
+   * put Chrome's preview — and, on a device pinned to an 80mm roll, its "Print
+   * preview failed" — in front of the counter after every sale.
+   *
+   * It now goes straight to the POS printer instead. The receipt dialog opens
+   * with `autoPrint` on its Print button (see below), so the press the cashier
+   * already made on the sale form is the only press there is, and the state,
+   * duplicate guards and failure panel are the same ones a manual press gets.
+   *
+   * `autoPrintInvoice` distinguishes a fresh sale from a reprint: reopening an
+   * old receipt from the table must show it, not fire a copy at the printer.
+   */
+  const [autoPrintInvoice, setAutoPrintInvoice] = useState(false);
 
   function handleSaved(inv: InvoiceData, shouldPrint: boolean) {
     setShowForm(false);
+    /*
+     * The Daily Sales section on both dashboards is a cached read of an aggregate
+     * this sale just changed. Dropping the whole 'salesAnalytics' prefix — every
+     * branch, window, ranking depth and comparison setting — is right rather than
+     * lazy: the sale lands in today's column, and today is inside the 7-day,
+     * 30-day, month AND custom windows a manager may have left open, so
+     * invalidating one key would leave the rest showing a figure quietly short by
+     * this sale.
+     *
+     * The 1-second refresh tick would reach it on its own; this makes the graph
+     * agree with the table the sale was just added to in the same frame rather
+     * than up to two seconds later.
+     */
+    qc.invalidateQueries({ queryKey: ['salesAnalytics'] });
+    // The table below is on the Data Engine now — its own cache, separate from
+    // the full-day fetch that feeds the Daily Summary — so a fresh sale needs
+    // its own invalidation to show up without a manual refresh.
+    void invalidateResource('sales');
     // A new sale always books against the business day in progress, so snap the
     // filter back to it — otherwise the cashier rings up a sale while browsing an
     // older date and the table appears not to have recorded it. Re-read the date
@@ -212,6 +313,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     loadStock(); // reflect the just-deducted balances
     if (shouldPrint) {
       setInvoice(inv);
+      // POP Print is always available — the receipt goes to this computer's
+      // default printer — so Save & Print fires it as soon as the invoice opens.
+      setAutoPrintInvoice(true);
       setInvoiceOpen(true);
     }
   }
@@ -219,6 +323,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   // Re-open the original invoice for printing. Read-only — no new sale, no stock change.
   function handleReprint(o: Order) {
     setInvoice(orderToInvoice(o));
+    // A reprint is a deliberate act with its own press. Firing automatically here
+    // would put a receipt on the roll every time someone opened one to look at it.
+    setAutoPrintInvoice(false);
     setInvoiceOpen(true);
   }
 
@@ -300,6 +407,21 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     return { rows, totalQty };
   }, [sales]);
 
+  // Payment options mirror `methods` — production adds the unpaid 'staff'
+  // method, so the filter must not offer a value the resource can't have.
+  const paymentFilters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'paymentMethod',
+        label: 'Payment',
+        type: 'select',
+        placeholder: 'All methods',
+        options: methods.map((m) => ({ value: m, label: PAYMENT_METHOD_LABELS[m] ?? m })),
+      },
+    ],
+    [methods],
+  );
+
   const columns = [
     col.accessor('orderNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('createdAt', { header: 'Time', cell: (i) => <span className="text-sm">{i.getValue() ? karachiTimeStr(new Date(i.getValue())) : ''}</span> }),
@@ -313,12 +435,25 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         </div>
       ),
     }),
-    col.accessor('items', {
+    // Accessed as the joined NAMES, not as `items`. The search box is a global
+    // filter, and TanStack's default `getColumnCanGlobalFilter` admits a column
+    // only if its value is a string or a number — an array of item objects is
+    // neither, so this column was silently skipped and typing a product name
+    // matched nothing, with the Products column visible the whole time. Returning
+    // the string both fixes the search and is what the cell wanted anyway.
+    col.accessor((o) => o.items.map((it) => it.productName).join(', '), {
+      id: 'items',
       header: 'Products',
       meta: { mobileFull: true },
       cell: (i) => {
-        const names = i.getValue().map((it) => it.productName).join(', ');
-        return <span className="text-sm">{names.length > 40 ? names.slice(0, 40) + '…' : names}</span>;
+        const names = i.getValue();
+        return (
+          // Full list on hover: the cell truncates at 40 characters and a sale of
+          // six products is past that, so the tooltip is the only complete copy.
+          <span className="text-sm" title={names}>
+            {names.length > 40 ? names.slice(0, 40) + '…' : names}
+          </span>
+        );
       },
     }),
     col.display({ id: 'qty', header: 'Qty', cell: ({ row }) => <span>{row.original.items.reduce((s, it) => s + it.qty, 0)}</span> }),
@@ -507,7 +642,30 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         <Fab onClick={() => setShowForm(true)} icon={Plus} label="New sale" />
       )}
 
-      <DataTable columns={columns} data={sales} loading={loading} searchPlaceholder="Search sales…" />
+      {/* Reads through the Data Engine (resource="sales", same rows as
+          "orders") — the browser downloads one page of this business day's
+          sales, not the whole thing, unlike the Daily Summary above which
+          deliberately still fetches every sale of the day so it reconciles
+          with the drawer and the closing report. `key={date}` remounts on a
+          date change so a page number from one day is never carried into a
+          different day's (possibly shorter) result set.
+          Search covers customer, phone and order # — not product name, which
+          the generic engine has no join for; the old client-side table could
+          match a product because everything was already downloaded. */}
+      <GenericDataTable<Order>
+        key={date}
+        resource="sales"
+        columns={columns}
+        fixedFilters={[
+          { key: 'status', op: 'eq', value: 'delivered' },
+          { key: 'businessDate', op: 'eq', value: date },
+        ]}
+        filters={paymentFilters}
+        defaultSort={{ key: 'createdAt', direction: 'desc' }}
+        searchPlaceholder="Search customer, phone, order #…"
+        namespace={isProduction ? 'production-sales' : 'branch-sales'}
+        emptyTitle="No sales recorded"
+      />
 
       {/* New Sale dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -560,12 +718,43 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               <div className="no-print">
                 <InvoiceView invoice={invoice} settings={settings} branch={branch} />
               </div>
-              <PrintPortal>
+              <PrintPortal active={documentPrinting}>
                 <InvoiceView invoice={invoice} settings={settings} branch={branch} />
               </PrintPortal>
             </>
           )}
-          <PrintButton className="w-full" />
+          {/* POP Print sends the canonical receipt document to the printer this
+              computer has installed — no printer to pick, no setup. The A4
+              invoice below is the portalled InvoiceView, for a device that wants
+              a sheet or a PDF of the full invoice instead. Neither falls back to
+              the other on its own. */}
+          {invoice && (
+            <div className="grid gap-2">
+              <PopPrintButton
+                className="w-full"
+                label="POP Print"
+                autoPrint={autoPrintInvoice}
+                print={(hooks) =>
+                  printSaleReceipt(
+                    invoiceToReceipt(invoice, {
+                      branchName: branch?.name ?? (isProduction ? 'Production' : null),
+                      companyName: settings?.companyName,
+                      currencySymbol: cur,
+                      logo,
+                    }),
+                    { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate },
+                  )
+                }
+              />
+              <PrintButton
+                className="w-full"
+                variant="outline"
+                onPrint={() => printViaBrowser()}
+                printLabel="A4 Invoice"
+                saveLabel="Save A4 PDF"
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

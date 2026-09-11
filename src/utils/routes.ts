@@ -33,6 +33,30 @@ export const ROUTES = {
   PRODUCTION_QUEUE: '/production-queue',
   REPORTS: '/reports',
   SUPPORT_CENTER: '/support',
+  /**
+   * Admin → Security. Login History and Active Sessions in one screen.
+   *
+   * A plain '/security' rather than '/login-history' or '/sessions': the page
+   * holds two related boards and grew a third concern (revoking a session), and
+   * naming it after any one of them would date the moment the next is added.
+   * Added to RouteGuard's ADMIN_PREFIXES in the same change — an admin route
+   * that matches no '/branch-' or '/production-' prefix is unguarded until it is
+   * named there explicitly.
+   */
+  SECURITY: '/security',
+  /**
+   * Admin → Daily Sale Records. Every branch's daily reconciliation, and the only
+   * place a locked record can be unlocked or an amended figure entered.
+   *
+   * The path is '/daily-sale-records', NOT '/branch-daily-sale-admin' or anything
+   * else beginning '/branch-': RouteGuard maps every '/branch-' prefix to the
+   * branch roles, so an admin screen under it would bounce a super admin off its
+   * own page — the trap ROUTES.BRANCH_LOCATIONS and ROUTES.STOCK_CONTROL each
+   * document from the other direction. Added to ADMIN_PREFIXES in the same
+   * change, because an admin route matching neither prefix rule is unguarded
+   * until it is named there.
+   */
+  DAILY_SALE_RECORDS: '/daily-sale-records',
   NOTIFICATION_RECIPIENTS: '/notification-recipients',
   SPECIAL_EVENTS: '/special-events',
 
@@ -43,6 +67,18 @@ export const ROUTES = {
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',
+  /**
+   * Production → Discounts. The board of money branches are claiming back
+   * against demands, reviewed exactly as returns are.
+   *
+   * The '/production-' prefix is doing real work here, not naming: RouteGuard
+   * maps it to production_user, so this screen is guarded by being called this
+   * and would be open to every role under any other name — the same rule
+   * ROUTES.BRANCH_LOCATIONS documents from the other direction. There is no
+   * branch sibling to confuse it with; a branch raises and corrects its claims
+   * inside the New Orders page rather than on a page of their own.
+   */
+  PRODUCTION_DISCOUNTS: '/production-discounts',
   PRODUCTION_REPORTS: '/production-reports',
   PRODUCTION_HELP_DESK: '/production-help-desk',
   PRODUCTION_EVENTS: '/production-events',
@@ -64,6 +100,17 @@ export const ROUTES = {
    * the same table and are not interchangeable.
    */
   BRANCH_RETURN_STOCK: '/branch-return-stock',
+  /**
+   * Branch → Discounts. This branch's own claims for money back against a
+   * demand, and the only place it can correct one.
+   *
+   * The '/branch-' prefix is load-bearing, not naming: RouteGuard's prefix rule
+   * is what guards this screen, exactly as it does BRANCH_RETURN_STOCK above.
+   * Note the sibling it is NOT — '/production-discounts' is Production's board of
+   * every branch's claims, behind a production-only router. The two read the same
+   * table and are not interchangeable.
+   */
+  BRANCH_DISCOUNTS: '/branch-discounts',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
@@ -74,6 +121,21 @@ export const ROUTES = {
   // sales / expenses / stock a branch account can already read — it is a view of
   // the day, not the business-day *closure*, which stays admin-only.
   BRANCH_CLOSING: '/branch-closing',
+  /**
+   * Branch → Daily Sale Record. The day's takings reconciled against what was
+   * physically counted, signed off and locked.
+   *
+   * The '/branch-' prefix is load-bearing rather than descriptive: RouteGuard's
+   * prefix rule is the only thing guarding this screen, exactly as it is for
+   * BRANCH_RETURN_STOCK and BRANCH_DISCOUNTS above.
+   *
+   * Note the sibling it is NOT. BRANCH_CLOSING is a read of the day that writes
+   * nothing; this one writes a record with a status machine, an audit trail and a
+   * lock behind it. And DAILY_SALE_RECORDS below is the ADMIN board over every
+   * branch's copy of the same table — a separate path because a '/branch-' route
+   * bounces a super admin to their own home page (see BRANCH_LOCATIONS).
+   */
+  BRANCH_DAILY_SALE: '/branch-daily-sale',
   // Where a manager asks Admin for a shift account, and watches the outcome.
   BRANCH_USERS: '/branch-users',
   // The admin side of that same queue.

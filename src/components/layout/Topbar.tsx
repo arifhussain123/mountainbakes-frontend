@@ -47,7 +47,7 @@ export function Topbar({ title }: { title?: string }) {
 
   return (
     <>
-      <header className="h-14 border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center px-4 gap-3">
+      <header className="no-print h-14 border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center px-4 gap-3">
         {/* Three sections rather than the old "content, spacer, content": both
             outer sections are `flex-1` from a zero basis, so they grow equally
             and leave the Refresh button in the true centre of the bar. The left
@@ -149,6 +149,17 @@ export function Topbar({ title }: { title?: string }) {
                     onClick={() => markAsRead(n.id)}
                   >
                     <p className={`text-sm ${!n.isRead ? 'font-medium' : ''}`}>{n.title}</p>
+                    {/* The body, not just the heading. A Finance Help Desk
+                        notification puts the Query ID, subject, priority and
+                        raiser here (§13) — a title alone says a query arrived
+                        and not which one, so the admin has to open the desk to
+                        find out. `whitespace-pre-line` because those notifications
+                        are written as one field per line. */}
+                    {n.message && (
+                      <p className="mt-0.5 line-clamp-4 whitespace-pre-line text-xs text-muted-foreground">
+                        {n.message}
+                      </p>
+                    )}
                     <p className="text-[10px] text-muted-foreground mt-1">
                       {n.createdAt ? formatDistanceToNow(new Date(n.createdAt), { addSuffix: true }) : ''}
                     </p>

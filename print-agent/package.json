@@ -1,0 +1,14 @@
+{
+  "name": "@mb/print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mountain Bakes local POS print agent — receives ESC/POS payloads from the web app over loopback HTTP and hands them to the thermal printer.",
+  "type": "module",
+  "bin": { "mb-print-agent": "src/index.mjs" },
+  "main": "src/index.mjs",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "printers": "node src/index.mjs --list-printers"
+  }
+}

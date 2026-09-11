@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { BranchProductionOrder } from '@mb/shared';
+import type { BranchProductionOrder, FilterConfig } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import {
+  useBranches,
   useProductionOrders,
   useProductionStock,
   useReviewProductionOrder,
@@ -14,10 +15,18 @@ import {
 } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DataTable } from '@/components/shared/DataTable';
-import { Eye, Sparkles } from 'lucide-react';
-import { effectivePackingQty, effectiveQty, isWaitingOrder, liveItems, livePackingItems } from '@/utils/demandLines';
+import { GenericDataTable } from '@/components/data-engine';
+import { ExpandableText } from '@/components/shared/ExpandableText';
+import { Eye, FileSpreadsheet, Sparkles } from 'lucide-react';
+import {
+  effectivePackingQty,
+  effectiveQty,
+  fulfilledTotals,
+  isWaitingOrder,
+  requestedTotals,
+} from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
+import { CollectionsExportModal } from './CollectionsExportModal';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
@@ -39,6 +48,9 @@ const STATUS_LABELS: Record<string, string> = {
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 const col = createColumnHelper<BranchProductionOrder>();
 
+const STATUS_OPTIONS = ['pending', 'awaiting_verification', 'verified', 'approved', 'rejected', 'cancelled']
+  .map((value) => ({ value, label: STATUS_LABELS[value] ?? value }));
+
 export function ProductionOrdersPage() {
   const { token } = useAuth();
   const { settings } = useSettings();
@@ -53,12 +65,32 @@ export function ProductionOrdersPage() {
   const printedMut = useMarkPrinted(token);
   const finalApproveMut = useFinalApproveProductionOrder(token);
 
+  // Orders list below: Production sees every branch's demand (production_user
+  // is not a branch role, so the resource's branchScope() doesn't restrict it —
+  // same as today), so the Branch filter is always offered here, unlike
+  // OrdersPage.tsx which hides it from non-admins.
+  const branchesQ = useBranches(token);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, placeholder: 'All Statuses', placement: 'bar' },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+      { key: 'branchId', label: 'Branch', type: 'select', placeholder: 'All Branches' },
+      { key: 'requiredDate', label: 'Required Date', type: 'date-range' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({ branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })) }),
+    [branchesQ.data],
+  );
+
   // Track just the id and derive `selected` from the live query, rather than
   // storing a snapshot — that way, once Production adds a product to an open
   // order, the invalidated refetch is reflected immediately instead of leaving
   // the dialog showing what View originally captured.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
 
@@ -176,11 +208,15 @@ export function ProductionOrdersPage() {
   /**
    * TODAY's pool position per product, and whether it has arrived yet.
    *
-   * `dayBalance`, not `balance`: the running pool carries every previous day
-   * forward, and reading the demand against it said a product was covered on the
-   * strength of stock that was baked — and in most cases sent — days ago. The
-   * floor plans against what exists this morning, so the summary is read the same
-   * way the Production Stock page is.
+   * `balance` is the pool's closing position for the day: opening carried in,
+   * plus what was prepared and returned, less what was fulfilled and sold. It is
+   * the same figure the Production Stock page prints, so the two screens cannot
+   * quote different stock for the same product.
+   *
+   * It is the RAW balance, NOT `available` — `available` has already had the whole
+   * outstanding demand queue subtracted from it, and `poolFor` below subtracts
+   * this product's waiting demand itself. Using `available` here would take the
+   * same demand off twice.
    *
    * `undefined` for a product means the query has not resolved; 0 means the
    * pool genuinely holds none. The two must not be conflated — rendering an
@@ -188,13 +224,14 @@ export function ProductionOrdersPage() {
    * second on every page load, which is the one thing this column must never
    * cry wolf about.
    *
-   * NOTE the API still returns every product carrying a running balance, so a
-   * product that had no movement today is present here with dayBalance 0 rather
-   * than missing. `?? 0` in `poolFor` reads either the same way.
+   * NOTE the API returns only products that MOVED today, so one that did not is
+   * absent from this map rather than present with 0. With the pool day-scoped the
+   * two mean the same thing — nothing was made and nothing is on the shelf — and
+   * `?? 0` in `poolFor` reads them identically.
    */
   const stockByProduct = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of stockQ.data ?? []) m.set(r.productId, r.dayBalance);
+    for (const r of stockQ.data ?? []) m.set(r.productId, r.balance);
     return m;
   }, [stockQ.data]);
   const stockLoaded = stockQ.data !== undefined;
@@ -255,6 +292,41 @@ export function ProductionOrdersPage() {
       },
     }),
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
+    // How big this demand is, in one figure, so the size of an order is legible
+    // from the list instead of only after opening it.
+    //
+    // The headline is what the BRANCH asked for (`requestedTotals` — the raised
+    // request, excluding lines Production added itself), because that is what
+    // "demand" names. When review has since moved the figure, what is actually
+    // going out is shown under it rather than quietly replacing the ask: on this
+    // screen the gap between the two IS the review, and one number cannot say it.
+    col.display({
+      id: 'demandQty',
+      header: 'Demand Qty',
+      meta: { align: 'center' },
+      cell: ({ row }) => {
+        const asked = requestedTotals(row.original).qty;
+        const moving = fulfilledTotals(row.original).qty;
+        return (
+          <div className="flex flex-col items-center leading-tight">
+            <span className="font-medium tabular-nums">{asked.toLocaleString()}</span>
+            {moving !== asked && (
+              <span className="text-xs tabular-nums text-muted-foreground">
+                &rarr; {moving.toLocaleString()}
+              </span>
+            )}
+          </div>
+        );
+      },
+      // No footer total here any more: the table is now server-paginated
+      // (GenericDataTable), so `getFilteredRowModel()` would only see the
+      // current page's rows — exactly the "changes as you page through and
+      // reads like a bug" failure DataTable's own footer comment warns about,
+      // just triggered by pagination instead of search. productionOrders has
+      // no aggregatableFields (the qty lives on the embedded items table, not
+      // a top-level column), so there's no honest whole-filtered-set total to
+      // show without new backend aggregate work.
+    }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
@@ -271,12 +343,7 @@ export function ProductionOrdersPage() {
       id: 'reason',
       header: 'Reason',
       meta: { mobileFull: true },
-      cell: (i) =>
-        i.getValue() ? (
-          <span className="text-sm text-muted-foreground">{i.getValue()}</span>
-        ) : (
-          <span className="text-sm text-muted-foreground/50">—</span>
-        ),
+      cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" />,
     }),
     col.display({
       id: 'actions',
@@ -287,23 +354,6 @@ export function ProductionOrdersPage() {
         </Button>
       ),
     }),
-    // Hidden, search-only. The global filter can only match what a column accessor
-    // exposes, so this is what lets someone find a demand by a product, packing
-    // material OR special item name without adding any as a visible column.
-    // Special item DESCRIPTIONS are included too — "blue writing" is how someone
-    // will look for that cake, and it is not in any name.
-    // Zero lines are excluded here too. Matching a demand on a product that was
-    // cut to nothing surfaces a row whose product appears on none of the tables
-    // or slips behind it — the search would be pointing at something that is not
-    // there.
-    col.accessor(
-      (o) =>
-        [
-          ...liveItems(o.items).map((i) => `${i.productName} ${i.isSpecial ? (i.description ?? '') : ''}`),
-          ...livePackingItems(o.packingItems).map((p) => p.materialName),
-        ].join(' '),
-      { id: 'contents', header: '' },
-    ),
   ];
 
   return (
@@ -599,17 +649,41 @@ export function ProductionOrdersPage() {
         </CardContent>
       </Card>
 
-      {/* Orders list */}
+      {/* Orders list — server-side filtered/searched/paginated via the Data
+          Engine (resource="productionOrders"), decoupled from the Demand
+          Summary above: that card stays fed by `orders`/`waiting`, the last
+          7 business days, unconditionally — this table can page back further
+          and filter by date/branch/status without touching what the floor
+          reads as "what to prepare right now". Search covers Demand ID /
+          Branch / Raised-by only (server-side, top-level columns); it can no
+          longer match a product or packing-material name the way the old
+          client-side filter did, since that data lives in a joined child
+          table the generic search can't reach. */}
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Orders</h2>
-        <DataTable
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Orders</h2>
+          {/* Not wired to the table's own export: that exports the table you are
+              looking at, and this is a different question — a window of
+              deliveries and what is owed on them, which needs its own branch and
+              date range. Kept beside the table it relates to rather than buried
+              in Production Reports. */}
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setExportOpen(true)}>
+            <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Collections
+          </Button>
+        </div>
+        <GenericDataTable<BranchProductionOrder>
+          resource="productionOrders"
           columns={columns}
-          data={orders}
-          loading={ordersQ.isLoading}
-          searchPlaceholder="Search orders, products, packing materials…"
-          columnVisibility={{ contents: false }}
+          filters={filters}
+          filterOptions={filterOptions}
+          defaultSort={{ key: 'businessDate', direction: 'desc' }}
+          searchPlaceholder="Search demand #, branch, raised by…"
+          exportFileName="production-orders"
+          emptyTitle="No orders found"
         />
       </div>
+
+      <CollectionsExportModal open={exportOpen} onOpenChange={setExportOpen} token={token} />
 
       <OrderPrintPreview
         open={modalOpen}

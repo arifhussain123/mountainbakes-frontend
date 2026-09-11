@@ -22,6 +22,35 @@ import { clearSnapshot, restoreSnapshot, saveSnapshot } from '@/lib/offline/quer
  */
 const SAVE_THROTTLE_MS = 10_000;
 
+/**
+ * How long a save may wait for the main thread to go quiet before it runs
+ * anyway. Generous, because the save is a convenience for the NEXT session and
+ * the current one is the one being used: a receipt being printed, a table being
+ * scrolled, a dialog being filled in all outrank it. The pagehide / hidden
+ * flush does not wait at all — see `flush`.
+ */
+const IDLE_TIMEOUT_MS = 5_000;
+
+/**
+ * Run `work` when the browser has nothing better to do.
+ *
+ * `requestIdleCallback` where it exists (Chrome, Edge, Firefox); a macrotask
+ * elsewhere (Safari), which at least keeps it out of the frame that scheduled
+ * it. Returns a cancel, so an unmount can withdraw a save it no longer wants.
+ */
+function whenIdle(work: () => void): () => void {
+  const w = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+  if (typeof w.requestIdleCallback === 'function') {
+    const id = w.requestIdleCallback(work, { timeout: IDLE_TIMEOUT_MS });
+    return () => w.cancelIdleCallback?.(id);
+  }
+  const id = window.setTimeout(work, 0);
+  return () => window.clearTimeout(id);
+}
+
 export function OfflineCache() {
   const queryClient = useQueryClient();
   const { user, loading } = useAuth();
@@ -44,28 +73,43 @@ export function OfflineCache() {
     let cancelled = false;
     let unsubscribe: (() => void) | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelIdle: (() => void) | null = null;
     let lastSavedAt = 0;
 
+    // The throttle decides WHEN a save is due; idle time decides when it RUNS.
+    // Between the two, a save never lands inside the frame that finished a
+    // print or committed a keystroke — it waits for the gap after. The save
+    // itself is skipped outright when no query's data has changed since the
+    // last one (see `saveSnapshot`), which on a screen refreshed every two
+    // seconds is most of the time.
     const save = () => {
       timer = null;
-      lastSavedAt = Date.now();
-      void saveSnapshot(queryClient, userId);
+      cancelIdle?.();
+      cancelIdle = whenIdle(() => {
+        cancelIdle = null;
+        if (cancelled) return;
+        lastSavedAt = Date.now();
+        void saveSnapshot(queryClient, userId);
+      });
     };
 
     const schedule = () => {
-      if (timer) return;
+      if (timer || cancelIdle) return;
       timer = setTimeout(save, Math.max(0, SAVE_THROTTLE_MS - (Date.now() - lastSavedAt)));
     };
 
     // A phone is far more often just closed than deliberately backgrounded, and
     // `pagehide`/`hidden` are the last events a browser reliably delivers.
-    // Without these the final minutes of a shift would never reach disk.
+    // Without these the final minutes of a shift would never reach disk. Forced
+    // and immediate: there may be no idle period after this one.
     const flush = () => {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
-      void saveSnapshot(queryClient, userId);
+      cancelIdle?.();
+      cancelIdle = null;
+      void saveSnapshot(queryClient, userId, { force: true });
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') flush();
@@ -86,6 +130,7 @@ export function OfflineCache() {
       cancelled = true;
       unsubscribe?.();
       if (timer) clearTimeout(timer);
+      cancelIdle?.();
       window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };

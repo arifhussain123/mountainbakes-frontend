@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Printer, Download, ChevronDown } from 'lucide-react';
 import { usePrintCapability, type PrintPreference } from '@/hooks/usePrintCapability';
+import { printDocument } from '@/lib/print/browser/documentPrint';
 import { cn } from '@/lib/utils';
 
 const OPTIONS: { value: PrintPreference; label: string; hint: string }[] = [
@@ -47,10 +48,15 @@ export interface PrintButtonProps {
  * Print action that names itself after the device: **Print** where a printer is
  * set up, **Save as PDF** where none is.
  *
- * Both do the same thing — `window.print()`, or `onPrint` — because that single
+ * Both do the same thing — `printDocument()`, or `onPrint` — because that single
  * dialog is both the printer picker and the PDF writer, and on a machine with no
  * printer installed "Save as PDF" is the only destination it can offer. Only the
  * promise made to the user changes.
+ *
+ * **This is the DOCUMENT button, not the receipt button.** It opens the browser
+ * dialog by design, which is right for an A4 challan or a report and wrong for a
+ * thermal receipt; those use `PopPrintButton`, which prints a self-contained
+ * receipt document through the installed printer.
  *
  * The device is *guessed*, never known — see `usePrintCapability`. The attached
  * menu is not a nicety: it is how a wrong guess gets corrected, and the choice
@@ -73,7 +79,7 @@ export function PrintButton({
 
   function run() {
     if (onPrint) onPrint();
-    else window.print();
+    else printDocument();
   }
 
   return (
@@ -122,6 +128,7 @@ export function PrintButton({
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+
           </DropdownMenuContent>
         </DropdownMenu>
       )}

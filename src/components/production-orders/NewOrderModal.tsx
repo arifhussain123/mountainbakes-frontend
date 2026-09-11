@@ -30,9 +30,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
-import { AlertTriangle, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
+import { AlertTriangle, BadgePercent, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, RotateCcw, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
+import { formatCurrency as money } from '@/utils/currency';
 import { toast } from 'sonner';
 
 const EMPTY_PRODUCT_MESSAGE = 'Please enter the quantity for at least one product.';
@@ -72,6 +73,21 @@ export interface NewOrderModalProps {
     requiredDate: string;
   }) => Promise<unknown>;
   submitting: boolean;
+  /**
+   * Open the Return Items / Discount popups, which the branch reaches from this
+   * form's header.
+   *
+   * Callbacks rather than the popups themselves, so the OWNER of those dialogs
+   * stays BranchNewOrders. Two things follow from that and both matter: the
+   * stock rows the return form validates against are fetched once by the page
+   * and shared, rather than by whichever screen happened to open first; and the
+   * popups are siblings of this one in the tree, so they layer over a
+   * half-entered order and leave every quantity in it untouched.
+   *
+   * Optional — the modal renders without them and simply shows no buttons.
+   */
+  onOpenReturn?: () => void;
+  onOpenDiscount?: () => void;
 }
 
 /**
@@ -188,6 +204,8 @@ export function NewOrderModal({
   userName,
   submit,
   submitting,
+  onOpenReturn,
+  onOpenDiscount,
 }: NewOrderModalProps) {
   const [qtyById, setQtyById] = useState<Record<string, string>>({});
   const [now, setNow] = useState<Date | null>(null);
@@ -281,6 +299,25 @@ export function NewOrderModal({
   );
   const totalProducts = selectedItems.length;
   const totalQty = selectedItems.reduce((s, x) => s + x.qty, 0);
+
+  /**
+   * What this demand is worth (§17/§18).
+   *
+   * The rate shown is `product.price` — the LIVE Admin price — and that is correct
+   * *here* and only here: nothing has been submitted yet, so the live price is
+   * genuinely the rate this order will be created at. The instant it is submitted
+   * the server snapshots that same figure onto each line, and every screen that
+   * shows the order afterwards reads the snapshot instead (see
+   * `BranchOrderDetail`). This is a quote; that is a record.
+   *
+   * Branch users cannot edit it. There is no input bound to a price anywhere on
+   * this form and the submit payload has no price field — the server would ignore
+   * one if it arrived.
+   *
+   * ONLY lines with qty > 0 are counted, matching what actually gets submitted
+   * (§18: products at zero are never sent to Production).
+   */
+  const totalAmount = selectedItems.reduce((s, x) => s + (Number(x.product.price) || 0) * x.qty, 0);
 
   // ── Packing materials ──────────────────────────────────────────────────────
   // Active only. The server re-checks this on submit (a material can be disabled
@@ -518,10 +555,46 @@ export function NewOrderModal({
         >
           {/* ---------- Sticky header ---------- */}
           <div className="shrink-0 border-b bg-card px-5 py-4">
-            <div className="pr-10">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pr-10">
               <h2 className="flex items-center gap-2 font-heading text-base font-semibold sm:text-lg">
                 <PackageCheck className="h-5 w-5 text-primary" /> Create New Production Order
               </h2>
+
+              {/* ── The other two things a branch sends Production ────────────
+                  Both open over this form and leave it exactly as it was, so a
+                  half-entered order survives being interrupted — which is the
+                  whole reason they are here rather than back on the page: the
+                  branch is already in this screen when it remembers there is
+                  stock to send back or money to claim.
+
+                  In the STICKY header, not the footer: the footer already
+                  carries Clear, Save Draft, Submit and three totals, and these
+                  two are not actions on this order — burying them among the
+                  buttons that submit it would invite exactly that misreading.
+                  Sticky means they stay reachable down a hundred-product list.
+
+                  Layering a second dialog over this one is not new here: the
+                  submit confirmation below already opens while this modal stays
+                  open, and has shipped that way for a long time. These two use
+                  the same mechanism — a sibling Dialog whose portal mounts later
+                  and therefore paints on top, both at z-50.
+
+                  Rendered only when the handlers are passed, so the modal still
+                  works standalone. */}
+              {(onOpenReturn || onOpenDiscount) && (
+                <div className="flex flex-wrap gap-2">
+                  {onOpenReturn && (
+                    <Button size="sm" variant="outline" onClick={onOpenReturn} disabled={submitting}>
+                      <RotateCcw className="mr-1.5 h-4 w-4" /> Return Items
+                    </Button>
+                  )}
+                  {onOpenDiscount && (
+                    <Button size="sm" variant="outline" onClick={onOpenDiscount} disabled={submitting}>
+                      <BadgePercent className="mr-1.5 h-4 w-4" /> Discount
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
             <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2.5 text-sm sm:grid-cols-3">
               <Meta icon={Store} label="Branch" value={branchName || '—'} />
@@ -558,7 +631,11 @@ export function NewOrderModal({
                       <TableRow className="sticky top-0 z-10 bg-muted hover:bg-muted">
                         <TableHead className="text-xs uppercase tracking-wide text-muted-foreground">Product</TableHead>
                         <TableHead className="text-xs uppercase tracking-wide text-muted-foreground">Current Stock</TableHead>
+                        {/* Read-only: the rate is Admin-owned and there is no input
+                            bound to it anywhere on this form (§18). */}
+                        <TableHead className="w-24 text-right text-xs uppercase tracking-wide text-muted-foreground">Rate</TableHead>
                         <TableHead className="w-28 text-xs uppercase tracking-wide text-muted-foreground">Qty</TableHead>
+                        <TableHead className="w-32 text-right text-xs uppercase tracking-wide text-muted-foreground">Amount</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -571,6 +648,9 @@ export function NewOrderModal({
                               {p.categoryName && <div className="text-xs text-muted-foreground">{p.categoryName}</div>}
                             </TableCell>
                             <TableCell className="tabular-nums text-muted-foreground">{stockText(p.id)}</TableCell>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">
+                              {money(Number(p.price) || 0)}
+                            </TableCell>
                             <TableCell>
                               <Input
                                 ref={(el) => { qtyRefs.current[flatIndex] = el; }}
@@ -586,6 +666,14 @@ export function NewOrderModal({
                                 className="h-9 w-20 text-center tabular-nums"
                               />
                             </TableCell>
+                            {/* Rate x Qty, live as the branch types. Dimmed at
+                                zero so the eye goes to the lines actually being
+                                ordered rather than to a column of Rs. 0. */}
+                            <TableCell
+                              className={`text-right tabular-nums ${active ? 'font-semibold' : 'text-muted-foreground'}`}
+                            >
+                              {active ? money((Number(p.price) || 0) * parseQty(qtyById[p.id])) : '—'}
+                            </TableCell>
                           </TableRow>
                         );
                       })}
@@ -597,15 +685,24 @@ export function NewOrderModal({
                     row, so a card is a single line and the whole list scrolls in a
                     fraction of the screens it used to. The name truncates (full text
                     in `title`) rather than wrapping, which is what keeps the row to
-                    one line; the category sub-line has no room and is dropped. */}
+                    one line; the category sub-line has no room and is dropped.
+
+                    Rate and Amount go on a SECOND line, and only once the line has
+                    a quantity. Squeezing four figures onto the one row would undo
+                    the compaction above, and a rate on a product nobody is ordering
+                    is noise — it is the amount that matters, and there is no amount
+                    until there is a quantity. */}
                 <div className="space-y-2 md:hidden">
                   {orderedProducts.map((p) => {
-                    const active = parseQty(qtyById[p.id]) > 0;
+                    const qty = parseQty(qtyById[p.id]);
+                    const active = qty > 0;
+                    const rate = Number(p.price) || 0;
                     return (
                       <div
                         key={p.id}
-                        className={`flex items-center gap-2 rounded-lg border bg-card p-2 ${active ? 'ring-2 ring-primary/40' : ''}`}
+                        className={`rounded-lg border bg-card p-2 ${active ? 'ring-2 ring-primary/40' : ''}`}
                       >
+                        <div className="flex items-center gap-2">
                         <p className="min-w-0 flex-1 truncate text-sm font-medium leading-tight" title={p.name}>
                           {p.name}
                         </p>
@@ -627,6 +724,17 @@ export function NewOrderModal({
                           onFocus={(e) => e.currentTarget.select()}
                           className="h-11 w-20 shrink-0 px-1 text-center text-base tabular-nums"
                         />
+                        </div>
+                        {active && (
+                          <p className="mt-1.5 flex items-baseline justify-between border-t pt-1.5 text-[11px] text-muted-foreground">
+                            <span className="tabular-nums">
+                              {money(rate)} &times; {qty}
+                            </span>
+                            <span className="text-sm font-semibold tabular-nums text-foreground">
+                              {money(rate * qty)}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     );
                   })}
@@ -913,6 +1021,14 @@ export function NewOrderModal({
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">Total Quantity</span>
                 <span className="text-lg font-bold tabular-nums text-primary">{totalQty}</span>
               </div>
+              {/* Total Amount (§18). Sits in the sticky footer beside Submit
+                  rather than at the end of the list, because it is the figure the
+                  branch is about to commit to and it must be on screen at the
+                  moment the button is pressed. */}
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Total Amount</span>
+                <span className="text-lg font-bold tabular-nums text-primary">{money(totalAmount)}</span>
+              </div>
             </div>
 
             {!withinWindow && (
@@ -1009,6 +1125,13 @@ export function NewOrderModal({
             <div className="flex justify-between px-3 py-2">
               <dt className="text-muted-foreground">Total product quantity</dt>
               <dd className="font-semibold tabular-nums">{totalQty}</dd>
+            </div>
+            {/* Last line and the largest type: the amount is what the branch is
+                actually agreeing to, and the confirm step exists to put it in
+                front of them once more before it becomes a record. */}
+            <div className="flex items-baseline justify-between px-3 py-2.5">
+              <dt className="font-medium">Total amount</dt>
+              <dd className="text-base font-bold tabular-nums">{money(totalAmount)}</dd>
             </div>
           </dl>
 

@@ -4,23 +4,21 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useProductionOrders, useStockRows } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
-import { type StockRow, businessDateStr } from '@mb/shared';
+import { type StockRow, businessDateStr, hasStockActivity } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ClipboardCheck, RotateCcw } from 'lucide-react';
+import { ClipboardCheck } from 'lucide-react';
 import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import { waitingDemandByProduct } from '@/utils/demandLines';
-import { ReturnItemsModal } from './ReturnItemsModal';
 import { StockCheckModal } from './StockCheckModal';
 
 const col = createColumnHelper<StockRow>();
 
 export function StockPage() {
   const { token, user } = useAuth();
-  const [returnOpen, setReturnOpen] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
 
   // Which business day the table is showing. Defaults to today, which is the
@@ -33,11 +31,28 @@ export function StockPage() {
 
   // On TanStack Query (per the project convention) rather than a one-shot fetch,
   // so an invalidation can reach it — that is what makes the page pick up stock
-  // moved elsewhere: a Production approval, or an admin correcting a Help Desk
-  // query. `useStockRealtime` fires those invalidations off the notifications
-  // stream; the ReturnItemsModal reuses the same refetch after saving.
+  // moved elsewhere: a Production approval, an admin correcting a Help Desk
+  // query, or a return raised from the New Orders page, which shares this cache
+  // entry under `qk.stock`. `useStockRealtime` fires those invalidations off the
+  // notifications stream.
   const { data: rows = [], isPending, error, refetch } = useStockRows(token ?? '', { date });
   useStockRealtime();
+
+  /**
+   * The table lists only products with stock activity — the same rule the Branch
+   * Closing sheet uses (`hasStockActivity`, shared): a row survives if any of
+   * Opening / New / Sold / Returned / Balance is non-zero. Every zero row is a
+   * product this branch neither holds nor moved that day, and a catalogue of
+   * them buries the handful that did.
+   *
+   * Filtered HERE, not by asking the API for `activityOnly` as the closing sheet
+   * does: this query's response is the cache entry `useStock`'s balance map
+   * reads to validate a return, and that map has to know a product is at zero.
+   * The Stock Check modal below gets the UNFILTERED rows for the same reason —
+   * units found on the shelf for a product the ledger says is at zero is
+   * exactly the discrepancy a count exists to catch.
+   */
+  const activeRows = useMemo(() => rows.filter(hasStockActivity), [rows]);
 
   /**
    * What this branch has ordered and not yet counted in.
@@ -243,15 +258,14 @@ export function StockPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="order-2 flex flex-wrap gap-2 sm:order-1">
-          {/* Both act on LIVE stock — a return moves units now, and a stock check
-              diffs a physical count against the current balance. Neither means
-              anything against a past day's figures, and Return Items in
-              particular would validate today's shelf against last week's
-              numbers. So they are disabled off-today rather than left to fail
-              confusingly at save. */}
-          <Button onClick={() => setReturnOpen(true)} disabled={!isToday}>
-            <RotateCcw className="h-4 w-4 mr-1.5" /> Return Items
-          </Button>
+          {/* Stock Check alone now. RETURN ITEMS MOVED to the New Orders page —
+              it was filed here because it touches the shelf, but what it does is
+              hand goods back to Production, and it belongs with the demands it
+              answers rather than next to a physical count.
+
+              This one acts on LIVE stock: it diffs a count against the current
+              balance, which means nothing against a past day's figures. Disabled
+              off-today rather than left to fail confusingly at save. */}
           <Button onClick={() => setCheckOpen(true)} disabled={!isToday}>
             <ClipboardCheck className="h-4 w-4 mr-1.5" /> Stock Check
           </Button>
@@ -260,8 +274,8 @@ export function StockPage() {
           <h2 className="text-lg font-semibold">Stock</h2>
           <p className="text-sm text-muted-foreground">
             {isToday
-              ? `${date} · opening carries over from yesterday, new stock lands when you verify a delivery, waiting demand is what Production has yet to hand over, adjustments are admin corrections made today and clear tomorrow`
-              : `${date} · a past business day, read-only. Balances are that day's closing figures, not today's. Adjustments show on the day they were made.`}
+              ? `${date} · opening carries over from yesterday, new stock lands when you verify a delivery, waiting demand is what Production has yet to hand over, adjustments are admin corrections made today and clear tomorrow. Products with no stock and no movement today are not listed.`
+              : `${date} · a past business day, read-only. Balances are that day's closing figures, not today's. Adjustments show on the day they were made. Products with no stock and no movement that day are not listed.`}
           </p>
         </div>
       </div>
@@ -282,7 +296,7 @@ export function StockPage() {
 
       <DataTable
         columns={columns}
-        data={rows}
+        data={activeRows}
         loading={isPending}
         searchPlaceholder="Search products…"
         pageSize={50}
@@ -305,14 +319,6 @@ export function StockPage() {
             />
           </div>
         }
-      />
-
-      <ReturnItemsModal
-        open={returnOpen}
-        onOpenChange={setReturnOpen}
-        rows={rows}
-        branchName={user?.branchName ?? ''}
-        onSaved={refetch}
       />
 
       <StockCheckModal

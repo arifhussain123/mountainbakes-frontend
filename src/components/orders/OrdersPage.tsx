@@ -1,67 +1,84 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
-import { DataTable } from '@/components/shared/DataTable';
-import { OrderStatusBadge } from './OrderStatusBadge';
+import { useBranches } from '@/lib/queries';
+import { GenericDataTable } from '@/components/data-engine';
+import { useInvalidateResource } from '@/lib/data-engine/useResource';
+import { ORDER_STATUS_OPTIONS, OrderStatusBadge } from './OrderStatusBadge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Order, OrderStatus } from '@mb/shared';
+import type { FilterConfig, Order, OrderStatus } from '@mb/shared';
+import { businessDateStr } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { FileSpreadsheet } from 'lucide-react';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 
 const col = createColumnHelper<Order>();
 
-const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'preparing', label: 'Preparing' },
-  { value: 'ready', label: 'Ready' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-];
+const PAYMENT_OPTIONS = ['cash', 'easypaisa', 'foodpanda', 'bank_account', 'staff'].map((value) => ({
+  value,
+  label: PAYMENT_METHOD_LABELS[value] ?? value,
+}));
 
+/**
+ * Orders — every branch's orders for an admin, the shop's own for a branch,
+ * the kitchen queue for production.
+ *
+ * Reads through the Data Engine (`resource="orders"`): filtering, search, sort
+ * and paging happen in the database, so the page downloads twenty rows, not
+ * fourteen hundred. Who sees which rows is decided by the API from the JWT —
+ * the Branch filter below only appears for an admin, and a branch account that
+ * typed one into the URL would still get its own shop back.
+ */
 export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
   const { token, user } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const invalidate = useInvalidateResource();
+  const [total, setTotal] = useState<number | null>(null);
+  const [localRefresh, setLocalRefresh] = useState(0);
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    const qs = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
-    apiCall<{ orders: Order[] }>(`/api/orders${qs}`, {}, token)
-      .then((r) => setOrders(r.orders))
-      .catch((err) => {
-        console.error(err);
-        setOrders([]);
-        setError(err instanceof Error ? err.message : 'Failed to load orders');
-      })
-      .finally(() => setLoading(false));
-  }, [token, statusFilter, refreshKey]);
+  const isAdmin = user?.role === 'super_admin';
+  const branchesQ = useBranches(token, { enabled: isAdmin });
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'status', label: 'Status', type: 'select', placeholder: 'All Statuses', placement: 'bar' },
+      { key: 'createdAt', label: 'Date', type: 'date-range', placement: 'bar' },
+      { key: 'paymentMethod', label: 'Payment', type: 'select', options: PAYMENT_OPTIONS, placeholder: 'All Payments' },
+      ...(isAdmin ? [{ key: 'branchId', label: 'Branch', type: 'select', placeholder: 'All Branches' } as FilterConfig] : []),
+      { key: 'grandTotal', label: 'Total (Rs.)', type: 'number-range' },
+    ],
+    [isAdmin],
+  );
+
+  const filterOptions = useMemo(
+    () => ({
+      status: ORDER_STATUS_OPTIONS,
+      branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+    }),
+    [branchesQ.data],
+  );
 
   async function handleStatusChange(id: string, status: OrderStatus) {
     try {
       await apiCall(`/api/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }, token);
-      setOrders((prev) => prev.map((o) => o.id === id ? { ...o, status } : o));
       toast.success(`Order marked as ${status}`);
+      void invalidate('orders');
+      void invalidate('sales');
+      setLocalRefresh((k) => k + 1);
     } catch {
       toast.error('Failed to update status');
     }
   }
 
-  async function handleExport() {
+  /** The legacy full-report workbook (`/api/reports/export`), kept as it was. */
+  async function handleReport() {
     try {
-      const qs = statusFilter !== 'all' ? `?type=excel&status=${statusFilter}` : '?type=excel';
-      const blob = await apiCall<Blob>(`/api/reports/export${qs}`, {}, token);
+      const blob = await apiCall<Blob>('/api/reports/export?type=excel', {}, token);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -94,7 +111,8 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
     col.accessor('branchName', { header: 'Branch' }),
     col.accessor('items', {
       header: 'Items',
-      cell: (info) => <span>{info.getValue().length} item(s)</span>,
+      enableSorting: false,
+      cell: (info) => <span>{(info.getValue() ?? []).length} item(s)</span>,
     }),
     col.accessor('grandTotal', {
       header: 'Total',
@@ -102,6 +120,7 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
     }),
     col.accessor('paymentMethod', {
       header: 'Payment',
+      enableSorting: false,
       cell: (info) => <span>{PAYMENT_METHOD_LABELS[info.getValue()] ?? info.getValue()}</span>,
     }),
     col.accessor('status', {
@@ -135,7 +154,7 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
                 className="h-7 text-xs capitalize"
                 onClick={() => handleStatusChange(o.id, next)}
               >
-                â†’ {next}
+                → {next}
               </Button>
             )}
             {o.status !== 'cancelled' && o.status !== 'delivered' && (
@@ -159,7 +178,9 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Orders</h2>
-          <p className="text-sm text-muted-foreground">{orders.length} total orders</p>
+          <p className="text-sm text-muted-foreground">
+            {total === null ? 'Loading…' : `${total.toLocaleString()} total orders`}
+          </p>
         </div>
         {(user?.role === 'branch_manager' || user?.role === 'super_admin') && (
           <Button onClick={() => router.push(user.role === 'branch_manager' ? '/branch-orders?new=1' : '/orders/new')}>
@@ -168,33 +189,23 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
         )}
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3">
-          <p className="text-sm font-medium text-destructive">Couldn&rsquo;t load orders: {error}</p>
-          <p className="text-xs text-muted-foreground">
-            If the app isn&rsquo;t open at http://localhost:3000, the API may be blocking the request (CORS).
-            Check the browser console for details.
-          </p>
-        </div>
-      )}
-
-      <DataTable
+      <GenericDataTable<Order>
+        resource="orders"
         columns={columns}
-        data={orders}
-        loading={loading}
-        searchPlaceholder="Search orders, customersâ€¦"
-        onExport={handleExport}
+        filters={filters}
+        filterOptions={filterOptions}
+        defaultSort={{ key: 'createdAt', direction: 'desc' }}
+        searchPlaceholder="Search orders, customers, phone…"
+        maxDate={businessDateStr()}
+        exportFileName="mountain-bakes-orders"
+        refreshKey={(refreshKey ?? 0) + localRefresh}
+        onPage={(page) => setTotal(page.total)}
+        emptyTitle="No orders found"
         actions={
-          <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
-            <SelectTrigger className="h-9 w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Button variant="outline" size="sm" className="h-11 md:h-9" onClick={handleReport} title="Full orders report">
+            <FileSpreadsheet className="h-3.5 w-3.5 md:mr-1.5" />
+            <span className="ml-1.5 md:ml-0">Report</span>
+          </Button>
         }
       />
     </div>

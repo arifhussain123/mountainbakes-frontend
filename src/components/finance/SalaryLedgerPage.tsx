@@ -50,6 +50,7 @@ const employeeCol = createColumnHelper<FinanceEmployee>();
 const advanceCol = createColumnHelper<EmployeeAdvance>();
 const BASE_PATH = '/api/finance/payroll/salaries';
 const ADVANCE_PATH = '/api/finance/payroll/advances';
+const PAYROLL_PAGE_SIZE = 100;
 
 export function SalaryLedgerPage() {
   const abilities = useFinanceAbilities();
@@ -92,18 +93,35 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const [status, setStatus] = useState('');
   const [salaryMonth, setSalaryMonth] = useState('');
   const [department, setDepartment] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SalaryPayment | null>(null);
   const [viewing, setViewing] = useState<SalaryPayment | null>(null);
+
+  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
 
   const employeesQ = useFinanceEmployees(true);
   const { data, isLoading } = useSalaryPayments({
     status: status || undefined,
     salaryMonth: salaryMonth || undefined,
     department: department || undefined,
+    search: search || undefined,
+    limit: PAYROLL_PAGE_SIZE,
+    offset: (page - 1) * PAYROLL_PAGE_SIZE,
   });
 
-  const rows = data ?? [];
+  const rows = data?.salaries ?? [];
+  const grandTotal = data?.total ?? 0;
+  // Struck over the CURRENT page only — payroll runs monthly and this is
+  // bounded per month/department in practice, but this under-counts rather
+  // than silently including rows from other pages if that ever stops holding.
   const monthTotal = rows.reduce((sum, r) => sum + r.netSalary, 0);
 
   // Departments come off the employee master rather than a hardcoded list —
@@ -165,7 +183,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         <FilterField label="Status">
           <FilterSelect
             value={status}
-            onChange={setStatus}
+            onChange={setFilter(setStatus)}
             allLabel="Any status"
             options={[
               { value: 'pending', label: 'Pending Approval' },
@@ -180,14 +198,14 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
           <Input
             type="month"
             value={salaryMonth}
-            onChange={(e) => setSalaryMonth(e.target.value)}
+            onChange={(e) => setFilter(setSalaryMonth)(e.target.value)}
             className="h-11 md:h-9"
           />
         </FilterField>
         <FilterField label="Department">
           <FilterSelect
             value={department}
-            onChange={setDepartment}
+            onChange={setFilter(setDepartment)}
             allLabel="All departments"
             options={departments.map((d) => ({ value: d, label: d }))}
           />
@@ -208,7 +226,20 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         </div>
       </FilterBar>
 
-      <DataTable columns={columns} data={rows} loading={isLoading} searchPlaceholder="Search by employee…" />
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={isLoading}
+        searchPlaceholder="Search by employee…"
+        manual={{
+          page,
+          pageSize: PAYROLL_PAGE_SIZE,
+          total: grandTotal,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
+      />
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
@@ -247,8 +278,8 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
  * rather than a query fired on every row of the table behind it.
  */
 function SalaryDetail({ salary, onClose }: { salary: SalaryPayment; onClose: () => void }) {
-  const recoveredQ = useEmployeeAdvances({ salaryId: salary.id });
-  const recovered = recoveredQ.data ?? [];
+  const recoveredQ = useEmployeeAdvances({ salaryId: salary.id, limit: 500 });
+  const recovered = recoveredQ.data?.advances ?? [];
   const recoveredTotal = recovered.reduce((t, a) => t + a.totalAmount, 0);
 
   return (
@@ -389,9 +420,19 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const [status, setStatus] = useState('');
   const [department, setDepartment] = useState('');
   const [recovery, setRecovery] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EmployeeAdvance | null>(null);
   const [viewing, setViewing] = useState<EmployeeAdvance | null>(null);
+
+  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
+  function setFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
 
   const employeesQ = useFinanceEmployees(true);
   const { data, isLoading } = useEmployeeAdvances({
@@ -400,9 +441,14 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     status: recovery === 'outstanding' ? undefined : status || undefined,
     outstandingOnly: recovery === 'outstanding' || undefined,
     department: department || undefined,
+    search: search || undefined,
+    limit: PAYROLL_PAGE_SIZE,
+    offset: (page - 1) * PAYROLL_PAGE_SIZE,
   });
 
-  const rows = data ?? [];
+  const rows = data?.advances ?? [];
+  const grandTotal = data?.total ?? 0;
+  // Struck over the CURRENT page only — see the same note on the Salaries tab.
   const total = rows.reduce((sum, r) => sum + r.totalAmount, 0);
   const departments = Array.from(new Set((employeesQ.data ?? []).map((e) => e.department))).sort();
 
@@ -489,7 +535,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         <FilterField label="Status">
           <FilterSelect
             value={status}
-            onChange={setStatus}
+            onChange={setFilter(setStatus)}
             allLabel="Any status"
             options={[
               { value: 'pending', label: 'Pending Approval' },
@@ -503,7 +549,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         <FilterField label="Recovery">
           <FilterSelect
             value={recovery}
-            onChange={setRecovery}
+            onChange={setFilter(setRecovery)}
             allLabel="All advances"
             options={[{ value: 'outstanding', label: 'Still to recover' }]}
           />
@@ -511,7 +557,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         <FilterField label="Department">
           <FilterSelect
             value={department}
-            onChange={setDepartment}
+            onChange={setFilter(setDepartment)}
             allLabel="All departments"
             options={departments.map((d) => ({ value: d, label: d }))}
           />
@@ -534,7 +580,20 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         </div>
       </FilterBar>
 
-      <DataTable columns={columns} data={rows} loading={isLoading} searchPlaceholder="Search by employee…" />
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={isLoading}
+        searchPlaceholder="Search by employee…"
+        manual={{
+          page,
+          pageSize: PAYROLL_PAGE_SIZE,
+          total: grandTotal,
+          onPageChange: setPage,
+          search,
+          onSearchChange: setFilter(setSearch),
+        }}
+      />
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">

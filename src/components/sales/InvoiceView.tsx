@@ -1,6 +1,7 @@
 'use client';
 
 import type { AppSettings, Branch } from '@mb/shared';
+import { useCachedLogo } from '@/lib/print/logoCache';
 import { karachiDateStr, karachiTimeStr } from '@mb/shared';
 import { PAYMENT_METHOD_LABELS, COMPANY_NAME } from '@/utils/constants';
 
@@ -30,6 +31,7 @@ export interface InvoiceData {
 export function InvoiceView({ invoice, settings, branch }: { invoice: InvoiceData; settings: AppSettings | null; branch: Branch | null }) {
   const cur = settings?.currencySymbol || 'Rs.';
   const created = new Date(invoice.createdAt);
+  const logo = useCachedLogo(settings?.logoUrl);
   const money = (n: number) => `${cur}${n.toLocaleString()}`;
 
   return (
@@ -39,9 +41,9 @@ export function InvoiceView({ invoice, settings, branch }: { invoice: InvoiceDat
     <div className="mx-auto max-w-sm bg-white p-6 text-black">
       {/* Header */}
       <div className="text-center">
-        {settings?.logoUrl && (
+        {logo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={settings.logoUrl} alt="logo" className="mx-auto mb-2 h-14 w-14 object-contain" />
+          <img src={logo} alt="logo" className="mx-auto mb-2 h-14 w-14 object-contain" />
         )}
         <h2 className="text-lg font-bold">{settings?.companyName || COMPANY_NAME}</h2>
         {branch && <p className="text-sm font-medium">{branch.name}</p>}

@@ -7,6 +7,7 @@
 // The QueryClient (see providers/QueryProvider.tsx) defaults to staleTime 60s, so
 // repeat reads within a minute are served from cache with no network round-trip.
 
+import { printTrace } from '@/lib/print/diagnostics';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
@@ -14,6 +15,7 @@ import { qk } from './queryKeys';
 // date into the UTC instants /api/orders filters created_at on.
 import { businessDayBounds, businessDateStr } from '@mb/shared';
 import type {
+  ActiveSessionsResponse,
   ApproveBranchUserRequestInput,
   Branch,
   BranchStockHistoryRow,
@@ -30,8 +32,18 @@ import type {
   ProductionBalanceDoc,
   ProductionReturn,
   ProductionReturnStatus,
+  BranchDiscount,
+  BranchDiscountStatus,
   LoginSession,
+  LoginAttemptReason,
+  LoginAttemptsPage,
+  LoginDeviceType,
+  LoginHistoryPage,
+  LoginSessionState,
+  RevokeSessionResult,
   ProductionStockRow,
+  ProductionStockLedgerRow,
+  ProductionStockFigures,
   PriceHistoryDoc,
   PackingMaterial,
   PackingMaterialUsageRow,
@@ -42,6 +54,13 @@ import type {
   BranchLocationStats,
   UpsertBranchLocationInput,
   ReportSummary,
+  SalesAnalytics,
+  AmendDailySaleRecordInput,
+  DailySaleAudit,
+  DailySaleRecordDetail,
+  DailySaleRecordList,
+  PaymentMethodLock,
+  SetPaymentMethodLockInput,
   StockRow,
   StockFigures,
   ConsolidatedDemandRow,
@@ -110,22 +129,24 @@ export function useCategories(token: string, opts?: { enabled?: boolean }) {
 
 export function usePriceHistory(
   token: string,
-  opts?: { productId?: string; limit?: number; enabled?: boolean },
+  opts?: { productId?: string; limit?: number; offset?: number; search?: string; enabled?: boolean },
 ) {
+  const offset = opts?.offset ?? 0;
   const params = new URLSearchParams();
   if (opts?.productId) params.set('productId', opts.productId);
   if (opts?.limit) params.set('limit', String(opts.limit));
+  if (offset) params.set('offset', String(offset));
+  if (opts?.search) params.set('search', opts.search);
   const qs = params.toString();
 
   return useQuery({
-    queryKey: qk.priceHistory(opts?.productId),
+    queryKey: qk.priceHistory(opts?.productId, offset, opts?.search),
     queryFn: () =>
       apiCall<{ history: PriceHistoryDoc[]; total: number }>(
         `/api/products/price/history${qs ? `?${qs}` : ''}`,
         {},
         token,
       ),
-    select: (r) => r.history ?? [],
     enabled: !!token && (opts?.enabled ?? true),
   });
 }
@@ -300,22 +321,74 @@ export function useReportSummary(
   period: string,
   branchId?: string | null,
   range?: { fromISO: string; toISO: string } | null,
+  // 'basic' skips the server-side branchData/topProducts/categoryBreakdown/
+  // paymentMethodBreakdown group-bys (and the order_items embed they read) —
+  // for a caller like the Branch Dashboard that only renders the top-level
+  // totals + dailyData. Omit for callers (Reports, Admin Dashboard) that do.
+  fields?: 'basic' | 'full',
 ) {
   const effectivePeriod = range ? 'custom' : period;
   const rangeParams = range
     ? `&from=${encodeURIComponent(range.fromISO)}&to=${encodeURIComponent(range.toISO)}`
     : '';
+  const fieldsParam = fields === 'basic' ? '&fields=basic' : '';
   return useQuery({
-    queryKey: qk.reportSummary(effectivePeriod, branchId, range?.fromISO, range?.toISO),
+    queryKey: qk.reportSummary(effectivePeriod, branchId, range?.fromISO, range?.toISO, fields),
     queryFn: () =>
       apiCall<ReportSummary>(
-        `/api/reports/summary?period=${effectivePeriod}${branchId ? `&branchId=${branchId}` : ''}${rangeParams}`,
+        `/api/reports/summary?period=${effectivePeriod}${branchId ? `&branchId=${branchId}` : ''}${rangeParams}${fieldsParam}`,
         {},
         token,
       ),
     enabled: !!token,
   });
 }
+
+/**
+ * Daily Sales analytics for the dashboard card.
+ *
+ * Aggregated in Postgres and returned as one small document — the whole point
+ * of the endpoint is that changing the date range does not pull a month of
+ * orders into the browser to re-total them here. Nothing in this file
+ * post-processes the payload; the figures arrive ready to render.
+ *
+ * `branchId` is a HINT for the cache key and for an admin's branch picker. The
+ * API resolves the real scope from the JWT and ignores this parameter entirely
+ * for a branch account, so a hand-edited request cannot widen what comes back.
+ *
+ * `LIVE_STALE_TIME`, like the other intraday-money queries: a sale rung up at
+ * the counter should show on the dashboard without a reload, and the 1-second
+ * refresh tick (useAppRefresh) refetches this while it is on screen.
+ */
+export function useSalesAnalytics(
+  token: string,
+  params: {
+    from: string;
+    to: string;
+    branchId?: string | null;
+    topLimit?: number;
+    compare?: boolean;
+  },
+  opts?: { enabled?: boolean },
+) {
+  const { from, to, branchId, topLimit = 5, compare = false } = params;
+  return useQuery({
+    queryKey: qk.salesAnalytics({ from, to, branchId, topLimit, compare }),
+    queryFn: () => {
+      const query = new URLSearchParams({
+        from,
+        to,
+        topLimit: String(topLimit),
+        compare: String(compare),
+      });
+      if (branchId) query.set('branchId', branchId);
+      return apiCall<SalesAnalytics>(`/api/sales-analytics?${query.toString()}`, {}, token);
+    },
+    staleTime: LIVE_STALE_TIME,
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
 
 /**
  * The full derived stock rows (Opening / New / Sold / Returned / Adjustment /
@@ -607,12 +680,25 @@ export function useProductionBalances(token: string, opts?: { branchId?: string 
 
 export interface PreviousOrderBalance {
   previous: { demandNumber: string; date: string } | null;
+  /** The previous demand's lines at REQUESTED quantity — context for deliveredValue. */
+  orderedValue: number;
   deliveredValue: number;
   companySharePct: number;
   companyShareValue: number;
   returnsValue: number;
   /** The exact accepted returns that returnsValue was built from. */
   returnItems: { productName: string; qty: number; amount: number }[];
+  /**
+   * Approved discount claims in the same billing window as the returns above.
+   *
+   * A second deduction from the company share, netted the same way — the only
+   * difference is that a return is goods coming back and a discount is money
+   * agreed off, so this carries no quantity. Absent on a server older than the
+   * release that added it, hence the `?? 0` at every read site.
+   */
+  discountsValue: number;
+  /** The exact approved claims that discountsValue was built from. */
+  discountItems: { demandNumber: string; amount: number }[];
   amountToCollect: number;
 }
 
@@ -639,8 +725,18 @@ export function useMarkPrinted(token: string) {
   return useMutation({
     mutationFn: (id: string) =>
       apiCall(`/api/production-orders/${id}/printed`, { method: 'PUT' }, token),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+    // Patch the one order in place rather than invalidating the list. The
+    // server sets exactly two fields, both known here, and a refetch of every
+    // production order — items included — on the heels of a print was the single
+    // largest thing the Production page did after pressing Print. The 1-second
+    // refresh tick reconciles anything else soon enough.
+    onSuccess: (_result, id) => {
+      printTrace('markPrinted done: patching one order in cache');
+      const printedAt = new Date().toISOString();
+      qc.setQueriesData<{ orders: BranchProductionOrder[] }>({ queryKey: ['productionOrders'] }, (old) => {
+        if (!old?.orders?.some((o) => o.id === id && !o.printed)) return old;
+        return { ...old, orders: old.orders.map((o) => (o.id === id ? { ...o, printed: true, printedAt } : o)) };
+      });
     },
   });
 }
@@ -758,6 +854,18 @@ export function useProductionOverview(token: string) {
 /**
  * Central production-pool table for a Karachi day (defaults to today).
  *
+ * Every figure on a row is scoped to the requested business date, with ONE
+ * carry-forward: `opening` is the previous day's closing balance, so `balance` is
+ * the ledger's running position rather than the day's net.
+ *
+ * `branchDemand` is what branches are still owed and is NOT subtracted from
+ * `balance` — compare them via `status`, or read `available` for the difference.
+ *
+ * A product with no opening balance and no movement on the day is ABSENT rather
+ * than present with zeroes. Callers keying a map off this (the Demand Summary,
+ * the counter sale form) read a missing product as 0, which is what an omitted
+ * row means.
+ *
  * `enabled` matters here: /api/production-stock is requireRole('super_admin',
  * 'production_user'), so a branch manager mounting a component that calls this
  * unconditionally would just collect 403s.
@@ -774,6 +882,94 @@ export function useProductionStock(token: string, date?: string | null, opts?: {
     select: (r) => r.rows ?? [],
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The Stock Ledger (§13), server-filtered and paged.
+ *
+ * The whole filter object is in the key, so changing any one of them is a new
+ * cache entry rather than a refetch that briefly shows the previous filter's rows
+ * under the new heading. `placeholderData` keeps the old page visible while the
+ * next one loads — a table that empties on every keystroke of a search box reads
+ * as "no results" when it means "still asking".
+ */
+export function useProductionLedger(
+  token: string,
+  params: {
+    from?: string; to?: string; productId?: string; categoryId?: string;
+    branchId?: string; movementType?: string; search?: string;
+    limit?: number; offset?: number;
+  },
+  opts?: { enabled?: boolean },
+) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  }
+  const query = qs.toString();
+  return useQuery({
+    queryKey: qk.productionStockLedger(params),
+    queryFn: () =>
+      apiCall<{ rows: ProductionStockLedgerRow[]; total: number; limit: number; offset: number }>(
+        `/api/production-stock/movements${query ? `?${query}` : ''}`,
+        {},
+        token,
+      ),
+    enabled: !!token && (opts?.enabled ?? true),
+    placeholderData: (prev) => prev,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/** One product on one business day: its nine figures and its full movement trail (§14). */
+export function useProductionStockDetail(
+  token: string,
+  productId: string | null,
+  date: string,
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.productionStockDetail(productId ?? '', date),
+    queryFn: () =>
+      apiCall<{
+        productId: string;
+        date: string;
+        figures: ProductionStockFigures;
+        movements: ProductionStockLedgerRow[];
+      }>(`/api/production-stock/movements/${productId}?date=${date}`, {}, token),
+    enabled: !!token && !!productId && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Book an authorised stock adjustment (§11).
+ *
+ * Invalidates the whole `productionStock` prefix, not just the table: an
+ * adjustment moves the balance, so the ledger, any open product detail and the
+ * summary cards are all stale the moment it lands.
+ */
+export function useProductionAdjustment(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      productId: string;
+      adjustmentType: string;
+      qty: number;
+      reason: string;
+      remarks?: string;
+      approvedBy?: string;
+    }) =>
+      apiCall<{ before: number; after: number; delta: number; duplicate: boolean }>(
+        '/api/production-stock/adjustment',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
   });
 }
 
@@ -891,22 +1087,233 @@ export function useProductionBranchStock(token: string) {
 // row for the tab you are reading this in is still open.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useLoginHistory(token: string, opts?: { userId?: string | null; days?: number }) {
-  const days = opts?.days ?? 90;
+export function useLoginHistory(token: string, opts?: { userId?: string | null; pageSize?: number }) {
+  // The dashboard card is a GLANCE, not the Security screen. It asks for one
+  // page and shows it — the full history, with its filters and its pager, lives
+  // at /security. Before the endpoint was paged this fetched a capped 500 rows
+  // and filtered them in the browser, which meant the cap silently truncated the
+  // card the moment the table outgrew it.
+  const pageSize = opts?.pageSize ?? 50;
   return useQuery({
-    queryKey: qk.loginHistory(opts?.userId ?? 'all', days),
+    queryKey: qk.loginHistory(opts?.userId ?? 'all', pageSize),
     queryFn: () => {
-      const params = new URLSearchParams({ days: String(days) });
+      const params = new URLSearchParams({ pageSize: String(pageSize) });
       if (opts?.userId) params.set('userId', opts.userId);
-      return apiCall<{ sessions: LoginSession[]; scope: string }>(
-        `/api/login-history?${params.toString()}`,
-        {},
-        token,
-      );
+      return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
     },
     select: (r) => r.sessions ?? [],
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Admin → Security
+//
+// The paged history, the live session roster, the country filter's options, one
+// session in full, and the two revoke actions.
+//
+// EVERY ONE OF THESE IS SCOPED BY THE API, not by the hook. A super admin gets
+// every account; every other role is pinned to its own uid whatever it asks for,
+// and the two revoke endpoints 403 outright. The hooks below therefore never
+// check a role — a check here would be a second, drifting copy of a decision the
+// server has already made, and hiding a button is not what makes an action safe.
+//
+// LIVE_STALE_TIME throughout: a session's duration grows while you watch it, and
+// the roster is a picture of right now. The app's own 1-second refresh tick
+// refetches whatever is on screen, so these stay current without polling of
+// their own.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * One page of login history.
+ *
+ * `filters` is passed straight into the query key, so every distinct filter
+ * combination caches separately and paging back to a page already seen is
+ * instant. Undefined values are dropped before the request rather than sent as
+ * the string 'undefined', which the API would then reject as a bad UUID.
+ */
+export function useLoginHistoryPage(
+  token: string,
+  filters: {
+    userId?: string | null;
+    search?: string | null;
+    state?: LoginSessionState | null;
+    country?: string | null;
+    from?: string | null;
+    to?: string | null;
+    suspiciousOnly?: boolean;
+    branchId?: string | null;
+    role?: string | null;
+    city?: string | null;
+    browser?: string | null;
+    deviceType?: LoginDeviceType | null;
+    page?: number;
+    pageSize?: number;
+  },
+) {
+  return useQuery({
+    queryKey: qk.loginHistoryPage(filters as Record<string, unknown>),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      const put = (k: string, v: unknown) => {
+        if (v !== undefined && v !== null && v !== '' && v !== false) params.set(k, String(v));
+      };
+      put('userId', filters.userId);
+      put('search', filters.search);
+      put('state', filters.state);
+      put('country', filters.country);
+      put('from', filters.from);
+      put('to', filters.to);
+      put('suspiciousOnly', filters.suspiciousOnly);
+      put('branchId', filters.branchId);
+      put('role', filters.role);
+      put('city', filters.city);
+      put('browser', filters.browser);
+      put('deviceType', filters.deviceType);
+      put('page', filters.page ?? 1);
+      put('pageSize', filters.pageSize ?? 25);
+      return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
+    },
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    // The pager would otherwise blank the table on every page change. Holding
+    // the previous page while the next loads keeps the rows in place and greys
+    // them instead, which is the difference between paging and reloading.
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** Everything signed in right now, grouped by account. Admin only; 403s otherwise. */
+export function useActiveSessions(token: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.activeSessions(),
+    queryFn: () => apiCall<ActiveSessionsResponse>('/api/login-history/active', {}, token),
+    enabled: !!token && enabled,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The values the country, city and browser dropdowns offer.
+ *
+ * ONE QUERY FOR THREE DROPDOWNS, matching the endpoint — three would be three
+ * round-trips to reduce the same rows three ways.
+ *
+ * A slow-moving query: an hour's staleTime, against the 15 seconds everything
+ * else here uses. The set of places and browsers staff have ever signed in from
+ * does not change between two clicks of a pager, and refetching it on the
+ * 1-second refresh tick alongside the list would multiply this screen's traffic to
+ * re-derive the same few dozen strings.
+ */
+export function useLoginFilterOptions(token: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.loginFilters(),
+    queryFn: () =>
+      apiCall<{ countries: string[]; cities: string[]; browsers: string[] }>(
+        '/api/login-history/filters',
+        {},
+        token,
+      ),
+    enabled: !!token && enabled,
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * One page of failed sign-in attempts. Super admin only; 403s otherwise.
+ *
+ * A SEPARATE ENDPOINT AND A SEPARATE HOOK, not a filter on the history — a
+ * failed attempt has no session and no account behind it, so it shares no
+ * columns with a `LoginSession` beyond the device and the address that was
+ * typed. See the type's own note on why those rows are client-reported.
+ */
+export function useLoginAttempts(
+  token: string,
+  filters: {
+    search?: string | null;
+    reason?: LoginAttemptReason | null;
+    country?: string | null;
+    from?: string | null;
+    to?: string | null;
+    page?: number;
+    pageSize?: number;
+  },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: qk.loginAttempts(filters as Record<string, unknown>),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      const put = (k: string, v: unknown) => {
+        if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+      };
+      put('search', filters.search);
+      put('reason', filters.reason);
+      put('country', filters.country);
+      put('from', filters.from);
+      put('to', filters.to);
+      put('page', filters.page ?? 1);
+      put('pageSize', filters.pageSize ?? 25);
+      return apiCall<LoginAttemptsPage>(`/api/login-attempts?${params.toString()}`, {}, token);
+    },
+    enabled: !!token && enabled,
+    staleTime: LIVE_STALE_TIME,
+    // Same reasoning as the history pager: holding the previous page while the
+    // next loads greys the rows instead of blanking the table.
+    placeholderData: (prev) => prev,
+  });
+}
+
+/**
+ * One session in full, for the detail dialog.
+ *
+ * Fetched rather than passed down from the row the admin clicked, because the
+ * row carries a MASKED email and this is the view that may reveal it — the API
+ * decides that per request, and reusing the list row would mean the dialog could
+ * only ever show what the list already had.
+ */
+export function useLoginSession(token: string, sessionId: string | null) {
+  return useQuery({
+    queryKey: qk.loginSession(sessionId ?? ''),
+    queryFn: () => apiCall<LoginSession>(`/api/login-history/${sessionId}`, {}, token),
+    enabled: !!token && !!sessionId,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Sign out one session.
+ *
+ * Invalidates the whole ['loginHistory'] prefix, not just the list it was
+ * clicked from: the revoked session appears in the history table, in the active
+ * roster and possibly in an open detail dialog, and repainting one of the three
+ * would leave the other two showing a session that no longer exists.
+ */
+export function useRevokeSession(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { sessionId: string; reason?: string }) =>
+      apiCall<RevokeSessionResult>(
+        `/api/login-history/${v.sessionId}/revoke`,
+        { method: 'POST', body: JSON.stringify(v.reason ? { reason: v.reason } : {}) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loginHistory'] }),
+  });
+}
+
+/** Sign out every session for one account, optionally sparing one. */
+export function useRevokeAllSessions(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { userId: string; keepSessionId?: string; reason?: string }) =>
+      apiCall<RevokeSessionResult>(
+        '/api/login-history/revoke-all',
+        { method: 'POST', body: JSON.stringify(v) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['loginHistory'] }),
   });
 }
 
@@ -925,18 +1332,49 @@ export function useLoginHistory(token: string, opts?: { userId?: string | null; 
 // because the units move on the Production side of the ledger as well.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useBranchReturns(token: string, opts?: { branchId?: string | null; days?: number }) {
+export function useBranchReturns(
+  token: string,
+  opts?: {
+    branchId?: string | null;
+    days?: number;
+    limit?: number;
+    offset?: number;
+    productId?: string | null;
+    status?: string | null;
+    search?: string | null;
+    from?: string | null;
+    to?: string | null;
+  },
+) {
   const days = opts?.days ?? 90;
+  const offset = opts?.offset ?? 0;
+  const key = {
+    branchId: opts?.branchId ?? null,
+    days,
+    offset,
+    limit: opts?.limit ?? null,
+    productId: opts?.productId ?? null,
+    status: opts?.status ?? null,
+    search: opts?.search ?? null,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+  };
   return useQuery({
-    queryKey: qk.branchReturns(opts?.branchId ?? null, days),
+    queryKey: qk.branchReturns(key),
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
       // Only an admin may name a branch; the API ignores it for a branch role and
       // reads the JWT instead, so sending it is harmless either way.
       if (opts?.branchId) params.set('branchId', opts.branchId);
-      return apiCall<{ returns: ProductionReturn[] }>(`/api/stock/returns?${params.toString()}`, {}, token);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (offset) params.set('offset', String(offset));
+      if (opts?.productId) params.set('productId', opts.productId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
+      return apiCall<{ returns: ProductionReturn[]; total: number }>(`/api/stock/returns?${params.toString()}`, {}, token);
     },
-    select: (r) => r.returns ?? [],
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });
@@ -991,11 +1429,47 @@ export function useResubmitBranchReturn(token: string) {
   });
 }
 
-export function useProductionReturns(token: string) {
+export function useProductionReturns(
+  token: string,
+  opts?: {
+    page?: number;
+    limit?: number;
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    productId?: string | null;
+    status?: string | null;
+    search?: string | null;
+  },
+) {
+  const limit = opts?.limit ?? 20;
+  const offset = ((opts?.page ?? 1) - 1) * limit;
+  const key = {
+    offset,
+    limit,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+    branchId: opts?.branchId ?? null,
+    productId: opts?.productId ?? null,
+    status: opts?.status ?? null,
+    search: opts?.search ?? null,
+  };
   return useQuery({
-    queryKey: qk.productionReturns(),
-    queryFn: () => apiCall<{ returns: ProductionReturn[] }>('/api/production-returns', {}, token),
-    select: (r) => r.returns ?? [],
+    queryKey: qk.productionReturns(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.productId) params.set('productId', opts.productId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
+      return apiCall<{ returns: ProductionReturn[]; total: number }>(
+        `/api/production-returns?${params.toString()}`,
+        {},
+        token,
+      );
+    },
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
   });
@@ -1030,6 +1504,169 @@ export function useReviewReturn(token: string) {
       qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
     },
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Discounts
+//
+// Two endpoints, two audiences, exactly as returns are split: a branch reads and
+// writes its OWN claims at /api/branch-discounts, and /api/production-discounts
+// is Production's board of every branch's — it 403s a branch role outright, so
+// the two are not interchangeable however similar the rows look.
+//
+// EVERY MUTATION HERE INVALIDATES ONLY ['discounts']. That is the whole list, and
+// the restraint is deliberate: a discount moves no stock, credits no pool and
+// changes no balance, so the sweeping invalidation `invalidateAfterReturnChange`
+// performs would be several refetches of figures that cannot have changed. If a
+// discount ever starts settling against a ledger, this is the comment that has to
+// be revisited first.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchDiscounts(
+  token: string,
+  opts?: {
+    branchId?: string | null;
+    days?: number;
+    status?: string | null;
+    limit?: number;
+    offset?: number;
+    search?: string | null;
+    from?: string | null;
+    to?: string | null;
+    enabled?: boolean;
+  },
+) {
+  const days = opts?.days ?? 90;
+  const offset = opts?.offset ?? 0;
+  const key = {
+    branchId: opts?.branchId ?? null,
+    days,
+    status: opts?.status ?? null,
+    offset,
+    limit: opts?.limit ?? null,
+    search: opts?.search ?? null,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+  };
+  return useQuery({
+    queryKey: qk.branchDiscounts(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      // Only an admin may name a branch; the API ignores it for a branch role and
+      // reads the JWT instead, so sending it is harmless either way.
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (offset) params.set('offset', String(offset));
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      return apiCall<{ discounts: BranchDiscount[]; total: number }>(`/api/branch-discounts?${params.toString()}`, {}, token);
+    },
+    // `enabled` exists for the New Orders popup, which is mounted on every visit
+    // to that page and opened on few of them — an ungated query there would put a
+    // request on the busiest branch screen for a popup nobody asked for. The
+    // Discounts page passes nothing and fetches straight away, which is the point
+    // of being that page.
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+export function useCreateBranchDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { productionOrderId: string; amount: number; reason: string }) =>
+      apiCall<BranchDiscount>('/api/branch-discounts', { method: 'POST', body: JSON.stringify(body) }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
+/**
+ * Correct a claim that is still open — 'pending' or 'returned'.
+ *
+ * Both fields are required, unlike `useReviseBranchReturn`'s optional reason: a
+ * corrected claim goes back to Production to be read again, and the amount is
+ * only reviewable next to the reason for it.
+ */
+export function useReviseBranchDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, reason }: { id: string; amount: number; reason: string }) =>
+      apiCall<BranchDiscount>(
+        `/api/branch-discounts/${id}`,
+        { method: 'PUT', body: JSON.stringify({ amount, reason }) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
+export function useWithdrawBranchDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall<{ success: boolean }>(`/api/branch-discounts/${id}`, { method: 'DELETE' }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
+export function useProductionDiscounts(
+  token: string,
+  opts?: {
+    page?: number;
+    limit?: number;
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    status?: string | null;
+    search?: string | null;
+  },
+) {
+  const limit = opts?.limit ?? 20;
+  const offset = ((opts?.page ?? 1) - 1) * limit;
+  const key = {
+    offset,
+    limit,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+    branchId: opts?.branchId ?? null,
+    status: opts?.status ?? null,
+    search: opts?.search ?? null,
+  };
+  return useQuery({
+    queryKey: qk.productionDiscounts(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.search) params.set('search', opts.search);
+      return apiCall<{ discounts: BranchDiscount[]; total: number }>(
+        `/api/production-discounts?${params.toString()}`,
+        {},
+        token,
+      );
+    },
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+export function useReviewDiscount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, reviewNote }: { id: string; status: BranchDiscountStatus; reviewNote?: string }) =>
+      apiCall<BranchDiscount>(
+        `/api/production-discounts/${id}/review`,
+        { method: 'PUT', body: JSON.stringify({ status, ...(reviewNote ? { reviewNote } : {}) }) },
+        token,
+      ),
+    // Both lists, not just Production's: the branch that raised the claim is very
+    // likely looking at it, and the ['discounts'] prefix reaches its copy too.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
   });
 }
 
@@ -1341,12 +1978,35 @@ export function useRegenerateEventSchedule(token: string) {
 // both pages, and the mutations differ only in who is allowed to call them.
 // ───────────────────────────────────────────────────────────────────────────
 
-export function useBranchUserRequests(token: string, opts?: { enabled?: boolean }) {
+export function useBranchUserRequests(
+  token: string,
+  opts?: {
+    enabled?: boolean;
+    page?: number;
+    limit?: number;
+    search?: string | null;
+    status?: string | null;
+  },
+) {
+  // `limit` defaults to 200, not a real 20-row page — a branch manager's own
+  // queue (the only other caller) is a handful of shift requests and has no
+  // page control; AccountRequestsPage.tsx (the admin's cross-branch view) is
+  // the one that actually pages, and passes both explicitly.
+  const page = opts?.page ?? 1;
+  const limit = opts?.limit ?? 200;
+  const key = { page, limit, search: opts?.search ?? null, status: opts?.status ?? null };
   return useQuery({
-    queryKey: qk.branchUserRequests(),
-    queryFn: () =>
-      apiCall<{ requests: BranchUserRequest[] }>('/api/branch-user-requests', {}, token),
-    select: (r) => r.requests ?? [],
+    queryKey: qk.branchUserRequests(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.status) params.set('status', opts.status);
+      return apiCall<{ requests: BranchUserRequest[]; total: number }>(
+        `/api/branch-user-requests?${params.toString()}`,
+        {},
+        token,
+      );
+    },
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
   });
@@ -1363,7 +2023,7 @@ export function useCreateBranchUserRequest(token: string) {
         token,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
     },
   });
 }
@@ -1383,7 +2043,7 @@ export function useApproveBranchUserRequest(token: string) {
         token,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
       qc.invalidateQueries({ queryKey: ['users'] });
     },
   });
@@ -1399,7 +2059,7 @@ export function useRejectBranchUserRequest(token: string) {
         token,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.branchUserRequests() });
+      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
     },
   });
 }
@@ -1439,7 +2099,12 @@ export function useBranchClosing(token: string, businessDate: string) {
         // that window comes back empty — the page says so rather than showing a
         // confident zero.
         apiCall<{ expenses: Expense[] }>('/api/expenses', {}, token),
-        apiCall<{ rows: StockRow[] }>(`/api/stock?date=${businessDate}`, {}, token),
+        // activityOnly: the sheet lists a product only when one of Opening /
+        // Received / Sold / Returned / Balance is non-zero. The API applies the
+        // rule, so the totals below, the printed sheet and the row count are all
+        // read off the same filtered set and a large catalogue is never
+        // downloaded just to be hidden.
+        apiCall<{ rows: StockRow[] }>(`/api/stock?date=${businessDate}&activityOnly=1`, {}, token),
       ]);
       return {
         orders: orders.orders ?? [],
@@ -1449,5 +2114,222 @@ export function useBranchClosing(token: string, businessDate: string) {
     },
     enabled: !!token && !!businessDate,
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Daily Sale Record
+//
+// The one place in this file where NOTHING is composed on the client. Branch
+// Closing above builds its sheet from three endpoints because a shift account
+// may not call a report endpoint; this feature has its own API that aggregates
+// in Postgres and returns the finished figures, so these hooks only pass a
+// window along and hand the answer back.
+//
+// Every mutation invalidates the whole ['dailySale'] prefix. That is broader
+// than the sweeping invalidation `useCreateBranchDiscount` deliberately avoids,
+// and for the opposite reason: a manual feed moves the row, the record detail,
+// the summary cards and the audit history at once, so anything narrower would
+// leave one of the four showing the figure that was there before somebody
+// counted the drawer.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useDailySaleRecords(
+  token: string,
+  opts: { from: string; to: string; branchId?: string | null; enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.dailySaleRecords(opts),
+    queryFn: () => {
+      const params = new URLSearchParams({ from: opts.from, to: opts.to });
+      // Only an admin may name a branch; the API discards it for a branch role
+      // and reads the JWT instead, so sending it is harmless either way.
+      if (opts.branchId) params.set('branchId', opts.branchId);
+      return apiCall<DailySaleRecordList>(`/api/daily-sale-records?${params.toString()}`, {}, token);
+    },
+    // `enabled` is how the page declines to ask for a window the API will refuse:
+    // the range cap is a 400, and firing it anyway would put a red toast under a
+    // card that already explains what to do about it.
+    enabled: !!token && !!opts.from && !!opts.to && (opts.enabled ?? true),
+    // Intraday money, like the other reconciliation reads: a sale rung up while
+    // somebody is counting has to be in the figure they are counting against.
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * One record in full — figures, history, locks and the branch's print header.
+ *
+ * `enabled` is gated on the id because the View, History, Amend and Print
+ * surfaces are all mounted from the table and opened on few of its rows. An
+ * ungated query would put a request on the page for every popup nobody asked
+ * for — the same restraint `useBranchDiscounts` applies to its New Orders popup.
+ */
+export function useDailySaleRecord(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.dailySaleRecord(id ?? 'none'),
+    queryFn: () => apiCall<DailySaleRecordDetail>(`/api/daily-sale-records/${id}`, {}, token),
+    enabled: !!token && !!id,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Which payment methods this branch may key by hand. Read by the Manual Feed form.
+ *
+ * A branch account sends no `branchId` — the API reads its JWT. An admin MUST
+ * name one, because they have no branch of their own and the endpoint answers
+ * 400 rather than handing back some arbitrary branch's configuration; that is
+ * what `enabled` is for, and why it is a caller's decision rather than something
+ * inferred from `branchId` being absent.
+ */
+export function useDailySaleLocks(
+  token: string,
+  branchId?: string | null,
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: qk.dailySaleLocks(branchId ?? null),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (branchId) params.set('branchId', branchId);
+      const qs = params.toString();
+      return apiCall<{ locks: PaymentMethodLock[] }>(
+        `/api/daily-sale-records/locks${qs ? `?${qs}` : ''}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.locks ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    // Configuration, not money — the 60s default is right, and refetching a lock
+    // state every 15 seconds would be traffic for a value that changes monthly.
+  });
+}
+
+/**
+ * A branch's whole audit trail, including the lock changes that belong to no one
+ * record.
+ *
+ * Separate from `useDailySaleRecord`'s history because a `method_locked` entry
+ * carries no `record_id` — without this hook, "Admin unlocked Cash" would be
+ * written to the audit table and visible on no screen.
+ */
+export function useDailySaleAudit(
+  token: string,
+  opts?: { branchId?: string | null; days?: number; enabled?: boolean },
+) {
+  const days = opts?.days ?? 30;
+  return useQuery({
+    queryKey: qk.dailySaleAudit(opts?.branchId ?? null, days),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      return apiCall<{ audits: DailySaleAudit[] }>(
+        `/api/daily-sale-records/audit?${params.toString()}`,
+        {},
+        token,
+      );
+    },
+    select: (r) => r.audits ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+/**
+ * Create or refresh one day's record.
+ *
+ * Safe to call repeatedly and safe to double-click: the unique key on
+ * (branch_id, business_date) plus ON CONFLICT in `ensure_daily_sale_record` is
+ * what makes concurrent callers converge on one record rather than race to
+ * insert a second. No client-side guard is needed and none should be added — a
+ * disabled button is not duplicate protection.
+ */
+export function useGenerateDailySaleRecord(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { businessDate: string; branchId?: string }) =>
+      apiCall<DailySaleRecordDetail>(
+        '/api/daily-sale-records/generate',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/**
+ * Record what was physically counted.
+ *
+ * Addressed by branch + business date rather than by record id, because the
+ * record may not exist yet — the API generates it, refreshes the auto figures,
+ * checks the lock and writes the count in one transaction. An omitted method
+ * leaves its stored count alone, so a partial count is one call per figure.
+ */
+export function useFeedDailySale(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      businessDate: string;
+      branchId?: string;
+      cash?: number;
+      easypaisa?: number;
+      bank?: number;
+    }) =>
+      apiCall<DailySaleRecordDetail>(
+        '/api/daily-sale-records/manual-feed',
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/**
+ * Verify, lock or unlock a record.
+ *
+ * One hook for the three because they are one endpoint family with one
+ * invalidation; which of them the current user may actually call is decided by
+ * the API (`requireRole` plus the SQL status machine), and the buttons that do
+ * not apply simply do not render.
+ */
+export function useDecideDailySale(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, reason }: { id: string; action: 'verify' | 'lock' | 'unlock'; reason?: string }) =>
+      apiCall<DailySaleRecordDetail>(
+        `/api/daily-sale-records/${id}/${action}`,
+        { method: 'PUT', body: JSON.stringify(reason ? { reason } : {}) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/** Admin corrects a signed-off figure. Only a counted figure is amendable (§16). */
+export function useAmendDailySale(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, field, amount, reason }: { id: string } & AmendDailySaleRecordInput) =>
+      apiCall<DailySaleRecordDetail>(
+        `/api/daily-sale-records/${id}/amend`,
+        { method: 'PUT', body: JSON.stringify({ field, amount, reason }) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+/** Admin sets one payment method's lock for one branch (§11, §12). */
+export function useSetPaymentMethodLock(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetPaymentMethodLockInput) =>
+      apiCall<{ locks: PaymentMethodLock[] }>(
+        '/api/daily-sale-records/locks',
+        { method: 'PUT', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
   });
 }
