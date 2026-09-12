@@ -16,9 +16,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import { ShiftBadge, StatusBadge, formatStamp } from './requestStatus';
+import type { PageSize } from '@mb/shared';
 
 const col = createColumnHelper<BranchUserRequest>();
 
@@ -30,13 +32,12 @@ const col = createColumnHelper<BranchUserRequest>();
  * history. The list itself is not filtered, so an admin can still find what they
  * approved last week by searching for it.
  */
-const PAGE_SIZE = 20;
-
 export function AccountRequestsPage() {
   const { token } = useAuth();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [search, setSearch] = useState('');
-  const { data, isLoading } = useBranchUserRequests(token, { page, limit: PAGE_SIZE, search: search || undefined });
+  const { data, isLoading } = useBranchUserRequests(token, { page, limit: pageSize, search: search || undefined });
   const total = data?.total ?? 0;
   // A cheap `total`-only read for the header count — it has to span every
   // pending request in the queue, not just the current page.
@@ -172,9 +173,10 @@ export function AccountRequestsPage() {
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search requests…"
+        pager={false}
         manual={{
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: setPage,
           search,
@@ -187,6 +189,14 @@ export function AccountRequestsPage() {
             description="Branch managers ask for morning and evening accounts from their Shift Accounts page."
           />
         }
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={isLoading}
       />
 
       {/* Approve. The password is set here and nowhere else — it is the one part

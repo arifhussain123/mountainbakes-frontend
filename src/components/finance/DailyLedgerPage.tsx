@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { businessDateStr, FINANCE_ACCOUNT_LABELS, type LedgerEntry } from '@mb/shared';
+import { businessDateStr, FINANCE_ACCOUNT_LABELS, PAGE_SIZES, type LedgerEntry, type PageSize } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { downloadFinanceReport, useFinanceMutation, useLedger, useLedgerHeads, type LedgerFilters } from '@/lib/finance';
@@ -21,12 +21,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
 import { LedgerSummaryCards } from './LedgerSummaryCards';
-import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { BookOpen, FileSpreadsheet, FileText, RotateCcw, Search, Undo2 } from 'lucide-react';
 
 /**
  * The Daily Ledger — the cash book.
@@ -47,8 +48,6 @@ import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateC
  * The layout is deliberately a paper cash book: brought-forward balance on top,
  * debit and credit in facing columns, carried-forward balance in the footer.
  */
-
-const PAGE_SIZE = 50;
 
 /** A row as rendered — either a real ledger entry, or two of them merged into one. */
 type DisplayEntry = LedgerEntry & { merged?: boolean };
@@ -157,11 +156,12 @@ function defaultLedgerFilters(today: string): LedgerFilterState {
 interface LedgerUrlState {
   filters: LedgerFilterState;
   page: number;
+  pageSize: PageSize;
 }
 
 function readLedgerUrlState(today: string): LedgerUrlState {
   const defaults = defaultLedgerFilters(today);
-  if (typeof window === 'undefined') return { filters: defaults, page: 0 };
+  if (typeof window === 'undefined') return { filters: defaults, page: 0, pageSize: 20 };
   const params = new URLSearchParams(window.location.search);
   const get = (key: keyof LedgerFilterState) => params.get(key) ?? defaults[key];
   const filters: LedgerFilterState = {
@@ -170,7 +170,9 @@ function readLedgerUrlState(today: string): LedgerUrlState {
     minAmount: get('minAmount'), maxAmount: get('maxAmount'),
   };
   const page = Math.max(0, (Number(params.get('page')) || 1) - 1);
-  return { filters, page };
+  const rawPageSize = Number(params.get('pageSize'));
+  const pageSize: PageSize = PAGE_SIZES.includes(rawPageSize as PageSize) ? (rawPageSize as PageSize) : 20;
+  return { filters, page, pageSize };
 }
 
 function writeLedgerParams(state: LedgerUrlState, today: string, currentSearch: string): URLSearchParams {
@@ -183,6 +185,8 @@ function writeLedgerParams(state: LedgerUrlState, today: string, currentSearch: 
   }
   if (state.page > 0) params.set('page', String(state.page + 1));
   else params.delete('page');
+  if (state.pageSize !== 20) params.set('pageSize', String(state.pageSize));
+  else params.delete('pageSize');
   return params;
 }
 
@@ -234,7 +238,7 @@ export function DailyLedgerPage() {
   const today = businessDateStr();
 
   const { state: urlState, update } = useLedgerUrlState(today);
-  const { filters, page } = urlState;
+  const { filters, page, pageSize } = urlState;
   const [adjusting, setAdjusting] = useState<LedgerEntry | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'excel' | null>(null);
 
@@ -256,19 +260,23 @@ export function DailyLedgerPage() {
       search: filters.search.trim() || undefined,
       minAmount: num(filters.minAmount),
       maxAmount: num(filters.maxAmount),
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
+      limit: pageSize,
+      offset: page * pageSize,
     };
-  }, [filters, page]);
+  }, [filters, page, pageSize]);
 
   const { data, isLoading, isError, error, refetch } = useLedger(query);
 
   function set<K extends keyof LedgerFilterState>(key: K, value: LedgerFilterState[K]) {
-    update(key === 'search' ? 'replace' : 'push', (s) => ({ filters: { ...s.filters, [key]: value }, page: 0 }));
+    update(key === 'search' ? 'replace' : 'push', (s) => ({ ...s, filters: { ...s.filters, [key]: value }, page: 0 }));
   }
 
   function resetFilters() {
-    update('push', () => ({ filters: defaultLedgerFilters(today), page: 0 }));
+    update('push', (s) => ({ ...s, filters: defaultLedgerFilters(today), page: 0 }));
+  }
+
+  function setPageSize(n: PageSize) {
+    update('push', (s) => ({ ...s, pageSize: n, page: 0 }));
   }
 
   // Branch income posts as two real ledger entries (company share + branch
@@ -283,9 +291,6 @@ export function DailyLedgerPage() {
     [data?.entries],
   );
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const rangeFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;
-  const rangeTo = Math.min(total, (page + 1) * PAGE_SIZE);
 
   async function download(format: 'pdf' | 'excel') {
     if (!token) return;
@@ -561,36 +566,14 @@ export function DailyLedgerPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              {total === 0 ? 'No entries' : `Showing ${rangeFrom}–${rangeTo} of ${total}`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>
-                Page {page + 1} of {pageCount}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-11 w-11 md:h-7 md:w-7"
-                aria-label="Previous page"
-                disabled={page === 0}
-                onClick={() => update('push', (s) => ({ ...s, page: Math.max(0, s.page - 1) }))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-11 w-11 md:h-7 md:w-7"
-                aria-label="Next page"
-                disabled={page + 1 >= pageCount}
-                onClick={() => update('push', (s) => ({ ...s, page: s.page + 1 }))}
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            page={page + 1}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={(p) => update('push', (s) => ({ ...s, page: p - 1 }))}
+            onPageSizeChange={setPageSize}
+            loading={isLoading}
+          />
         </>
       )}
 

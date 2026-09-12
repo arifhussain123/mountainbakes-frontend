@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { StatCard } from '@/components/shared/StatCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,6 +70,7 @@ import {
   type FinanceQueryType,
   type FinanceTicket,
   type FinanceTicketStatus,
+  type PageSize,
 } from '@mb/shared';
 import { useBranches } from '@/lib/queries';
 import {
@@ -269,8 +271,6 @@ function DashboardCards({ isAdmin }: { isAdmin: boolean }) {
 // The page
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 25;
-
 export function FinanceHelpDeskPage({
   embedded = false,
   sourceTag = false,
@@ -304,6 +304,7 @@ export function FinanceHelpDeskPage({
   // resets state after a render has already asked for a page that no longer
   // exists.
   const [pageState, setPageState] = useState<{ key: string; page: number }>({ key: '', page: 1 });
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [showNew, setShowNew] = useState(false);
   const [newKey, setNewKey] = useState(0);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -349,7 +350,7 @@ export function FinanceHelpDeskPage({
   const page = pageState.key === scopeKey ? pageState.page : 1;
   const setPage = (next: number) => setPageState({ key: scopeKey, page: next });
 
-  const filters = useMemo(() => ({ ...scope, page, pageSize: PAGE_SIZE }), [scope, page]);
+  const filters = useMemo(() => ({ ...scope, page, pageSize }), [scope, page, pageSize]);
 
   const { data, isLoading, isFetching } = useFinanceTickets(filters);
   const tickets = data?.tickets ?? [];
@@ -818,9 +819,10 @@ export function FinanceHelpDeskPage({
         searchPlaceholder="Search Query ID, reference, subject, user or branch…"
         leading={filterControls}
         actions={embedded ? newButton : undefined}
+        pager={false}
         manual={{
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: setPage,
           search,
@@ -842,6 +844,14 @@ export function FinanceHelpDeskPage({
             </p>
           </div>
         }
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={isLoading || isFetching}
       />
 
       <NewQueryDialog key={newKey} open={showNew} onOpenChange={setShowNew} />

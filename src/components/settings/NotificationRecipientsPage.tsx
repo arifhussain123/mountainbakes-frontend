@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -12,10 +13,10 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { NotificationRecipient, NotificationLogRecord, NotificationChannel, Branch, ClosingDispatchResult } from '@mb/shared';
+import type { NotificationRecipient, NotificationLogRecord, NotificationChannel, Branch, ClosingDispatchResult, PageSize } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Send, ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, ScrollText } from 'lucide-react';
 
 const col = createColumnHelper<NotificationRecipient>();
 
@@ -370,8 +371,6 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
 // --- Delivery log -----------------------------------------------------------
 type LogRow = NotificationLogRecord & { recipientName?: string | null; mobileNumber?: string | null };
 
-const LOGS_PAGE_SIZE = 20;
-
 interface LogsFilterState {
   businessDate: string;
   status: string;
@@ -392,6 +391,7 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [filters, setFilters] = useState<LogsFilterState>({
     businessDate: '', status: '', channel: '', recipientId: '',
   });
@@ -407,16 +407,14 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
     if (filters.status) params.set('status', filters.status);
     if (filters.channel) params.set('channel', filters.channel);
     if (filters.recipientId) params.set('recipientId', filters.recipientId);
-    params.set('limit', String(LOGS_PAGE_SIZE));
-    params.set('offset', String(page * LOGS_PAGE_SIZE));
+    params.set('limit', String(pageSize));
+    params.set('offset', String(page * pageSize));
 
     apiCall<{ logs: LogRow[]; total: number }>(`/api/closing-notifications/logs?${params}`, {}, token)
       .then((r) => { setLogs(r.logs ?? []); setTotal(r.total ?? 0); })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load logs'))
       .finally(() => setLoading(false));
-  }, [token, filters, page]);
-
-  const pageCount = Math.max(1, Math.ceil(total / LOGS_PAGE_SIZE));
+  }, [token, filters, page, pageSize]);
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -501,32 +499,14 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
           )}
         </div>
 
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>{total === 0 ? 'No attempts' : `${total} ${total === 1 ? 'attempt' : 'attempts'}`}</span>
-          <div className="flex items-center gap-2">
-            <span>Page {page + 1} of {pageCount}</span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-7 w-7"
-              aria-label="Previous page"
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-7 w-7"
-              aria-label="Next page"
-              disabled={page + 1 >= pageCount}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={page + 1}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={(p) => setPage(p - 1)}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+          loading={loading}
+        />
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Close</Button>

@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { ProductionReturn, ProductionReturnStatus } from '@mb/shared';
+import type { PageSize, ProductionReturn, ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useProducts, useProductionReturns, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import {
   Dialog,
@@ -133,8 +134,6 @@ function confirmCopy(r: ProductionReturn, status: ProductionReturnStatus): { tit
 
 const col = createColumnHelper<ProductionReturn>();
 
-const PAGE_SIZE = 20;
-
 export function ProductionReturnsPage() {
   const { token } = useAuth();
 
@@ -152,6 +151,7 @@ export function ProductionReturnsPage() {
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
   function setFilter<T>(setter: (v: T) => void) {
@@ -165,7 +165,7 @@ export function ProductionReturnsPage() {
   const productsQ = useProducts(token);
   const returnsQ = useProductionReturns(token, {
     page,
-    limit: PAGE_SIZE,
+    limit: pageSize,
     from: from || undefined,
     to: to || undefined,
     branchId: branchFilter === ALL_STATUSES ? undefined : branchFilter,
@@ -359,14 +359,23 @@ export function ProductionReturnsPage() {
         data={rows}
         loading={returnsQ.isLoading}
         searchPlaceholder="Search reason, product or branch…"
+        pager={false}
         manual={{
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: setPage,
           search,
           onSearchChange: setFilter(setSearch),
         }}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={returnsQ.isLoading}
       />
 
       {/* ── View, and decide ────────────────────────────────────────────────

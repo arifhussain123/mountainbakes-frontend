@@ -7,6 +7,7 @@ import {
   businessDateStr,
   businessDaysAgoStr,
   type LoginAttemptReason,
+  type PageSize,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useLoginAttempts, useLoginFilterOptions } from '@/lib/queries';
@@ -29,8 +30,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { formatDate, formatTime } from '@/utils/date';
-import { ChevronLeft, ChevronRight, Info, Search } from 'lucide-react';
+import { Info, Search } from 'lucide-react';
 import { formatBrowser, formatPlatform } from './sessionFormat';
 
 /**
@@ -57,7 +59,6 @@ import { formatBrowser, formatPlatform } from './sessionFormat';
  * not take would be worse than one that offers none.
  */
 
-const PAGE_SIZE = 25;
 const ALL = '__all__';
 
 interface Filters {
@@ -81,6 +82,7 @@ export function FailedLoginsBoard() {
   const { token } = useAuth();
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((f) => ({ ...f, [key]: value }));
@@ -106,7 +108,7 @@ export function FailedLoginsBoard() {
     from: filters.from || null,
     to: filters.to || null,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
   });
   // Shared with the history board — the countries are the same set, because both
   // tables resolve their locations through the same IP lookup.
@@ -114,7 +116,6 @@ export function FailedLoginsBoard() {
 
   const rows = query.data?.attempts ?? [];
   const total = query.data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const active = useMemo(() => Object.values(filters).some((v) => v !== ''), [filters]);
 
   return (
@@ -295,19 +296,14 @@ export function FailedLoginsBoard() {
       </div>
 
       {total > 0 && (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {total.toLocaleString()} failed attempt{total === 1 ? '' : 's'} · page {page} of {pages}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-10 md:h-9" disabled={page <= 1 || query.isFetching} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </Button>
-            <Button variant="outline" size="sm" className="h-10 md:h-9" disabled={page >= pages || query.isFetching} onClick={() => setPage((p) => p + 1)}>
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          loading={query.isFetching}
+        />
       )}
     </div>
   );

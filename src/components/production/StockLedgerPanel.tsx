@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { ProductionLedgerType } from '@mb/shared';
+import type { PageSize, ProductionLedgerType } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useCategories, useProductionLedger, useProducts } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { cn } from '@/lib/utils';
 import { LEDGER_TYPE_OPTIONS, LEDGER_TYPE_META, LedgerQty, LedgerTypeChip } from './StockLedgerTypes';
 
@@ -29,8 +30,6 @@ import { LEDGER_TYPE_OPTIONS, LEDGER_TYPE_META, LedgerQty, LedgerTypeChip } from
  * typing stops. `placeholderData` in the query keeps the previous page on screen
  * meanwhile, so the table never blanks to "no results" while it is still asking.
  */
-
-const PAGE_SIZE = 25;
 
 /** 'YYYY-MM-DD' n days before the given business date. */
 function daysBefore(date: string, n: number): string {
@@ -59,7 +58,8 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
   const [movementType, setMovementType] = useState('');
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   // The typed value and the SENT value are separate pieces of state. Binding the
   // input straight to the query key would fire a request per keystroke.
@@ -101,7 +101,7 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
    * of a 12-row result and show an empty table that reads as "no matches".
    */
   function withReset<T>(set: (v: T) => void) {
-    return (v: T) => { set(v); setOffset(0); };
+    return (v: T) => { set(v); setPage(1); };
   }
   const changeRange = withReset(setRange);
   const changeProduct = withReset(setProductId);
@@ -121,10 +121,10 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
       ...(branchId ? { branchId } : {}),
       ...(movementType ? { movementType } : {}),
       ...(debounced ? { search: debounced } : {}),
-      limit: PAGE_SIZE,
-      offset,
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
     }),
-    [from, to, productId, categoryId, branchId, movementType, debounced, offset],
+    [from, to, productId, categoryId, branchId, movementType, debounced, page, pageSize],
   );
 
   const q = useProductionLedger(token, params);
@@ -134,8 +134,6 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
 
   const rows = q.data?.rows ?? [];
   const total = q.data?.total ?? 0;
-  const showingFrom = total === 0 ? 0 : offset + 1;
-  const showingTo = Math.min(offset + PAGE_SIZE, total);
 
   const hasFilters =
     !!productId || !!categoryId || !!branchId || !!movementType || !!debounced || range !== 'today';
@@ -147,7 +145,7 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
     setBranchId('');
     setMovementType('');
     setSearch('');
-    setOffset(0);
+    setPage(1);
   }
 
   return (
@@ -313,21 +311,14 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
         </table>
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <p className="text-muted-foreground">
-          {total === 0 ? 'No movements' : `${showingFrom}–${showingTo} of ${total}`}
-        </p>
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" disabled={offset === 0}
-            onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" disabled={showingTo >= total}
-            onClick={() => setOffset((o) => o + PAGE_SIZE)}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={q.isLoading}
+      />
     </div>
   );
 }

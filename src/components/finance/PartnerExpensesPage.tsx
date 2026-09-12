@@ -7,6 +7,7 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type FinancePartner,
+  type PageSize,
   type PartnerExpense,
   type PartnerShareRow,
   type PartnerTxnKind,
@@ -121,7 +122,6 @@ export function PartnerExpensesPage() {
 
 const expenseCol = createColumnHelper<PartnerExpense>();
 const PARTNER_BASE_PATH = '/api/finance/partner-expenses';
-const PARTNER_PAGE_SIZE = 100;
 
 function PartnerLedgerTab({
   txnKind,
@@ -136,6 +136,7 @@ function PartnerLedgerTab({
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PartnerExpense | null>(null);
   const [viewing, setViewing] = useState<PartnerExpense | null>(null);
@@ -156,8 +157,8 @@ function PartnerLedgerTab({
     from: from || undefined,
     to: to || undefined,
     search: search || undefined,
-    limit: PARTNER_PAGE_SIZE,
-    offset: (page - 1) * PARTNER_PAGE_SIZE,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
 
   const rows = data?.expenses ?? [];
@@ -268,9 +269,10 @@ function PartnerLedgerTab({
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search by partner…"
+        pager={false}
         manual={{
           page,
-          pageSize: PARTNER_PAGE_SIZE,
+          pageSize,
           total: grandTotal,
           onPageChange: setPage,
           search,
@@ -282,6 +284,14 @@ function PartnerLedgerTab({
             <p className="text-center font-medium">No {label.toLowerCase()}s yet</p>
           </div>
         }
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={grandTotal}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={isLoading}
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>
@@ -623,14 +633,13 @@ function AddPartnerDetailFlow({
   );
 }
 
-const PARTNER_HISTORY_PAGE_SIZE = 20;
-
 function PartnerHistoryDetail({ row }: { row: PartnerShareRow }) {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const { data, isLoading } = usePartnerExpenses({
     partnerId: row.id,
-    limit: PARTNER_HISTORY_PAGE_SIZE,
-    offset: (page - 1) * PARTNER_HISTORY_PAGE_SIZE,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
   const txns = data?.expenses ?? [];
   const total = data?.total ?? 0;
@@ -680,9 +689,15 @@ function PartnerHistoryDetail({ row }: { row: PartnerShareRow }) {
             ))}
           </ul>
         )}
-        {total > PARTNER_HISTORY_PAGE_SIZE && (
-          <Pagination page={page} pageSize={PARTNER_HISTORY_PAGE_SIZE} total={total} onPageChange={setPage} loading={isLoading} className="mt-2" />
-        )}
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          loading={isLoading}
+          className="mt-2"
+        />
       </div>
     </div>
   );

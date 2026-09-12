@@ -8,6 +8,7 @@ import {
   type LoginDeviceType,
   type LoginSession,
   type LoginSessionState,
+  type PageSize,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useLoginFilterOptions, useLoginHistoryPage } from '@/lib/queries';
@@ -30,9 +31,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { formatDate, formatTime } from '@/utils/date';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Search, ShieldOff } from 'lucide-react';
+import { AlertTriangle, Eye, Search, ShieldOff } from 'lucide-react';
 import { StaffAvatar } from './StaffAvatar';
 import {
   LOGIN_STATUS_LABELS,
@@ -97,8 +99,6 @@ import {
  * is used on maybe one visit in ten and would otherwise make the common case
  * hunt through nine controls to find the search box.
  */
-
-const PAGE_SIZE = 25;
 
 /**
  * The wide table's columns, in order. The staff ID and the email address are
@@ -183,6 +183,7 @@ export function LoginHistoryBoard({
   const { token } = useAuth();
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [showMore, setShowMore] = useState(false);
 
   // Every filter change resets to page 1. Without this, narrowing a filter while
@@ -226,7 +227,7 @@ export function LoginHistoryBoard({
     browser: filters.browser || null,
     deviceType: filters.deviceType || null,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
   });
   const options = useLoginFilterOptions(token);
   // Only fetched once the drawer is open. The branch list is not otherwise
@@ -236,7 +237,6 @@ export function LoginHistoryBoard({
 
   const rows = query.data?.sessions ?? [];
   const total = query.data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const active = useMemo(
     () => Object.entries(filters).some(([, v]) => v !== '' && v !== false),
     [filters],
@@ -629,19 +629,14 @@ export function LoginHistoryBoard({
           row count is always visible — "how many sign-ins match this filter" is
           half of what an admin came to the screen to find out. */}
       {total > 0 && (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {total.toLocaleString()} sign-in{total === 1 ? '' : 's'} · page {page} of {pages}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-10 md:h-9" disabled={page <= 1 || query.isFetching} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </Button>
-            <Button variant="outline" size="sm" className="h-10 md:h-9" disabled={page >= pages || query.isFetching} onClick={() => setPage((p) => p + 1)}>
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          loading={query.isFetching}
+        />
       )}
     </div>
   );

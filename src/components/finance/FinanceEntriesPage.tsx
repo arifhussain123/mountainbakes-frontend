@@ -7,6 +7,7 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type FinanceTransaction,
+  type PageSize,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
@@ -14,6 +15,7 @@ import { useFinanceEntries, useLedgerHeads } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
@@ -32,7 +34,6 @@ import { Eye, Pencil, Plus } from 'lucide-react';
 
 const col = createColumnHelper<FinanceTransaction>();
 const BASE_PATH = '/api/finance/income/entries';
-const PAGE_SIZE = 50;
 
 export function FinanceEntriesPage() {
   const { token } = useAuth();
@@ -46,6 +47,7 @@ export function FinanceEntriesPage() {
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [viewing, setViewing] = useState<FinanceTransaction | null>(null);
@@ -68,8 +70,8 @@ export function FinanceEntriesPage() {
     from: from || undefined,
     to: to || undefined,
     search: search || undefined,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
 
   const rows = data?.entries ?? [];
@@ -246,14 +248,23 @@ export function FinanceEntriesPage() {
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search entries…"
+        pager={false}
         manual={{
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: setPage,
           search,
           onSearchChange: setFilter(setSearch),
         }}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={isLoading}
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>

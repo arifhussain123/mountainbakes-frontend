@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { BranchDiscount, BranchDiscountStatus } from '@mb/shared';
+import type { BranchDiscount, BranchDiscountStatus, PageSize } from '@mb/shared';
 import { isDiscountOpen } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,7 @@ import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { BadgePercent, ChevronLeft, ChevronRight, Eye, Pencil, Trash2 } from 'lucide-react';
+import { BadgePercent, Eye, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DISCOUNT_STATUS_STYLES,
@@ -36,8 +37,6 @@ import {
   parseAmount,
   shortRef,
 } from './discountShared';
-
-const PAGE_SIZE = 50;
 
 // Sentinel rather than an empty string: Base UI's Select treats an absent
 // value as "show the placeholder", so '' as a real option would render as no
@@ -98,13 +97,14 @@ export function BranchDiscountsPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const discountsQ = useBranchDiscounts(token, {
     status: status === ALL_STATUSES ? undefined : status,
     search: search || undefined,
     from: from || undefined,
     to: to || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
   });
   const reviseMut = useReviseBranchDiscount(token);
   const withdrawMut = useWithdrawBranchDiscount(token);
@@ -129,7 +129,6 @@ export function BranchDiscountsPage() {
 
   const rows = discountsQ.data?.discounts ?? [];
   const total = discountsQ.data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (discountsQ.isError) toast.error('Could not load discounts');
@@ -294,7 +293,7 @@ export function BranchDiscountsPage() {
         pager={false}
         manual={{
           page: page + 1,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: (p) => setPage(p - 1),
           search,
@@ -359,32 +358,14 @@ export function BranchDiscountsPage() {
         }
       />
 
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} total</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={page + 1}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={(p) => setPage(p - 1)}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+        loading={discountsQ.isLoading}
+      />
 
       {/* ── View ─────────────────────────────────────────────────────────── */}
       <Dialog open={!!viewRow} onOpenChange={(o) => !o && setViewRow(null)}>

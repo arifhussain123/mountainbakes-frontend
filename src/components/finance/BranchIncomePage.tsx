@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { createColumnHelper } from '@tanstack/react-table';
-import { businessDateStr, type Attachment, type FinanceIncomeApproval } from '@mb/shared';
+import { businessDateStr, type Attachment, type FinanceIncomeApproval, type PageSize } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useFinanceSettings, useIncomeApprovals } from '@/lib/finance';
@@ -19,13 +19,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect, RejectDialog } from './finance-actions';
-import { ArrowDownToLine, BadgeCheck, Check, ChevronLeft, ChevronRight, Eye, Info, X } from 'lucide-react';
-
-const PAGE_SIZE = 100;
+import { ArrowDownToLine, BadgeCheck, Check, Eye, Info, X } from 'lucide-react';
 
 /**
  * Branch Income — the pending list the brief's workflow ends at.
@@ -59,6 +58,7 @@ export function BranchIncomePage() {
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   /** Every filter setter resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
   function setFilter<T>(setter: (v: T) => void) {
@@ -88,8 +88,8 @@ export function BranchIncomePage() {
     from: from || undefined,
     to: to || undefined,
     search: search || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
   });
 
   const verifyMut = useFinanceMutation();
@@ -97,7 +97,6 @@ export function BranchIncomePage() {
 
   const rows = data?.approvals ?? [];
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // Awaiting-decision total and the zero-collection count are struck over the
   // CURRENT page only. Pending approvals are a working queue that is expected
   // to clear regularly, not an archive, so in normal operation it fits on one
@@ -314,7 +313,7 @@ export function BranchIncomePage() {
         }
         manual={{
           page: page + 1,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: (p) => setPage(p - 1),
           search,
@@ -322,36 +321,25 @@ export function BranchIncomePage() {
         }}
       />
 
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        {/* `total` is the raw filtered count from the server, before zero-collection
-            rows are pulled out of the table above — so it can outnumber what's
-            actually visible. Spelling that out here is what stops "18 total" next
-            to an empty table from reading as broken pagination. */}
-        <span>{total} total{zeroRows.length > 0 && ` (${zeroRows.length} zero-collection, shown above)`}</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      {/* `total` (below, in Pagination) is the raw filtered count from the
+          server, before zero-collection rows are pulled out of the table
+          above — so it can outnumber what's actually visible. Spelling that
+          out here is what stops "18 total" next to an empty table from
+          reading as broken pagination. */}
+      {zeroRows.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {zeroRows.length} of {total} row{total === 1 ? '' : 's'} {zeroRows.length === 1 ? 'has' : 'have'} zero
+          collection and {zeroRows.length === 1 ? "isn't" : "aren't"} shown below — see &quot;Zero Collection&quot; above.
+        </p>
+      )}
+      <Pagination
+        page={page + 1}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={(p) => setPage(p - 1)}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+        loading={isLoading}
+      />
 
       <ImportDialog open={importing} onOpenChange={setImporting} />
 

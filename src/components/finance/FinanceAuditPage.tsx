@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import type { FinanceAuditLog } from '@mb/shared';
+import type { FinanceAuditLog, PageSize } from '@mb/shared';
 import { useFinanceAudit } from '@/lib/finance';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
@@ -23,8 +23,6 @@ import { ChevronDown, ChevronRight, Monitor, ShieldCheck, Wifi } from 'lucide-re
  * what an auditor asks for first: not "who approved this" but "what did it look
  * like before they did".
  */
-
-const PAGE_SIZE = 50;
 
 /**
  * Every action `logFinanceAudit` can write, in FinanceAuditAction's own order.
@@ -80,19 +78,19 @@ export function FinanceAuditPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   const { data, isLoading } = useFinanceAudit({
     entity: entity || undefined,
     action: action || undefined,
     from: from || undefined,
     to: to || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
   });
 
   const logs = data?.logs ?? [];
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function setFilter(fn: () => void) {
     fn();
@@ -151,30 +149,14 @@ export function FinanceAuditPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} recorded {total === 1 ? 'action' : 'actions'}</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 md:h-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 md:h-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={page + 1}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={(p) => setPage(p - 1)}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+        loading={isLoading}
+      />
     </div>
   );
 }

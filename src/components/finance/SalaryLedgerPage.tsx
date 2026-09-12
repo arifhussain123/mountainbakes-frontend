@@ -9,6 +9,7 @@ import {
   FINANCE_PAYMENT_METHOD_LABELS,
   type EmployeeAdvance,
   type FinanceEmployee,
+  type PageSize,
   type SalaryPayment,
 } from '@mb/shared';
 import {
@@ -25,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
@@ -51,7 +53,6 @@ const employeeCol = createColumnHelper<FinanceEmployee>();
 const advanceCol = createColumnHelper<EmployeeAdvance>();
 const BASE_PATH = '/api/finance/payroll/salaries';
 const ADVANCE_PATH = '/api/finance/payroll/advances';
-const PAYROLL_PAGE_SIZE = 100;
 
 export function SalaryLedgerPage() {
   const abilities = useFinanceAbilities();
@@ -96,6 +97,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const [department, setDepartment] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SalaryPayment | null>(null);
   const [viewing, setViewing] = useState<SalaryPayment | null>(null);
@@ -114,8 +116,8 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     salaryMonth: salaryMonth || undefined,
     department: department || undefined,
     search: search || undefined,
-    limit: PAYROLL_PAGE_SIZE,
-    offset: (page - 1) * PAYROLL_PAGE_SIZE,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
 
   const rows = data?.salaries ?? [];
@@ -232,14 +234,23 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search by employee…"
+        pager={false}
         manual={{
           page,
-          pageSize: PAYROLL_PAGE_SIZE,
+          pageSize,
           total: grandTotal,
           onPageChange: setPage,
           search,
           onSearchChange: setFilter(setSearch),
         }}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={grandTotal}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={isLoading}
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>
@@ -429,6 +440,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const [recovery, setRecovery] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EmployeeAdvance | null>(null);
   const [viewing, setViewing] = useState<EmployeeAdvance | null>(null);
@@ -449,8 +461,8 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     outstandingOnly: recovery === 'outstanding' || undefined,
     department: department || undefined,
     search: search || undefined,
-    limit: PAYROLL_PAGE_SIZE,
-    offset: (page - 1) * PAYROLL_PAGE_SIZE,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
 
   const rows = data?.advances ?? [];
@@ -592,14 +604,23 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         data={rows}
         loading={isLoading}
         searchPlaceholder="Search by employee…"
+        pager={false}
         manual={{
           page,
-          pageSize: PAYROLL_PAGE_SIZE,
+          pageSize,
           total: grandTotal,
           onPageChange: setPage,
           search,
           onSearchChange: setFilter(setSearch),
         }}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={grandTotal}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={isLoading}
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>

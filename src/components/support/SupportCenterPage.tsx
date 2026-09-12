@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, StockFigures, ProductionStockFigures } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, PageSize, StockFigures, ProductionStockFigures } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
@@ -222,14 +223,13 @@ interface StockCorrectionResult {
   movements: { type: string; delta: number }[];
 }
 
-const PAGE_SIZE = 20;
-
 export function SupportCenterPage() {
   const [source, setSource] = useState<SupportSource>('all');
   const { token } = useAuth();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -266,7 +266,7 @@ export function SupportCenterPage() {
     let stale = false;
     void (async () => {
       setLoading(true);
-      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (search.trim()) params.set('search', search.trim());
       if (source === 'branch' || source === 'production') params.set('source', source);
       try {
@@ -281,7 +281,7 @@ export function SupportCenterPage() {
       }
     })();
     return () => { stale = true; };
-  }, [token, refreshKey, page, search, source, showOperations]);
+  }, [token, refreshKey, page, pageSize, search, source, showOperations]);
 
   useEffect(() => {
     if (!token) return;
@@ -505,14 +505,23 @@ export function SupportCenterPage() {
             data={tickets}
             loading={loading}
             searchPlaceholder="Search tickets…"
+            pager={false}
             manual={{
               page,
-              pageSize: PAGE_SIZE,
+              pageSize,
               total,
               onPageChange: setPage,
               search,
               onSearchChange: setFilter(setSearch),
             }}
+          />
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+            loading={loading}
           />
         </section>
       )}

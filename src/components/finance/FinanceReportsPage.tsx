@@ -8,6 +8,7 @@ import {
   FINANCE_REPORT_TYPES,
   type FinanceReport,
   type FinanceReportType,
+  type PageSize,
   type ReportCellFormat,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,10 +26,11 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, useMoney } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Table2 } from 'lucide-react';
+import { FileSpreadsheet, FileText, Table2 } from 'lucide-react';
 
 /**
  * The ten reports.
@@ -62,7 +64,6 @@ const PAGINATED_REPORT_TYPES = new Set<FinanceReportType>([
   'salary',
   'partner_expense',
 ]);
-const REPORT_PAGE_SIZE = 50;
 
 const REPORT_FIELDS: Record<FinanceReportType, readonly string[]> = {
   daily_cash_book: ['from', 'to', 'branchId'],
@@ -95,6 +96,7 @@ export function FinanceReportsPage() {
   const [salaryMonth, setSalaryMonth] = useState(today.slice(0, 7));
   const [downloading, setDownloading] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -134,8 +136,8 @@ export function FinanceReportsPage() {
   }
 
   const query = useMemo(
-    () => (PAGINATED_REPORT_TYPES.has(type) ? { ...filterQuery, page, pageSize: REPORT_PAGE_SIZE } : filterQuery),
-    [filterQuery, type, page],
+    () => (PAGINATED_REPORT_TYPES.has(type) ? { ...filterQuery, page, pageSize } : filterQuery),
+    [filterQuery, type, page, pageSize],
   );
 
   const { data: report, isLoading, isError, error } = useFinanceReport(query);
@@ -272,7 +274,12 @@ export function FinanceReportsPage() {
           <Skeleton className="h-80 w-full rounded-lg" />
         </div>
       ) : report ? (
-        <ReportView report={report} onPageChange={setPage} />
+        <ReportView
+          report={report}
+          onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        />
       ) : null}
     </div>
   );
@@ -280,7 +287,17 @@ export function FinanceReportsPage() {
 
 // ---------------------------------------------------------------------------
 
-function ReportView({ report, onPageChange }: { report: FinanceReport; onPageChange: (page: number) => void }) {
+function ReportView({
+  report,
+  onPageChange,
+  pageSize,
+  onPageSizeChange,
+}: {
+  report: FinanceReport;
+  onPageChange: (page: number) => void;
+  pageSize: PageSize;
+  onPageSizeChange: (pageSize: PageSize) => void;
+}) {
   const { format: money } = useMoney();
 
   /** Render one cell the way its column says to. */
@@ -436,41 +453,13 @@ function ReportView({ report, onPageChange }: { report: FinanceReport; onPageCha
       )}
 
       {report.pagination && (
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            {report.pagination.total === 0
-              ? 'No entries'
-              : `Showing ${(report.pagination.page - 1) * report.pagination.pageSize + 1}–${Math.min(
-                  report.pagination.page * report.pagination.pageSize,
-                  report.pagination.total,
-                )} of ${report.pagination.total}`}
-          </span>
-          <div className="flex items-center gap-2">
-            <span>
-              Page {report.pagination.page} of {report.pagination.totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-11 w-11 md:h-7 md:w-7"
-              aria-label="Previous page"
-              disabled={!report.pagination.hasPrevious}
-              onClick={() => onPageChange(report.pagination!.page - 1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-11 w-11 md:h-7 md:w-7"
-              aria-label="Next page"
-              disabled={!report.pagination.hasNext}
-              onClick={() => onPageChange(report.pagination!.page + 1)}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={report.pagination.page}
+          pageSize={pageSize}
+          total={report.pagination.total}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
       )}
     </div>
   );

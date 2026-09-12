@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { ProductionReturn } from '@mb/shared';
+import type { PageSize, ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useBranchReturns,
@@ -13,6 +13,7 @@ import {
 } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,10 +32,8 @@ import {
 import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
+import { Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-const PAGE_SIZE = 50;
 
 /**
  * Branch → Return Stock: everything this branch has sent back to production.
@@ -130,6 +129,7 @@ const col = createColumnHelper<ProductionReturn>();
 export function BranchReturnStockPage() {
   const { token } = useAuth();
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES);
   const [productFilter, setProductFilter] = useState<string>(ALL_STATUSES);
   const [search, setSearch] = useState('');
@@ -146,8 +146,8 @@ export function BranchReturnStockPage() {
 
   const productsQ = useProducts(token);
   const returnsQ = useBranchReturns(token, {
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
     status: statusFilter === ALL_STATUSES ? undefined : statusFilter,
     productId: productFilter === ALL_STATUSES ? undefined : productFilter,
     search: search || undefined,
@@ -171,7 +171,6 @@ export function BranchReturnStockPage() {
 
   const rows = returnsQ.data?.returns ?? [];
   const total = returnsQ.data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (returnsQ.isError) toast.error('Could not load returns');
@@ -424,7 +423,7 @@ export function BranchReturnStockPage() {
         pager={false}
         manual={{
           page: page + 1,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: (p) => setPage(p - 1),
           search,
@@ -440,33 +439,14 @@ export function BranchReturnStockPage() {
           </div>
         }
       />
-
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} total</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={page + 1}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={(p) => setPage(p - 1)}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+        loading={returnsQ.isLoading}
+      />
 
       {/* ── View ────────────────────────────────────────────────────────────
           Read-only, so deliberately NOT behind GeofenceGate — being out of area

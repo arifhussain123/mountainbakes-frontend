@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { BranchDiscount, BranchDiscountStatus } from '@mb/shared';
+import type { BranchDiscount, BranchDiscountStatus, PageSize } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useProductionDiscounts, useReviewDiscount } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import {
   Dialog,
@@ -110,8 +111,6 @@ function confirmCopy(d: BranchDiscount, status: BranchDiscountStatus): { title: 
 
 const col = createColumnHelper<BranchDiscount>();
 
-const PAGE_SIZE = 20;
-
 export function ProductionDiscountsPage() {
   const { token } = useAuth();
 
@@ -128,6 +127,7 @@ export function ProductionDiscountsPage() {
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
   function setFilter<T>(setter: (v: T) => void) {
@@ -140,7 +140,7 @@ export function ProductionDiscountsPage() {
   const branchesQ = useBranches(token);
   const discountsQ = useProductionDiscounts(token, {
     page,
-    limit: PAGE_SIZE,
+    limit: pageSize,
     from: from || undefined,
     to: to || undefined,
     branchId: branchFilter === ALL_STATUSES ? undefined : branchFilter,
@@ -334,14 +334,23 @@ export function ProductionDiscountsPage() {
         data={rows}
         loading={discountsQ.isLoading}
         searchPlaceholder="Search demand #, reason or branch…"
+        pager={false}
         manual={{
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           total,
           onPageChange: setPage,
           search,
           onSearchChange: setFilter(setSearch),
         }}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={discountsQ.isLoading}
       />
 
       {/* ── View, and decide ────────────────────────────────────────────────

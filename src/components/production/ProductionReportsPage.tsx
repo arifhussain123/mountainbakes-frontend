@@ -13,7 +13,7 @@ import { ResponsiveMatrix } from '@/components/shared/ResponsiveMatrix';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { toast } from 'sonner';
-import { businessDateStr } from '@mb/shared';
+import { businessDateStr, type PageSize } from '@mb/shared';
 
 // This report is driven by a From/To date window (see PREPARED_REPORT) rather
 // than the period dropdown. It is built server-side off the production-stock
@@ -57,8 +57,6 @@ interface ReportData {
   pagination?: ReportPagination;
 }
 
-const REPORT_PAGE_SIZE = 50;
-
 export function ProductionReportsPage() {
   const { token } = useAuth();
   const [report, setReport] = useState('production');
@@ -69,6 +67,7 @@ export function ProductionReportsPage() {
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   const isPrepared = report === PREPARED_REPORT;
 
@@ -88,10 +87,10 @@ export function ProductionReportsPage() {
   // that are actually paginated server-side (see ReportPagination above).
   const rangeParams = isPrepared ? `&from=${from}&to=${to}` : '';
   const query = useQuery({
-    queryKey: ['productionReport', report, period, isPrepared ? from : '', isPrepared ? to : '', page],
+    queryKey: ['productionReport', report, period, isPrepared ? from : '', isPrepared ? to : '', page, pageSize],
     queryFn: () =>
       apiCall<ReportData>(
-        `/api/production-reports/summary?report=${report}&period=${period}${rangeParams}&page=${page}&pageSize=${REPORT_PAGE_SIZE}`,
+        `/api/production-reports/summary?report=${report}&period=${period}${rangeParams}&page=${page}&pageSize=${pageSize}`,
         {},
         token,
       ),
@@ -210,12 +209,13 @@ export function ProductionReportsPage() {
                 emptyTitle="No data for this report and period"
                 emptyDescription="Try a different report type or date range."
               />
-              {data?.pagination && data.pagination.total > data.pagination.pageSize && (
+              {data?.pagination && (
                 <Pagination
                   page={data.pagination.page}
                   pageSize={data.pagination.pageSize}
                   total={data.pagination.total}
                   onPageChange={setPage}
+                  onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
                   loading={loading}
                   className="mt-3"
                 />

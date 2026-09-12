@@ -5,14 +5,14 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, usePackingMaterials, usePackingUsage } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { businessDateStr } from '@mb/shared';
-import type { PackingMaterialUsageRow } from '@mb/shared';
+import type { PackingMaterialUsageRow, PageSize } from '@mb/shared';
 
 const col = createColumnHelper<PackingMaterialUsageRow>();
-const PACKING_USAGE_PAGE_SIZE = 50;
 
 /** Sentinel for "no filter" — a Select item cannot carry an empty string value. */
 const ALL = '__all__';
@@ -40,6 +40,7 @@ export function PackingUsageReport() {
   const [branchId, setBranchId] = useState(ALL);
   const [materialId, setMaterialId] = useState(ALL);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
 
   // A branch manager is scoped server-side, so the branch filter is admin-only.
   const branchesQ = useBranches(token, { enabled: !isBranchManager });
@@ -51,7 +52,7 @@ export function PackingUsageReport() {
     branchId: branchId === ALL ? null : branchId,
     packingMaterialId: materialId === ALL ? null : materialId,
     page,
-    pageSize: PACKING_USAGE_PAGE_SIZE,
+    pageSize,
   });
   const rows = useMemo(() => usageQ.data?.usage ?? [], [usageQ.data]);
   // Summed server-side over the WHOLE filtered range, not just this page.
@@ -155,7 +156,16 @@ export function PackingUsageReport() {
         // memory would hide matches sitting on other pages. The Branch/Material
         // selects above already narrow the same fields a free-text box would.
         toolbar={false}
-        manual={{ page, pageSize: PACKING_USAGE_PAGE_SIZE, total: pagination?.total ?? 0, onPageChange: setPage, search: '', onSearchChange: () => {} }}
+        pager={false}
+        manual={{ page, pageSize, total: pagination?.total ?? 0, onPageChange: setPage, search: '', onSearchChange: () => {} }}
+      />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={pagination?.total ?? 0}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        loading={usageQ.isLoading}
       />
 
       {/* Range totals */}
