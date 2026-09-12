@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { createColumnHelper } from '@tanstack/react-table';
-import { businessDateStr, type Attachment, type FinanceIncomeApproval, type PageSize } from '@mb/shared';
+import { businessDateStr, type Attachment, type FilterConfig, type FinanceIncomeApproval } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useFinanceSettings, useIncomeApprovals } from '@/lib/finance';
@@ -20,10 +20,12 @@ import {
 } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
-import { DateFilter, FilterBar, FilterField, FilterSelect, RejectDialog } from './finance-actions';
+import { DateFilter, FilterSelect, RejectDialog } from './finance-actions';
 import { ArrowDownToLine, BadgeCheck, Check, Eye, Info, X } from 'lucide-react';
 
 /**
@@ -52,21 +54,11 @@ export function BranchIncomePage() {
   const abilities = useFinanceAbilities();
   const today = businessDateStr();
 
-  const [status, setStatus] = useState('pending');
-  const [branchId, setBranchId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
-
-  /** Every filter setter resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(0);
-    };
-  }
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['status', 'branchId', 'businessDate'],
+    defaults: { filters: [{ key: 'status', op: 'eq', value: 'pending' }] },
+  });
   const [importing, setImporting] = useState(false);
   const [approving, setApproving] = useState<FinanceIncomeApproval | null>(null);
   /**
@@ -82,14 +74,37 @@ export function BranchIncomePage() {
 
   const branchesQ = useBranches(token ?? '');
   const { data: settings } = useFinanceSettings();
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: [
+          { value: 'pending', label: 'Pending (any stage)' },
+          { value: 'pending_verification', label: 'Pending Verification' },
+          { value: 'pending_approval', label: 'Pending Approval' },
+          { value: 'approved', label: 'Approved' },
+          { value: 'rejected', label: 'Rejected' },
+        ],
+      },
+      { key: 'branchId', label: 'Branch', type: 'select', placement: 'bar' },
+      { key: 'businessDate', label: 'Date', type: 'date-range' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({ branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })) }),
+    [branchesQ.data],
+  );
+
   const { data, isLoading } = useIncomeApprovals({
-    status: status || undefined,
-    branchId: branchId || undefined,
-    from: from || undefined,
-    to: to || undefined,
-    search: search || undefined,
-    limit: pageSize,
-    offset: page * pageSize,
+    status: list.getFilter('status')?.value as string | undefined,
+    branchId: list.getFilter('branchId')?.value as string | undefined,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    search: list.state.search || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
   });
 
   const verifyMut = useFinanceMutation();
@@ -262,36 +277,20 @@ export function BranchIncomePage() {
         </Card>
       )}
 
-      <FilterBar>
-        <FilterField label="Status">
-          <FilterSelect
-            value={status}
-            onChange={setFilter(setStatus)}
-            allLabel="All"
-            options={[
-              { value: 'pending', label: 'Pending (any stage)' },
-              { value: 'pending_verification', label: 'Pending Verification' },
-              { value: 'pending_approval', label: 'Pending Approval' },
-              { value: 'approved', label: 'Approved' },
-              { value: 'rejected', label: 'Rejected' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Branch">
-          <FilterSelect
-            value={branchId}
-            onChange={setFilter(setBranchId)}
-            allLabel="All branches"
-            options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-          />
-        </FilterField>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={setFilter(setFrom)} max={today} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={setFilter(setTo)} max={today} />
-        </FilterField>
-      </FilterBar>
+      <FilterBar
+        list={list}
+        filters={filters}
+        options={filterOptions}
+        searchable={false}
+        maxDate={today}
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        options={filterOptions}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       <DataTable
         columns={columns}
@@ -312,12 +311,12 @@ export function BranchIncomePage() {
           ) : undefined
         }
         manual={{
-          page: page + 1,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total,
-          onPageChange: (p) => setPage(p - 1),
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
       />
 
@@ -333,11 +332,11 @@ export function BranchIncomePage() {
         </p>
       )}
       <Pagination
-        page={page + 1}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={total}
-        onPageChange={(p) => setPage(p - 1)}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={isLoading}
       />
 

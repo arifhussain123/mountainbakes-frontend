@@ -1,21 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, usePackingMaterials, usePackingUsage } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { businessDateStr } from '@mb/shared';
-import type { PackingMaterialUsageRow, PageSize } from '@mb/shared';
+import type { FilterConfig, PackingMaterialUsageRow } from '@mb/shared';
 
 const col = createColumnHelper<PackingMaterialUsageRow>();
-
-/** Sentinel for "no filter" — a Select item cannot carry an empty string value. */
-const ALL = '__all__';
 
 /** First day of the current month, as a plain YYYY-MM-DD business date. */
 function monthStart(): string {
@@ -35,37 +31,37 @@ export function PackingUsageReport() {
   const { token, user } = useAuth();
   const isBranchManager = user?.role === 'branch_manager';
 
-  const [from, setFrom] = useState(monthStart());
-  const [to, setTo] = useState(businessDateStr());
-  const [branchId, setBranchId] = useState(ALL);
-  const [materialId, setMaterialId] = useState(ALL);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['businessDate', 'branchId', 'packingMaterialId'],
+    defaults: { filters: [{ key: 'businessDate', op: 'gte', value: monthStart() }, { key: 'businessDate', op: 'lte', value: businessDateStr() }] },
+  });
 
   // A branch manager is scoped server-side, so the branch filter is admin-only.
   const branchesQ = useBranches(token, { enabled: !isBranchManager });
   const materialsQ = usePackingMaterials(token, { includeInactive: true });
 
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+      ...(isBranchManager ? [] : [{ key: 'branchId', label: 'Branch', type: 'select' as const, placement: 'bar' as const, options: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })) }]),
+      { key: 'packingMaterialId', label: 'Packing Material', type: 'select', options: (materialsQ.data ?? []).map((m) => ({ value: m.id, label: m.materialName })) },
+    ],
+    [isBranchManager, branchesQ.data, materialsQ.data],
+  );
+
   const usageQ = usePackingUsage(token, {
-    from,
-    to,
-    branchId: branchId === ALL ? null : branchId,
-    packingMaterialId: materialId === ALL ? null : materialId,
-    page,
-    pageSize,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    branchId: (list.getFilter('branchId')?.value as string | undefined) ?? null,
+    packingMaterialId: (list.getFilter('packingMaterialId')?.value as string | undefined) ?? null,
+    page: list.state.page,
+    pageSize: list.state.pageSize,
   });
   const rows = useMemo(() => usageQ.data?.usage ?? [], [usageQ.data]);
   // Summed server-side over the WHOLE filtered range, not just this page.
   const totals = usageQ.data?.totals ?? { requested: 0, approved: 0, delivered: 0 };
   const pagination = usageQ.data?.pagination;
-
-  /** Any filter change resets to page 1 — a stale page on a narrowed range reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(1);
-    };
-  }
 
   const columns = [
     col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm tabular-nums">{i.getValue()}</span> }),
@@ -93,60 +89,10 @@ export function PackingUsageReport() {
     }),
   ];
 
-  function resetFilters() {
-    setFrom(monthStart());
-    setTo(businessDateStr());
-    setBranchId(ALL);
-    setMaterialId(ALL);
-    setPage(1);
-  }
-
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      {/* A grid below `sm` so each control gets a real width to fill — inside a
-          shrink-to-fit flex item, `w-full` resolves against the item's own
-          content width and the date inputs come out too narrow. */}
-      <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
-        <div className="space-y-1">
-          <label htmlFor="pu-from" className="text-xs font-medium text-muted-foreground">From</label>
-          <Input id="pu-from" type="date" value={from} max={to} onChange={(e) => setFilter(setFrom)(e.target.value)} className="h-9 w-full sm:w-40" />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="pu-to" className="text-xs font-medium text-muted-foreground">To</label>
-          <Input id="pu-to" type="date" value={to} min={from} onChange={(e) => setFilter(setTo)(e.target.value)} className="h-9 w-full sm:w-40" />
-        </div>
-
-        {!isBranchManager && (
-          <div className="col-span-2 space-y-1 sm:col-auto">
-            <label className="text-xs font-medium text-muted-foreground">Branch</label>
-            <Select value={branchId} onValueChange={(v) => v && setFilter(setBranchId)(v)}>
-              <SelectTrigger className="h-9 w-full sm:w-48"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All branches</SelectItem>
-                {(branchesQ.data ?? []).map((b) => (
-                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        <div className="col-span-2 space-y-1 sm:col-auto">
-          <label className="text-xs font-medium text-muted-foreground">Packing Material</label>
-          <Select value={materialId} onValueChange={(v) => v && setFilter(setMaterialId)(v)}>
-            <SelectTrigger className="h-9 w-full sm:w-56"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All materials</SelectItem>
-              {(materialsQ.data ?? []).map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.materialName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button variant="outline" className="col-span-2 h-9 sm:col-auto" onClick={resetFilters}>Reset</Button>
-      </div>
+      <FilterBar list={list} filters={filters} searchable={false} />
+      <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
       <DataTable
         columns={columns}
@@ -154,17 +100,17 @@ export function PackingUsageReport() {
         loading={usageQ.isLoading}
         // No client-side search: `rows` is one server page, so filtering it in
         // memory would hide matches sitting on other pages. The Branch/Material
-        // selects above already narrow the same fields a free-text box would.
+        // filters above already narrow the same fields a free-text box would.
         toolbar={false}
         pager={false}
-        manual={{ page, pageSize, total: pagination?.total ?? 0, onPageChange: setPage, search: '', onSearchChange: () => {} }}
+        manual={{ page: list.state.page, pageSize: list.state.pageSize, total: pagination?.total ?? 0, onPageChange: list.setPage, search: '', onSearchChange: () => {} }}
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={pagination?.total ?? 0}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={usageQ.isLoading}
       />
 

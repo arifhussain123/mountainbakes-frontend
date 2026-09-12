@@ -6,10 +6,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { StatCard } from '@/components/shared/StatCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -66,11 +67,11 @@ import {
   FINANCE_TICKET_TRANSITIONS,
   isFinanceTicketTerminal,
   type Attachment,
+  type FilterConfig,
   type FinanceQueryPriority,
   type FinanceQueryType,
   type FinanceTicket,
   type FinanceTicketStatus,
-  type PageSize,
 } from '@mb/shared';
 import { useBranches } from '@/lib/queries';
 import {
@@ -288,71 +289,105 @@ export function FinanceHelpDeskPage({
   const { format: money } = useMoney();
 
   const [view, setView] = useState<View>('queue');
-  const [status, setStatus] = useState<FinanceTicketStatus | 'all'>('all');
-  const [queryType, setQueryType] = useState<FinanceQueryType | 'all'>('all');
-  const [priority, setPriority] = useState<FinanceQueryPriority | 'all'>('all');
-  const [branchId, setBranchId] = useState('');
-  const [raisedBy, setRaisedBy] = useState('');
-  const [queryNo, setQueryNo] = useState('');
-  const [amountMin, setAmountMin] = useState('');
-  const [amountMax, setAmountMax] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [search, setSearch] = useState('');
-  // The page is stored WITH the filter identity it belongs to, so a filter
-  // change lands on page 1 by derivation rather than by an effect that
-  // resets state after a render has already asked for a page that no longer
-  // exists.
-  const [pageState, setPageState] = useState<{ key: string; page: number }>({ key: '', page: 1 });
-  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [showNew, setShowNew] = useState(false);
   const [newKey, setNewKey] = useState(0);
   const [viewing, setViewing] = useState<string | null>(null);
   const [rowAction, setRowAction] = useState<RowAction | null>(null);
-  const [moreFilters, setMoreFilters] = useState(false);
   const rowMutation = useFinanceMutation();
 
-  const debouncedSearch = useDebounce(search.trim(), 350);
-  const debouncedQueryNo = useDebounce(queryNo.trim(), 350);
-  const debouncedAmountMin = useDebounce(amountMin.trim(), 350);
-  const debouncedAmountMax = useDebounce(amountMax.trim(), 350);
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['status', 'queryType', 'priority', 'branchId', 'raisedBy', 'queryNo', 'amount', 'businessDate'],
+  });
 
   const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) });
   const { data: users = [] } = useFinanceHelpDeskUsers(abilities.admin);
+
+  function switchView(next: View) {
+    setView(next);
+    list.setPage(1);
+  }
+
+  const filterConfigs = useMemo<FilterConfig[]>(() => {
+    const cfgs: FilterConfig[] = [];
+    if (view !== 'drafts') {
+      cfgs.push({
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: FINANCE_TICKET_STATUSES.filter((s) => s !== 'draft').map((s) => ({ value: s, label: FINANCE_TICKET_STATUS_LABELS[s] })),
+      });
+    }
+    cfgs.push({
+      key: 'queryType', label: 'Query type', type: 'select', placement: 'bar',
+      options: FINANCE_QUERY_TYPES.map((t) => ({ value: t, label: FINANCE_QUERY_TYPE_LABELS[t] })),
+    });
+    cfgs.push({
+      key: 'priority', label: 'Priority', type: 'select',
+      options: FINANCE_QUERY_PRIORITIES.map((p) => ({ value: p, label: FINANCE_QUERY_PRIORITY_LABELS[p] })),
+    });
+    cfgs.push({ key: 'branchId', label: 'Branch', type: 'select' });
+    if (abilities.admin) cfgs.push({ key: 'raisedBy', label: 'Raised by', type: 'select' });
+    cfgs.push({ key: 'queryNo', label: 'Exact Query ID', type: 'text', placeholder: 'Exact Query ID' });
+    cfgs.push({ key: 'amount', label: 'Amount', type: 'number-range' });
+    cfgs.push({ key: 'businessDate', label: 'Date', type: 'date-range' });
+    return cfgs;
+  }, [view, abilities.admin]);
+
+  const filterOptions = useMemo(
+    () => ({
+      branchId: branches.map((b) => ({ value: b.id, label: b.name })),
+      raisedBy: users.map((u) => ({ value: u.id, label: u.name || u.email })),
+    }),
+    [branches, users],
+  );
+
+  const statusFilter = list.getFilter('status')?.value as FinanceTicketStatus | undefined;
+  const queryTypeFilter = list.getFilter('queryType')?.value as FinanceQueryType | undefined;
+  const priorityFilter = list.getFilter('priority')?.value as FinanceQueryPriority | undefined;
+  const branchIdFilter = list.getFilter('branchId')?.value as string | undefined;
+  const raisedByFilter = list.getFilter('raisedBy')?.value as string | undefined;
+  const queryNoFilter = list.getFilter('queryNo', 'ilike')?.value as string | undefined;
+  const amountMinFilter = list.getFilter('amount', 'gte')?.value as string | undefined;
+  const amountMaxFilter = list.getFilter('amount', 'lte')?.value as string | undefined;
+  const fromFilter = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+  const toFilter = list.getFilter('businessDate', 'lte')?.value as string | undefined;
+
+  // The search box is a raw DataTable input with no built-in debounce (unlike
+  // the Data Engine's own GenericSearch), so it is debounced here exactly as
+  // it was before this page moved onto the shared filter state.
+  const debouncedSearch = useDebounce(list.state.search.trim(), 350);
 
   const scope = useMemo(
     () => ({
       ...(view === 'drafts'
         ? { status: 'draft', mine: true }
         : view === 'deleted'
-          ? { deletedOnly: true, ...(status !== 'all' ? { status } : {}) }
-          : status !== 'all'
-            ? { status }
+          ? { deletedOnly: true, ...(statusFilter ? { status: statusFilter } : {}) }
+          : statusFilter
+            ? { status: statusFilter }
             : {}),
-      ...(queryType !== 'all' ? { queryType } : {}),
-      ...(priority !== 'all' ? { priority } : {}),
-      ...(branchId ? { branchId } : {}),
-      ...(raisedBy ? { raisedBy } : {}),
-      ...(debouncedQueryNo ? { queryNo: debouncedQueryNo } : {}),
-      ...(debouncedAmountMin ? { amountMin: debouncedAmountMin } : {}),
-      ...(debouncedAmountMax ? { amountMax: debouncedAmountMax } : {}),
-      ...(from ? { from } : {}),
-      ...(to ? { to } : {}),
+      ...(queryTypeFilter ? { queryType: queryTypeFilter } : {}),
+      ...(priorityFilter ? { priority: priorityFilter } : {}),
+      ...(branchIdFilter ? { branchId: branchIdFilter } : {}),
+      ...(raisedByFilter ? { raisedBy: raisedByFilter } : {}),
+      ...(queryNoFilter ? { queryNo: queryNoFilter } : {}),
+      ...(amountMinFilter ? { amountMin: amountMinFilter } : {}),
+      ...(amountMaxFilter ? { amountMax: amountMaxFilter } : {}),
+      ...(fromFilter ? { from: fromFilter } : {}),
+      ...(toFilter ? { to: toFilter } : {}),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
     }),
     [
-      view, status, queryType, priority, branchId, raisedBy, debouncedQueryNo,
-      debouncedAmountMin, debouncedAmountMax, from, to, debouncedSearch,
+      view, statusFilter, queryTypeFilter, priorityFilter, branchIdFilter, raisedByFilter,
+      queryNoFilter, amountMinFilter, amountMaxFilter, fromFilter, toFilter, debouncedSearch,
     ],
   );
 
-  const scopeKey = JSON.stringify(scope);
-  const page = pageState.key === scopeKey ? pageState.page : 1;
-  const setPage = (next: number) => setPageState({ key: scopeKey, page: next });
+  const apiFilters = useMemo(
+    () => ({ ...scope, page: list.state.page, pageSize: list.state.pageSize }),
+    [scope, list.state.page, list.state.pageSize],
+  );
 
-  const filters = useMemo(() => ({ ...scope, page, pageSize }), [scope, page, pageSize]);
-
-  const { data, isLoading, isFetching } = useFinanceTickets(filters);
+  const { data, isLoading, isFetching } = useFinanceTickets(apiFilters);
   const tickets = data?.tickets ?? [];
   const total = data?.total ?? 0;
 
@@ -628,157 +663,42 @@ export function FinanceHelpDeskPage({
     }
   }
 
-  const select = 'h-9 rounded-md border bg-background px-2 text-sm';
-
-  const filterControls = (
-    <div className="flex flex-wrap items-center gap-2">
-      {(abilities.report || abilities.admin) && (
-        <div className="flex rounded-md border p-0.5" role="tablist" aria-label="Which queries">
-          <Button
-            size="sm"
-            variant={view === 'queue' ? 'default' : 'ghost'}
-            className="h-8"
-            onClick={() => setView('queue')}
-            role="tab"
-            aria-selected={view === 'queue'}
-          >
-            <Inbox className="mr-1 h-3.5 w-3.5" /> Queue
-          </Button>
-          {abilities.report && (
-            <Button
-              size="sm"
-              variant={view === 'drafts' ? 'default' : 'ghost'}
-              className="h-8"
-              onClick={() => setView('drafts')}
-              role="tab"
-              aria-selected={view === 'drafts'}
-            >
-              <FileEdit className="mr-1 h-3.5 w-3.5" /> My Drafts
-            </Button>
-          )}
-          {abilities.admin && (
-            <Button
-              size="sm"
-              variant={view === 'deleted' ? 'default' : 'ghost'}
-              className="h-8"
-              onClick={() => setView('deleted')}
-              role="tab"
-              aria-selected={view === 'deleted'}
-            >
-              <Trash2 className="mr-1 h-3.5 w-3.5" /> Deleted
-            </Button>
-          )}
-        </div>
-      )}
-      {view !== 'drafts' && (
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
-          className={select}
-          aria-label="Filter by status"
-        >
-          <option value="all">All statuses</option>
-          {FINANCE_TICKET_STATUSES.filter((s) => s !== 'draft').map((s) => (
-            <option key={s} value={s}>
-              {FINANCE_TICKET_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      )}
-      <select
-        value={queryType}
-        onChange={(e) => setQueryType(e.target.value as typeof queryType)}
-        className={select}
-        aria-label="Filter by query type"
-      >
-        <option value="all">All types</option>
-        {FINANCE_QUERY_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {FINANCE_QUERY_TYPE_LABELS[t]}
-          </option>
-        ))}
-      </select>
-      <Button size="sm" variant={moreFilters ? 'secondary' : 'outline'} className="h-9" onClick={() => setMoreFilters((v) => !v)}>
-        {moreFilters ? 'Fewer filters' : 'More filters'}
-      </Button>
-    </div>
-  );
-
-  const extraFilters = moreFilters && (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-3">
-      <select
-        value={priority}
-        onChange={(e) => setPriority(e.target.value as typeof priority)}
-        className={select}
-        aria-label="Filter by priority"
-      >
-        <option value="all">All priorities</option>
-        {FINANCE_QUERY_PRIORITIES.map((p) => (
-          <option key={p} value={p}>
-            {FINANCE_QUERY_PRIORITY_LABELS[p]}
-          </option>
-        ))}
-      </select>
-      <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={select} aria-label="Filter by branch">
-        <option value="">All branches</option>
-        {branches.map((b) => (
-          <option key={b.id} value={b.id}>
-            {b.name}
-          </option>
-        ))}
-      </select>
-      {abilities.admin && (
-        <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)} className={select} aria-label="Filter by user">
-          <option value="">All users</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name || u.email}
-            </option>
-          ))}
-        </select>
-      )}
-      <Input
-        value={queryNo}
-        onChange={(e) => setQueryNo(e.target.value)}
-        placeholder="Exact Query ID"
-        className="h-9 w-44 font-mono"
-        aria-label="Exact Query ID"
-      />
-      <Input
-        value={amountMin}
-        onChange={(e) => setAmountMin(e.target.value.replace(/[^\d.]/g, ''))}
-        placeholder="Amount from"
-        inputMode="decimal"
-        className="h-9 w-32 tabular-nums"
-        aria-label="Amount from"
-      />
-      <Input
-        value={amountMax}
-        onChange={(e) => setAmountMax(e.target.value.replace(/[^\d.]/g, ''))}
-        placeholder="Amount to"
-        inputMode="decimal"
-        className="h-9 w-32 tabular-nums"
-        aria-label="Amount to"
-      />
-      <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-auto" aria-label="From date" />
-      <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-auto" aria-label="To date" />
+  const viewSwitch = (abilities.report || abilities.admin) && (
+    <div className="flex rounded-md border p-0.5" role="tablist" aria-label="Which queries">
       <Button
         size="sm"
-        variant="ghost"
-        className="h-9"
-        onClick={() => {
-          setPriority('all');
-          setBranchId('');
-          setRaisedBy('');
-          setQueryNo('');
-          setAmountMin('');
-          setAmountMax('');
-          setFrom('');
-          setTo('');
-        }}
+        variant={view === 'queue' ? 'default' : 'ghost'}
+        className="h-8"
+        onClick={() => switchView('queue')}
+        role="tab"
+        aria-selected={view === 'queue'}
       >
-        Clear
+        <Inbox className="mr-1 h-3.5 w-3.5" /> Queue
       </Button>
+      {abilities.report && (
+        <Button
+          size="sm"
+          variant={view === 'drafts' ? 'default' : 'ghost'}
+          className="h-8"
+          onClick={() => switchView('drafts')}
+          role="tab"
+          aria-selected={view === 'drafts'}
+        >
+          <FileEdit className="mr-1 h-3.5 w-3.5" /> My Drafts
+        </Button>
+      )}
+      {abilities.admin && (
+        <Button
+          size="sm"
+          variant={view === 'deleted' ? 'default' : 'ghost'}
+          className="h-8"
+          onClick={() => switchView('deleted')}
+          role="tab"
+          aria-selected={view === 'deleted'}
+        >
+          <Trash2 className="mr-1 h-3.5 w-3.5" /> Deleted
+        </Button>
+      )}
     </div>
   );
 
@@ -810,23 +730,35 @@ export function FinanceHelpDeskPage({
 
       <DashboardCards isAdmin={abilities.admin} />
 
-      {extraFilters}
+      <FilterBar
+        list={list}
+        filters={filterConfigs}
+        options={filterOptions}
+        searchable={false}
+        leading={viewSwitch}
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filterConfigs}
+        options={filterOptions}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       <DataTable
         columns={columns}
         data={tickets}
         loading={isLoading || (isFetching && tickets.length === 0)}
         searchPlaceholder="Search Query ID, reference, subject, user or branch…"
-        leading={filterControls}
         actions={embedded ? newButton : undefined}
         pager={false}
         manual={{
-          page,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total,
-          onPageChange: setPage,
-          search,
-          onSearchChange: setSearch,
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
         empty={
           <div className="p-10 text-center text-muted-foreground">
@@ -846,11 +778,11 @@ export function FinanceHelpDeskPage({
         }
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={total}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={isLoading || isFetching}
       />
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
@@ -8,8 +8,8 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type EmployeeAdvance,
+  type FilterConfig,
   type FinanceEmployee,
-  type PageSize,
   type SalaryPayment,
 } from '@mb/shared';
 import {
@@ -22,16 +22,29 @@ import {
 } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
-import { DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
+import {
+  DocumentActions,
+  FilterBar as LegacyFilterBar,
+  FilterField as LegacyFilterField,
+  FilterSelect as LegacyFilterSelect,
+} from './finance-actions';
 import { EmployeeAdvanceForm, EmployeeForm, SalaryForm, SalaryRevisionForm } from './SalaryForms';
 import { Eye, HandCoins, Pencil, Plus, TrendingUp, UserPlus } from 'lucide-react';
+
+/** Matches the Data Engine's own filter-control sizing for the one field
+    (Salary month) no shared component covers. */
+const FIELD_CLASS = 'min-w-[9rem] flex-1 space-y-1 sm:flex-none';
+const INPUT_CLASS = 'h-11 md:h-9';
 
 /**
  * The salary ledger, the advances against it, and the payroll master behind
@@ -92,32 +105,47 @@ export function SalaryLedgerPage() {
 // ---------------------------------------------------------------------------
 
 function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbilities> }) {
-  const [status, setStatus] = useState('');
   const [salaryMonth, setSalaryMonth] = useState('');
-  const [department, setDepartment] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SalaryPayment | null>(null);
   const [viewing, setViewing] = useState<SalaryPayment | null>(null);
 
-  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(1);
-    };
-  }
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'department'] });
 
   const employeesQ = useFinanceEmployees(true);
+
+  // Departments come off the employee master rather than a hardcoded list —
+  // a bakery's departments are whatever the payroll says they are.
+  const departments = uniqueDepartments(employeesQ.data);
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: [
+          { value: 'pending', label: 'Pending Approval' },
+          { value: 'draft', label: 'Draft' },
+          { value: 'posted', label: 'Posted' },
+          { value: 'locked', label: 'Locked' },
+          { value: 'rejected', label: 'Rejected' },
+        ],
+      },
+      { key: 'department', label: 'Department', type: 'select', placement: 'bar' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({ department: departments.map((d) => ({ value: d, label: d })) }),
+    [departments],
+  );
+
   const { data, isLoading } = useSalaryPayments({
-    status: status || undefined,
+    status: list.getFilter('status')?.value as string | undefined,
     salaryMonth: salaryMonth || undefined,
-    department: department || undefined,
-    search: search || undefined,
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    department: list.getFilter('department')?.value as string | undefined,
+    search: list.state.search || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
   });
 
   const rows = data?.salaries ?? [];
@@ -126,10 +154,6 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   // bounded per month/department in practice, but this under-counts rather
   // than silently including rows from other pages if that ever stops holding.
   const monthTotal = rows.reduce((sum, r) => sum + r.netSalary, 0);
-
-  // Departments come off the employee master rather than a hardcoded list —
-  // a bakery's departments are whatever the payroll says they are.
-  const departments = uniqueDepartments(employeesQ.data);
 
   const columns = [
     salaryCol.accessor('salaryNo', {
@@ -182,52 +206,46 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
 
   return (
     <div className="space-y-4">
-      <FilterBar>
-        <FilterField label="Status">
-          <FilterSelect
-            value={status}
-            onChange={setFilter(setStatus)}
-            allLabel="Any status"
-            options={[
-              { value: 'pending', label: 'Pending Approval' },
-              { value: 'draft', label: 'Draft' },
-              { value: 'posted', label: 'Posted' },
-              { value: 'locked', label: 'Locked' },
-              { value: 'rejected', label: 'Rejected' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Salary month">
-          <Input
-            type="month"
-            value={salaryMonth}
-            onChange={(e) => setFilter(setSalaryMonth)(e.target.value)}
-            className="h-11 md:h-9"
-          />
-        </FilterField>
-        <FilterField label="Department">
-          <FilterSelect
-            value={department}
-            onChange={setFilter(setDepartment)}
-            allLabel="All departments"
-            options={departments.map((d) => ({ value: d, label: d }))}
-          />
-        </FilterField>
-        <div className="ml-auto flex items-end gap-3">
-          {rows.length > 0 && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Net for this selection</p>
-              <Money value={monthTotal} className="text-lg font-bold" />
-            </div>
-          )}
-          {abilities.create && (
-            <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              New payslip
-            </Button>
-          )}
-        </div>
-      </FilterBar>
+      <FilterBar
+        list={list}
+        filters={filters}
+        options={filterOptions}
+        searchable={false}
+        leading={
+          <div className={FIELD_CLASS}>
+            <Label className="text-xs text-muted-foreground">Salary month</Label>
+            <Input
+              type="month"
+              value={salaryMonth}
+              onChange={(e) => { setSalaryMonth(e.target.value); list.setPage(1); }}
+              className={INPUT_CLASS}
+            />
+          </div>
+        }
+        actions={
+          <div className="ml-auto flex items-end gap-3">
+            {rows.length > 0 && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Net for this selection</p>
+                <Money value={monthTotal} className="text-lg font-bold" />
+              </div>
+            )}
+            {abilities.create && (
+              <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                New payslip
+              </Button>
+            )}
+          </div>
+        }
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        options={filterOptions}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       <DataTable
         columns={columns}
@@ -236,20 +254,20 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         searchPlaceholder="Search by employee…"
         pager={false}
         manual={{
-          page,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total: grandTotal,
-          onPageChange: setPage,
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={grandTotal}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={isLoading}
       />
 
@@ -435,41 +453,53 @@ function SalaryDetail({ salary, onClose }: { salary: SalaryPayment; onClose: () 
  * that was going to settle it never posted.
  */
 function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbilities> }) {
-  const [status, setStatus] = useState('');
-  const [department, setDepartment] = useState('');
-  const [recovery, setRecovery] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EmployeeAdvance | null>(null);
   const [viewing, setViewing] = useState<EmployeeAdvance | null>(null);
 
-  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(1);
-    };
-  }
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'recovery', 'department'] });
 
   const employeesQ = useFinanceEmployees(true);
+  const departments = uniqueDepartments(employeesQ.data);
+  const recovery = list.getFilter('recovery')?.value as string | undefined;
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: [
+          { value: 'pending', label: 'Pending Approval' },
+          { value: 'draft', label: 'Draft' },
+          { value: 'posted', label: 'Posted' },
+          { value: 'locked', label: 'Locked' },
+          { value: 'rejected', label: 'Rejected' },
+        ],
+      },
+      { key: 'recovery', label: 'Recovery', type: 'select', placement: 'bar', options: [{ value: 'outstanding', label: 'Still to recover' }] },
+      { key: 'department', label: 'Department', type: 'select' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({ department: departments.map((d) => ({ value: d, label: d })) }),
+    [departments],
+  );
+
   const { data, isLoading } = useEmployeeAdvances({
     // "Still to recover" is a posted-only view, so it replaces the status filter
     // rather than combining with it — a draft advance is owed by nobody yet.
-    status: recovery === 'outstanding' ? undefined : status || undefined,
+    status: recovery === 'outstanding' ? undefined : (list.getFilter('status')?.value as string | undefined),
     outstandingOnly: recovery === 'outstanding' || undefined,
-    department: department || undefined,
-    search: search || undefined,
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    department: list.getFilter('department')?.value as string | undefined,
+    search: list.state.search || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
   });
 
   const rows = data?.advances ?? [];
   const grandTotal = data?.total ?? 0;
   // Struck over the CURRENT page only — see the same note on the Salaries tab.
   const total = rows.reduce((sum, r) => sum + r.totalAmount, 0);
-  const departments = uniqueDepartments(employeesQ.data);
 
   const columns = [
     advanceCol.accessor('advanceNo', {
@@ -550,54 +580,37 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
 
   return (
     <div className="space-y-4">
-      <FilterBar>
-        <FilterField label="Status">
-          <FilterSelect
-            value={status}
-            onChange={setFilter(setStatus)}
-            allLabel="Any status"
-            options={[
-              { value: 'pending', label: 'Pending Approval' },
-              { value: 'draft', label: 'Draft' },
-              { value: 'posted', label: 'Posted' },
-              { value: 'locked', label: 'Locked' },
-              { value: 'rejected', label: 'Rejected' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Recovery">
-          <FilterSelect
-            value={recovery}
-            onChange={setFilter(setRecovery)}
-            allLabel="All advances"
-            options={[{ value: 'outstanding', label: 'Still to recover' }]}
-          />
-        </FilterField>
-        <FilterField label="Department">
-          <FilterSelect
-            value={department}
-            onChange={setFilter(setDepartment)}
-            allLabel="All departments"
-            options={departments.map((d) => ({ value: d, label: d }))}
-          />
-        </FilterField>
-        <div className="ml-auto flex items-end gap-3">
-          {rows.length > 0 && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">
-                {recovery === 'outstanding' ? 'Still to recover' : 'Paid in this selection'}
-              </p>
-              <Money value={total} className="text-lg font-bold" />
-            </div>
-          )}
-          {abilities.create && (
-            <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
-              <HandCoins className="h-3.5 w-3.5" />
-              New advance
-            </Button>
-          )}
-        </div>
-      </FilterBar>
+      <FilterBar
+        list={list}
+        filters={filters}
+        options={filterOptions}
+        searchable={false}
+        actions={
+          <div className="flex items-end gap-3">
+            {rows.length > 0 && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">
+                  {recovery === 'outstanding' ? 'Still to recover' : 'Paid in this selection'}
+                </p>
+                <Money value={total} className="text-lg font-bold" />
+              </div>
+            )}
+            {abilities.create && (
+              <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
+                <HandCoins className="h-3.5 w-3.5" />
+                New advance
+              </Button>
+            )}
+          </div>
+        }
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        options={filterOptions}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       <DataTable
         columns={columns}
@@ -606,20 +619,20 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         searchPlaceholder="Search by employee…"
         pager={false}
         manual={{
-          page,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total: grandTotal,
-          onPageChange: setPage,
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={grandTotal}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={isLoading}
       />
 
@@ -863,9 +876,9 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
 
   return (
     <div className="space-y-4">
-      <FilterBar>
-        <FilterField label="Show">
-          <FilterSelect
+      <LegacyFilterBar>
+        <LegacyFilterField label="Show">
+          <LegacyFilterSelect
             value={includeInactive ? 'all' : 'active'}
             onChange={(v) => setIncludeInactive(v === 'all')}
             allLabel="Active only"
@@ -874,14 +887,14 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
               { value: 'all', label: 'Including inactive' },
             ]}
           />
-        </FilterField>
+        </LegacyFilterField>
         {abilities.configure && (
           <Button size="sm" className="ml-auto h-11 md:h-9" onClick={() => setCreating(true)}>
             <UserPlus className="h-3.5 w-3.5" />
             Add employee
           </Button>
         )}
-      </FilterBar>
+      </LegacyFilterBar>
 
       <DataTable columns={columns} data={data ?? []} loading={isLoading} searchPlaceholder="Search employees…" />
 

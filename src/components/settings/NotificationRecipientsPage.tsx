@@ -5,6 +5,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -13,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { NotificationRecipient, NotificationLogRecord, NotificationChannel, Branch, ClosingDispatchResult, PageSize } from '@mb/shared';
+import type { NotificationRecipient, NotificationLogRecord, NotificationChannel, Branch, ClosingDispatchResult, FilterConfig } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Send, ScrollText } from 'lucide-react';
@@ -371,13 +373,6 @@ function RecipientDialog({ recipient, branches, onClose, onSaved }: {
 // --- Delivery log -----------------------------------------------------------
 type LogRow = NotificationLogRecord & { recipientName?: string | null; mobileNumber?: string | null };
 
-interface LogsFilterState {
-  businessDate: string;
-  status: string;
-  channel: string;
-  recipientId: string;
-}
-
 /**
  * Every send attempt, server-filtered and server-paged — this table grows one
  * row per recipient × channel × business day, so loading it all (the backend
@@ -390,31 +385,38 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
-  const [filters, setFilters] = useState<LogsFilterState>({
-    businessDate: '', status: '', channel: '', recipientId: '',
-  });
 
-  function setFilter<K extends keyof LogsFilterState>(key: K, value: LogsFilterState[K]) {
-    setFilters((f) => ({ ...f, [key]: value }));
-    setPage(0);
-  }
+  // Not URL-synced — this is a modal, not a page.
+  const list = useListQueryState({ filterKeys: ['businessDate', 'status', 'channel', 'recipientId'] });
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'businessDate', label: 'Business date', type: 'date', placement: 'bar' },
+      { key: 'status', label: 'Status', type: 'select', placement: 'bar', options: [{ value: 'pending', label: 'Pending' }, { value: 'sent', label: 'Sent' }, { value: 'failed', label: 'Failed' }] },
+      { key: 'channel', label: 'Channel', type: 'select', options: [{ value: 'whatsapp', label: 'WhatsApp' }, { value: 'sms', label: 'SMS' }] },
+      { key: 'recipientId', label: 'Recipient', type: 'select', options: recipients.map((r) => ({ value: r.id, label: r.recipientName })) },
+    ],
+    [recipients],
+  );
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (filters.businessDate) params.set('businessDate', filters.businessDate);
-    if (filters.status) params.set('status', filters.status);
-    if (filters.channel) params.set('channel', filters.channel);
-    if (filters.recipientId) params.set('recipientId', filters.recipientId);
-    params.set('limit', String(pageSize));
-    params.set('offset', String(page * pageSize));
+    const businessDate = list.getFilter('businessDate')?.value as string | undefined;
+    const status = list.getFilter('status')?.value as string | undefined;
+    const channel = list.getFilter('channel')?.value as string | undefined;
+    const recipientId = list.getFilter('recipientId')?.value as string | undefined;
+    if (businessDate) params.set('businessDate', businessDate);
+    if (status) params.set('status', status);
+    if (channel) params.set('channel', channel);
+    if (recipientId) params.set('recipientId', recipientId);
+    params.set('limit', String(list.state.pageSize));
+    params.set('offset', String((list.state.page - 1) * list.state.pageSize));
 
     apiCall<{ logs: LogRow[]; total: number }>(`/api/closing-notifications/logs?${params}`, {}, token)
       .then((r) => { setLogs(r.logs ?? []); setTotal(r.total ?? 0); })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load logs'))
       .finally(() => setLoading(false));
-  }, [token, filters, page, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, list.state]);
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -424,50 +426,8 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
           <DialogDescription>Every closing-summary send attempt, newest first.</DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="space-y-1">
-            <Label className="text-xs">Business date</Label>
-            <Input
-              type="date"
-              value={filters.businessDate}
-              onChange={(e) => setFilter('businessDate', e.target.value)}
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Status</Label>
-            <Select value={filters.status || '__all__'} onValueChange={(v) => setFilter('status', v === '__all__' ? '' : (v ?? ''))}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Any status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Channel</Label>
-            <Select value={filters.channel || '__all__'} onValueChange={(v) => setFilter('channel', v === '__all__' ? '' : (v ?? ''))}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Any channel</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Recipient</Label>
-            <Select value={filters.recipientId || '__all__'} onValueChange={(v) => setFilter('recipientId', v === '__all__' ? '' : (v ?? ''))}>
-              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Any recipient</SelectItem>
-                {recipients.map((r) => <SelectItem key={r.id} value={r.id}>{r.recipientName}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <FilterBar list={list} filters={filters} searchable={false} />
+        <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
         <div className="max-h-[50vh] overflow-y-auto">
           {loading ? (
@@ -500,11 +460,11 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
         </div>
 
         <Pagination
-          page={page + 1}
-          pageSize={pageSize}
+          page={list.state.page}
+          pageSize={list.state.pageSize}
           total={total}
-          onPageChange={(p) => setPage(p - 1)}
-          onPageSizeChange={(n) => { setPageSize(n); setPage(0); }}
+          onPageChange={list.setPage}
+          onPageSizeChange={list.setPageSize}
           loading={loading}
         />
 

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
+  type FilterConfig,
   type FinanceTransaction,
-  type PageSize,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
@@ -16,9 +16,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
-import { DateFilter, DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
+import { DocumentActions } from './finance-actions';
 import { FinanceEntryForm } from './FinanceEntryForm';
 import { Eye, Pencil, Plus } from 'lucide-react';
 
@@ -39,39 +41,61 @@ export function FinanceEntriesPage() {
   const { token } = useAuth();
   const abilities = useFinanceAbilities();
 
-  const [status, setStatus] = useState('');
-  const [type, setType] = useState('');
-  const [branchId, setBranchId] = useState('');
-  const [ledgerHeadId, setLedgerHeadId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [viewing, setViewing] = useState<FinanceTransaction | null>(null);
 
-  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(1);
-    };
-  }
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['status', 'type', 'ledgerHeadId', 'branchId', 'businessDate'],
+  });
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: [
+          { value: 'pending', label: 'Pending Approval' },
+          { value: 'draft', label: 'Draft' },
+          { value: 'posted', label: 'Posted' },
+          { value: 'locked', label: 'Locked' },
+          { value: 'rejected', label: 'Rejected' },
+        ],
+      },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+      {
+        key: 'type', label: 'Type', type: 'select',
+        options: [
+          { value: 'income', label: 'Income' },
+          { value: 'expense', label: 'Expense' },
+        ],
+      },
+      { key: 'ledgerHeadId', label: 'Ledger head', type: 'select' },
+      { key: 'branchId', label: 'Branch', type: 'select' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({
+      ledgerHeadId: (headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name })),
+      branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+    }),
+    [headsQ.data, branchesQ.data],
+  );
+
   const { data, isLoading } = useFinanceEntries({
-    status: status || undefined,
-    type: type || undefined,
-    branchId: branchId || undefined,
-    ledgerHeadId: ledgerHeadId || undefined,
-    from: from || undefined,
-    to: to || undefined,
-    search: search || undefined,
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    status: list.getFilter('status')?.value as string | undefined,
+    type: list.getFilter('type')?.value as string | undefined,
+    branchId: list.getFilter('branchId')?.value as string | undefined,
+    ledgerHeadId: list.getFilter('ledgerHeadId')?.value as string | undefined,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    search: list.state.search || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
   });
 
   const rows = data?.entries ?? [];
@@ -193,55 +217,16 @@ export function FinanceEntriesPage() {
 
       <ReadOnlyNotice abilities={abilities} />
 
-      <FilterBar>
-        <FilterField label="Status">
-          <FilterSelect
-            value={status}
-            onChange={setFilter(setStatus)}
-            allLabel="Any status"
-            options={[
-              { value: 'pending', label: 'Pending Approval' },
-              { value: 'draft', label: 'Draft' },
-              { value: 'posted', label: 'Posted' },
-              { value: 'locked', label: 'Locked' },
-              { value: 'rejected', label: 'Rejected' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Type">
-          <FilterSelect
-            value={type}
-            onChange={setFilter(setType)}
-            allLabel="Income & expense"
-            options={[
-              { value: 'income', label: 'Income' },
-              { value: 'expense', label: 'Expense' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Ledger head">
-          <FilterSelect
-            value={ledgerHeadId}
-            onChange={setFilter(setLedgerHeadId)}
-            allLabel="All heads"
-            options={(headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name }))}
-          />
-        </FilterField>
-        <FilterField label="Branch">
-          <FilterSelect
-            value={branchId}
-            onChange={setFilter(setBranchId)}
-            allLabel="All branches"
-            options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-          />
-        </FilterField>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={setFilter(setFrom)} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={setFilter(setTo)} />
-        </FilterField>
-      </FilterBar>
+      <FilterBar list={list} filters={filters} options={filterOptions} searchable={false} />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        options={filterOptions}
+        search={list.state.search}
+        onRemove={list.clearFilter}
+        onClearSearch={() => list.setSearch('')}
+        onClearAll={list.clearAll}
+      />
 
       <DataTable
         columns={columns}
@@ -250,20 +235,20 @@ export function FinanceEntriesPage() {
         searchPlaceholder="Search entries…"
         pager={false}
         manual={{
-          page,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total,
-          onPageChange: setPage,
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={total}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={isLoading}
       />
 

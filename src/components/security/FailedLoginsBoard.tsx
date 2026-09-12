@@ -1,26 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   LOGIN_ATTEMPT_REASONS,
   LOGIN_ATTEMPT_REASON_LABELS,
   businessDateStr,
   businessDaysAgoStr,
+  type FilterConfig,
   type LoginAttemptReason,
-  type PageSize,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useLoginAttempts, useLoginFilterOptions } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -31,8 +23,10 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { formatDate, formatTime } from '@/utils/date';
-import { Info, Search } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { formatBrowser, formatPlatform } from './sessionFormat';
 
 /**
@@ -59,18 +53,6 @@ import { formatBrowser, formatPlatform } from './sessionFormat';
  * not take would be worse than one that offers none.
  */
 
-const ALL = '__all__';
-
-interface Filters {
-  search: string;
-  reason: LoginAttemptReason | '';
-  country: string;
-  from: string;
-  to: string;
-}
-
-const NO_FILTERS: Filters = { search: '', reason: '', country: '', from: '', to: '' };
-
 /** Business dates, for the reason the history board's ranges are. */
 const QUICK_RANGES: ReadonlyArray<readonly [label: string, days: number]> = [
   ['Today', 0],
@@ -80,43 +62,49 @@ const QUICK_RANGES: ReadonlyArray<readonly [label: string, days: number]> = [
 
 export function FailedLoginsBoard() {
   const { token } = useAuth();
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
-
-  const set = <K extends keyof Filters>(key: K, value: Filters[K]) => {
-    setFilters((f) => ({ ...f, [key]: value }));
-    setPage(1);
-  };
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['reason', 'country', 'businessDate'] });
 
   const applyQuickRange = (days: number) => {
     const from = days === 0 ? businessDateStr() : businessDaysAgoStr(days);
     const to = businessDateStr();
-    const alreadyOn = filters.from === from && filters.to === to;
-    setFilters((f) => ({ ...f, from: alreadyOn ? '' : from, to: alreadyOn ? '' : to }));
-    setPage(1);
+    if (isQuickRange(days)) {
+      list.clearFilter('businessDate');
+    } else {
+      list.setFilter('businessDate', 'gte', from);
+      list.setFilter('businessDate', 'lte', to);
+    }
   };
 
   const isQuickRange = (days: number) =>
-    filters.from === (days === 0 ? businessDateStr() : businessDaysAgoStr(days)) &&
-    filters.to === businessDateStr();
+    list.getFilter('businessDate', 'gte')?.value === (days === 0 ? businessDateStr() : businessDaysAgoStr(days)) &&
+    list.getFilter('businessDate', 'lte')?.value === businessDateStr();
 
-  const query = useLoginAttempts(token, {
-    search: filters.search || null,
-    reason: filters.reason || null,
-    country: filters.country || null,
-    from: filters.from || null,
-    to: filters.to || null,
-    page,
-    pageSize,
-  });
   // Shared with the history board — the countries are the same set, because both
   // tables resolve their locations through the same IP lookup.
   const options = useLoginFilterOptions(token);
 
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'reason', label: 'Reason', type: 'select', placement: 'bar', options: LOGIN_ATTEMPT_REASONS.map((r) => ({ value: r, label: LOGIN_ATTEMPT_REASON_LABELS[r] })) },
+      { key: 'country', label: 'Country', type: 'select', placement: 'bar', options: (options.data?.countries ?? []).map((c) => ({ value: c, label: c })) },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+    ],
+    [options.data],
+  );
+
+  const query = useLoginAttempts(token, {
+    search: list.state.search || null,
+    reason: (list.getFilter('reason')?.value as LoginAttemptReason | undefined) || null,
+    country: (list.getFilter('country')?.value as string | undefined) || null,
+    from: (list.getFilter('businessDate', 'gte')?.value as string | undefined) || null,
+    to: (list.getFilter('businessDate', 'lte')?.value as string | undefined) || null,
+    page: list.state.page,
+    pageSize: list.state.pageSize,
+  });
+
   const rows = query.data?.attempts ?? [];
   const total = query.data?.total ?? 0;
-  const active = useMemo(() => Object.values(filters).some((v) => v !== ''), [filters]);
+  const active = list.hasActiveFilters;
 
   return (
     <div className="space-y-4">
@@ -131,82 +119,34 @@ export function FailedLoginsBoard() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={filters.search}
-            onChange={(e) => set('search', e.target.value)}
-            placeholder="Search the address that was typed…"
-            className="h-11 pl-9 md:h-9"
-          />
-        </div>
-
-        <Select
-          value={filters.reason || ALL}
-          onValueChange={(v) => set('reason', !v || v === ALL ? '' : (String(v) as LoginAttemptReason))}
-        >
-          <SelectTrigger className="h-11 w-[200px] md:h-9">
-            <SelectValue placeholder="Any reason" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Any reason</SelectItem>
-            {LOGIN_ATTEMPT_REASONS.map((r) => (
-              <SelectItem key={r} value={r}>{LOGIN_ATTEMPT_REASON_LABELS[r]}</SelectItem>
+      <FilterBar
+        list={list}
+        filters={filters}
+        searchPlaceholder="Search the address that was typed…"
+        leading={
+          <div className="flex flex-wrap gap-2">
+            {QUICK_RANGES.map(([label, days]) => (
+              <Button
+                key={label}
+                variant={isQuickRange(days) ? 'default' : 'outline'}
+                size="sm"
+                className="h-11 md:h-9"
+                onClick={() => applyQuickRange(days)}
+              >
+                {label}
+              </Button>
             ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filters.country || ALL}
-          onValueChange={(v) => set('country', !v || v === ALL ? '' : String(v))}
-        >
-          <SelectTrigger className="h-11 w-[160px] md:h-9">
-            <SelectValue placeholder="Any country" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Any country</SelectItem>
-            {(options.data?.countries ?? []).map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Input
-          type="date"
-          value={filters.from}
-          onChange={(e) => set('from', e.target.value)}
-          className="h-11 w-[150px] md:h-9"
-          aria-label="From business date"
-        />
-        <Input
-          type="date"
-          value={filters.to}
-          onChange={(e) => set('to', e.target.value)}
-          className="h-11 w-[150px] md:h-9"
-          aria-label="To business date"
-        />
-
-        {active && (
-          <Button variant="ghost" size="sm" className="h-11 md:h-9" onClick={() => { setFilters(NO_FILTERS); setPage(1); }}>
-            Clear
-          </Button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {QUICK_RANGES.map(([label, days]) => (
-          <Button
-            key={label}
-            variant={isQuickRange(days) ? 'default' : 'outline'}
-            size="sm"
-            className="h-9"
-            onClick={() => applyQuickRange(days)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
+          </div>
+        }
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        search={list.state.search}
+        onRemove={list.clearFilter}
+        onClearSearch={() => list.setSearch('')}
+        onClearAll={list.clearAll}
+      />
 
       {/* Desktop table */}
       <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
@@ -297,11 +237,11 @@ export function FailedLoginsBoard() {
 
       {total > 0 && (
         <Pagination
-          page={page}
-          pageSize={pageSize}
+          page={list.state.page}
+          pageSize={list.state.pageSize}
           total={total}
-          onPageChange={setPage}
-          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          onPageChange={list.setPage}
+          onPageSizeChange={list.setPageSize}
           loading={query.isFetching}
         />
       )}

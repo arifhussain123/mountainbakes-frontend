@@ -1,16 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { PageSize, ProductionLedgerType } from '@mb/shared';
+import { useMemo, useState } from 'react';
+import type { FilterConfig, ProductionLedgerType } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useCategories, useProductionLedger, useProducts } from '@/lib/queries';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, X } from 'lucide-react';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { cn } from '@/lib/utils';
 import { LEDGER_TYPE_OPTIONS, LEDGER_TYPE_META, LedgerQty, LedgerTypeChip } from './StockLedgerTypes';
 
@@ -52,27 +51,8 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
   /** Only consulted while `range === 'custom'`. See `window` below. */
   const [customFrom, setCustomFrom] = useState(date);
   const [customTo, setCustomTo] = useState(date);
-  const [productId, setProductId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [branchId, setBranchId] = useState('');
-  const [movementType, setMovementType] = useState('');
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
 
-  // The typed value and the SENT value are separate pieces of state. Binding the
-  // input straight to the query key would fire a request per keystroke.
-  //
-  // This is the ONE effect here, and it is the kind an effect is for: driving a
-  // timer, an external thing React does not own. The date window and the page
-  // offset below are plain derivations and assignments instead — syncing those
-  // through effects means rendering once with the stale value and again with the
-  // fresh one, which is exactly the cascade the lint rule is about.
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(search.trim()), 350);
-    return () => clearTimeout(t);
-  }, [search]);
+  const list = useListQueryState({ filterKeys: ['productId', 'categoryId', 'branchId', 'movementType'] });
 
   /**
    * The date window, DERIVED rather than stored.
@@ -94,161 +74,110 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
   }, [range, date, customFrom, customTo]);
 
   /**
-   * Change a filter and go back to page 1.
+   * Change the quick range / custom dates and go back to page 1.
    *
-   * Every filter setter goes through here rather than an effect watching them
-   * all. Narrowing a filter while on page 4 would otherwise ask for rows 76-100
+   * Narrowing a filter while on page 4 would otherwise ask for rows 76-100
    * of a 12-row result and show an empty table that reads as "no matches".
+   * The dropdown/search filters reset the page themselves via `list`.
    */
-  function withReset<T>(set: (v: T) => void) {
-    return (v: T) => { set(v); setPage(1); };
+  function changeRange(v: QuickRange) {
+    setRange(v);
+    list.setPage(1);
   }
-  const changeRange = withReset(setRange);
-  const changeProduct = withReset(setProductId);
-  const changeCategory = withReset(setCategoryId);
-  const changeBranch = withReset(setBranchId);
-  const changeMovement = withReset(setMovementType);
-  const changeSearch = withReset(setSearch);
-  const changeCustomFrom = withReset(setCustomFrom);
-  const changeCustomTo = withReset(setCustomTo);
+  function changeCustomFrom(v: string) {
+    setCustomFrom(v);
+    list.setPage(1);
+  }
+  function changeCustomTo(v: string) {
+    setCustomTo(v);
+    list.setPage(1);
+  }
 
-  const params = useMemo(
-    () => ({
-      from,
-      to,
-      ...(productId ? { productId } : {}),
-      ...(categoryId ? { categoryId } : {}),
-      ...(branchId ? { branchId } : {}),
-      ...(movementType ? { movementType } : {}),
-      ...(debounced ? { search: debounced } : {}),
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-    }),
-    [from, to, productId, categoryId, branchId, movementType, debounced, page, pageSize],
-  );
-
-  const q = useProductionLedger(token, params);
   const productsQ = useProducts(token, { isActive: true });
   const categoriesQ = useCategories(token);
   const branchesQ = useBranches(token);
 
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'productId', label: 'Product', type: 'select', options: (productsQ.data ?? []).map((p) => ({ value: p.id, label: p.name })) },
+      { key: 'branchId', label: 'Branch', type: 'select', options: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })) },
+      { key: 'categoryId', label: 'Category', type: 'select', options: (categoriesQ.data ?? []).map((c) => ({ value: c.id, label: c.name })) },
+      {
+        key: 'movementType', label: 'Movement', type: 'select',
+        options: LEDGER_TYPE_OPTIONS.map((t) => ({ value: t, label: LEDGER_TYPE_META[t as ProductionLedgerType].label })),
+      },
+    ],
+    [productsQ.data, branchesQ.data, categoriesQ.data],
+  );
+
+  const q = useProductionLedger(token, {
+    from,
+    to,
+    productId: list.getFilter('productId')?.value as string | undefined,
+    categoryId: list.getFilter('categoryId')?.value as string | undefined,
+    branchId: list.getFilter('branchId')?.value as string | undefined,
+    movementType: list.getFilter('movementType')?.value as string | undefined,
+    search: list.state.search || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
+  });
+
   const rows = q.data?.rows ?? [];
   const total = q.data?.total ?? 0;
 
-  const hasFilters =
-    !!productId || !!categoryId || !!branchId || !!movementType || !!debounced || range !== 'today';
-
-  function clearFilters() {
-    setRange('today');
-    setProductId('');
-    setCategoryId('');
-    setBranchId('');
-    setMovementType('');
-    setSearch('');
-    setPage(1);
-  }
-
   return (
     <div className="space-y-3 rounded-xl border bg-card p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-base font-semibold">Stock Movement History</h3>
-          <p className="text-xs text-muted-foreground">
-            Every posted movement, with its transaction number and who booked it.
-          </p>
-        </div>
-        {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
-            <X className="mr-1 h-3.5 w-3.5" /> Clear filters
-          </Button>
-        )}
+      <div>
+        <h3 className="text-base font-semibold">Stock Movement History</h3>
+        <p className="text-xs text-muted-foreground">
+          Every posted movement, with its transaction number and who booked it.
+        </p>
       </div>
 
-      {/* Quick ranges. Custom is not a button — it is what selecting a date does,
-          so the two date boxes below never disagree with a highlighted chip. */}
-      <div className="flex flex-wrap gap-1.5">
-        {([
-          ['today', 'Today'], ['yesterday', 'Yesterday'],
-          ['week', 'This week'], ['month', 'This month'],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => changeRange(key)}
-            className={cn(
-              'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-              range === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">From</Label>
-          <Input type="date" value={from} max={to} className="h-9"
-            onChange={(e) => { setRange('custom'); changeCustomFrom(e.target.value); }} />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">To</Label>
-          <Input type="date" value={to} min={from} className="h-9"
-            onChange={(e) => { setRange('custom'); changeCustomTo(e.target.value); }} />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Product</Label>
-          <Select value={productId || 'all'} onValueChange={(v) => changeProduct(!v || v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All products</SelectItem>
-              {(productsQ.data ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Category</Label>
-          <Select value={categoryId || 'all'} onValueChange={(v) => changeCategory(!v || v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {(categoriesQ.data ?? []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Branch</Label>
-          <Select value={branchId || 'all'} onValueChange={(v) => changeBranch(!v || v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All branches</SelectItem>
-              {(branchesQ.data ?? []).map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Movement</Label>
-          <Select value={movementType || 'all'} onValueChange={(v) => changeMovement(!v || v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All movements</SelectItem>
-              {LEDGER_TYPE_OPTIONS.map((t) => (
-                <SelectItem key={t} value={t}>{LEDGER_TYPE_META[t as ProductionLedgerType].label}</SelectItem>
+      <FilterBar
+        list={list}
+        filters={filters}
+        options={{}}
+        searchPlaceholder="Search product, code, branch, demand number or transaction ID…"
+        leading={
+          <div className="space-y-2">
+            {/* Quick ranges. Custom is not a button — it is what selecting a date
+                does, so the two date boxes below never disagree with a
+                highlighted chip. */}
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['today', 'Today'], ['yesterday', 'Yesterday'],
+                ['week', 'This week'], ['month', 'This month'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => changeRange(key)}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    range === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted',
+                  )}
+                >
+                  {label}
+                </button>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="h-9 pl-8"
-          placeholder="Search product, code, branch, demand number or transaction ID…"
-          value={search}
-          onChange={(e) => changeSearch(e.target.value)}
-        />
-      </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input type="date" value={from} max={to} className="h-11 md:h-9"
+                  onChange={(e) => { setRange('custom'); changeCustomFrom(e.target.value); }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input type="date" value={to} min={from} className="h-11 md:h-9"
+                  onChange={(e) => { setRange('custom'); changeCustomTo(e.target.value); }} />
+              </div>
+            </div>
+          </div>
+        }
+      />
+      <ActiveFilters filters={list.activeFilters} configs={filters} search={list.state.search} onRemove={list.clearFilter} onClearSearch={() => list.setSearch('')} onClearAll={list.clearAll} />
 
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[820px] text-sm">
@@ -312,11 +241,11 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
       </div>
 
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={total}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={q.isLoading}
       />
     </div>

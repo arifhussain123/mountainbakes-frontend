@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
+  type FilterConfig,
   type FinancePartner,
   type PageSize,
   type PartnerExpense,
@@ -21,10 +22,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
-import { DateFilter, DocumentActions, FilterBar, FilterField, FilterSelect } from './finance-actions';
+import { DocumentActions } from './finance-actions';
 import { PartnerDetailForm, PartnerTxnForm } from './CompanyTransactionForms';
 import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
 
@@ -130,35 +133,44 @@ function PartnerLedgerTab({
   txnKind: PartnerTxnKind;
   abilities: ReturnType<typeof useFinanceAbilities>;
 }) {
-  const [status, setStatus] = useState('');
-  const [partnerId, setPartnerId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PartnerExpense | null>(null);
   const [viewing, setViewing] = useState<PartnerExpense | null>(null);
 
-  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(1);
-    };
-  }
+  const list = useListQueryState({
+    syncUrl: true,
+    namespace: txnKind,
+    filterKeys: ['status', 'partnerId', 'businessDate'],
+  });
 
   const partnersQ = useFinancePartners();
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: [
+          { value: 'pending', label: 'Pending Approval' },
+          { value: 'draft', label: 'Draft' },
+          { value: 'posted', label: 'Posted' },
+          { value: 'locked', label: 'Locked' },
+          { value: 'rejected', label: 'Rejected' },
+        ],
+      },
+      { key: 'partnerId', label: 'Partner', type: 'select', placement: 'bar', options: (partnersQ.data ?? []).map((p) => ({ value: p.id, label: p.name })) },
+      { key: 'businessDate', label: 'Date', type: 'date-range' },
+    ],
+    [partnersQ.data],
+  );
+
   const { data, isLoading } = usePartnerExpenses({
     txnKind,
-    status: status || undefined,
-    partnerId: partnerId || undefined,
-    from: from || undefined,
-    to: to || undefined,
-    search: search || undefined,
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    status: list.getFilter('status')?.value as string | undefined,
+    partnerId: list.getFilter('partnerId')?.value as string | undefined,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    search: list.state.search || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
   });
 
   const rows = data?.expenses ?? [];
@@ -219,50 +231,33 @@ function PartnerLedgerTab({
 
   return (
     <div className="space-y-4">
-      <FilterBar>
-        <FilterField label="Status">
-          <FilterSelect
-            value={status}
-            onChange={setFilter(setStatus)}
-            allLabel="Any status"
-            options={[
-              { value: 'pending', label: 'Pending Approval' },
-              { value: 'draft', label: 'Draft' },
-              { value: 'posted', label: 'Posted' },
-              { value: 'locked', label: 'Locked' },
-              { value: 'rejected', label: 'Rejected' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Partner">
-          <FilterSelect
-            value={partnerId}
-            onChange={setFilter(setPartnerId)}
-            allLabel="All partners"
-            options={(partnersQ.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
-          />
-        </FilterField>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={setFilter(setFrom)} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={setFilter(setTo)} />
-        </FilterField>
-        <div className="ml-auto flex items-end gap-3">
-          {rows.length > 0 && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Total for this selection</p>
-              <Money value={total} className="text-lg font-bold" />
-            </div>
-          )}
-          {abilities.create && (
-            <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              New {label.toLowerCase()}
-            </Button>
-          )}
-        </div>
-      </FilterBar>
+      <FilterBar
+        list={list}
+        filters={filters}
+        searchable={false}
+        actions={
+          <div className="flex items-end gap-3">
+            {rows.length > 0 && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Total for this selection</p>
+                <Money value={total} className="text-lg font-bold" />
+              </div>
+            )}
+            {abilities.create && (
+              <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                New {label.toLowerCase()}
+              </Button>
+            )}
+          </div>
+        }
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       <DataTable
         columns={columns}
@@ -271,12 +266,12 @@ function PartnerLedgerTab({
         searchPlaceholder="Search by partner…"
         pager={false}
         manual={{
-          page,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total: grandTotal,
-          onPageChange: setPage,
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
         empty={
           <div className="p-6">
@@ -286,11 +281,11 @@ function PartnerLedgerTab({
         }
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={grandTotal}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={isLoading}
       />
 
@@ -391,23 +386,19 @@ function PartnerLedgerTab({
 // ---------------------------------------------------------------------------
 
 function PartnerShareDetailTab() {
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const list = useListQueryState({ syncUrl: true, namespace: 'partner-share', filterKeys: ['businessDate'] });
   const [viewingPartner, setViewingPartner] = useState<PartnerShareRow | null>(null);
 
-  const summaryQ = usePartnerShareSummary(from || undefined, to || undefined);
+  const from = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+  const to = list.getFilter('businessDate', 'lte')?.value as string | undefined;
+  const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }], []);
+  const summaryQ = usePartnerShareSummary(from, to);
   const summary = summaryQ.data;
 
   return (
     <div className="space-y-6">
-      <FilterBar>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={setFrom} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={setTo} />
-        </FilterField>
-      </FilterBar>
+      <FilterBar list={list} filters={filters} searchable={false} />
+      <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
       {summary && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

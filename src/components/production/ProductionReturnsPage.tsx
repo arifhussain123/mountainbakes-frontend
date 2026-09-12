@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { PageSize, ProductionReturn, ProductionReturnStatus } from '@mb/shared';
+import type { FilterConfig, ProductionReturn, ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useProducts, useProductionReturns, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import {
   Dialog,
@@ -19,8 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
@@ -88,10 +87,6 @@ const STATUS_LABELS: Record<string, string> = {
   returned: 'Sent Back to Branch',
 };
 
-// Sentinel rather than an empty string: Base UI's Select treats an absent value
-// as "show the placeholder", so '' as a real option would render as no value.
-const ALL_STATUSES = 'all';
-
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 
 /**
@@ -144,34 +139,31 @@ export function ProductionReturnsPage() {
   // of a confirmation returns to the detail rather than closing the dialog.
   const [viewRow, setViewRow] = useState<ProductionReturn | null>(null);
   const [pendingAction, setPendingAction] = useState<ProductionReturnStatus | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES);
-  const [branchFilter, setBranchFilter] = useState<string>(ALL_STATUSES);
-  const [productFilter, setProductFilter] = useState<string>(ALL_STATUSES);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
 
-  /** Every filter/search change resets to page 1 — a stale page number on a narrowed result set reads as "no results". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(1);
-    };
-  }
-
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'branchId', 'productId', 'businessDate'] });
   const branchesQ = useBranches(token);
   const productsQ = useProducts(token);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: (Object.keys(STATUS_LABELS) as ProductionReturnStatus[]).map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+      },
+      { key: 'branchId', label: 'Branch', type: 'select', placement: 'bar', options: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: short(b.name) })) },
+      { key: 'productId', label: 'Product', type: 'select', options: (productsQ.data ?? []).map((p) => ({ value: p.id, label: p.name })) },
+      { key: 'businessDate', label: 'Date', type: 'date-range' },
+    ],
+    [branchesQ.data, productsQ.data],
+  );
   const returnsQ = useProductionReturns(token, {
-    page,
-    limit: pageSize,
-    from: from || undefined,
-    to: to || undefined,
-    branchId: branchFilter === ALL_STATUSES ? undefined : branchFilter,
-    productId: productFilter === ALL_STATUSES ? undefined : productFilter,
-    status: statusFilter === ALL_STATUSES ? undefined : statusFilter,
-    search: search || undefined,
+    page: list.state.page,
+    limit: list.state.pageSize,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    branchId: list.getFilter('branchId')?.value as string | undefined,
+    productId: list.getFilter('productId')?.value as string | undefined,
+    status: list.getFilter('status')?.value as string | undefined,
+    search: list.state.search || undefined,
   });
   const reviewMut = useReviewReturn(token);
 
@@ -271,88 +263,8 @@ export function ProductionReturnsPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="return-status-filter" className="text-xs text-muted-foreground">
-            Status
-          </Label>
-          <Select value={statusFilter} onValueChange={(v) => setFilter(setStatusFilter)((v as string) ?? ALL_STATUSES)}>
-            <SelectTrigger id="return-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
-              {(Object.keys(STATUS_LABELS) as ProductionReturnStatus[]).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-branch-filter" className="text-xs text-muted-foreground">
-            Branch
-          </Label>
-          <Select value={branchFilter} onValueChange={(v) => setFilter(setBranchFilter)(v ?? ALL_STATUSES)}>
-            <SelectTrigger id="return-branch-filter" className="h-11 w-full sm:h-9 sm:w-44">
-              <SelectValue placeholder="All branches" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_STATUSES}>All branches</SelectItem>
-              {(branchesQ.data ?? []).map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {short(b.name)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-product-filter" className="text-xs text-muted-foreground">
-            Product
-          </Label>
-          <Select value={productFilter} onValueChange={(v) => setFilter(setProductFilter)(v ?? ALL_STATUSES)}>
-            <SelectTrigger id="return-product-filter" className="h-11 w-full sm:h-9 sm:w-44">
-              <SelectValue placeholder="All products" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_STATUSES}>All products</SelectItem>
-              {(productsQ.data ?? []).map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-from-filter" className="text-xs text-muted-foreground">
-            From
-          </Label>
-          <Input
-            id="return-from-filter"
-            type="date"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => setFilter(setFrom)(e.target.value)}
-            className="h-11 sm:h-9"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-to-filter" className="text-xs text-muted-foreground">
-            To
-          </Label>
-          <Input
-            id="return-to-filter"
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => setFilter(setTo)(e.target.value)}
-            className="h-11 sm:h-9"
-          />
-        </div>
-      </div>
+      <FilterBar list={list} filters={filters} searchable={false} />
+      <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
       <DataTable
         columns={columns}
@@ -361,20 +273,20 @@ export function ProductionReturnsPage() {
         searchPlaceholder="Search reason, product or branch…"
         pager={false}
         manual={{
-          page,
-          pageSize,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total,
-          onPageChange: setPage,
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
         }}
       />
       <Pagination
-        page={page}
-        pageSize={pageSize}
+        page={list.state.page}
+        pageSize={list.state.pageSize}
         total={total}
-        onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
         loading={returnsQ.isLoading}
       />
 

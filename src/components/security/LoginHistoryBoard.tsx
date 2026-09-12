@@ -1,27 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   USER_ROLES,
   businessDateStr,
   businessDaysAgoStr,
+  type FilterConfig,
   type LoginDeviceType,
   type LoginSession,
   type LoginSessionState,
-  type PageSize,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useLoginFilterOptions, useLoginHistoryPage } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -32,9 +24,11 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { formatDate, formatTime } from '@/utils/date';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, Eye, Search, ShieldOff } from 'lucide-react';
+import { AlertTriangle, Eye, ShieldOff } from 'lucide-react';
 import { StaffAvatar } from './StaffAvatar';
 import {
   LOGIN_STATUS_LABELS,
@@ -123,37 +117,6 @@ const HEADERS = [
   '',
 ] as const;
 
-/** '' is the "no filter" value: a Select cannot hold undefined. */
-const ALL = '__all__';
-
-interface Filters {
-  search: string;
-  state: LoginSessionState | '';
-  country: string;
-  from: string;
-  to: string;
-  suspiciousOnly: boolean;
-  branchId: string;
-  role: string;
-  city: string;
-  browser: string;
-  deviceType: LoginDeviceType | '';
-}
-
-const NO_FILTERS: Filters = {
-  search: '',
-  state: '',
-  country: '',
-  from: '',
-  to: '',
-  suspiciousOnly: false,
-  branchId: '',
-  role: '',
-  city: '',
-  browser: '',
-  deviceType: '',
-};
-
 const DEVICE_TYPES: LoginDeviceType[] = ['desktop', 'mobile', 'tablet', 'bot', 'unknown'];
 
 /**
@@ -181,269 +144,123 @@ export function LoginHistoryBoard({
   canRevoke: boolean;
 }) {
   const { token } = useAuth();
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
-  const [showMore, setShowMore] = useState(false);
-
-  // Every filter change resets to page 1. Without this, narrowing a filter while
-  // on page 7 lands on an empty page and reads as "no results" for a filter that
-  // has plenty.
-  const set = <K extends keyof Filters>(key: K, value: Filters[K]) => {
-    setFilters((f) => ({ ...f, [key]: value }));
-    setPage(1);
-  };
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['state', 'country', 'businessDate', 'suspiciousOnly', 'branchId', 'role', 'city', 'browser', 'deviceType'],
+  });
 
   /**
    * A quick range is a shortcut for the two date inputs, not a mode.
    *
-   * Setting the same fields the pickers set means the range stays visible and
-   * editable afterwards — an admin who clicks "Last 7 days" and then widens
-   * `from` by two days is doing something obvious, where a hidden mode would
-   * have to be cancelled first. Clicking the active one again clears it.
+   * Setting the same fields the date-range filter sets means the range stays
+   * visible and editable afterwards — an admin who clicks "Last 7 days" and
+   * then widens `from` by two days is doing something obvious, where a hidden
+   * mode would have to be cancelled first. Clicking the active one again
+   * clears it.
    */
   const applyQuickRange = (days: number) => {
     const from = days === 0 ? businessDateStr() : businessDaysAgoStr(days);
     const to = businessDateStr();
-    const alreadyOn = filters.from === from && filters.to === to;
-    setFilters((f) => ({ ...f, from: alreadyOn ? '' : from, to: alreadyOn ? '' : to }));
-    setPage(1);
+    if (isQuickRange(days)) {
+      list.clearFilter('businessDate');
+    } else {
+      list.setFilter('businessDate', 'gte', from);
+      list.setFilter('businessDate', 'lte', to);
+    }
   };
 
   const isQuickRange = (days: number) =>
-    filters.from === (days === 0 ? businessDateStr() : businessDaysAgoStr(days)) &&
-    filters.to === businessDateStr();
+    list.getFilter('businessDate', 'gte')?.value === (days === 0 ? businessDateStr() : businessDaysAgoStr(days)) &&
+    list.getFilter('businessDate', 'lte')?.value === businessDateStr();
+
+  const options = useLoginFilterOptions(token);
+  const branches = useBranches(token);
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'state', label: 'Status', type: 'select', placement: 'bar',
+        options: (Object.keys(STATE_LABELS) as LoginSessionState[]).map((s) => ({ value: s, label: STATE_LABELS[s] })),
+      },
+      { key: 'country', label: 'Country', type: 'select', placement: 'bar', options: (options.data?.countries ?? []).map((c) => ({ value: c, label: c })) },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+      {
+        key: 'suspiciousOnly', label: 'Flagged', type: 'boolean', placement: 'bar',
+        options: [{ value: 'true', label: 'Flagged only' }, { value: 'false', label: 'Not flagged' }],
+      },
+      { key: 'branchId', label: 'Branch', type: 'select', options: (branches.data ?? []).map((b) => ({ value: b.id, label: b.name })) },
+      { key: 'role', label: 'Role', type: 'select', options: USER_ROLES.map((r) => ({ value: r, label: r.replace(/_/g, ' ') })) },
+      { key: 'city', label: 'City', type: 'select', options: (options.data?.cities ?? []).map((c) => ({ value: c, label: c })) },
+      { key: 'browser', label: 'Browser', type: 'select', options: (options.data?.browsers ?? []).map((b) => ({ value: b, label: b })) },
+      { key: 'deviceType', label: 'Device', type: 'select', options: DEVICE_TYPES.map((d) => ({ value: d, label: d })) },
+    ],
+    [options.data, branches.data],
+  );
+
+  const stateFilter = list.getFilter('state')?.value as LoginSessionState | undefined;
 
   const query = useLoginHistoryPage(token, {
-    search: filters.search || null,
-    state: filters.state || null,
-    country: filters.country || null,
-    from: filters.from || null,
-    to: filters.to || null,
-    suspiciousOnly: filters.suspiciousOnly,
-    branchId: filters.branchId || null,
-    role: filters.role || null,
-    city: filters.city || null,
-    browser: filters.browser || null,
-    deviceType: filters.deviceType || null,
-    page,
-    pageSize,
+    search: list.state.search || null,
+    state: stateFilter || null,
+    country: (list.getFilter('country')?.value as string | undefined) || null,
+    from: (list.getFilter('businessDate', 'gte')?.value as string | undefined) || null,
+    to: (list.getFilter('businessDate', 'lte')?.value as string | undefined) || null,
+    suspiciousOnly: list.getFilter('suspiciousOnly')?.value === 'true',
+    branchId: (list.getFilter('branchId')?.value as string | undefined) || null,
+    role: (list.getFilter('role')?.value as string | undefined) || null,
+    city: (list.getFilter('city')?.value as string | undefined) || null,
+    browser: (list.getFilter('browser')?.value as string | undefined) || null,
+    deviceType: (list.getFilter('deviceType')?.value as LoginDeviceType | undefined) || null,
+    page: list.state.page,
+    pageSize: list.state.pageSize,
   });
-  const options = useLoginFilterOptions(token);
-  // Only fetched once the drawer is open. The branch list is not otherwise
-  // needed by this screen, and a request for it on every visit would be paid by
-  // the nine visits in ten that never open the drawer.
-  const branches = useBranches(token, { enabled: showMore });
 
   const rows = query.data?.sessions ?? [];
   const total = query.data?.total ?? 0;
-  const active = useMemo(
-    () => Object.entries(filters).some(([, v]) => v !== '' && v !== false),
-    [filters],
-  );
-  // The count is on the button so a filter set inside the collapsed drawer is
-  // never silently narrowing the list — the one genuine hazard of hiding
-  // controls behind a toggle.
-  const advancedCount = [filters.branchId, filters.role, filters.city, filters.browser, filters.deviceType]
-    .filter(Boolean).length;
+  const active = list.hasActiveFilters;
 
   return (
     <div className="space-y-4">
-      {/* Filters. Wrapped rather than in a fixed grid so a phone stacks them and
-          a wide screen puts them on one line without a breakpoint per control. */}
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={filters.search}
-            onChange={(e) => set('search', e.target.value)}
-            placeholder="Search by Mountain Bakes ID, name, email, place, browser, IP or status…"
-            className="h-11 pl-9 md:h-9"
-          />
-        </div>
-
-        <Select
-          value={filters.state || ALL}
-          // The primitive hands back `null` when a selection is cleared, so the
-          // value is normalised before it is compared with the sentinel.
-          onValueChange={(v) => set('state', !v || v === ALL ? '' : (String(v) as LoginSessionState))}
-        >
-          <SelectTrigger className="h-11 w-[150px] md:h-9">
-            <SelectValue placeholder="Any status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Any status</SelectItem>
-            {(Object.keys(STATE_LABELS) as LoginSessionState[]).map((s) => (
-              <SelectItem key={s} value={s}>{STATE_LABELS[s]}</SelectItem>
+      <FilterBar
+        list={list}
+        filters={filters}
+        searchPlaceholder="Search by Mountain Bakes ID, name, email, place, browser, IP or status…"
+        leading={
+          /* Quick ranges. Their own group ahead of the filters rather than more
+             controls in the same wrap: they set the same businessDate filter
+             the Date range control does, and an admin toggling "Active only"
+             is doing the same thing the Status filter does from a shortcut. */
+          <div className="flex flex-wrap gap-2">
+            {QUICK_RANGES.map(([label, days]) => (
+              <Button
+                key={label}
+                variant={isQuickRange(days) ? 'default' : 'outline'}
+                size="sm"
+                className="h-11 md:h-9"
+                onClick={() => applyQuickRange(days)}
+              >
+                {label}
+              </Button>
             ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filters.country || ALL}
-          onValueChange={(v) => set('country', !v || v === ALL ? '' : String(v))}
-        >
-          <SelectTrigger className="h-11 w-[160px] md:h-9">
-            <SelectValue placeholder="Any country" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Any country</SelectItem>
-            {(options.data?.countries ?? []).map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Business dates, matching the column the API filters on — so "1 Sep"
-            means the bakery's 1 September (08:00 to 02:00 the next morning),
-            not the calendar one, and a sign-in at half past midnight lands on
-            the day the staff member was working rather than the day after. */}
-        <Input
-          type="date"
-          value={filters.from}
-          onChange={(e) => set('from', e.target.value)}
-          className="h-11 w-[150px] md:h-9"
-          aria-label="From business date"
-        />
-        <Input
-          type="date"
-          value={filters.to}
-          onChange={(e) => set('to', e.target.value)}
-          className="h-11 w-[150px] md:h-9"
-          aria-label="To business date"
-        />
-
-        <Button
-          variant={filters.suspiciousOnly ? 'default' : 'outline'}
-          size="sm"
-          className="h-11 md:h-9"
-          onClick={() => set('suspiciousOnly', !filters.suspiciousOnly)}
-        >
-          <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> Flagged
-        </Button>
-
-        <Button
-          variant={advancedCount > 0 ? 'default' : 'outline'}
-          size="sm"
-          className="h-11 md:h-9"
-          onClick={() => setShowMore((v) => !v)}
-          aria-expanded={showMore}
-        >
-          More filters{advancedCount > 0 ? ` (${advancedCount})` : ''}
-        </Button>
-
-        {active && (
-          <Button variant="ghost" size="sm" className="h-11 md:h-9" onClick={() => { setFilters(NO_FILTERS); setPage(1); }}>
-            Clear
-          </Button>
-        )}
-      </div>
-
-      {/* Quick ranges. Their own row under the filters rather than more controls
-          in the same wrap: they set the two date fields above, and sitting
-          directly beneath them is what makes that relationship visible. */}
-      <div className="flex flex-wrap gap-2">
-        {QUICK_RANGES.map(([label, days]) => (
-          <Button
-            key={label}
-            variant={isQuickRange(days) ? 'default' : 'outline'}
-            size="sm"
-            className="h-9"
-            onClick={() => applyQuickRange(days)}
-          >
-            {label}
-          </Button>
-        ))}
-        <Button
-          variant={filters.state === 'active' ? 'default' : 'outline'}
-          size="sm"
-          className="h-9"
-          onClick={() => set('state', filters.state === 'active' ? '' : 'active')}
-        >
-          Active only
-        </Button>
-      </div>
-
-      {showMore && (
-        <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-3">
-          <Select
-            value={filters.branchId || ALL}
-            onValueChange={(v) => set('branchId', !v || v === ALL ? '' : String(v))}
-          >
-            <SelectTrigger className="h-11 w-[180px] md:h-9">
-              <SelectValue placeholder="Any branch" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Any branch</SelectItem>
-              {(branches.data ?? []).map((b) => (
-                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.role || ALL}
-            onValueChange={(v) => set('role', !v || v === ALL ? '' : String(v))}
-          >
-            <SelectTrigger className="h-11 w-[170px] md:h-9">
-              <SelectValue placeholder="Any role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Any role</SelectItem>
-              {USER_ROLES.map((r) => (
-                <SelectItem key={r} value={r} className="capitalize">
-                  {r.replace(/_/g, ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.city || ALL}
-            onValueChange={(v) => set('city', !v || v === ALL ? '' : String(v))}
-          >
-            <SelectTrigger className="h-11 w-[160px] md:h-9">
-              <SelectValue placeholder="Any city" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Any city</SelectItem>
-              {(options.data?.cities ?? []).map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.browser || ALL}
-            onValueChange={(v) => set('browser', !v || v === ALL ? '' : String(v))}
-          >
-            <SelectTrigger className="h-11 w-[160px] md:h-9">
-              <SelectValue placeholder="Any browser" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Any browser</SelectItem>
-              {(options.data?.browsers ?? []).map((b) => (
-                <SelectItem key={b} value={b}>{b}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.deviceType || ALL}
-            onValueChange={(v) => set('deviceType', !v || v === ALL ? '' : (String(v) as LoginDeviceType))}
-          >
-            <SelectTrigger className="h-11 w-[150px] md:h-9">
-              <SelectValue placeholder="Any device" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Any device</SelectItem>
-              {DEVICE_TYPES.map((d) => (
-                <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+            <Button
+              variant={stateFilter === 'active' ? 'default' : 'outline'}
+              size="sm"
+              className="h-11 md:h-9"
+              onClick={() => (stateFilter === 'active' ? list.clearFilter('state') : list.setFilter('state', 'eq', 'active'))}
+            >
+              Active only
+            </Button>
+          </div>
+        }
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        search={list.state.search}
+        onRemove={list.clearFilter}
+        onClearSearch={() => list.setSearch('')}
+        onClearAll={list.clearAll}
+      />
 
       {/* Desktop table. `overflow-x-auto` rather than a narrower column set at
           tablet width: fourteen columns do not fit a 768px screen, and dropping
@@ -630,11 +447,11 @@ export function LoginHistoryBoard({
           half of what an admin came to the screen to find out. */}
       {total > 0 && (
         <Pagination
-          page={page}
-          pageSize={pageSize}
+          page={list.state.page}
+          pageSize={list.state.pageSize}
           total={total}
-          onPageChange={setPage}
-          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          onPageChange={list.setPage}
+          onPageSizeChange={list.setPageSize}
           loading={query.isFetching}
         />
       )}
