@@ -230,6 +230,26 @@ export function useSalaryPayments(filters: Record<string, unknown>) {
   });
 }
 
+/**
+ * Distinct department names for a filter dropdown, case/whitespace-insensitive.
+ *
+ * `department` on `finance_employees` is free text (an `<Input>`, not a
+ * `<Select>`), so "Production" and "production" are different strings to a
+ * plain `Set`. Employee create/edit now normalizes on save, but existing rows
+ * (and anything written outside the app) can still disagree — dedupe here too
+ * so the dropdown never shows the same department twice.
+ */
+export function uniqueDepartments(employees: { department: string }[] | undefined): string[] {
+  const byKey = new Map<string, string>();
+  for (const e of employees ?? []) {
+    const trimmed = e.department.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (!byKey.has(key)) byKey.set(key, trimmed);
+  }
+  return [...byKey.values()].sort();
+}
+
 export function useFinanceEmployees(includeInactive = false) {
   const token = useToken();
   return useQuery({

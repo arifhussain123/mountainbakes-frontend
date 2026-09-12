@@ -12,6 +12,7 @@ import {
   type SalaryPayment,
 } from '@mb/shared';
 import {
+  uniqueDepartments,
   useEmployeeAdvances,
   useFinanceEmployees,
   useFinanceMutation,
@@ -126,7 +127,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
 
   // Departments come off the employee master rather than a hardcoded list —
   // a bakery's departments are whatever the payroll says they are.
-  const departments = Array.from(new Set((employeesQ.data ?? []).map((e) => e.department))).sort();
+  const departments = uniqueDepartments(employeesQ.data);
 
   const columns = [
     salaryCol.accessor('salaryNo', {
@@ -456,7 +457,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const grandTotal = data?.total ?? 0;
   // Struck over the CURRENT page only — see the same note on the Salaries tab.
   const total = rows.reduce((sum, r) => sum + r.totalAmount, 0);
-  const departments = Array.from(new Set((employeesQ.data ?? []).map((e) => e.department))).sort();
+  const departments = uniqueDepartments(employeesQ.data);
 
   const columns = [
     advanceCol.accessor('advanceNo', {

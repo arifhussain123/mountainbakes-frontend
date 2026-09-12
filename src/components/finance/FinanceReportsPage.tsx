@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import {
   downloadFinanceReport,
+  uniqueDepartments,
   useFinanceEmployees,
   useFinanceReport,
   useLedgerHeads,
@@ -139,7 +140,7 @@ export function FinanceReportsPage() {
 
   const { data: report, isLoading, isError, error } = useFinanceReport(query);
 
-  const departments = Array.from(new Set((employeesQ.data ?? []).map((e) => e.department))).sort();
+  const departments = uniqueDepartments(employeesQ.data);
 
   async function download(format: 'pdf' | 'excel' | 'csv') {
     if (!token) return;
