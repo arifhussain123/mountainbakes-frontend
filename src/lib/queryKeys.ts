@@ -16,8 +16,23 @@ export const qk = {
   products: (isActive?: boolean) => ['products', { isActive: isActive ?? null }] as const,
   packingMaterials: (includeInactive?: boolean) =>
     ['packingMaterials', { includeInactive: includeInactive ?? false }] as const,
-  packingUsage: (filters: { from?: string | null; to?: string | null; branchId?: string | null; packingMaterialId?: string | null }) =>
-    ['packingUsage', filters.from ?? null, filters.to ?? null, filters.branchId ?? null, filters.packingMaterialId ?? null] as const,
+  packingUsage: (filters: {
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    packingMaterialId?: string | null;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    [
+      'packingUsage',
+      filters.from ?? null,
+      filters.to ?? null,
+      filters.branchId ?? null,
+      filters.packingMaterialId ?? null,
+      filters.page ?? 1,
+      filters.pageSize ?? 50,
+    ] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
   branchLocations: () => ['branchLocations'] as const,
@@ -125,6 +140,7 @@ export const qk = {
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   productionOverview: () => ['productionOverview'] as const,
+  productionQueue: () => ['productionQueue'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })
   // after a prepare or an adjustment refreshes the table, the ledger and any open

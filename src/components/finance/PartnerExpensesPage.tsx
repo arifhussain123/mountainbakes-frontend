@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
@@ -622,9 +623,17 @@ function AddPartnerDetailFlow({
   );
 }
 
+const PARTNER_HISTORY_PAGE_SIZE = 20;
+
 function PartnerHistoryDetail({ row }: { row: PartnerShareRow }) {
-  const { data, isLoading } = usePartnerExpenses({ partnerId: row.id, limit: 500 });
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = usePartnerExpenses({
+    partnerId: row.id,
+    limit: PARTNER_HISTORY_PAGE_SIZE,
+    offset: (page - 1) * PARTNER_HISTORY_PAGE_SIZE,
+  });
   const txns = data?.expenses ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <div className="space-y-4 text-sm">
@@ -670,6 +679,9 @@ function PartnerHistoryDetail({ row }: { row: PartnerShareRow }) {
               </li>
             ))}
           </ul>
+        )}
+        {total > PARTNER_HISTORY_PAGE_SIZE && (
+          <Pagination page={page} pageSize={PARTNER_HISTORY_PAGE_SIZE} total={total} onPageChange={setPage} loading={isLoading} className="mt-2" />
         )}
       </div>
     </div>

@@ -27,7 +27,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, useMoney } from './finance-ui';
 import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
-import { FileSpreadsheet, FileText, Table2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Table2 } from 'lucide-react';
 
 /**
  * The ten reports.
@@ -44,6 +44,25 @@ import { FileSpreadsheet, FileText, Table2 } from 'lucide-react';
  */
 
 /** Which inputs each report actually uses. Anything not listed is not sent. */
+/**
+ * Reports whose row count scales with the documents in the period (one row
+ * per ledger entry / salary payment / partner expense / share approval) and
+ * so can genuinely need paging — mirrors `PAGINATED_REPORT_TYPES` in
+ * `backend/src/services/finance-reports.service.ts`. The other three
+ * (income_statement, profit_loss, trial_balance) aggregate to one row per
+ * ledger head and never carry a `pagination` field, so no pager is shown.
+ */
+const PAGINATED_REPORT_TYPES = new Set<FinanceReportType>([
+  'daily_cash_book',
+  'general_ledger',
+  'expense_report',
+  'company_share',
+  'branch_share',
+  'salary',
+  'partner_expense',
+]);
+const REPORT_PAGE_SIZE = 50;
+
 const REPORT_FIELDS: Record<FinanceReportType, readonly string[]> = {
   daily_cash_book: ['from', 'to', 'branchId'],
   general_ledger: ['from', 'to', 'ledgerHeadId', 'branchId'],
@@ -74,6 +93,7 @@ export function FinanceReportsPage() {
   const [department, setDepartment] = useState('');
   const [salaryMonth, setSalaryMonth] = useState(today.slice(0, 7));
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -84,8 +104,9 @@ export function FinanceReportsPage() {
 
   // Only the fields this report uses reach the API. Sending a stale partnerName
   // to a Trial Balance would be rejected by the query schema at best and quietly
-  // narrow the result at worst.
-  const query = useMemo(() => {
+  // narrow the result at worst. This is also the query the export buttons use —
+  // never paginated, since a download must hold the whole filtered report.
+  const filterQuery = useMemo(() => {
     const q: Record<string, unknown> = { type };
     if (uses('from')) q['from'] = from;
     if (uses('to')) q['to'] = to;
@@ -99,6 +120,23 @@ export function FinanceReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, from, to, branchId, ledgerHeadId, partnerName, employeeId, department, salaryMonth]);
 
+  // A filter change means the previous page number may no longer make sense
+  // (or even exist) against the new result set, so it resets to 1. Done as a
+  // render-time state adjustment (React's documented pattern for "reset state
+  // when a prop/derived value changes") rather than an effect, which would
+  // cause an extra cascading render.
+  const filterKey = JSON.stringify(filterQuery);
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
+
+  const query = useMemo(
+    () => (PAGINATED_REPORT_TYPES.has(type) ? { ...filterQuery, page, pageSize: REPORT_PAGE_SIZE } : filterQuery),
+    [filterQuery, type, page],
+  );
+
   const { data: report, isLoading, isError, error } = useFinanceReport(query);
 
   const departments = Array.from(new Set((employeesQ.data ?? []).map((e) => e.department))).sort();
@@ -107,7 +145,9 @@ export function FinanceReportsPage() {
     if (!token) return;
     setDownloading(format);
     try {
-      await downloadFinanceReport(query, format, token);
+      // Always the unpaginated filterQuery, never `query` — the export must
+      // hold every row the filters matched, not just the page on screen.
+      await downloadFinanceReport(filterQuery, format, token);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not export this report');
     } finally {
@@ -231,7 +271,7 @@ export function FinanceReportsPage() {
           <Skeleton className="h-80 w-full rounded-lg" />
         </div>
       ) : report ? (
-        <ReportView report={report} />
+        <ReportView report={report} onPageChange={setPage} />
       ) : null}
     </div>
   );
@@ -239,7 +279,7 @@ export function FinanceReportsPage() {
 
 // ---------------------------------------------------------------------------
 
-function ReportView({ report }: { report: FinanceReport }) {
+function ReportView({ report, onPageChange }: { report: FinanceReport; onPageChange: (page: number) => void }) {
   const { format: money } = useMoney();
 
   /** Render one cell the way its column says to. */
@@ -392,6 +432,44 @@ function ReportView({ report }: { report: FinanceReport }) {
             )}
           </div>
         </>
+      )}
+
+      {report.pagination && (
+        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            {report.pagination.total === 0
+              ? 'No entries'
+              : `Showing ${(report.pagination.page - 1) * report.pagination.pageSize + 1}–${Math.min(
+                  report.pagination.page * report.pagination.pageSize,
+                  report.pagination.total,
+                )} of ${report.pagination.total}`}
+          </span>
+          <div className="flex items-center gap-2">
+            <span>
+              Page {report.pagination.page} of {report.pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 md:h-7 md:w-7"
+              aria-label="Previous page"
+              disabled={!report.pagination.hasPrevious}
+              onClick={() => onPageChange(report.pagination!.page - 1)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 md:h-7 md:w-7"
+              aria-label="Next page"
+              disabled={!report.pagination.hasNext}
+              onClick={() => onPageChange(report.pagination!.page + 1)}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
