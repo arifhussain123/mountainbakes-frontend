@@ -16,8 +16,23 @@ export const qk = {
   products: (isActive?: boolean) => ['products', { isActive: isActive ?? null }] as const,
   packingMaterials: (includeInactive?: boolean) =>
     ['packingMaterials', { includeInactive: includeInactive ?? false }] as const,
-  packingUsage: (filters: { from?: string | null; to?: string | null; branchId?: string | null; packingMaterialId?: string | null }) =>
-    ['packingUsage', filters.from ?? null, filters.to ?? null, filters.branchId ?? null, filters.packingMaterialId ?? null] as const,
+  packingUsage: (filters: {
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    packingMaterialId?: string | null;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    [
+      'packingUsage',
+      filters.from ?? null,
+      filters.to ?? null,
+      filters.branchId ?? null,
+      filters.packingMaterialId ?? null,
+      filters.page ?? 1,
+      filters.pageSize ?? 50,
+    ] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
   branchLocations: () => ['branchLocations'] as const,

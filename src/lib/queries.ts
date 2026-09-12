@@ -273,10 +273,45 @@ export function useDeletePackingMaterial(token: string) {
   });
 }
 
-/** Daily Packing Material Usage report. `deliveredQty` is derived from approval. */
+export interface PackingUsageTotals {
+  requested: number;
+  approved: number;
+  delivered: number;
+}
+
+export interface PackingUsagePagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+export interface PackingUsageResponse {
+  usage: PackingMaterialUsageRow[];
+  totals: PackingUsageTotals;
+  pagination: PackingUsagePagination;
+}
+
+/**
+ * Daily Packing Material Usage report. `deliveredQty` is derived from approval.
+ *
+ * Server-paginated: `usage` is only the current page, `totals` are summed over
+ * the whole filtered range (never just the page), and `pagination` drives the
+ * pager — a wide date range across every branch/material can produce far more
+ * rows than one screen should render at once.
+ */
 export function usePackingUsage(
   token: string,
-  filters: { from?: string | null; to?: string | null; branchId?: string | null; packingMaterialId?: string | null },
+  filters: {
+    from?: string | null;
+    to?: string | null;
+    branchId?: string | null;
+    packingMaterialId?: string | null;
+    page?: number;
+    pageSize?: number;
+  },
   opts?: { enabled?: boolean },
 ) {
   return useQuery({
@@ -287,14 +322,11 @@ export function usePackingUsage(
       if (filters.to) qs.set('to', filters.to);
       if (filters.branchId) qs.set('branchId', filters.branchId);
       if (filters.packingMaterialId) qs.set('packingMaterialId', filters.packingMaterialId);
+      if (filters.page) qs.set('page', String(filters.page));
+      if (filters.pageSize) qs.set('pageSize', String(filters.pageSize));
       const query = qs.toString();
-      return apiCall<{ usage: PackingMaterialUsageRow[] }>(
-        `/api/reports/packing-usage${query ? `?${query}` : ''}`,
-        {},
-        token,
-      );
+      return apiCall<PackingUsageResponse>(`/api/reports/packing-usage${query ? `?${query}` : ''}`, {}, token);
     },
-    select: (r) => r.usage ?? [],
     enabled: !!token && (opts?.enabled ?? true),
   });
 }

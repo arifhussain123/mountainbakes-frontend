@@ -278,6 +278,12 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
  * rather than a query fired on every row of the table behind it.
  */
 function SalaryDetail({ salary, onClose }: { salary: SalaryPayment; onClose: () => void }) {
+  // Not paginated on purpose: this is the exact set of advances that make up
+  // THIS payslip's Deduction line, a bounded reconciliation figure (a payslip
+  // recovers a handful of advances, never an unbounded history) — an auditor
+  // needs the true total, so slicing it into pages would risk showing a
+  // partial (wrong) "Advances recovered" figure. The 500 cap is a generous
+  // safety bound, not a working pagination limit.
   const recoveredQ = useEmployeeAdvances({ salaryId: salary.id, limit: 500 });
   const recovered = recoveredQ.data?.advances ?? [];
   const recoveredTotal = recovered.reduce((t, a) => t + a.totalAmount, 0);

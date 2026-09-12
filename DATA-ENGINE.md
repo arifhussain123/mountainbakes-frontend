@@ -99,11 +99,19 @@ site is unchanged.
 
 ## Pages on the engine
 
-Orders (`OrdersPage`, admin + branch + production), Shop Expenses, Customers,
-Users (All Users tab), Products (Products tab). Their column definitions are
-the ones they had; what changed is where filtering happens.
+Orders (`OrdersPage`, admin + branch + production), Sales (`SalesPage`), Shop
+Expenses, Customers, Users (All Users tab), Products (Products tab), Production
+Orders (`ProductionOrdersPage`). Their column definitions are the ones they
+had; what changed is where filtering happens.
 
-Not migrated, on purpose: Sales (a one-day sheet whose cards are computed over
-the whole day — it needs the aggregate migration first), Finance Help Desk and
-Login History (already server-paged on their own endpoints), Production Orders
-(client-side pivot), Support Center (2 100 lines, embeds the Help Desk).
+Sales and Production Orders each also render a separate, non-generic summary
+card above their `GenericDataTable` list — Sales' Daily Summary and Production
+Orders' Demand Summary — that fetches and reduces its own dataset client-side.
+That's deliberate, not a leftover of an incomplete migration: Sales' card must
+reconcile exactly with the closing report, and Production Orders' card
+consolidates a rolling window of demand separately from the paginated list
+below it. Neither reads through the data-engine list itself.
+
+Not migrated, on purpose: Finance Help Desk and Login History (already
+server-paged on their own endpoints), Support Center (2 100 lines, embeds the
+Help Desk).
