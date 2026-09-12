@@ -300,6 +300,18 @@ export function BranchIncomePage() {
         loading={isLoading}
         searchPlaceholder="Search by branch or reference…"
         pager={false}
+        empty={
+          zeroRows.length > 0 ? (
+            <div className="p-6 text-center">
+              <Info className="mx-auto mb-2 h-8 w-8 text-muted-foreground/60" aria-hidden />
+              <p className="font-medium">Every row for this selection has zero collection</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Zero-collection rows have nothing to approve or split, so they don&apos;t take a table row — see
+                &quot;Zero Collection&quot; above ({zeroRows.length}).
+              </p>
+            </div>
+          ) : undefined
+        }
         manual={{
           page: page + 1,
           pageSize: PAGE_SIZE,
@@ -311,7 +323,11 @@ export function BranchIncomePage() {
       />
 
       <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} total</span>
+        {/* `total` is the raw filtered count from the server, before zero-collection
+            rows are pulled out of the table above — so it can outnumber what's
+            actually visible. Spelling that out here is what stops "18 total" next
+            to an empty table from reading as broken pagination. */}
+        <span>{total} total{zeroRows.length > 0 && ` (${zeroRows.length} zero-collection, shown above)`}</span>
         <div className="flex items-center gap-2">
           <span>Page {page + 1} of {pageCount}</span>
           <Button
