@@ -80,11 +80,14 @@ export function FinanceEntryForm({
    * Photos are uploaded the moment they are captured, so this holds the STORED
    * attachments — not pending files. The form field carries only their ids.
    *
-   * On an existing entry they are already bound and cannot be changed (the
-   * update endpoint has no attachmentIds field, by design), so the form shows
-   * them read-only rather than offering the camera again.
+   * On an existing entry these start out read-only (shown via AttachmentGallery)
+   * until "Replace photo" is clicked, at which point capturing a new one stages
+   * a fresh, unbound attachment here — the old one is only dropped server-side
+   * once the new one is confirmed bound (see `replacingPhoto` and `save` below).
    */
   const [photos, setPhotos] = useState<Attachment[]>(entry?.attachments ?? []);
+  /** Edit mode only: true once the admin has chosen to capture a new receipt. */
+  const [replacingPhoto, setReplacingPhoto] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<{
     match: DuplicateIncomeMatch;
     data: CreateFinanceTransactionInput;
@@ -139,13 +142,14 @@ export function FinanceEntryForm({
       if (entry) {
         // Editing only ever touches a draft or a rejected document — a posted one
         // has no update path at all, by design.
-        // attachmentIds is stripped alongside asDraft: an edit revises the
-        // figures, and the photos bound at creation stay bound (see the note on
-        // UpdateFinanceTransactionSchema).
+        // attachmentIds is sent ONLY when the admin actually replaced the photo.
+        // The ids already bound to this entry must never be resent here: the
+        // server's bind step only accepts staged (unbound) ids, so replaying the
+        // existing ones would fail rather than being a harmless no-op.
         await mut.mutateAsync({
           path: `/api/finance/income/entries/${entry.id}`,
           method: 'PUT',
-          body: { ...data, asDraft: undefined, attachmentIds: undefined },
+          body: { ...data, asDraft: undefined, attachmentIds: replacingPhoto ? data.attachmentIds : undefined },
         });
         toast.success('Entry updated');
       } else {
@@ -328,7 +332,7 @@ export function FinanceEntryForm({
         <Textarea rows={2} placeholder="Anything an approver should know" {...form.register('notes')} />
       </div>
 
-      {entry ? (
+      {entry && !replacingPhoto ? (
         <div className="space-y-2">
           <Label>Photo</Label>
           <AttachmentGallery
@@ -336,13 +340,27 @@ export function FinanceEntryForm({
             title={`${entry.txnNo} receipt`}
             emptyText="No photo was captured with this entry."
           />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              // Clears the (already-bound, non-reusable) old ids so a submit
+              // without capturing a new photo is blocked by validation instead
+              // of silently resending ids the server will reject.
+              setPhotoField([]);
+              setReplacingPhoto(true);
+            }}
+          >
+            Replace photo
+          </Button>
         </div>
       ) : (
         <PhotoCapture
           entity="finance_transaction"
           value={photos}
           onChange={setPhotoField}
-          label="Receipt photo"
+          label={entry ? 'New receipt photo' : 'Receipt photo'}
           required
           disabled={mut.isPending}
           hint="Photograph the receipt, bill or transfer slip that backs this entry."
@@ -385,8 +403,20 @@ export function FinanceEntryForm({
             Save as draft
           </Button>
         )}
+        {entry && (
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="flex-1"
+            disabled={mut.isPending}
+            onClick={() => onSuccess?.()}
+          >
+            Cancel
+          </Button>
+        )}
         <Button type="submit" size="lg" className="flex-1" disabled={mut.isPending}>
-          {mut.isPending ? 'Saving…' : entry ? 'Save changes' : 'Submit for approval'}
+          {mut.isPending ? 'Saving…' : entry ? 'Update entry' : 'Submit for approval'}
         </Button>
       </div>
     </form>

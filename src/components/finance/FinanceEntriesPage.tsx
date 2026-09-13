@@ -264,7 +264,7 @@ export function FinanceEntriesPage() {
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit {editing?.txnNo}</DialogTitle>
+            <DialogTitle>Edit income or expense entry</DialogTitle>
           </DialogHeader>
           {editing && <FinanceEntryForm entry={editing} onSuccess={() => setEditing(null)} />}
         </DialogContent>
