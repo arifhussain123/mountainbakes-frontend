@@ -31,7 +31,6 @@ import {
   ShieldCheck,
   ShieldAlert,
   Scale,
-  FileSearch,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -60,10 +59,6 @@ export const ADMIN_NAV: NavItem[] = [
   // the money, and it is where a branch's disputed day gets unlocked or amended.
   { label: 'Daily Sale Records', href: ROUTES.DAILY_SALE_RECORDS, icon: Scale },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
-  // The Finance Help Desk is also a tab inside the Support Center; this is the
-  // direct door for an Admin working the finance queue on its own.
-  { label: 'Finance Help Desk', href: ROUTES.FINANCE_HELP_DESK, icon: Headset },
-  { label: 'Finance Query',   href: ROUTES.FINANCE_QUERIES,  icon: FileSearch },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
   { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
@@ -98,8 +93,6 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
   { label: 'Audit Trail',      href: ROUTES.FINANCE_AUDIT,             icon: ShieldCheck },
-  { label: 'Help Desk',        href: ROUTES.FINANCE_HELP_DESK,         icon: Headset },
-  { label: 'Finance Query',    href: ROUTES.FINANCE_QUERIES,           icon: FileSearch },
   { label: 'Settings',         href: ROUTES.FINANCE_SETTINGS,          icon: Settings },
 ];
 
