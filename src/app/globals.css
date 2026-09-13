@@ -283,32 +283,6 @@
 ::-webkit-scrollbar-thumb { background: oklch(0.85 0.02 88); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
-/*
- * Scroll shadow on DataTable's horizontally-scrolling wrapper
- * (components/ui/table.tsx's [data-slot="table-container"]).
- *
- * A wide table (Finance Entries' 10 columns, action buttons included) can
- * scroll its Edit/Approve/View buttons out of view with only a thin 6px
- * scrollbar as a hint — easy to miss, especially on a trackpad that
- * auto-hides it. This is the standard background-attachment trick: two
- * "cover" gradients that fade to solid near each edge (local — they scroll
- * with the content, so they only ever mask the edge, not the middle), and
- * two shadow gradients right behind them that stay fixed to the viewport
- * (scroll) and only show once the matching cover gradient has scrolled far
- * enough to reveal them. No JS, and nothing else moves or overlaps.
- */
-[data-slot="table-container"] {
-  background:
-    linear-gradient(to right, var(--card) 30%, transparent),
-    linear-gradient(to left, var(--card) 30%, transparent) right,
-    linear-gradient(to right, oklch(0 0 0 / 15%), transparent),
-    linear-gradient(to left, oklch(0 0 0 / 15%), transparent) right;
-  background-repeat: no-repeat;
-  background-color: var(--card);
-  background-size: 24px 100%, 24px 100%, 10px 100%, 10px 100%;
-  background-attachment: local, local, scroll, scroll;
-}
-
 /* Print styles for receipts / invoices */
 @page {
   size: A4;
