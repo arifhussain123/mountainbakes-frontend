@@ -17,9 +17,11 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronLeft, ChevronRight, Search, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Search, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import type { PageSize } from '@mb/shared';
+import { Pagination } from '@/components/data-engine/Pagination';
 import { EmptyState } from './EmptyState';
 import { alignClass, bucketCells, mobileLabel } from './table-meta';
 
@@ -76,6 +78,8 @@ interface DataTableProps<TData> {
     pageSize: number;
     total: number;
     onPageChange: (page: number) => void;
+    /** Lets the built-in pager offer the rows-per-page dropdown in manual mode too. */
+    onPageSizeChange?: (pageSize: PageSize) => void;
     search: string;
     onSearchChange: (value: string) => void;
     /**
@@ -161,11 +165,7 @@ export function DataTable<TData>({
   const emptyHint = globalFilter ? 'Try a different search term.' : undefined;
 
   const pageIndex = manual ? manual.page - 1 : table.getState().pagination.pageIndex;
-  const pageCount = manual ? Math.max(1, Math.ceil(manual.total / manual.pageSize)) : table.getPageCount();
-  const canPrevious = manual ? manual.page > 1 : table.getCanPreviousPage();
-  const canNext = manual ? manual.page < pageCount : table.getCanNextPage();
-  const goPrevious = () => (manual ? manual.onPageChange(manual.page - 1) : table.previousPage());
-  const goNext = () => (manual ? manual.onPageChange(manual.page + 1) : table.nextPage());
+  const pageSizeValue = manual ? manual.pageSize : table.getState().pagination.pageSize;
   const totalRows = manual ? manual.total : table.getFilteredRowModel().rows.length;
 
   /**
@@ -340,37 +340,26 @@ export function DataTable<TData>({
         </div>
       )}
 
-      {/* Pagination */}
+      {/* Pagination — the one global component (Pagination.tsx), same as every
+          caller that renders its own via pager={false}. A page that doesn't
+          bother with that gets the identical UI for free, and there is no
+          second pagination layout left anywhere in the app to drift from it. */}
       {pager && (
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>
-          {totalRows} total
-          {!manual && globalFilter && ` (filtered from ${data.length})`}
-        </span>
-        <div className="flex items-center gap-2">
-          <span>Page {pageIndex + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            onClick={goPrevious}
-            disabled={!canPrevious}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            onClick={goNext}
-            disabled={!canNext}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+        <Pagination
+          page={pageIndex + 1}
+          pageSize={pageSizeValue}
+          total={totalRows}
+          onPageChange={(p) => (manual ? manual.onPageChange(p) : table.setPageIndex(p - 1))}
+          onPageSizeChange={
+            manual
+              ? manual.onPageSizeChange
+              : (size) => {
+                  table.setPageSize(size);
+                  table.setPageIndex(0);
+                }
+          }
+          loading={loading}
+        />
       )}
     </div>
   );

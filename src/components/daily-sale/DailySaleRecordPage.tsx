@@ -405,7 +405,11 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
         data={records}
         loading={isLoading}
         searchPlaceholder="Search by date, branch or status…"
-        pageSize={31}
+        // A full calendar month used to be the fixed, unchangeable default
+        // (31) before the pager exposed a rows-per-page control here — 50 is
+        // the nearest of the global standard sizes ([20, 50, 100]) that still
+        // comfortably covers a month without splitting it across pages.
+        pageSize={50}
         leading={
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">

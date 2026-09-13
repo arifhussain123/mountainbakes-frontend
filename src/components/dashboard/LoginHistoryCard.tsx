@@ -249,7 +249,7 @@ export function LoginHistoryCard() {
           data={historyQ.data ?? []}
           loading={historyQ.isLoading}
           searchPlaceholder="Search logins…"
-          pageSize={10}
+          pageSize={20}
           empty={
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <MapPin className="h-8 w-8 text-muted-foreground/50" />
