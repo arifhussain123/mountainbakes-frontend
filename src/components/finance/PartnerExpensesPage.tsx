@@ -423,7 +423,7 @@ function PartnerShareDetailTab() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border" data-slot="table-container">
         <table className="w-full text-sm">
           <thead data-table-head className="text-left">
             <tr>
@@ -500,7 +500,7 @@ function PartnerDetailTab({ abilities }: { abilities: ReturnType<typeof useFinan
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border" data-slot="table-container">
         <table className="w-full text-sm">
           <thead data-table-head className="text-left">
             <tr>
