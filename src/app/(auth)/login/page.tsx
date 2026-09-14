@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 // Aliased: `setRememberMe` is already the useState setter for the checkbox below.
 import { supabase, setRememberMe as persistRememberMeChoice } from '@/lib/supabase/client';
 import { isGoogleSignInEnabled, signInWithGoogle } from '@/lib/supabase/google';
-import { getRoleHome, isValidRole } from '@/utils/roleHome';
+import { isValidRole } from '@/utils/roleHome';
+import { ROUTES } from '@/utils/routes';
 import { COMPANY_NAME, APP_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,19 @@ export default function LoginPage() {
     void isGoogleSignInEnabled().then((on) => { if (active) setGoogleEnabled(on); });
     return () => { active = false; };
   }, []);
+
+  // Warm every possible landing route while the person is still typing, so the
+  // spinner RouteGuard shows during its post-login redirect isn't also waiting
+  // on the destination route's chunk to load for the first time.
+  useEffect(() => {
+    [
+      ROUTES.DASHBOARD,
+      ROUTES.BRANCH_DASHBOARD,
+      ROUTES.BRANCH_NEW_ORDERS,
+      ROUTES.PRODUCTION_DASHBOARD,
+      '/change-password',
+    ].forEach((path) => router.prefetch(path));
+  }, [router]);
 
   /*
    * The return leg of a Google sign-in. Supabase sends the browser back here
@@ -130,14 +144,16 @@ export default function LoginPage() {
         await supabase.auth.signOut();
         throw new Error('This account has no role assigned. Contact your administrator.');
       }
-      const role = claims.role;
 
+      // Navigation itself is RouteGuard's job — it reacts to AuthProvider's
+      // onAuthStateChange the moment this session lands and redirects on its
+      // own (the same path Google sign-in already relies on with no push here
+      // at all). Pushing here too raced it for the same destination and could
+      // stack a duplicate history entry when this one lost the race.
       if (forceChange) {
         toast.info('Please set a new password to continue.');
-        router.push('/change-password');
       } else {
         toast.success(`Welcome back, ${displayName || 'there'}!`);
-        router.push(getRoleHome(role));
       }
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? '';

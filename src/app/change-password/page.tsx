@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, Lock, ShieldAlert, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { getRoleHome } from '@/utils/roleHome';
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -46,7 +45,9 @@ export default function ChangePasswordPage() {
       // here — nothing else clears the gate.
       await supabase.auth.refreshSession();
       toast.success('Password updated. Welcome!');
-      router.replace(getRoleHome(user?.role ?? ''));
+      // Navigation itself is RouteGuard's job from here — its
+      // `pathname === '/change-password' → home` rule fires as soon as the
+      // refreshed session clears mustChangePassword.
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to update password';
       setError(msg);

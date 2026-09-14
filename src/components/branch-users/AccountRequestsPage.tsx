@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
@@ -126,7 +127,7 @@ export function AccountRequestsPage() {
     col.accessor('note', {
       header: 'Note',
       meta: { mobileFull: true },
-      cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() || '—'}</span>,
+      cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm text-muted-foreground" />,
     }),
     col.accessor('status', { header: 'Status', cell: (i) => <StatusBadge status={i.getValue()} /> }),
     col.display({

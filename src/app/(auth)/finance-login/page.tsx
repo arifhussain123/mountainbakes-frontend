@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase, setRememberMe as persistRememberMeChoice } from '@/lib/supabase/client';
-import { canAccessFinance, getRoleHome } from '@/utils/roleHome';
+import { canAccessFinance } from '@/utils/roleHome';
 import { apiCall } from '@/utils/api';
 import { loginFailureReason, recordFailedLogin } from '@/lib/loginHistory';
 import { COMPANY_NAME } from '@/utils/constants';
@@ -60,6 +60,13 @@ export default function FinanceLoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Warm the landing route while the person is still typing, so the spinner
+  // RouteGuard shows during its post-login redirect isn't also waiting on the
+  // destination route's chunk to load for the first time.
+  useEffect(() => {
+    [ROUTES.FINANCE_DASHBOARD, '/change-password'].forEach((path) => router.prefetch(path));
+  }, [router]);
 
   /**
    * Abandon a half-established session.
@@ -183,14 +190,15 @@ export default function FinanceLoginPage() {
       );
     }
 
+    // Navigation itself is RouteGuard's job from here — it reacts to
+    // AuthProvider's onAuthStateChange the moment this session lands and
+    // redirects on its own, the same as Google sign-in on the main login page.
     if (claims.mustChangePassword === true) {
       toast.info('Please set a new password to continue.');
-      router.push('/change-password');
       return;
     }
 
     toast.success('Signed in to Finance Ledger');
-    router.push(getRoleHome(claims.role!));
   }
 
   function resolveMessage(err: unknown): string {

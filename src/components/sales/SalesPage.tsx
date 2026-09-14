@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Separator } from '@/components/ui/separator';
 import { GenericDataTable } from '@/components/data-engine';
 import { useInvalidateResource } from '@/lib/data-engine/useResource';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Fab } from '@/components/shared/Fab';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { PopPrintButton } from '@/components/print/PopPrintButton';
@@ -472,17 +473,13 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
       // Never squeeze a comment into half a card row.
       meta: { mobileFull: true },
       cell: (i) => {
-        const text = (i.getValue() ?? '').trim();
-        if (!text) return <span className="text-muted-foreground">—</span>;
         const isUnpaidSale = i.row.original.paymentMethod === UNPAID_PAYMENT_METHOD;
         return (
-          <span
-            // Full text on hover: truncation must never be the only copy.
-            title={text}
+          <ExpandableText
+            text={i.getValue()}
+            lines={2}
             className={cn('text-sm', isUnpaidSale ? 'font-medium' : 'text-muted-foreground')}
-          >
-            {text.length > 40 ? text.slice(0, 40) + '…' : text}
-          </span>
+          />
         );
       },
     }),

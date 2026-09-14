@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -351,7 +352,7 @@ export function SupportCenterPage() {
     col.accessor('message', {
       header: 'Issue',
       meta: { mobileFull: true },
-      cell: (info) => <span className="text-sm line-clamp-2 max-w-[24rem]">{info.getValue()}</span>,
+      cell: (info) => <ExpandableText text={info.getValue()} lines={2} className="text-sm max-w-[24rem]" />,
     }),
     col.accessor('status', {
       header: 'Status',

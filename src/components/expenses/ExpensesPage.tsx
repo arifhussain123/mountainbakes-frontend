@@ -9,6 +9,7 @@ import { EXPENSE_CATEGORIES, businessDateStr, businessDaysAgoStr } from '@mb/sha
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Fab } from '@/components/shared/Fab';
 import { GenericDataTable } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
@@ -84,10 +85,10 @@ export function ExpensesPage() {
     col.accessor('expenseNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('date', { id: 'businessDate', header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
     col.accessor('category', { header: 'Category', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{i.getValue()}</span> }),
-    col.accessor('description', { header: 'Description', enableSorting: false, meta: { mobileFull: true }, cell: (i) => <span>{i.getValue()}</span> }),
+    col.accessor('description', { header: 'Description', enableSorting: false, meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm" /> }),
     col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
     col.accessor('amount', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> }),
-    col.accessor('remarks', { header: 'Remarks', enableSorting: false, meta: { mobileFull: true }, cell: (i) => <span className="text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor('remarks', { header: 'Remarks', enableSorting: false, meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm text-muted-foreground" /> }),
   ];
 
   function afterWrite() {

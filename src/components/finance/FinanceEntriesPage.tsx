@@ -19,6 +19,7 @@ import { Pagination } from '@/components/data-engine/Pagination';
 import { FilterBar, ActiveFilters } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DocumentActions } from './finance-actions';
 import { FinanceEntryForm } from './FinanceEntryForm';
@@ -126,20 +127,15 @@ export function FinanceEntriesPage() {
         </span>
       ),
     }),
-    // Free text, so it is capped and clipped to one line. TableCell is
-    // `whitespace-nowrap`: without a ceiling a long entry is laid out as one
-    // unbroken line, table-auto takes the width it needs off the columns beside
-    // it, and the outer wrapper is `overflow-hidden` — so the text reads as
-    // though it has spilled across Amount / Method / Status. The whole value is
-    // on hover and in the View dialog. Capped from `md:` up only — the phone
-    // card is a <dd>, not a table cell, so there it wraps in full as before.
+    // Free text, so it is capped and clipped rather than left to widen the
+    // row. TableCell is `whitespace-nowrap`: without a ceiling a long entry is
+    // laid out as one unbroken line, table-auto takes the width it needs off
+    // the columns beside it, and the outer wrapper is `overflow-hidden` — so
+    // the text reads as though it has spilled across Amount / Method / Status.
     col.accessor('description', {
       header: 'Description',
       meta: { mobileFull: true },
-      cell: (i) => {
-        const v = i.getValue();
-        return v ? <span title={v} className="block break-words text-sm md:max-w-[18rem] md:truncate">{v}</span> : null;
-      },
+      cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm md:max-w-[18rem]" />,
     }),
     col.accessor('branchName', {
       header: 'Branch',
@@ -151,10 +147,7 @@ export function FinanceEntriesPage() {
     col.accessor('notes', {
       header: 'Notes',
       meta: { mobileFull: true },
-      cell: (i) => {
-        const v = i.getValue();
-        return v ? <span title={v} className="block break-words text-sm text-muted-foreground md:max-w-[16rem] md:truncate">{v}</span> : null;
-      },
+      cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm text-muted-foreground md:max-w-[16rem]" />,
     }),
     col.accessor('amount', {
       header: 'Amount',

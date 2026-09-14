@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { DataTable } from '@/components/shared/DataTable';
+import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
@@ -476,7 +477,7 @@ export function FinanceHelpDeskPage({
           return (
             <div className="max-w-[26rem] min-w-0">
               <p className="truncate text-sm font-medium">{t.subject}</p>
-              <p className="line-clamp-2 text-xs text-muted-foreground">{t.message}</p>
+              <ExpandableText text={t.message} lines={2} className="text-xs text-muted-foreground" />
               {answer && (
                 <p className="mt-1 line-clamp-1 text-xs">
                   <span className="text-muted-foreground">Admin: </span>
