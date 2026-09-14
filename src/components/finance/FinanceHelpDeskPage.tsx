@@ -784,7 +784,7 @@ export function FinanceHelpDeskPage({
         total={total}
         onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize}
-        loading={isLoading || isFetching}
+        loading={isLoading || (isFetching && tickets.length === 0)}
       />
 
       <NewQueryDialog key={newKey} open={showNew} onOpenChange={setShowNew} />
