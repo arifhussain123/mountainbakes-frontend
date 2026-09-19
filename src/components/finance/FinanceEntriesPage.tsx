@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import {
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
+  FINANCE_PAYMENT_METHODS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type FilterConfig,
   type FinanceTransaction,
@@ -48,7 +49,7 @@ export function FinanceEntriesPage() {
 
   const list = useListQueryState({
     syncUrl: true,
-    filterKeys: ['status', 'type', 'ledgerHeadId', 'branchId', 'businessDate'],
+    filterKeys: ['status', 'type', 'ledgerHeadId', 'branchId', 'businessDate', 'paymentMethod', 'amount'],
   });
 
   const branchesQ = useBranches(token ?? '');
@@ -76,6 +77,11 @@ export function FinanceEntriesPage() {
       },
       { key: 'ledgerHeadId', label: 'Ledger head', type: 'select' },
       { key: 'branchId', label: 'Branch', type: 'select' },
+      {
+        key: 'paymentMethod', label: 'Method', type: 'select',
+        options: FINANCE_PAYMENT_METHODS.map((m) => ({ value: m, label: FINANCE_PAYMENT_METHOD_LABELS[m] ?? m })),
+      },
+      { key: 'amount', label: 'Amount', type: 'number-range' },
     ],
     [],
   );
@@ -92,8 +98,11 @@ export function FinanceEntriesPage() {
     type: list.getFilter('type')?.value as string | undefined,
     branchId: list.getFilter('branchId')?.value as string | undefined,
     ledgerHeadId: list.getFilter('ledgerHeadId')?.value as string | undefined,
+    paymentMethod: list.getFilter('paymentMethod')?.value as string | undefined,
     from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
     to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    minAmount: list.getFilter('amount', 'gte')?.value as string | undefined,
+    maxAmount: list.getFilter('amount', 'lte')?.value as string | undefined,
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
