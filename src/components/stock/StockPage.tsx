@@ -212,6 +212,7 @@ export function StockPage() {
           col.display({
             id: 'waitingDemand',
             header: 'Waiting Demand',
+            enableSorting: false,
             meta: { align: 'center' },
             cell: ({ row }) => {
               if (!incomingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
@@ -233,6 +234,7 @@ export function StockPage() {
           col.display({
             id: 'expectedBalance',
             header: 'Expected Balance',
+            enableSorting: false,
             meta: { align: 'center' },
             cell: ({ row }) => {
               if (!incomingLoaded) return <span className="tabular-nums text-muted-foreground">—</span>;
@@ -300,6 +302,7 @@ export function StockPage() {
         loading={isPending}
         searchPlaceholder="Search products…"
         pageSize={50}
+        sortable
         // Ahead of the search box, because it scopes what the search then filters
         // WITHIN: pick the day first, find the product second.
         leading={

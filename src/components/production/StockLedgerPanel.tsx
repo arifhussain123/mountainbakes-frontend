@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { FilterConfig, ProductionLedgerType } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranches, useCategories, useProductionLedger, useProducts } from '@/lib/queries';
+import { useBranches, useCategories, useProductionLedger, useProducts, type ProductionLedgerSortKey } from '@/lib/queries';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,6 +11,7 @@ import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { cn } from '@/lib/utils';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { LEDGER_TYPE_OPTIONS, LEDGER_TYPE_META, LedgerQty, LedgerTypeChip } from './StockLedgerTypes';
 
 /**
@@ -120,10 +121,38 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: list.state.sort?.key as ProductionLedgerSortKey | undefined,
+    sortDir: list.state.sort?.direction,
   });
 
   const rows = q.data?.rows ?? [];
   const total = q.data?.total ?? 0;
+
+  /**
+   * A plain `<th>` matching this table's own compact styling (not the shared
+   * `SortableHeaderCell`, which is styled for `DataTable`'s uppercase header
+   * row — dropping that in here would look like a different table mid-page).
+   * `branchName` has no header calling this: it's resolved via a post-query
+   * lookup, not a stored column, so there's nothing in Postgres to sort by.
+   */
+  function sortTh(key: ProductionLedgerSortKey, label: string, align?: 'right') {
+    const sorted = list.state.sort?.key === key ? list.state.sort.direction : false;
+    return (
+      <th className={cn('px-3 py-2 font-medium', align === 'right' && 'text-right')}>
+        <button
+          type="button"
+          onClick={() => list.toggleSort(key)}
+          className={cn(
+            'inline-flex items-center gap-1 hover:text-foreground',
+            sorted ? 'text-foreground' : 'text-muted-foreground',
+          )}
+        >
+          {label}
+          {sorted === 'asc' ? <ArrowUp className="h-3 w-3" /> : sorted === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+        </button>
+      </th>
+    );
+  }
 
   return (
     <div className="space-y-3 rounded-xl border bg-card p-4">
@@ -183,14 +212,14 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
         <table className="w-full min-w-[820px] text-sm">
           <thead className="bg-muted text-left text-xs">
             <tr>
-              <th className="px-3 py-2 font-medium">Date / Time</th>
-              <th className="px-3 py-2 font-medium">Product</th>
-              <th className="px-3 py-2 font-medium">Movement</th>
-              <th className="px-3 py-2 text-right font-medium">Qty</th>
+              {sortTh('businessDate', 'Date / Time')}
+              {sortTh('productName', 'Product')}
+              {sortTh('type', 'Movement')}
+              {sortTh('delta', 'Qty', 'right')}
               <th className="px-3 py-2 font-medium">Branch</th>
-              <th className="px-3 py-2 font-medium">Reference</th>
-              <th className="px-3 py-2 font-medium">User</th>
-              <th className="px-3 py-2 text-right font-medium">Balance after</th>
+              {sortTh('transactionNo', 'Reference')}
+              {sortTh('createdByName', 'User')}
+              {sortTh('balanceAfter', 'Balance after', 'right')}
             </tr>
           </thead>
           <tbody>
@@ -231,6 +260,9 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
                   {m.createdByName ?? '—'}
                   {m.remarks && <p className="italic">{m.remarks}</p>}
                 </td>
+                {/* A stored per-row snapshot, so it's safe to display in any
+                    sort order — it only reads as a genuine running total while
+                    the table is in its default date order. */}
                 <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                   {m.balanceAfter ?? '—'}
                 </td>

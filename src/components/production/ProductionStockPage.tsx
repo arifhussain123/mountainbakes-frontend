@@ -266,6 +266,7 @@ export function ProductionStockPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => (
         <div className="flex justify-end gap-1">
           <Button
@@ -400,6 +401,7 @@ export function ProductionStockPage() {
         data={dayRows}
         loading={stockQ.isLoading}
         searchPlaceholder="Search products…"
+        sortable
         empty={
           dayRows.length === 0 ? (
             <EmptyState

@@ -73,7 +73,9 @@ import {
   type FinanceQueryType,
   type FinanceTicket,
   type FinanceTicketStatus,
+  type SortState,
 } from '@mb/shared';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useBranches } from '@/lib/queries';
 import {
   useFinanceHelpDeskUsers,
@@ -294,6 +296,7 @@ export function FinanceHelpDeskPage({
   const [newKey, setNewKey] = useState(0);
   const [viewing, setViewing] = useState<string | null>(null);
   const [rowAction, setRowAction] = useState<RowAction | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
   const rowMutation = useFinanceMutation();
 
   const list = useListQueryState({
@@ -384,8 +387,14 @@ export function FinanceHelpDeskPage({
   );
 
   const apiFilters = useMemo(
-    () => ({ ...scope, page: list.state.page, pageSize: list.state.pageSize }),
-    [scope, list.state.page, list.state.pageSize],
+    () => ({
+      ...scope,
+      page: list.state.page,
+      pageSize: list.state.pageSize,
+      sortBy: sort?.key,
+      sortDir: sort?.direction,
+    }),
+    [scope, list.state.page, list.state.pageSize, sort],
   );
 
   const { data, isLoading, isFetching } = useFinanceTickets(apiFilters);
@@ -427,6 +436,9 @@ export function FinanceHelpDeskPage({
       col.accessor((t) => t.referenceNo ?? t.transactionRef ?? t.expenseRef ?? t.incomeRef ?? '', {
         id: 'reference',
         header: 'Reference',
+        // A joined fallback across several possible reference columns, not a
+        // single backend-sortable field.
+        enableSorting: false,
         meta: { mobile: 'title' },
         cell: ({ row }) => {
           const t = row.original;
@@ -521,6 +533,7 @@ export function FinanceHelpDeskPage({
       col.display({
         id: 'actions',
         header: '',
+        enableSorting: false,
         cell: ({ row }) => {
           const t = row.original;
           const deleted = Boolean(t.deletedAt);
@@ -753,6 +766,7 @@ export function FinanceHelpDeskPage({
         searchPlaceholder="Search Query ID, reference, subject, user or branch…"
         actions={embedded ? newButton : undefined}
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -760,6 +774,11 @@ export function FinanceHelpDeskPage({
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => {
+            setSort(tanstackToSortState(next));
+            list.setPage(1);
+          },
         }}
         empty={
           <div className="p-10 text-center text-muted-foreground">

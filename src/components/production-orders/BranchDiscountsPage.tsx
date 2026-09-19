@@ -9,6 +9,7 @@ import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount 
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
@@ -104,6 +105,10 @@ export function BranchDiscountsPage() {
     to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: list.state.sort?.key as
+      | 'date' | 'createdAt' | 'reviewedAt' | 'demandNumber' | 'amount' | 'reason' | 'status'
+      | undefined,
+    sortDir: list.state.sort?.direction,
   });
   const reviseMut = useReviseBranchDiscount(token);
   const withdrawMut = useWithdrawBranchDiscount(token);
@@ -158,6 +163,7 @@ export function BranchDiscountsPage() {
   const columns = [
     col.accessor('id', {
       header: 'ID',
+      enableSorting: false,
       meta: { mobileLabel: 'Ref' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
     }),
@@ -214,6 +220,7 @@ export function BranchDiscountsPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => {
         const d = row.original;
         return (
@@ -277,6 +284,7 @@ export function BranchDiscountsPage() {
         loading={discountsQ.isLoading}
         searchPlaceholder="Search demand # or reason…"
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -284,6 +292,8 @@ export function BranchDiscountsPage() {
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(list.state.sort),
+          onSortingChange: (next) => list.setSort(tanstackToSortState(next)),
         }}
         empty={
           <div className="flex flex-col items-center gap-2 py-10 text-center">

@@ -13,16 +13,17 @@ import {
 } from '@tanstack/react-table';
 import { useState } from 'react';
 import {
-  Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableFooter, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Search, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { PageSize } from '@mb/shared';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { EmptyState } from './EmptyState';
+import { SortableHeaderCell } from './SortableHeaderCell';
 import { alignClass, bucketCells, mobileLabel } from './table-meta';
 
 interface DataTableProps<TData> {
@@ -226,44 +227,15 @@ export function DataTable<TData>({
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} data-table-head>
                 {hg.headers.map((h) => (
-                  <TableHead
+                  <SortableHeaderCell
                     key={h.id}
-                    className={cn(
-                      'font-semibold text-xs uppercase tracking-wide',
-                      alignClass(h.column.columnDef.meta?.align),
-                    )}
-                    aria-sort={
-                      sortable && h.column.getCanSort()
-                        ? h.column.getIsSorted() === 'asc'
-                          ? 'ascending'
-                          : h.column.getIsSorted() === 'desc'
-                            ? 'descending'
-                            : 'none'
-                        : undefined
-                    }
+                    canSort={sortable && h.column.getCanSort()}
+                    sorted={h.column.getIsSorted()}
+                    onToggle={h.column.getToggleSortingHandler()}
+                    align={h.column.columnDef.meta?.align}
                   >
-                    {h.isPlaceholder ? null : sortable && h.column.getCanSort() ? (
-                      <button
-                        type="button"
-                        onClick={h.column.getToggleSortingHandler()}
-                        className={cn(
-                          'inline-flex items-center gap-1 -mx-1 px-1 rounded hover:text-foreground',
-                          h.column.getIsSorted() ? 'text-foreground' : 'text-muted-foreground',
-                        )}
-                      >
-                        {flexRender(h.column.columnDef.header, h.getContext())}
-                        {h.column.getIsSorted() === 'asc' ? (
-                          <ArrowUp className="h-3 w-3" />
-                        ) : h.column.getIsSorted() === 'desc' ? (
-                          <ArrowDown className="h-3 w-3" />
-                        ) : (
-                          <ArrowUpDown className="h-3 w-3 opacity-50" />
-                        )}
-                      </button>
-                    ) : (
-                      flexRender(h.column.columnDef.header, h.getContext())
-                    )}
-                  </TableHead>
+                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                  </SortableHeaderCell>
                 ))}
               </TableRow>
             ))}

@@ -264,6 +264,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'demandProducts',
       header: 'Products',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => <span className="tabular-nums">{requestedTotals(i.row.original).products}</span>,
       footer: (p) => (
@@ -275,6 +276,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'demandQty',
       header: 'Demand Qty',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => (
         <span className="font-medium tabular-nums">{requestedTotals(i.row.original).qty.toLocaleString()}</span>
@@ -291,6 +293,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'verifiedProducts',
       header: 'Verified Products',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => {
         const o = i.row.original;
@@ -306,6 +309,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'verifiedQty',
       header: 'Verified Qty',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => {
         const o = i.row.original;
@@ -336,6 +340,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'packing',
       header: 'Packing',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => {
         const n = livePackingItems(i.row.original.packingItems).length;
@@ -365,6 +370,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const o = i.row.original;
         return (
@@ -464,6 +470,7 @@ export function BranchNewOrders() {
         data={rows}
         loading={ordersQ.isLoading}
         searchPlaceholder={tab === 'active' ? 'Search active demands…' : 'Search order history…'}
+        sortable
         empty={
           rows.length === 0 && !ordersQ.isLoading ? (
             <div className="py-12 text-center">

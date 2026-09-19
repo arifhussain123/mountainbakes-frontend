@@ -3,10 +3,11 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { createColumnHelper } from '@tanstack/react-table';
-import { businessDateStr, type Attachment, type FilterConfig, type FinanceIncomeApproval } from '@mb/shared';
+import { businessDateStr, type Attachment, type FilterConfig, type FinanceIncomeApproval, type SortState } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
-import { useFinanceMutation, useFinanceSettings, useIncomeApprovals } from '@/lib/finance';
+import { useFinanceMutation, useFinanceSettings, useIncomeApprovals, type IncomeApprovalSortKey } from '@/lib/finance';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -71,6 +72,7 @@ export function BranchIncomePage() {
   const [verifying, setVerifying] = useState<FinanceIncomeApproval | null>(null);
   const [rejecting, setRejecting] = useState<FinanceIncomeApproval | null>(null);
   const [viewing, setViewing] = useState<FinanceIncomeApproval | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const branchesQ = useBranches(token ?? '');
   const { data: settings } = useFinanceSettings();
@@ -105,6 +107,8 @@ export function BranchIncomePage() {
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: sort?.key as IncomeApprovalSortKey | undefined,
+    sortDir: sort?.direction,
   });
 
   const verifyMut = useFinanceMutation();
@@ -165,6 +169,7 @@ export function BranchIncomePage() {
     col.display({
       id: 'split',
       header: 'Split',
+      enableSorting: false,
       // The row's OWN snapshot, not today's setting — an approved day must not
       // restate itself, and a branch on its own rate never matched the global
       // one to begin with. Flagged when it differs from the current default so
@@ -187,6 +192,7 @@ export function BranchIncomePage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
@@ -310,6 +316,7 @@ export function BranchIncomePage() {
             </div>
           ) : undefined
         }
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -317,6 +324,11 @@ export function BranchIncomePage() {
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => {
+            setSort(tanstackToSortState(next));
+            list.setPage(1);
+          },
         }}
       />
 

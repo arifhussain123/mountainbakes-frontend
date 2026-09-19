@@ -11,6 +11,7 @@ import {
   type FinanceReportType,
   type PageSize,
   type ReportCellFormat,
+  type SortState,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
@@ -27,8 +28,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { SortableHeaderCell } from '@/components/shared/SortableHeaderCell';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { FilterBar, ActiveFilters } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
@@ -170,9 +172,17 @@ export function FinanceReportsPage() {
       if (v) q['department'] = v;
     }
     if (uses('salaryMonth') && salaryMonth) q['salaryMonth'] = salaryMonth;
+    // The sortable column SET differs per report type (the API validates
+    // `sortBy` against whichever report it just built), so a sort left over
+    // from a different report type is never sent — `selectType` already
+    // clears it via `list.clearAll()` on every report switch.
+    if (list.state.sort) {
+      q['sortBy'] = list.state.sort.key;
+      q['sortDir'] = list.state.sort.direction;
+    }
     return q;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, list.state.filters, salaryMonth]);
+  }, [type, list.state.filters, list.state.sort, salaryMonth]);
 
   const query = useMemo(
     () =>
@@ -280,6 +290,8 @@ export function FinanceReportsPage() {
           onPageChange={list.setPage}
           pageSize={list.state.pageSize}
           onPageSizeChange={list.setPageSize}
+          sort={list.state.sort}
+          onToggleSort={list.toggleSort}
         />
       ) : null}
     </div>
@@ -293,11 +305,15 @@ function ReportView({
   onPageChange,
   pageSize,
   onPageSizeChange,
+  sort,
+  onToggleSort,
 }: {
   report: FinanceReport;
   onPageChange: (page: number) => void;
   pageSize: PageSize;
   onPageSizeChange: (pageSize: PageSize) => void;
+  sort: SortState | null;
+  onToggleSort: (key: string) => void;
 }) {
   const { format: money } = useMoney();
 
@@ -356,15 +372,16 @@ function ReportView({
               <TableHeader>
                 <TableRow data-table-head>
                   {report.columns.map((c) => (
-                    <TableHead
+                    <SortableHeaderCell
                       key={c.key}
-                      className={cn(
-                        'whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground',
-                        alignOf(c.align ?? (c.format === 'money' || c.format === 'number' ? 'right' : 'left')),
-                      )}
+                      canSort
+                      sorted={sort?.key === c.key ? sort.direction : false}
+                      onToggle={() => onToggleSort(c.key)}
+                      align={c.align ?? (c.format === 'money' || c.format === 'number' ? 'right' : 'left')}
+                      className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                     >
                       {c.label}
-                    </TableHead>
+                    </SortableHeaderCell>
                   ))}
                 </TableRow>
               </TableHeader>

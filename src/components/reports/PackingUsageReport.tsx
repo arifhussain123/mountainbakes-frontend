@@ -3,10 +3,11 @@
 import { useMemo } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranches, usePackingMaterials, usePackingUsage } from '@/lib/queries';
+import { useBranches, usePackingMaterials, usePackingUsage, type PackingUsageSortKey } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { businessDateStr } from '@mb/shared';
 import type { FilterConfig, PackingMaterialUsageRow } from '@mb/shared';
@@ -57,6 +58,8 @@ export function PackingUsageReport() {
     packingMaterialId: (list.getFilter('packingMaterialId')?.value as string | undefined) ?? null,
     page: list.state.page,
     pageSize: list.state.pageSize,
+    sortBy: list.state.sort?.key as PackingUsageSortKey | undefined,
+    sortDir: list.state.sort?.direction,
   });
   const rows = useMemo(() => usageQ.data?.usage ?? [], [usageQ.data]);
   // Summed server-side over the WHOLE filtered range, not just this page.
@@ -103,7 +106,17 @@ export function PackingUsageReport() {
         // filters above already narrow the same fields a free-text box would.
         toolbar={false}
         pager={false}
-        manual={{ page: list.state.page, pageSize: list.state.pageSize, total: pagination?.total ?? 0, onPageChange: list.setPage, search: '', onSearchChange: () => {} }}
+        sortable
+        manual={{
+          page: list.state.page,
+          pageSize: list.state.pageSize,
+          total: pagination?.total ?? 0,
+          onPageChange: list.setPage,
+          search: '',
+          onSearchChange: () => {},
+          sorting: sortStateToTanstack(list.state.sort),
+          onSortingChange: (next) => list.setSort(tanstackToSortState(next)),
+        }}
       />
       <Pagination
         page={list.state.page}

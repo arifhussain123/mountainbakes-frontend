@@ -204,6 +204,7 @@ export function LoginHistoryCard() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => (
         <Button variant="ghost" size="sm" onClick={() => setViewId(row.original.id)}>
           <Eye className="mr-1.5 h-4 w-4" /> View
@@ -250,6 +251,7 @@ export function LoginHistoryCard() {
           loading={historyQ.isLoading}
           searchPlaceholder="Search logins…"
           pageSize={20}
+          sortable
           empty={
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <MapPin className="h-8 w-8 text-muted-foreground/50" />

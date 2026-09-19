@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
@@ -81,6 +81,27 @@ export function ProductionReportsPage() {
   const to = (list.getFilter('businessDate', 'lte')?.value as string | undefined) ?? today;
   const isPrepared = report === PREPARED_REPORT;
 
+  // A column INDEX, not a key — these reports have no per-cell name, only a
+  // position, and that position means something completely different from one
+  // report type to the next. Switching report types must not carry a stale
+  // index over onto an unrelated column, so it resets whenever `report` does.
+  const [sort, setSort] = useState<{ index: number; direction: 'asc' | 'desc' } | null>(null);
+  // Reset during render rather than in an effect — the "adjusting state when a
+  // prop changes" pattern React recommends over `useEffect(() => set(...), [dep])`,
+  // which cascades an extra render for no benefit here.
+  const [sortResetFor, setSortResetFor] = useState(report);
+  if (report !== sortResetFor) {
+    setSortResetFor(report);
+    setSort(null);
+  }
+  const toggleSort = (index: number) =>
+    setSort((s) => {
+      if (!s || s.index !== index) return { index, direction: 'asc' };
+      if (s.direction === 'asc') return { index, direction: 'desc' };
+      return null;
+    });
+  const sortParams = sort ? `&sortCol=${sort.index}&sortDir=${sort.direction}` : '';
+
   const filters = useMemo<FilterConfig[]>(
     () => [
       { key: 'report', label: 'Report', type: 'select', placement: 'bar', options: REPORTS },
@@ -97,10 +118,10 @@ export function ProductionReportsPage() {
   // that are actually paginated server-side (see ReportPagination above).
   const rangeParams = isPrepared ? `&from=${from}&to=${to}` : '';
   const query = useQuery({
-    queryKey: ['productionReport', report, period, isPrepared ? from : '', isPrepared ? to : '', list.state.page, list.state.pageSize],
+    queryKey: ['productionReport', report, period, isPrepared ? from : '', isPrepared ? to : '', list.state.page, list.state.pageSize, sort?.index, sort?.direction],
     queryFn: () =>
       apiCall<ReportData>(
-        `/api/production-reports/summary?report=${report}&period=${period}${rangeParams}&page=${list.state.page}&pageSize=${list.state.pageSize}`,
+        `/api/production-reports/summary?report=${report}&period=${period}${rangeParams}&page=${list.state.page}&pageSize=${list.state.pageSize}${sortParams}`,
         {},
         token,
       ),
@@ -180,6 +201,8 @@ export function ProductionReportsPage() {
                 rows={data?.rows ?? []}
                 emptyTitle="No data for this report and period"
                 emptyDescription="Try a different report type or date range."
+                sort={sort}
+                onSortToggle={toggleSort}
               />
               {data?.pagination && (
                 <Pagination

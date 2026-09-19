@@ -11,6 +11,7 @@ import {
   type FilterConfig,
   type FinanceEmployee,
   type SalaryPayment,
+  type SortState,
 } from '@mb/shared';
 import {
   uniqueDepartments,
@@ -29,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
@@ -109,6 +111,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SalaryPayment | null>(null);
   const [viewing, setViewing] = useState<SalaryPayment | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'department'] });
 
@@ -146,6 +149,8 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: sort?.key,
+    sortDir: sort?.direction,
   });
 
   const rows = data?.salaries ?? [];
@@ -185,6 +190,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     salaryCol.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
@@ -253,6 +259,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         loading={isLoading}
         searchPlaceholder="Search by employee…"
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -260,6 +267,11 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => {
+            setSort(tanstackToSortState(next));
+            list.setPage(1);
+          },
         }}
       />
       <Pagination
@@ -456,6 +468,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EmployeeAdvance | null>(null);
   const [viewing, setViewing] = useState<EmployeeAdvance | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'recovery', 'department'] });
 
@@ -494,6 +507,8 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: sort?.key,
+    sortDir: sort?.direction,
   });
 
   const rows = data?.advances ?? [];
@@ -532,6 +547,10 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     }),
     advanceCol.accessor('isRecovered', {
       header: 'Recovered',
+      // Not a backend-sortable column (it's derived from a cross-table
+      // recovery lookup, not a stored field) — see finance-payroll's advances
+      // allowlist.
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         // Only a posted advance is owed at all — a draft or pending one has not
@@ -559,6 +578,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     advanceCol.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
@@ -618,6 +638,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
         loading={isLoading}
         searchPlaceholder="Search by employee…"
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -625,6 +646,11 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => {
+            setSort(tanstackToSortState(next));
+            list.setPage(1);
+          },
         }}
       />
       <Pagination
@@ -846,6 +872,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
     employeeCol.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
@@ -896,7 +923,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
         )}
       </LegacyFilterBar>
 
-      <DataTable columns={columns} data={data ?? []} loading={isLoading} searchPlaceholder="Search employees…" />
+      <DataTable columns={columns} data={data ?? []} loading={isLoading} searchPlaceholder="Search employees…" sortable />
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">

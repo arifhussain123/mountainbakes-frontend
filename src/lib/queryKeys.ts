@@ -23,6 +23,8 @@ export const qk = {
     packingMaterialId?: string | null;
     page?: number;
     pageSize?: number;
+    sortBy?: string;
+    sortDir?: string;
   }) =>
     [
       'packingUsage',
@@ -32,14 +34,16 @@ export const qk = {
       filters.packingMaterialId ?? null,
       filters.page ?? 1,
       filters.pageSize ?? 50,
+      filters.sortBy ?? null,
+      filters.sortDir ?? null,
     ] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
   branchLocations: () => ['branchLocations'] as const,
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
-  priceHistory: (productId?: string | null, offset?: number, search?: string | null) =>
-    ['priceHistory', productId ?? 'all', offset ?? 0, search ?? ''] as const,
+  priceHistory: (productId?: string | null, offset?: number, search?: string | null, sortBy?: string | null, sortDir?: string | null) =>
+    ['priceHistory', productId ?? 'all', offset ?? 0, search ?? '', sortBy ?? '', sortDir ?? ''] as const,
   reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null, fields?: string | null) =>
     ['reportSummary', period, branchId ?? null, from ?? null, to ?? null, fields ?? 'full'] as const,
   // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —

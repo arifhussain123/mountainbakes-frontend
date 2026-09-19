@@ -98,6 +98,7 @@ export function PackingMaterialsPage() {
     col.display({
       id: 'actions',
       header: 'Actions',
+      enableSorting: false,
       cell: ({ row }) => {
         const m = row.original;
         return (
@@ -155,6 +156,7 @@ export function PackingMaterialsPage() {
         data={materials}
         loading={materialsQ.isLoading}
         searchPlaceholder="Search packing materials, code…"
+        sortable
       />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>

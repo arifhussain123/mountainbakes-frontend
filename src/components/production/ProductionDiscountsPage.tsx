@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import {
@@ -139,6 +140,10 @@ export function ProductionDiscountsPage() {
     branchId: list.getFilter('branchId')?.value as string | undefined,
     status: list.getFilter('status')?.value as string | undefined,
     search: list.state.search || undefined,
+    sortBy: list.state.sort?.key as
+      | 'date' | 'createdAt' | 'branchName' | 'demandNumber' | 'amount' | 'reason' | 'status'
+      | undefined,
+    sortDir: list.state.sort?.direction,
   });
   const reviewMut = useReviewDiscount(token);
 
@@ -193,6 +198,7 @@ export function ProductionDiscountsPage() {
   const columns = [
     col.accessor('id', {
       header: 'ID',
+      enableSorting: false,
       meta: { mobileLabel: 'Ref' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
     }),
@@ -238,6 +244,7 @@ export function ProductionDiscountsPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => (
         <Button variant="ghost" size="sm" onClick={() => { setViewRow(row.original); setPendingAction(null); setNote(''); }}>
           <Eye className="mr-1.5 h-4 w-4" /> View
@@ -266,6 +273,7 @@ export function ProductionDiscountsPage() {
         loading={discountsQ.isLoading}
         searchPlaceholder="Search demand #, reason or branch…"
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -273,6 +281,8 @@ export function ProductionDiscountsPage() {
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(list.state.sort),
+          onSortingChange: (next) => list.setSort(tanstackToSortState(next)),
         }}
       />
       <Pagination

@@ -7,7 +7,8 @@ import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
-import type { PageSize, PriceHistoryDoc } from '@mb/shared';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
+import type { PageSize, PriceHistoryDoc, SortState } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { FileSpreadsheet, FileText } from 'lucide-react';
@@ -29,8 +30,17 @@ export function PriceHistoryPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize>(20);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
 
-  const historyQ = usePriceHistory(token, { limit: pageSize, offset: page * pageSize, search: search || undefined });
+  const historyQ = usePriceHistory(token, {
+    limit: pageSize,
+    offset: page * pageSize,
+    search: search || undefined,
+    sortBy: sort?.key as
+      | 'priceNumber' | 'productName' | 'oldPrice' | 'newPrice' | 'effectiveDate' | 'changedByName' | 'changedOn' | 'status'
+      | undefined,
+    sortDir: sort?.direction,
+  });
   const rows = historyQ.data?.history ?? [];
   const total = historyQ.data?.total ?? 0;
   const loading = historyQ.isLoading;
@@ -80,7 +90,7 @@ export function PriceHistoryPage() {
         </span>
       ),
     }),
-    col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" /> }),
+    col.accessor('reason', { header: 'Reason', enableSorting: false, meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" /> }),
   ];
 
   return (
@@ -105,6 +115,7 @@ export function PriceHistoryPage() {
         loading={loading}
         searchPlaceholder="Search product, code or reason…"
         pager={false}
+        sortable
         manual={{
           page: page + 1,
           pageSize,
@@ -112,6 +123,8 @@ export function PriceHistoryPage() {
           onPageChange: (p) => setPage(p - 1),
           search,
           onSearchChange: (v) => { setSearch(v); setPage(0); },
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => setSort(tanstackToSortState(next)),
         }}
       />
       <Pagination

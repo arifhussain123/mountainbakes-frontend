@@ -1,3 +1,4 @@
+import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EmptyState } from './EmptyState';
 
@@ -20,6 +21,15 @@ export function ResponsiveMatrix({
   className,
   /** Right-align every column but the first — the default for numeric reports. */
   numeric = true,
+  /**
+   * Click-to-sort by column INDEX — these rows are positional arrays with no
+   * per-cell key (unlike `DataTable`'s keyed columns), so there's no field
+   * name to sort by, only a position. Omit both props for a plain,
+   * non-sortable matrix (e.g. `PriceListPage`) — nothing below reads them
+   * unless `onSortToggle` is given.
+   */
+  sort,
+  onSortToggle,
 }: {
   headers: string[];
   rows: MatrixCell[][];
@@ -27,6 +37,8 @@ export function ResponsiveMatrix({
   emptyDescription?: string;
   className?: string;
   numeric?: boolean;
+  sort?: { index: number; direction: 'asc' | 'desc' } | null;
+  onSortToggle?: (index: number) => void;
 }) {
   if (rows.length === 0) {
     return <EmptyState title={emptyTitle} description={emptyDescription} className={className} />;
@@ -40,17 +52,42 @@ export function ResponsiveMatrix({
         <table className="w-full text-sm">
           <thead>
             <tr data-table-head className="text-left">
-              {headers.map((h, i) => (
-                <th
-                  key={h}
-                  className={cn(
-                    'px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground',
-                    numeric && i > 0 && 'text-right'
-                  )}
-                >
-                  {h}
-                </th>
-              ))}
+              {headers.map((h, i) => {
+                const sorted = sort?.index === i ? sort.direction : false;
+                return (
+                  <th
+                    key={h}
+                    aria-sort={onSortToggle ? (sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none') : undefined}
+                    className={cn(
+                      'px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground',
+                      numeric && i > 0 && 'text-right'
+                    )}
+                  >
+                    {onSortToggle ? (
+                      <button
+                        type="button"
+                        onClick={() => onSortToggle(i)}
+                        className={cn(
+                          'inline-flex items-center gap-1 -mx-1 px-1 rounded hover:text-foreground',
+                          numeric && i > 0 && 'flex-row-reverse',
+                          sorted ? 'text-foreground' : 'text-muted-foreground',
+                        )}
+                      >
+                        {h}
+                        {sorted === 'asc' ? (
+                          <ArrowUp className="h-3 w-3" />
+                        ) : sorted === 'desc' ? (
+                          <ArrowDown className="h-3 w-3" />
+                        ) : (
+                          <ArrowUpDown className="h-3 w-3 opacity-50" />
+                        )}
+                      </button>
+                    ) : (
+                      h
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

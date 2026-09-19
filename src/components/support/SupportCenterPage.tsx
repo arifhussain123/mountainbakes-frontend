@@ -6,6 +6,7 @@ import { apiCall } from '@/utils/api';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Pagination } from '@/components/data-engine/Pagination';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
-import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, PageSize, StockFigures, ProductionStockFigures } from '@mb/shared';
+import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, PageSize, StockFigures, ProductionStockFigures, SortState } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
@@ -232,6 +233,7 @@ export function SupportCenterPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(20);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortState | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [active, setActive] = useState<SupportTicket | null>(null);
@@ -270,6 +272,7 @@ export function SupportCenterPage() {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (search.trim()) params.set('search', search.trim());
       if (source === 'branch' || source === 'production') params.set('source', source);
+      if (sort) { params.set('sortBy', sort.key); params.set('sortDir', sort.direction); }
       try {
         const r = await apiCall<{ tickets: SupportTicket[]; total: number }>(`/api/support?${params}`, {}, token);
         if (stale) return;
@@ -282,7 +285,7 @@ export function SupportCenterPage() {
       }
     })();
     return () => { stale = true; };
-  }, [token, refreshKey, page, pageSize, search, source, showOperations]);
+  }, [token, refreshKey, page, pageSize, search, source, showOperations, sort]);
 
   useEffect(() => {
     if (!token) return;
@@ -362,6 +365,7 @@ export function SupportCenterPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => {
         const t = row.original;
         // Offer "Change figures" only where something can actually be changed. A
@@ -507,6 +511,7 @@ export function SupportCenterPage() {
             loading={loading}
             searchPlaceholder="Search tickets…"
             pager={false}
+            sortable
             manual={{
               page,
               pageSize,
@@ -514,6 +519,8 @@ export function SupportCenterPage() {
               onPageChange: setPage,
               search,
               onSearchChange: setFilter(setSearch),
+              sorting: sortStateToTanstack(sort),
+              onSortingChange: (next) => setSort(tanstackToSortState(next)),
             }}
           />
           <Pagination

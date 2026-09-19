@@ -129,7 +129,15 @@ export function useCategories(token: string, opts?: { enabled?: boolean }) {
 
 export function usePriceHistory(
   token: string,
-  opts?: { productId?: string; limit?: number; offset?: number; search?: string; enabled?: boolean },
+  opts?: {
+    productId?: string;
+    limit?: number;
+    offset?: number;
+    search?: string;
+    enabled?: boolean;
+    sortBy?: 'priceNumber' | 'productName' | 'oldPrice' | 'newPrice' | 'effectiveDate' | 'changedByName' | 'changedOn' | 'status';
+    sortDir?: 'asc' | 'desc';
+  },
 ) {
   const offset = opts?.offset ?? 0;
   const params = new URLSearchParams();
@@ -137,10 +145,12 @@ export function usePriceHistory(
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (offset) params.set('offset', String(offset));
   if (opts?.search) params.set('search', opts.search);
+  if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+  if (opts?.sortDir) params.set('sortDir', opts.sortDir);
   const qs = params.toString();
 
   return useQuery({
-    queryKey: qk.priceHistory(opts?.productId, offset, opts?.search),
+    queryKey: qk.priceHistory(opts?.productId, offset, opts?.search, opts?.sortBy, opts?.sortDir),
     queryFn: () =>
       apiCall<{ history: PriceHistoryDoc[]; total: number }>(
         `/api/products/price/history${qs ? `?${qs}` : ''}`,
@@ -302,6 +312,8 @@ export interface PackingUsageResponse {
  * pager — a wide date range across every branch/material can produce far more
  * rows than one screen should render at once.
  */
+export type PackingUsageSortKey = 'date' | 'branchName' | 'materialName' | 'requestedQty' | 'approvedQty' | 'deliveredQty';
+
 export function usePackingUsage(
   token: string,
   filters: {
@@ -311,6 +323,8 @@ export function usePackingUsage(
     packingMaterialId?: string | null;
     page?: number;
     pageSize?: number;
+    sortBy?: PackingUsageSortKey;
+    sortDir?: 'asc' | 'desc';
   },
   opts?: { enabled?: boolean },
 ) {
@@ -324,6 +338,8 @@ export function usePackingUsage(
       if (filters.packingMaterialId) qs.set('packingMaterialId', filters.packingMaterialId);
       if (filters.page) qs.set('page', String(filters.page));
       if (filters.pageSize) qs.set('pageSize', String(filters.pageSize));
+      if (filters.sortBy) qs.set('sortBy', filters.sortBy);
+      if (filters.sortDir) qs.set('sortDir', filters.sortDir);
       const query = qs.toString();
       return apiCall<PackingUsageResponse>(`/api/reports/packing-usage${query ? `?${query}` : ''}`, {}, token);
     },
@@ -955,12 +971,23 @@ export function useProductionStock(token: string, date?: string | null, opts?: {
  * next one loads — a table that empties on every keystroke of a search box reads
  * as "no results" when it means "still asking".
  */
+export type ProductionLedgerSortKey =
+  | 'businessDate'
+  | 'createdAt'
+  | 'productName'
+  | 'type'
+  | 'delta'
+  | 'balanceAfter'
+  | 'transactionNo'
+  | 'createdByName';
+
 export function useProductionLedger(
   token: string,
   params: {
     from?: string; to?: string; productId?: string; categoryId?: string;
     branchId?: string; movementType?: string; search?: string;
     limit?: number; offset?: number;
+    sortBy?: ProductionLedgerSortKey; sortDir?: 'asc' | 'desc';
   },
   opts?: { enabled?: boolean },
 ) {
@@ -1194,6 +1221,18 @@ export function useLoginHistory(token: string, opts?: { userId?: string | null; 
  * instant. Undefined values are dropped before the request rather than sent as
  * the string 'undefined', which the API would then reject as a bad UUID.
  */
+export type LoginSessionSortKey =
+  | 'loginAt'
+  | 'userName'
+  | 'browserEmail'
+  | 'city'
+  | 'country'
+  | 'browser'
+  | 'browserVersion'
+  | 'os'
+  | 'deviceType'
+  | 'ipAddress';
+
 export function useLoginHistoryPage(
   token: string,
   filters: {
@@ -1211,6 +1250,8 @@ export function useLoginHistoryPage(
     deviceType?: LoginDeviceType | null;
     page?: number;
     pageSize?: number;
+    sortBy?: LoginSessionSortKey;
+    sortDir?: 'asc' | 'desc';
   },
 ) {
   return useQuery({
@@ -1234,6 +1275,8 @@ export function useLoginHistoryPage(
       put('deviceType', filters.deviceType);
       put('page', filters.page ?? 1);
       put('pageSize', filters.pageSize ?? 25);
+      put('sortBy', filters.sortBy);
+      put('sortDir', filters.sortDir);
       return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
     },
     enabled: !!token,
@@ -1289,6 +1332,8 @@ export function useLoginFilterOptions(token: string, enabled = true) {
  * columns with a `LoginSession` beyond the device and the address that was
  * typed. See the type's own note on why those rows are client-reported.
  */
+export type LoginAttemptSortKey = 'attemptedAt' | 'email' | 'country' | 'city' | 'ipAddress' | 'reason';
+
 export function useLoginAttempts(
   token: string,
   filters: {
@@ -1299,6 +1344,8 @@ export function useLoginAttempts(
     to?: string | null;
     page?: number;
     pageSize?: number;
+    sortBy?: LoginAttemptSortKey;
+    sortDir?: 'asc' | 'desc';
   },
   enabled = true,
 ) {
@@ -1316,6 +1363,8 @@ export function useLoginAttempts(
       put('to', filters.to);
       put('page', filters.page ?? 1);
       put('pageSize', filters.pageSize ?? 25);
+      put('sortBy', filters.sortBy);
+      put('sortDir', filters.sortDir);
       return apiCall<LoginAttemptsPage>(`/api/login-attempts?${params.toString()}`, {}, token);
     },
     enabled: !!token && enabled,
@@ -1405,6 +1454,8 @@ export function useBranchReturns(
     search?: string | null;
     from?: string | null;
     to?: string | null;
+    sortBy?: 'date' | 'createdAt' | 'reviewedAt' | 'productName' | 'qty' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const days = opts?.days ?? 90;
@@ -1419,6 +1470,8 @@ export function useBranchReturns(
     search: opts?.search ?? null,
     from: opts?.from ?? null,
     to: opts?.to ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.branchReturns(key),
@@ -1434,6 +1487,8 @@ export function useBranchReturns(
       if (opts?.productId) params.set('productId', opts.productId);
       if (opts?.status) params.set('status', opts.status);
       if (opts?.search) params.set('search', opts.search);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ returns: ProductionReturn[]; total: number }>(`/api/stock/returns?${params.toString()}`, {}, token);
     },
     enabled: !!token,
@@ -1501,6 +1556,8 @@ export function useProductionReturns(
     productId?: string | null;
     status?: string | null;
     search?: string | null;
+    sortBy?: 'date' | 'createdAt' | 'branchName' | 'productName' | 'qty' | 'source' | 'reason' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const limit = opts?.limit ?? 20;
@@ -1514,6 +1571,8 @@ export function useProductionReturns(
     productId: opts?.productId ?? null,
     status: opts?.status ?? null,
     search: opts?.search ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.productionReturns(key),
@@ -1525,6 +1584,8 @@ export function useProductionReturns(
       if (opts?.productId) params.set('productId', opts.productId);
       if (opts?.status) params.set('status', opts.status);
       if (opts?.search) params.set('search', opts.search);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ returns: ProductionReturn[]; total: number }>(
         `/api/production-returns?${params.toString()}`,
         {},
@@ -1596,6 +1657,8 @@ export function useBranchDiscounts(
     from?: string | null;
     to?: string | null;
     enabled?: boolean;
+    sortBy?: 'date' | 'createdAt' | 'reviewedAt' | 'demandNumber' | 'amount' | 'reason' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const days = opts?.days ?? 90;
@@ -1609,6 +1672,8 @@ export function useBranchDiscounts(
     search: opts?.search ?? null,
     from: opts?.from ?? null,
     to: opts?.to ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.branchDiscounts(key),
@@ -1623,6 +1688,8 @@ export function useBranchDiscounts(
       if (opts?.search) params.set('search', opts.search);
       if (opts?.from) params.set('from', opts.from);
       if (opts?.to) params.set('to', opts.to);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ discounts: BranchDiscount[]; total: number }>(`/api/branch-discounts?${params.toString()}`, {}, token);
     },
     // `enabled` exists for the New Orders popup, which is mounted on every visit
@@ -1683,6 +1750,8 @@ export function useProductionDiscounts(
     branchId?: string | null;
     status?: string | null;
     search?: string | null;
+    sortBy?: 'date' | 'createdAt' | 'branchName' | 'demandNumber' | 'amount' | 'reason' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const limit = opts?.limit ?? 20;
@@ -1695,6 +1764,8 @@ export function useProductionDiscounts(
     branchId: opts?.branchId ?? null,
     status: opts?.status ?? null,
     search: opts?.search ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.productionDiscounts(key),
@@ -1705,6 +1776,8 @@ export function useProductionDiscounts(
       if (opts?.branchId) params.set('branchId', opts.branchId);
       if (opts?.status) params.set('status', opts.status);
       if (opts?.search) params.set('search', opts.search);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ discounts: BranchDiscount[]; total: number }>(
         `/api/production-discounts?${params.toString()}`,
         {},
@@ -2047,6 +2120,8 @@ export function useBranchUserRequests(
     limit?: number;
     search?: string | null;
     status?: string | null;
+    sortBy?: 'requestNo' | 'branchName' | 'displayName' | 'email' | 'shift' | 'requestedByName' | 'status' | 'createdAt' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   // `limit` defaults to 200, not a real 20-row page — a branch manager's own
@@ -2055,13 +2130,22 @@ export function useBranchUserRequests(
   // the one that actually pages, and passes both explicitly.
   const page = opts?.page ?? 1;
   const limit = opts?.limit ?? 200;
-  const key = { page, limit, search: opts?.search ?? null, status: opts?.status ?? null };
+  const key = {
+    page,
+    limit,
+    search: opts?.search ?? null,
+    status: opts?.status ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
+  };
   return useQuery({
     queryKey: qk.branchUserRequests(key),
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (opts?.search) params.set('search', opts.search);
       if (opts?.status) params.set('status', opts.status);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ requests: BranchUserRequest[]; total: number }>(
         `/api/branch-user-requests?${params.toString()}`,
         {},

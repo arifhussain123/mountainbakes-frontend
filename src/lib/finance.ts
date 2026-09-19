@@ -175,12 +175,23 @@ export function useLedgerHeads(includeInactive = false) {
 // Branch income
 // ---------------------------------------------------------------------------
 
+export type IncomeApprovalSortKey =
+  | 'referenceNo'
+  | 'branchName'
+  | 'businessDate'
+  | 'totalAmount'
+  | 'branchExpenses'
+  | 'netAmount'
+  | 'status';
+
 export type IncomeFilters = {
   status?: string;
   branchId?: string;
   from?: string;
   to?: string;
   search?: string;
+  sortBy?: IncomeApprovalSortKey;
+  sortDir?: 'asc' | 'desc';
 };
 
 export function useIncomeApprovals(filters: IncomeFilters & { limit?: number; offset?: number }) {

@@ -11,18 +11,18 @@ import {
   type LoginSessionState,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranches, useLoginFilterOptions, useLoginHistoryPage } from '@/lib/queries';
+import { useBranches, useLoginFilterOptions, useLoginHistoryPage, type LoginSessionSortKey } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { SortableHeaderCell } from '@/components/shared/SortableHeaderCell';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
@@ -100,22 +100,29 @@ import {
  * actions column. The skeleton and the empty state read this list so their
  * cell counts cannot drift from the real rows.
  */
-const HEADERS = [
-  'Browser email',
-  'Mountain Bakes ID',
-  'Login date',
-  'Time',
-  'Location',
-  'Browser',
-  'Browser version',
-  'Operating system',
-  'Device',
-  'IP address',
-  'Duration',
-  'Login status',
-  'Session status',
-  '',
-] as const;
+/**
+ * `sortKey` is omitted for a column with no single sortable value behind it:
+ * Location is a city/country/area blend, Duration and Session status are
+ * derived at read time rather than stored (see `SESSION_SORT_COLUMNS` in
+ * `login-history.service.ts`), Login status isn't in that allowlist either,
+ * and the trailing column is actions.
+ */
+const HEADERS: ReadonlyArray<{ label: string; sortKey?: LoginSessionSortKey }> = [
+  { label: 'Browser email', sortKey: 'browserEmail' },
+  { label: 'Mountain Bakes ID', sortKey: 'userName' },
+  { label: 'Login date', sortKey: 'loginAt' },
+  { label: 'Time', sortKey: 'loginAt' },
+  { label: 'Location' },
+  { label: 'Browser', sortKey: 'browser' },
+  { label: 'Browser version', sortKey: 'browserVersion' },
+  { label: 'Operating system', sortKey: 'os' },
+  { label: 'Device', sortKey: 'deviceType' },
+  { label: 'IP address', sortKey: 'ipAddress' },
+  { label: 'Duration' },
+  { label: 'Login status' },
+  { label: 'Session status' },
+  { label: '' },
+];
 
 const DEVICE_TYPES: LoginDeviceType[] = ['desktop', 'mobile', 'tablet', 'bot', 'unknown'];
 
@@ -213,6 +220,8 @@ export function LoginHistoryBoard({
     deviceType: (list.getFilter('deviceType')?.value as LoginDeviceType | undefined) || null,
     page: list.state.page,
     pageSize: list.state.pageSize,
+    sortBy: list.state.sort?.key as LoginSessionSortKey | undefined,
+    sortDir: list.state.sort?.direction,
   });
 
   const rows = query.data?.sessions ?? [];
@@ -272,7 +281,14 @@ export function LoginHistoryBoard({
           <TableHeader>
             <TableRow data-table-head>
               {HEADERS.map((h, i) => (
-                <TableHead key={i} className="text-xs font-semibold uppercase tracking-wide">{h}</TableHead>
+                <SortableHeaderCell
+                  key={i}
+                  canSort={!!h.sortKey}
+                  sorted={h.sortKey && list.state.sort?.key === h.sortKey ? list.state.sort.direction : false}
+                  onToggle={h.sortKey ? () => list.toggleSort(h.sortKey!) : undefined}
+                >
+                  {h.label}
+                </SortableHeaderCell>
               ))}
             </TableRow>
           </TableHeader>

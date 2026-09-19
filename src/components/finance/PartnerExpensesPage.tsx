@@ -12,6 +12,7 @@ import {
   type PartnerExpense,
   type PartnerShareRow,
   type PartnerTxnKind,
+  type SortState,
 } from '@mb/shared';
 import { useFinancePartners, usePartnerExpenses, usePartnerShareSummary } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
@@ -136,6 +138,7 @@ function PartnerLedgerTab({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PartnerExpense | null>(null);
   const [viewing, setViewing] = useState<PartnerExpense | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const list = useListQueryState({
     syncUrl: true,
@@ -171,6 +174,8 @@ function PartnerLedgerTab({
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: sort?.key,
+    sortDir: sort?.direction,
   });
 
   const rows = data?.expenses ?? [];
@@ -210,6 +215,7 @@ function PartnerLedgerTab({
     expenseCol.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
@@ -265,6 +271,7 @@ function PartnerLedgerTab({
         loading={isLoading}
         searchPlaceholder="Search by partner…"
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -272,6 +279,11 @@ function PartnerLedgerTab({
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => {
+            setSort(tanstackToSortState(next));
+            list.setPage(1);
+          },
         }}
         empty={
           <div className="p-6">

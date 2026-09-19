@@ -445,6 +445,8 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     col.accessor((o) => o.items.map((it) => it.productName).join(', '), {
       id: 'items',
       header: 'Products',
+      // A client-side join of item names, not a registered/sortable field.
+      enableSorting: false,
       meta: { mobileFull: true },
       cell: (i) => {
         const names = i.getValue();
@@ -464,7 +466,8 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     ...(isProduction
       ? []
       : [col.accessor('grandTotal', { header: 'Amount', cell: (i) => <span className="font-semibold">{cur}{i.getValue()?.toLocaleString()}</span> })]),
-    col.accessor('paymentMethod', { header: 'Payment', cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
+    // Matches OrdersPage: not a sortable field for this resource.
+    col.accessor('paymentMethod', { header: 'Payment', enableSorting: false, cell: (i) => <span>{PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span> }),
     // Shown on both surfaces. For a production staff sale the comment is unpaid
     // goods' whole audit trail; on a branch row it is the only record of why a
     // sale looks the way it does — leaving either to the View dialog hides it.

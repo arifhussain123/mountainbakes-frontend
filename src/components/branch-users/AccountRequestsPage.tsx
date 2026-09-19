@@ -9,7 +9,7 @@ import {
   useBranchUserRequests,
   useRejectBranchUserRequest,
 } from '@/lib/queries';
-import type { BranchUserRequest } from '@mb/shared';
+import type { BranchUserRequest, SortState } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { toast } from 'sonner';
 import { ShiftBadge, StatusBadge, formatStamp } from './requestStatus';
 import type { PageSize } from '@mb/shared';
@@ -38,7 +39,16 @@ export function AccountRequestsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(20);
   const [search, setSearch] = useState('');
-  const { data, isLoading } = useBranchUserRequests(token, { page, limit: pageSize, search: search || undefined });
+  const [sort, setSort] = useState<SortState | null>(null);
+  const { data, isLoading } = useBranchUserRequests(token, {
+    page,
+    limit: pageSize,
+    search: search || undefined,
+    sortBy: sort?.key as
+      | 'requestNo' | 'branchName' | 'displayName' | 'email' | 'shift' | 'requestedByName' | 'status' | 'createdAt'
+      | undefined,
+    sortDir: sort?.direction,
+  });
   const total = data?.total ?? 0;
   // A cheap `total`-only read for the header count — it has to span every
   // pending request in the queue, not just the current page.
@@ -57,14 +67,18 @@ export function AccountRequestsPage() {
   // pagination means this can no longer promise every pending row surfaces
   // ahead of every decided one across the whole queue, but within a 20-row
   // page (freshest first) it still reads as a work queue.
-  const rows = useMemo(
-    () =>
-      [...(data?.requests ?? [])].sort((a, b) => {
-        if (a.status === b.status) return b.createdAt.localeCompare(a.createdAt);
-        return a.status === 'pending' ? -1 : b.status === 'pending' ? 1 : 0;
-      }),
-    [data?.requests],
-  );
+  //
+  // That's the DEFAULT view only. The moment someone clicks a column header,
+  // "sorted by X" is what they asked for — the pending-first override would
+  // otherwise silently fight the sort they just chose.
+  const rows = useMemo(() => {
+    const requests = data?.requests ?? [];
+    if (sort) return requests;
+    return [...requests].sort((a, b) => {
+      if (a.status === b.status) return b.createdAt.localeCompare(a.createdAt);
+      return a.status === 'pending' ? -1 : b.status === 'pending' ? 1 : 0;
+    });
+  }, [data?.requests, sort]);
 
   function openApprove(request: BranchUserRequest) {
     setPassword('');
@@ -126,6 +140,7 @@ export function AccountRequestsPage() {
     }),
     col.accessor('note', {
       header: 'Note',
+      enableSorting: false,
       meta: { mobileFull: true },
       cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm text-muted-foreground" />,
     }),
@@ -133,6 +148,7 @@ export function AccountRequestsPage() {
     col.display({
       id: 'actions',
       header: 'Action',
+      enableSorting: false,
       meta: { mobileFull: true },
       cell: ({ row }) => {
         const r = row.original;
@@ -175,6 +191,7 @@ export function AccountRequestsPage() {
         loading={isLoading}
         searchPlaceholder="Search requests…"
         pager={false}
+        sortable
         manual={{
           page,
           pageSize,
@@ -182,6 +199,8 @@ export function AccountRequestsPage() {
           onPageChange: setPage,
           search,
           onSearchChange: (v) => { setSearch(v); setPage(1); },
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => setSort(tanstackToSortState(next)),
         }}
         empty={
           <EmptyState

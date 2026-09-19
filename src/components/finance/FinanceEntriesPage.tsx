@@ -9,6 +9,7 @@ import {
   FINANCE_PAYMENT_METHOD_LABELS,
   type FilterConfig,
   type FinanceTransaction,
+  type SortState,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
@@ -18,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { ExpandableText } from '@/components/shared/ExpandableText';
@@ -46,6 +48,8 @@ export function FinanceEntriesPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [viewing, setViewing] = useState<FinanceTransaction | null>(null);
+  // null = the API's own default (businessDate desc) — no `sortBy` sent.
+  const [sort, setSort] = useState<SortState | null>(null);
 
   const list = useListQueryState({
     syncUrl: true,
@@ -106,6 +110,8 @@ export function FinanceEntriesPage() {
     search: list.state.search || undefined,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: sort?.key,
+    sortDir: sort?.direction,
   });
 
   const rows = data?.entries ?? [];
@@ -183,6 +189,7 @@ export function FinanceEntriesPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
@@ -236,6 +243,7 @@ export function FinanceEntriesPage() {
         loading={isLoading}
         searchPlaceholder="Search entries…"
         pager={false}
+        sortable
         manual={{
           page: list.state.page,
           pageSize: list.state.pageSize,
@@ -243,6 +251,11 @@ export function FinanceEntriesPage() {
           onPageChange: list.setPage,
           search: list.state.search,
           onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(sort),
+          onSortingChange: (next) => {
+            setSort(tanstackToSortState(next));
+            list.setPage(1);
+          },
         }}
       />
       <Pagination
@@ -252,6 +265,7 @@ export function FinanceEntriesPage() {
         onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize}
         loading={isLoading}
+        className="sticky bottom-0 z-10 -mx-4 -mb-4 border-t bg-background px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6"
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>

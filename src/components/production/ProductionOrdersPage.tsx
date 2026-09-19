@@ -274,8 +274,16 @@ export function ProductionOrdersPage() {
   const columns = [
     col.accessor('demandNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.display({ id: 'ref', header: 'Order #', meta: { mobile: 'subtitle' }, cell: ({ row }) => <span className="font-mono text-xs">{slipReference(row.original)}</span> }),
-    col.accessor('date', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    col.accessor('time', { header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
+    // `date`/`time` are the display-renamed `businessDate`/`submittedTime`
+    // (see the registry's `transform`) — the column `id` is set back to the
+    // real registered field so a click sorts against a column the Data
+    // Engine actually knows, instead of 400ing on a display-only key.
+    col.accessor('date', { id: 'businessDate', header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
+    // `submittedTime` (the displayed text) isn't itself a registered field —
+    // it's a freeform "as captured by the branch" string that would also
+    // sort lexically wrong. `submittedAt`, the real timestamp stamped at the
+    // same moment, is sortable and gives the correct order.
+    col.accessor('time', { id: 'submittedAt', header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
     // What the branch is committing Production to. Emphasised over the raised
     // date beside it — this is the one Production plans against. Blank on
     // demands raised before the field existed; never defaulted to `date`.
@@ -340,7 +348,7 @@ export function ProductionOrdersPage() {
     // give one, so on a 'cancelled' row this is never empty — and it is the only
     // thing on this screen that explains work that was planned and then pulled.
     col.accessor((o) => o.cancelReason ?? '', {
-      id: 'reason',
+      id: 'cancelReason',
       header: 'Reason',
       meta: { mobileFull: true },
       cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" />,

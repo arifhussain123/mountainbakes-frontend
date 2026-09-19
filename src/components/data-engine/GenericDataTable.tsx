@@ -25,6 +25,7 @@ import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import type { FilterConfig, FilterOption, FilterValue, PageSize, PaginatedResponse, SortState } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState, type ListQueryStateApi } from '@/lib/data-engine/useListQueryState';
 import { useResourceList, type CacheProfile } from '@/lib/data-engine/useResource';
 import { cn } from '@/lib/utils';
@@ -146,11 +147,8 @@ export function GenericDataTable<TData>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page?.totalPages, page?.total]);
 
-  const sorting: SortingState = list.state.sort ? [{ id: list.state.sort.key, desc: list.state.sort.direction === 'desc' }] : [];
-  const onSortingChange = (next: SortingState) => {
-    const first = next[0];
-    list.setSort(first ? { key: first.id, direction: first.desc ? 'desc' : 'asc' } : defaultSort ?? null);
-  };
+  const sorting: SortingState = sortStateToTanstack(list.state.sort);
+  const onSortingChange = (next: SortingState) => list.setSort(tanstackToSortState(next, defaultSort ?? null));
 
   const rows = page?.data ?? [];
   const total = page?.total ?? 0;

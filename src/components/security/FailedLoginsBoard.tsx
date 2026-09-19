@@ -10,7 +10,7 @@ import {
   type LoginAttemptReason,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useLoginAttempts, useLoginFilterOptions } from '@/lib/queries';
+import { useLoginAttempts, useLoginFilterOptions, type LoginAttemptSortKey } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { SortableHeaderCell } from '@/components/shared/SortableHeaderCell';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
@@ -100,7 +101,18 @@ export function FailedLoginsBoard() {
     to: (list.getFilter('businessDate', 'lte')?.value as string | undefined) || null,
     page: list.state.page,
     pageSize: list.state.pageSize,
+    sortBy: (list.state.sort?.key as LoginAttemptSortKey | undefined) ?? undefined,
+    sortDir: list.state.sort?.direction,
   });
+
+  // Date and Time are both drawn from `attemptedAt` — the same header key twice,
+  // one sort column. Browser/Device aren't sortable: the board shows them as
+  // composite strings (browser+version, os+device type), not a single column.
+  const sortHeader = (key: string, label: string) => (
+    <SortableHeaderCell canSort sorted={list.state.sort?.key === key ? list.state.sort.direction : false} onToggle={() => list.toggleSort(key)}>
+      {label}
+    </SortableHeaderCell>
+  );
 
   const rows = query.data?.attempts ?? [];
   const total = query.data?.total ?? 0;
@@ -153,9 +165,15 @@ export function FailedLoginsBoard() {
         <Table>
           <TableHeader>
             <TableRow data-table-head>
-              {['Date', 'Time', 'Email typed', 'Country', 'City', 'IP address', 'Browser', 'Device', 'Reason'].map((h, i) => (
-                <TableHead key={i} className="text-xs font-semibold uppercase tracking-wide">{h}</TableHead>
-              ))}
+              {sortHeader('attemptedAt', 'Date')}
+              {sortHeader('attemptedAt', 'Time')}
+              {sortHeader('email', 'Email typed')}
+              {sortHeader('country', 'Country')}
+              {sortHeader('city', 'City')}
+              {sortHeader('ipAddress', 'IP address')}
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">Browser</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide">Device</TableHead>
+              {sortHeader('reason', 'Reason')}
             </TableRow>
           </TableHeader>
           <TableBody>

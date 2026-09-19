@@ -62,6 +62,7 @@ export function BranchUserRequestsPage() {
     col.display({
       id: 'outcome',
       header: 'Outcome',
+      enableSorting: false,
       meta: { mobileFull: true },
       cell: ({ row }) => {
         const r = row.original;
@@ -98,6 +99,7 @@ export function BranchUserRequestsPage() {
         data={requests}
         loading={isLoading}
         searchPlaceholder="Search requests…"
+        sortable
         empty={
           <EmptyState
             icon={UserCog}

@@ -83,6 +83,7 @@ export function EventListTable({
     col.display({
       id: 'branches',
       header: 'Branches',
+      enableSorting: false,
       cell: (info) => {
         const summary = info.row.original.demandSummary;
         if (!summary) return '—';
@@ -108,6 +109,7 @@ export function EventListTable({
       col.display({
         id: 'actions',
         header: '',
+        enableSorting: false,
         cell: (info) => (
           <div className="flex items-center gap-1 [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-8 md:[&_button]:min-w-8">
             {onEdit && (
@@ -137,6 +139,7 @@ export function EventListTable({
       data={events}
       loading={loading}
       searchPlaceholder="Search events…"
+      sortable
       columnVisibility={{ eventNumber: false }}
       empty={
         <EmptyState
