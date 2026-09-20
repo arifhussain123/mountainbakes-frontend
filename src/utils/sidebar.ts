@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   Scale,
+  DatabaseBackup,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -69,6 +70,9 @@ export const ADMIN_NAV: NavItem[] = [
   // Next to Users rather than beside Settings: it is read while thinking about
   // an account, not while configuring the app.
   { label: 'Security',        href: ROUTES.SECURITY,         icon: ShieldAlert },
+  // Beside Security rather than under Settings: it is an operations check
+  // ("do we have last night's backup?"), not a preference.
+  { label: 'Database Backup', href: ROUTES.DATABASE_BACKUP,  icon: DatabaseBackup },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
 ];
 

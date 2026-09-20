@@ -15,6 +15,13 @@ import { qk } from './queryKeys';
 // date into the UTC instants /api/orders filters created_at on.
 import { businessDayBounds, businessDateStr } from '@mb/shared';
 import type {
+  BackupDownloadUrlResponse,
+  BackupHistoryResponse,
+  BackupRestoreTest,
+  BackupRunResponse,
+  BackupStatusResponse,
+  BackupType,
+  BackupVerifyResult,
   ActiveSessionsResponse,
   ApproveBranchUserRequestInput,
   Branch,
@@ -2476,5 +2483,64 @@ export function useSetPaymentMethodLock(token: string) {
         token,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+// ─── Database backups (Admin → Database Backup) ──────────────────────────────
+// Super admin only; every endpoint 403s otherwise. Status is polled while a run
+// is in progress so a manual backup started from the screen is seen finishing.
+
+export function useBackupStatus(token: string) {
+  return useQuery({
+    queryKey: qk.backupStatus(),
+    queryFn: () => apiCall<BackupStatusResponse>('/api/admin/backups/status', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    refetchInterval: (q) => (q.state.data?.running.length ? 10_000 : false),
+  });
+}
+
+export function useBackupHistory(token: string, params: { page: number; pageSize: number; type?: BackupType }) {
+  const qs = new URLSearchParams({ page: String(params.page), pageSize: String(params.pageSize), ...(params.type ? { type: params.type } : {}) });
+  return useQuery({
+    queryKey: qk.backupHistory(params),
+    queryFn: () => apiCall<BackupHistoryResponse>(`/api/admin/backups/history?${qs}`, {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useLatestRestoreTest(token: string) {
+  return useQuery({
+    queryKey: qk.backupRestoreTest(),
+    queryFn: () => apiCall<{ restoreTest: BackupRestoreTest | null }>('/api/admin/backups/restore-tests/latest', {}, token),
+    enabled: !!token,
+  });
+}
+
+export function useVerifyBackup(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall<BackupVerifyResult>(`/api/admin/backups/${id}/verify`, { method: 'POST' }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+/** Starts a backup (202) — only ever CREATES; nothing on the screen can delete. */
+export function useRunBackup(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { type: BackupType; force?: boolean }) =>
+      apiCall<BackupRunResponse>('/api/admin/backups/run', { method: 'POST', body: JSON.stringify(v) }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+/** A five-minute presigned link, issued on demand and logged by the API. Never cached. */
+export function useBackupDownloadUrl(token: string) {
+  return useMutation({
+    mutationFn: (v: { id: string; file: 'main' | 'auth' }) =>
+      apiCall<BackupDownloadUrlResponse>(`/api/admin/backups/${v.id}/download-url?file=${v.file}`, {}, token),
   });
 }

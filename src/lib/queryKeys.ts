@@ -296,6 +296,13 @@ export const qk = {
   data: (resource: string, query: string) => ['data', resource, 'list', query] as const,
   dataAggregate: (resource: string, query: string) => ['data', resource, 'aggregate', query] as const,
   dataMeta: (resource: string) => ['data', resource, 'meta'] as const,
+
+  // Database backups. One family so a verify or a manual run refreshes the
+  // status cards and the history table together — they are two views of the
+  // same backup_jobs rows.
+  backupStatus: () => ['backups', 'status'] as const,
+  backupHistory: (params: Record<string, unknown>) => ['backups', 'history', params] as const,
+  backupRestoreTest: () => ['backups', 'restore-test'] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

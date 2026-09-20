@@ -85,6 +85,10 @@ const ADMIN_PREFIXES = [
   // below, which would bounce super admins off their own board. See
   // ROUTES.DAILY_SALE_RECORDS.
   '/daily-sale-records',
+  // Admin → Database Backup. Backup status, history, verify and short-lived
+  // download links; the API refuses anyone but a super admin on every one of
+  // those calls, this line only keeps the screen from 403-ing at a non-admin.
+  '/database-backup',
 ];
 
 function isPublic(pathname: string): boolean {

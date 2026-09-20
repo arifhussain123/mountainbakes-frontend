@@ -45,6 +45,13 @@ export const ROUTES = {
    */
   SECURITY: '/security',
   /**
+   * Admin → Database Backup. Status of the pg_dump → S3 backups (daily /
+   * weekly / monthly), the run history, verify and download. Named
+   * '/database-backup' — no '/branch-' or '/production-' prefix — and added to
+   * RouteGuard's ADMIN_PREFIXES in the same change.
+   */
+  DATABASE_BACKUP: '/database-backup',
+  /**
    * Admin → Daily Sale Records. Every branch's daily reconciliation, and the only
    * place a locked record can be unlocked or an amended figure entered.
    *

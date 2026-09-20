@@ -28,6 +28,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.REPORTS]: 'Reports & Analytics',
   [ROUTES.SUPPORT_CENTER]: 'Support Center',
   [ROUTES.SECURITY]: 'Security',
+  [ROUTES.DATABASE_BACKUP]: 'Database Backup',
   [ROUTES.DAILY_SALE_RECORDS]: 'Daily Sale Records',
   [ROUTES.NOTIFICATION_RECIPIENTS]: 'Notification Recipients',
   // /special-events/<id> is deliberately absent: a dynamic route cannot have a
