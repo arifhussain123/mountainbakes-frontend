@@ -13,7 +13,6 @@ import type {
   FinanceDashboard,
   FinanceDayClosing,
   FinanceEmployee,
-  FinanceIncomeApproval,
   FinancePartner,
   FinanceReport,
   FinanceSettings,
@@ -103,7 +102,7 @@ export function useFinanceDashboard(filters: FinanceDashboardFilters = {}) {
  * object type alias an implicit index signature but never gives one to an
  * interface, so only this form is assignable to the `Record<string, unknown>`
  * that `qk.financeLedger` takes. Declared as an interface it fails to compile at
- * the call site below. Same for IncomeFilters.
+ * the call site below.
  */
 export type LedgerFilters = {
   from?: string;
@@ -213,44 +212,6 @@ export function useLedgerHeads(includeInactive = false) {
         {},
         token,
       )).heads,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Branch income
-// ---------------------------------------------------------------------------
-
-export type IncomeApprovalSortKey =
-  | 'referenceNo'
-  | 'branchName'
-  | 'businessDate'
-  | 'totalAmount'
-  | 'branchExpenses'
-  | 'netAmount'
-  | 'status';
-
-export type IncomeFilters = {
-  status?: string;
-  branchId?: string;
-  from?: string;
-  to?: string;
-  search?: string;
-  sortBy?: IncomeApprovalSortKey;
-  sortDir?: 'asc' | 'desc';
-};
-
-export function useIncomeApprovals(filters: IncomeFilters & { limit?: number; offset?: number }) {
-  const token = useToken();
-  return useQuery({
-    queryKey: qk.financeIncome(filters as Record<string, unknown>),
-    enabled: Boolean(token),
-    staleTime: 15_000,
-    queryFn: () =>
-      apiCall<{ approvals: FinanceIncomeApproval[]; total: number }>(
-        `/api/finance/income${toQuery(filters)}`,
-        {},
-        token,
-      ),
   });
 }
 

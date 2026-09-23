@@ -92,7 +92,7 @@ src/app/
     │
     └── (finance)/              finance_admin | finance_manager | accountant | finance_auditor
         ├── finance-dashboard/  finance-ledger/    finance-entries/
-        ├── finance-closing/    finance-income/    finance-cash-transfers/  finance-heads/
+        ├── finance-closing/    finance-cash-transfers/  finance-heads/
         ├── finance-salaries/   finance-partner-expenses/
         ├── finance-reports/    finance-audit/     finance-settings/
 ```

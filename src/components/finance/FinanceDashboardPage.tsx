@@ -241,13 +241,6 @@ export function FinanceDashboardPage() {
       {/* Awaiting a decision */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ApprovalCard
-          title="Pending Income Approvals"
-          count={data?.pendingIncomeApprovals ?? 0}
-          amount={data?.pendingIncomeAmount ?? 0}
-          href={ROUTES.FINANCE_INCOME}
-          loading={isLoading}
-        />
-        <ApprovalCard
           title="Pending Expense Approvals"
           count={data?.pendingExpenseApprovals ?? 0}
           amount={data?.pendingExpenseAmount ?? 0}

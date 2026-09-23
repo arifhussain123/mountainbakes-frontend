@@ -167,7 +167,6 @@ export const ROUTES = {
   FINANCE_LOGIN: '/finance-login',
   FINANCE_DASHBOARD: '/finance-dashboard',
   FINANCE_LEDGER: '/finance-ledger',
-  FINANCE_INCOME: '/finance-income',
   FINANCE_CASH_TRANSFERS: '/finance-cash-transfers',
   FINANCE_ENTRIES: '/finance-entries',
   FINANCE_SALARIES: '/finance-salaries',

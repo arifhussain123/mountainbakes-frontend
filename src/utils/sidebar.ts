@@ -22,7 +22,6 @@ import {
   MapPin,
   BookOpenCheck,
   Wallet,
-  Landmark,
   UserCog,
   UserPlus,
   HandCoins,
@@ -93,7 +92,6 @@ export const ADMIN_NAV: NavItem[] = [
 export const FINANCE_NAV: NavItem[] = [
   { label: 'Dashboard',        href: ROUTES.FINANCE_DASHBOARD,         icon: LayoutDashboard },
   { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
-  { label: 'Branch Income',    href: ROUTES.FINANCE_INCOME,            icon: Landmark },
   { label: 'Cash Transfers',   href: ROUTES.FINANCE_CASH_TRANSFERS,    icon: Banknote },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
   { label: 'Salaries',         href: ROUTES.FINANCE_SALARIES,          icon: UserCog },
@@ -212,7 +210,7 @@ export function getNavItems(role: UserRole): NavItem[] {
 const FINANCE_PRIMARY: string[] = [
   ROUTES.FINANCE_DASHBOARD,
   ROUTES.FINANCE_LEDGER,
-  ROUTES.FINANCE_INCOME,
+  ROUTES.FINANCE_CASH_TRANSFERS,
   ROUTES.FINANCE_ENTRIES,
 ];
 

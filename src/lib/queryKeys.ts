@@ -246,7 +246,6 @@ export const qk = {
   financeLedgerSummary: (filters: Record<string, unknown>) => ['finance', 'ledgerSummary', filters] as const,
   financeHeads: (includeInactive?: boolean) =>
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
-  financeIncome: (filters: Record<string, unknown>) => ['finance', 'income', filters] as const,
   financeCashTransfers: (filters: Record<string, unknown>) => ['finance', 'cashTransfers', filters] as const,
   financeCashTransfer: (id: string) => ['finance', 'cashTransfer', id] as const,
   financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,
