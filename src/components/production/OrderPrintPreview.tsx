@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem } from '@mb/shared';
+import { CASH_TRANSFER_METHOD_LABELS, rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem, type PaymentReceivedItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
 import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -291,6 +291,15 @@ function PreviewBody({
   const discountRows = prevBal?.discountItems ?? [];
   const discountsAmount = prevBal?.discountsValue ?? 0;
   const collectionAmount = prevBal?.amountToCollect ?? 0;
+  // Approved cash transfers in the same window (migration 118). Displayed
+  // beside the figures above and NEVER netted off `collectionAmount` — the
+  // money was already booked as an RV- receipt when Finance approved it, and
+  // taking it off here as well would count it twice. `remainingBalance` is the
+  // server's own "what is still owed after that payment"; an older server
+  // sends neither field, hence the fallbacks.
+  const paymentRows = prevBal?.paymentItems ?? [];
+  const paymentsAmount = prevBal?.paymentsReceivedValue ?? 0;
+  const remainingAmount = prevBal?.remainingBalance ?? Math.max(0, collectionAmount - paymentsAmount);
   const previousRef = prevBal?.previous ?? null;
   const hasPrevBalance = !!previousRef;
 
@@ -458,6 +467,8 @@ function PreviewBody({
               returnsAmount,
               discountsAmount,
               amountToCollect: collectionAmount,
+              paymentsReceived: paymentsAmount,
+              remainingBalance: remainingAmount,
             }
           : null,
     };
@@ -835,7 +846,7 @@ function PreviewBody({
             ) : hasPrevBalance ? (
               // Every step is shown, not just the total: this is collected in
               // cash at the counter, so the figure has to be checkable by hand.
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-6">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs sm:grid-cols-4">
                 <Field label="Previous Order" value={`${previousRef!.demandNumber} · ${previousRef!.date}`} />
                 <Field label="Delivered Value" value={money(deliveredValue, sym)} />
                 <Field label="Company Share" value={money(companyShareValue, sym)} />
@@ -845,6 +856,12 @@ function PreviewBody({
                     Money only — there are no units behind a discount. */}
                 <Field label="Less Discount" value={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
                 <Field label="Amount to Collect" value={money(collectionAmount, sym)} strong />
+                {/* AFTER the total, not before it: Payment Received is money the
+                    branch already handed over (approved cash transfers), shown as
+                    its own fact. It is not a deduction and does not move the
+                    figure above — see previous-balance.service.ts. */}
+                <Field label="Payment Received" value={paymentsAmount > 0 ? money(paymentsAmount, sym) : '—'} />
+                <Field label="Remaining Balance" value={money(remainingAmount, sym)} strong />
               </div>
             ) : (
               <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">
@@ -941,6 +958,7 @@ function PreviewBody({
               companyShareValue={companyShareValue}
               returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
               discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
+              paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
             />
             <PrintCopy
               copyLabel="Company Copy"
@@ -950,6 +968,7 @@ function PreviewBody({
               companyShareValue={companyShareValue}
               returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
               discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
+              paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
             />
           </div>
         ) : (
@@ -1111,6 +1130,7 @@ function PrintCopy({
   copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
   previousRef, deliveredValue, companyShareValue,
   returnRows, returnsQty, returnsAmount, discountRows, discountsAmount, collectionAmount,
+  paymentRows, paymentsAmount, remainingAmount,
 }: {
   copyLabel: string;
   logo?: string;
@@ -1138,6 +1158,11 @@ function PrintCopy({
   /** companyShareValue less returnsAmount AND discountsAmount — what the rider
    *  actually collects. */
   collectionAmount: number;
+  /** Approved cash transfers in the same window — shown, never deducted. */
+  paymentRows: PaymentReceivedItem[];
+  paymentsAmount: number;
+  /** collectionAmount less paymentsAmount, floored at zero — the server's figure. */
+  remainingAmount: number;
 }) {
   const items = printRows.filter((r) => r.approved > 0);
   // Same rule as products: the slip is a delivery document, so it lists what is
@@ -1220,6 +1245,8 @@ function PrintCopy({
             <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
             <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
             <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
+            <MetaKV k="Payment Received" v={paymentsAmount > 0 ? money(paymentsAmount, sym) : '—'} />
+            <MetaKV k="Remaining Balance" v={money(remainingAmount, sym)} />
           </div>
         ) : (
           <p className="text-[9px] font-medium text-neutral-500">
@@ -1289,6 +1316,44 @@ function PrintCopy({
                   <tr className="border-t-2 border-neutral-400 font-bold">
                     <td className="pt-0.5">Total</td>
                     <td className="pt-0.5 pl-1 text-right tabular-nums">{money(discountsAmount, sym)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Payments received — approved cash transfers in the window, itemised
+              like the discounts so each handover can be matched to its slip and
+              its RV- voucher by hand. Informational: nothing here changes the
+              Amount to Collect above. */}
+          {paymentRows.length > 0 && (
+            <div className="avoid-break mt-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Payments Received (Since Last Order)</p>
+              <table className="w-full border-collapse text-[9px] leading-tight">
+                <thead>
+                  <tr className="border-y border-neutral-400 text-left">
+                    <th className="py-0.5 pr-1 font-semibold">Transfer</th>
+                    <th className="px-1 py-0.5 font-semibold">Voucher</th>
+                    <th className="px-1 py-0.5 font-semibold">Date</th>
+                    <th className="px-1 py-0.5 font-semibold">Method</th>
+                    <th className="py-0.5 pl-1 text-right font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentRows.map((p) => (
+                    <tr key={p.transferId} className="border-b border-neutral-200">
+                      <td className="py-0.5 pr-1 font-mono font-medium">{p.transferNo}</td>
+                      <td className="px-1 py-0.5 font-mono">{p.voucherNo ?? '—'}</td>
+                      <td className="px-1 py-0.5">{p.date}</td>
+                      <td className="px-1 py-0.5">{CASH_TRANSFER_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod}</td>
+                      <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(p.amount, sym)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-neutral-400 font-bold">
+                    <td className="pt-0.5" colSpan={4}>Total</td>
+                    <td className="pt-0.5 pl-1 text-right tabular-nums">{money(paymentsAmount, sym)}</td>
                   </tr>
                 </tfoot>
               </table>

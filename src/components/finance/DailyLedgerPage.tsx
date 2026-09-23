@@ -28,7 +28,9 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { LedgerSummaryCards } from './LedgerSummaryCards';
-import { BookOpen, FileSpreadsheet, FileText, RotateCcw, Undo2 } from 'lucide-react';
+import { PendingCashTransfersPanel } from '@/components/cash-transfers/PendingCashTransfersPanel';
+import { CashTransferById } from '@/components/cash-transfers/CashTransferById';
+import { BookOpen, Eye, FileSpreadsheet, FileText, RotateCcw, Undo2 } from 'lucide-react';
 
 /**
  * The Daily Ledger — the cash book.
@@ -150,6 +152,8 @@ export function DailyLedgerPage() {
   });
   const [adjusting, setAdjusting] = useState<LedgerEntry | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'excel' | null>(null);
+  /** The cash transfer behind a voucher, opened from its row (migration 118). */
+  const [viewingTransfer, setViewingTransfer] = useState<string | null>(null);
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -276,6 +280,10 @@ export function DailyLedgerPage() {
 
       <ReadOnlyNotice abilities={abilities} />
 
+      {/* Branch handovers not yet in the book — Approve / Reject / View from
+          here, so the cash book's reader can clear the queue in place. */}
+      <PendingCashTransfersPanel canDecide={abilities.approve} />
+
       <LedgerSummaryCards date={query.to ?? today} branchId={query.branchId} />
 
       <FilterBar
@@ -327,6 +335,7 @@ export function DailyLedgerPage() {
                       {h}
                     </TableHead>
                   ))}
+                  <TableHead className="w-px" />
                   {abilities.adjust && <TableHead className="w-px" />}
                 </TableRow>
               </TableHeader>
@@ -343,13 +352,13 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right font-semibold">
                     <Money value={data?.openingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 2 : 1} />
+                  <TableCell colSpan={abilities.adjust ? 3 : 2} />
                 </TableRow>
 
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: abilities.adjust ? 11 : 10 }).map((__, j) => (
+                      {Array.from({ length: abilities.adjust ? 12 : 11 }).map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-4 w-full" />
                         </TableCell>
@@ -358,7 +367,7 @@ export function DailyLedgerPage() {
                   ))
                 ) : entries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={abilities.adjust ? 11 : 10} className="p-0">
+                    <TableCell colSpan={abilities.adjust ? 12 : 11} className="p-0">
                       <EmptyState
                         icon={BookOpen}
                         title="No vouchers for this selection"
@@ -368,7 +377,7 @@ export function DailyLedgerPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  entries.map((e) => <LedgerRow key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} />)
+                  entries.map((e) => <LedgerRow key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} onViewSource={setViewingTransfer} />)
                 )}
               </TableBody>
 
@@ -391,7 +400,7 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right">
                     <Money value={data?.closingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 2 : 1} className="text-xs font-normal text-muted-foreground">
+                  <TableCell colSpan={abilities.adjust ? 3 : 2} className="text-xs font-normal text-muted-foreground">
                     Carried forward
                   </TableCell>
                 </TableRow>
@@ -415,7 +424,7 @@ export function DailyLedgerPage() {
             ) : entries.length === 0 ? (
               <EmptyState icon={BookOpen} title="No vouchers for this selection" />
             ) : (
-              entries.map((e) => <LedgerCard key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} />)
+              entries.map((e) => <LedgerCard key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} onViewSource={setViewingTransfer} />)
             )}
 
             <div className="space-y-1 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm font-medium">
@@ -446,8 +455,14 @@ export function DailyLedgerPage() {
       )}
 
       <AdjustDialog entry={adjusting} onClose={() => setAdjusting(null)} />
+      <CashTransferById id={viewingTransfer} onClose={() => setViewingTransfer(null)} />
     </div>
   );
+}
+
+/** The one source a voucher can be opened FROM: a branch cash transfer (118). */
+function sourceTransferId(entry: LedgerEntry): string | null {
+  return entry.sourceType === 'cash_transfer' && entry.sourceId ? entry.sourceId : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,12 +471,15 @@ function LedgerRow({
   entry,
   canAdjust,
   onAdjust,
+  onViewSource,
 }: {
   entry: DisplayEntry;
   canAdjust: boolean;
   onAdjust: (entry: LedgerEntry) => void;
+  onViewSource: (transferId: string) => void;
 }) {
   const reversed = entry.status === 'reversed';
+  const transferId = sourceTransferId(entry);
 
   return (
     <TableRow className={cn('hover:bg-muted/30', reversed && 'text-muted-foreground line-through decoration-1')}>
@@ -492,6 +510,16 @@ function LedgerRow({
       <TableCell>
         <StatusBadge status={entry.status} />
       </TableCell>
+      <TableCell>
+        {/* The record behind a branch cash receipt — transfer id, photo at
+            reading size, who submitted and who approved. Other sources have
+            their own screens and no single dialog here. */}
+        {transferId && (
+          <Button variant="ghost" size="icon-sm" aria-label="View cash transfer" onClick={() => onViewSource(transferId)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </TableCell>
       {canAdjust && (
         <TableCell>
           {/* A reversing entry cannot itself be reversed, and neither can one
@@ -513,13 +541,16 @@ function LedgerCard({
   entry,
   canAdjust,
   onAdjust,
+  onViewSource,
 }: {
   entry: DisplayEntry;
   canAdjust: boolean;
   onAdjust: (entry: LedgerEntry) => void;
+  onViewSource: (transferId: string) => void;
 }) {
   const reversed = entry.status === 'reversed';
   const isDebit = entry.debit > 0;
+  const transferId = sourceTransferId(entry);
 
   return (
     <div className={cn('rounded-lg border bg-card p-3', reversed && 'opacity-60')}>
@@ -564,12 +595,20 @@ function LedgerCard({
         className="mt-2.5"
       />
 
-      {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
-        <div className="mt-3 border-t pt-2.5">
-          <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onAdjust(entry)}>
-            <Undo2 className="h-3.5 w-3.5" />
-            Adjust or reverse
-          </Button>
+      {(transferId || (canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged)) && (
+        <div className="mt-3 flex flex-col gap-2 border-t pt-2.5">
+          {transferId && (
+            <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onViewSource(transferId)}>
+              <Eye className="h-3.5 w-3.5" />
+              View cash transfer
+            </Button>
+          )}
+          {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
+            <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onAdjust(entry)}>
+              <Undo2 className="h-3.5 w-3.5" />
+              Adjust or reverse
+            </Button>
+          )}
         </div>
       )}
     </div>

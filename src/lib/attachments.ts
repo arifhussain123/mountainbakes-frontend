@@ -164,6 +164,54 @@ export async function uploadAttachment(
   return attachment;
 }
 
+/**
+ * A rectangle in SOURCE pixels, as react-easy-crop reports it — what
+ * `cropImage` cuts out of the decoded frame.
+ */
+export interface CropArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Cut `area` out of a captured frame and hand back a fresh blob.
+ *
+ * Sits BEFORE compressImage in the pipeline, never after: cropping the stored
+ * (already normalised) image would throw away pixels twice, and a tightly
+ * cropped slip that then gets normalised to the stored size keeps every bit of
+ * the resolution the camera gave the part that matters. Encoded at a high
+ * quality for the same reason the live shutter is — this blob is an
+ * intermediate that compressImage decodes again immediately.
+ */
+export async function cropImage(source: Blob, area: CropArea): Promise<Blob> {
+  const bitmap = await createImageBitmap(source);
+  try {
+    const x = Math.max(0, Math.round(area.x));
+    const y = Math.max(0, Math.round(area.y));
+    const width = Math.max(1, Math.min(Math.round(area.width), bitmap.width - x));
+    const height = Math.max(1, Math.min(Math.round(area.height), bitmap.height - y));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('This device could not process the photo');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, x, y, width, height, 0, 0, width, height);
+
+    const blob = await toBlob(canvas, 'image/jpeg', 0.98);
+    if (!blob) throw new Error('This device could not process the photo');
+    return blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
 /** Compress and upload in one step — what every capture surface actually calls. */
 export async function captureAndUpload(
   entity: AttachmentEntity,

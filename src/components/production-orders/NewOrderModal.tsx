@@ -30,7 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
-import { AlertTriangle, BadgePercent, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, RotateCcw, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
+import { AlertTriangle, BadgePercent, Banknote, Calendar, ChevronDown, Clock, Eraser, Hash, Loader2, Package, PackageCheck, Plus, RotateCcw, Save, Send, Sparkles, Store, Trash2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
 import { formatCurrency as money } from '@/utils/currency';
@@ -88,6 +88,8 @@ export interface NewOrderModalProps {
    */
   onOpenReturn?: () => void;
   onOpenDiscount?: () => void;
+  /** Cash Deposit — the branch records money handed to the company (migration 118). */
+  onOpenCashDeposit?: () => void;
 }
 
 /**
@@ -206,6 +208,7 @@ export function NewOrderModal({
   submitting,
   onOpenReturn,
   onOpenDiscount,
+  onOpenCashDeposit,
 }: NewOrderModalProps) {
   const [qtyById, setQtyById] = useState<Record<string, string>>({});
   const [now, setNow] = useState<Date | null>(null);
@@ -581,7 +584,7 @@ export function NewOrderModal({
 
                   Rendered only when the handlers are passed, so the modal still
                   works standalone. */}
-              {(onOpenReturn || onOpenDiscount) && (
+              {(onOpenReturn || onOpenDiscount || onOpenCashDeposit) && (
                 <div className="flex flex-wrap gap-2">
                   {onOpenReturn && (
                     <Button size="sm" variant="outline" onClick={onOpenReturn} disabled={submitting}>
@@ -591,6 +594,13 @@ export function NewOrderModal({
                   {onOpenDiscount && (
                     <Button size="sm" variant="outline" onClick={onOpenDiscount} disabled={submitting}>
                       <BadgePercent className="mr-1.5 h-4 w-4" /> Discount
+                    </Button>
+                  )}
+                  {/* Beside Discount, styled the same: both are money the branch
+                      records against the company while it is already here. */}
+                  {onOpenCashDeposit && (
+                    <Button size="sm" variant="outline" onClick={onOpenCashDeposit} disabled={submitting}>
+                      <Banknote className="mr-1.5 h-4 w-4" /> Cash Deposit
                     </Button>
                   )}
                 </div>

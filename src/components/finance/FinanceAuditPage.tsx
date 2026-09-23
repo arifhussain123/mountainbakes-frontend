@@ -56,6 +56,8 @@ const ENTITIES = [
   // The Help Desk query itself. `entityRef` on these rows is the Query ID, which
   // is what makes FIN-HD-… searchable here (§3).
   { value: 'finance_ticket', label: 'Help Desk query' },
+  // A branch cash handover (migration 118): approve / reject decisions.
+  { value: 'cash_transfer', label: 'Branch cash transfer' },
 ];
 
 /** Colour by consequence, matching the status vocabulary used across the module. */

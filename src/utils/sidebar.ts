@@ -32,6 +32,7 @@ import {
   ShieldAlert,
   Scale,
   DatabaseBackup,
+  Banknote,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -93,6 +94,7 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Dashboard',        href: ROUTES.FINANCE_DASHBOARD,         icon: LayoutDashboard },
   { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
   { label: 'Branch Income',    href: ROUTES.FINANCE_INCOME,            icon: Landmark },
+  { label: 'Cash Transfers',   href: ROUTES.FINANCE_CASH_TRANSFERS,    icon: Banknote },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
   { label: 'Salaries',         href: ROUTES.FINANCE_SALARIES,          icon: UserCog },
   { label: 'Company Transaction Details', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: HandCoins },
@@ -111,6 +113,7 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Stock',         href: ROUTES.BRANCH_STOCK,       icon: Boxes },
   { label: 'Return Stock',  href: ROUTES.BRANCH_RETURN_STOCK, icon: Undo2 },
   { label: 'Discounts',     href: ROUTES.BRANCH_DISCOUNTS,    icon: BadgePercent },
+  { label: 'Cash Deposits', href: ROUTES.BRANCH_CASH_TRANSFERS, icon: Banknote },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
   { label: 'Branch Closing',href: ROUTES.BRANCH_CLOSING,     icon: CalendarCheck },
@@ -150,6 +153,9 @@ export const BRANCH_USER_NAV: NavItem[] = [
   { label: 'Stock',          href: ROUTES.BRANCH_STOCK,      icon: Boxes },
   { label: 'Return Stock',   href: ROUTES.BRANCH_RETURN_STOCK, icon: Undo2 },
   { label: 'Discounts',      href: ROUTES.BRANCH_DISCOUNTS,   icon: BadgePercent },
+  /* The shift account hands cash over too, and is the one holding the slip when
+   * it does. Adding it here also grants the route — see the note above. */
+  { label: 'Cash Deposits',  href: ROUTES.BRANCH_CASH_TRANSFERS, icon: Banknote },
   { label: 'Shop Expenses',  href: ROUTES.BRANCH_EXPENSES,   icon: Receipt },
   { label: 'Events',         href: ROUTES.BRANCH_EVENTS,     icon: CalendarDays },
   { label: 'Branch Closing', href: ROUTES.BRANCH_CLOSING,    icon: CalendarCheck },

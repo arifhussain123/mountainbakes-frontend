@@ -118,6 +118,13 @@ export const ROUTES = {
    * table and are not interchangeable.
    */
   BRANCH_DISCOUNTS: '/branch-discounts',
+  /**
+   * Branch → Cash Deposits (migration 118): money the branch handed to the
+   * company, with the photo of the slip, and what Finance decided about each.
+   * Same '/branch-' prefix rule as BRANCH_DISCOUNTS; Finance's review board is
+   * FINANCE_CASH_TRANSFERS below and reads the same table.
+   */
+  BRANCH_CASH_TRANSFERS: '/branch-cash-transfers',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
@@ -161,6 +168,7 @@ export const ROUTES = {
   FINANCE_DASHBOARD: '/finance-dashboard',
   FINANCE_LEDGER: '/finance-ledger',
   FINANCE_INCOME: '/finance-income',
+  FINANCE_CASH_TRANSFERS: '/finance-cash-transfers',
   FINANCE_ENTRIES: '/finance-entries',
   FINANCE_SALARIES: '/finance-salaries',
   FINANCE_PARTNER_EXPENSES: '/finance-partner-expenses',

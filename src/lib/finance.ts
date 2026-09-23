@@ -6,6 +6,7 @@ import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
   BranchShareBalance,
+  CashTransfer,
   EmployeeAdvance,
   EmployeeAdvanceSummary,
   FinanceAuditLog,
@@ -128,6 +129,50 @@ export function useLedger(filters: LedgerFilters) {
     enabled: Boolean(token),
     staleTime: 15_000,
     queryFn: () => apiCall<LedgerPage>(`/api/finance/ledger${toQuery(filters)}`, {}, token),
+  });
+}
+
+/**
+ * Cash transfers — Finance's review board (migration 118). A `type`, for the
+ * index-signature reason `LedgerFilters` gives.
+ */
+export type CashTransferFilters = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+  status?: string;
+  paymentMethod?: string;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+};
+
+export function useFinanceCashTransfers(filters: CashTransferFilters, opts?: { enabled?: boolean }) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeCashTransfers(filters as Record<string, unknown>),
+    enabled: Boolean(token) && (opts?.enabled ?? true),
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiCall<{ transfers: CashTransfer[]; total: number }>(
+        `/api/finance/cash-transfers${toQuery(filters)}`,
+        {},
+        token,
+      ),
+  });
+}
+
+/** One transfer by id — what a Daily Ledger row opens from its `sourceId`. */
+export function useFinanceCashTransfer(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeCashTransfer(id ?? ''),
+    enabled: Boolean(token) && Boolean(id),
+    staleTime: 15_000,
+    queryFn: () => apiCall<CashTransfer>(`/api/finance/cash-transfers/${id}`, {}, token),
   });
 }
 

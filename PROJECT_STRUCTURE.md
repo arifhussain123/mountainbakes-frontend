@@ -80,7 +80,7 @@ src/app/
     ├── (branch)/               branch_manager + branch_user
     │   ├── branch-dashboard/   branch-sales/      branch-stock/
     │   ├── branch-orders/      branch-new-orders/ branch-return-stock/
-    │   ├── branch-closing/     branch-expenses/   branch-discounts/
+    │   ├── branch-closing/     branch-expenses/   branch-discounts/  branch-cash-transfers/
     │   ├── branch-customers/   branch-events/     branch-reports/
     │   ├── branch-users/       branch-help-desk/  branch-daily-sale/
     │
@@ -92,7 +92,7 @@ src/app/
     │
     └── (finance)/              finance_admin | finance_manager | accountant | finance_auditor
         ├── finance-dashboard/  finance-ledger/    finance-entries/
-        ├── finance-closing/    finance-income/    finance-heads/
+        ├── finance-closing/    finance-income/    finance-cash-transfers/  finance-heads/
         ├── finance-salaries/   finance-partner-expenses/
         ├── finance-reports/    finance-audit/     finance-settings/
 ```

@@ -27,6 +27,7 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DateFilter, FilterSelect, RejectDialog } from './finance-actions';
+import { BranchDayCashTransfers } from '@/components/cash-transfers/BranchDayCashTransfers';
 import { ArrowDownToLine, BadgeCheck, Check, Eye, Info, X } from 'lucide-react';
 
 /**
@@ -445,6 +446,11 @@ export function BranchIncomePage() {
                   </div>
                 )}
               </div>
+
+              {/* The physical handovers behind this day's takings (migration
+                  118) — a read-only link, not a second income record. Each
+                  transfer is booked once, as its own RV- receipt, on approval. */}
+              <BranchDayCashTransfers branchId={viewing.branchId} date={viewing.businessDate} />
 
               <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
                 Close

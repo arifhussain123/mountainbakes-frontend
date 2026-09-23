@@ -41,6 +41,12 @@ import type {
   ProductionReturnStatus,
   BranchDiscount,
   BranchDiscountStatus,
+  CashTransfer,
+  CashTransferMethod,
+  CashTransferSortKey,
+  CashTransferStatus,
+  CreateCashTransferInput,
+  PaymentReceivedItem,
   LoginSession,
   LoginAttemptReason,
   LoginAttemptsPage,
@@ -755,6 +761,18 @@ export interface PreviousOrderBalance {
   /** The exact approved claims that discountsValue was built from. */
   discountItems: { demandNumber: string; amount: number }[];
   amountToCollect: number;
+  /**
+   * Approved cash transfers (migration 118) in the same window — DISPLAYED
+   * beside the figures above, never deducted from `amountToCollect`. The
+   * transfer was already booked as an RV- receipt when Finance approved it;
+   * netting it here as well would count the same money twice. Absent on a
+   * server older than the release that added it, hence the `?? 0` at every
+   * read site.
+   */
+  paymentsReceivedValue?: number;
+  paymentItems?: PaymentReceivedItem[];
+  /** `amountToCollect − paymentsReceivedValue`, floored at zero. Display only. */
+  remainingBalance?: number;
 }
 
 /**
@@ -1706,6 +1724,94 @@ export function useBranchDiscounts(
     // of being that page.
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Cash transfers — the branch's side (migration 118).
+//
+// Same shape as the discount hooks above, and keyed as their own family for the
+// same reason: nothing here moves stock. Finance's review hooks live in
+// lib/finance.ts under the finance root, so an approval there refreshes the
+// ledger, the dashboard and the finance list together.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchCashTransfers(
+  token: string,
+  opts?: {
+    branchId?: string | null;
+    days?: number;
+    status?: CashTransferStatus | null;
+    paymentMethod?: CashTransferMethod | null;
+    limit?: number;
+    offset?: number;
+    search?: string | null;
+    from?: string | null;
+    to?: string | null;
+    enabled?: boolean;
+    sortBy?: CashTransferSortKey | null;
+    sortDir?: 'asc' | 'desc' | null;
+  },
+) {
+  const days = opts?.days ?? 90;
+  const offset = opts?.offset ?? 0;
+  const key = {
+    branchId: opts?.branchId ?? null,
+    days,
+    status: opts?.status ?? null,
+    paymentMethod: opts?.paymentMethod ?? null,
+    offset,
+    limit: opts?.limit ?? null,
+    search: opts?.search ?? null,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
+  };
+  return useQuery({
+    queryKey: qk.branchCashTransfers(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.paymentMethod) params.set('paymentMethod', opts.paymentMethod);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (offset) params.set('offset', String(offset));
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
+      return apiCall<{ transfers: CashTransfer[]; total: number }>(`/api/cash-transfers?${params.toString()}`, {}, token);
+    },
+    // `enabled` exists for the Cash Deposit popup on New Orders, which is
+    // mounted on every visit and opened on few — see useBranchDiscounts.
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Record a handover. The photo is uploaded FIRST (PhotoCapture → POST
+ * /api/attachments) and only its id travels here — see attachment.schemas.ts.
+ * `clientOperationId` becomes the Idempotency-Key, so a double click or a retry
+ * after a dropped connection replays the first response rather than booking
+ * the same cash twice.
+ */
+export function useCreateCashTransfer(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientOperationId, ...body }: CreateCashTransferInput & { clientOperationId: string }) =>
+      apiCall<CashTransfer>(
+        '/api/cash-transfers',
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': clientOperationId },
+          body: JSON.stringify(body),
+        },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cashTransfers'] }),
   });
 }
 

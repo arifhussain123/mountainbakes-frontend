@@ -168,6 +168,11 @@ export const qk = {
   // `branchReturns` is.
   productionDiscounts: (params: Record<string, unknown>) => ['discounts', 'production', params] as const,
   branchDiscounts: (params: Record<string, unknown>) => ['discounts', 'branch', params] as const,
+  // Cash transfers (migration 118) — the branch's own list. Its own family for
+  // the reason discounts are: nothing here moves stock. The Finance side is
+  // `financeCashTransfers` below, under the finance root so a decision
+  // invalidates it with everything else finance.
+  branchCashTransfers: (params: Record<string, unknown>) => ['cashTransfers', 'branch', params] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
@@ -242,6 +247,8 @@ export const qk = {
   financeHeads: (includeInactive?: boolean) =>
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
   financeIncome: (filters: Record<string, unknown>) => ['finance', 'income', filters] as const,
+  financeCashTransfers: (filters: Record<string, unknown>) => ['finance', 'cashTransfers', filters] as const,
+  financeCashTransfer: (id: string) => ['finance', 'cashTransfer', id] as const,
   financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,
   financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
   financeEmployees: (includeInactive?: boolean) =>

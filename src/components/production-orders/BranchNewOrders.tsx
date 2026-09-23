@@ -33,6 +33,7 @@ import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 import { BranchOrderDetail } from './BranchOrderDetail';
 import { DiscountModal } from './DiscountModal';
+import { CashDepositModal } from '@/components/cash-transfers/CashDepositModal';
 import { ReturnItemsModal } from '@/components/stock/ReturnItemsModal';
 
 const col = createColumnHelper<BranchProductionOrder>();
@@ -111,6 +112,8 @@ export function BranchNewOrders() {
   const [demandFor, setDemandFor] = useState<BranchProductionOrder | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
+  const [cashDepositOpen, setCashDepositOpen] = useState(false);
+  const [cashDepositOpenedOnce, setCashDepositOpenedOnce] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   /**
    * Whether the Return Items popup has ever been opened.
@@ -145,6 +148,11 @@ export function BranchNewOrders() {
   function openDiscount() {
     setDiscountOpenedOnce(true);
     setDiscountOpen(true);
+  }
+
+  function openCashDeposit() {
+    setCashDepositOpenedOnce(true);
+    setCashDepositOpen(true);
   }
 
   function openReturn() {
@@ -507,6 +515,7 @@ export function BranchNewOrders() {
         submitting={submitMut.isPending}
         onOpenReturn={openReturn}
         onOpenDiscount={openDiscount}
+        onOpenCashDeposit={openCashDeposit}
       />
 
       {/* Delete a demand Production has not started on. The reason is mandatory
@@ -605,6 +614,16 @@ export function BranchNewOrders() {
         openedOnce={discountOpenedOnce}
         orders={ordersQ.data ?? []}
         loadingOrders={ordersQ.isLoading}
+      />
+
+      {/* Record cash handed to the company. Its own transaction — it touches no
+          demand and no discount — and Branch → Cash Deposits carries the full
+          record with search and detail; the rules the two share live in
+          `cashTransferShared.tsx`. */}
+      <CashDepositModal
+        open={cashDepositOpen}
+        onOpenChange={setCashDepositOpen}
+        openedOnce={cashDepositOpenedOnce}
       />
 
       <Fab onClick={openModal} icon={Plus} label="New production order" />
