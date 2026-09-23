@@ -318,7 +318,7 @@ export function QueryFeedForm({
                 void handleLookup();
               }
             }}
-            placeholder="e.g. RV-000001 — optional"
+            placeholder="e.g. RV-000001 or CT-000001 — optional"
             readOnly={readOnly}
             className={cn('font-mono', readOnly && 'bg-muted')}
           />

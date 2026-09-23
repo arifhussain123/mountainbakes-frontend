@@ -62,6 +62,14 @@ export function CashTransferDetailsDialog({
           </div>
         ) : transfer ? (
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
+            {transfer.deletedAt && (
+              <dd className="col-span-2 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                <span className="font-semibold">Deleted</span> through the Finance Help Desk
+                {transfer.deletedQueryNo ? ` (${transfer.deletedQueryNo})` : ''}
+                {transfer.deletedByName ? ` by ${transfer.deletedByName}` : ''} on {formatDateTime(transfer.deletedAt)}.
+                {transfer.deleteReason ? ` Reason: ${transfer.deleteReason}` : ''}
+              </dd>
+            )}
             <dt className="text-muted-foreground">Transfer ID</dt>
             <dd className="text-right font-mono font-medium">{transfer.transferNo}</dd>
 

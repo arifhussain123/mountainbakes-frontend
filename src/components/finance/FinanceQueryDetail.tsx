@@ -578,14 +578,34 @@ function AmendRecordDialog({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="amend-value">New value</Label>
-                <Input
-                  id="amend-value"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                  inputMode={spec?.kind === 'money' ? 'decimal' : 'text'}
-                  className="tabular-nums"
-                  autoFocus
-                />
+                {spec?.kind === 'select' ? (
+                  // A closed list (a cash transfer's payment method): the
+                  // options come from the shared field spec, so the desk can
+                  // only pick a value the SQL accepts.
+                  <select
+                    id="amend-value"
+                    value={newValue}
+                    onChange={(e) => setNewValue(e.target.value)}
+                    className={selectClass}
+                    autoFocus
+                  >
+                    <option value="">Choose…</option>
+                    {(spec.options ?? []).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id="amend-value"
+                    value={newValue}
+                    onChange={(e) => setNewValue(e.target.value)}
+                    inputMode={spec?.kind === 'money' ? 'decimal' : 'text'}
+                    className="tabular-nums"
+                    autoFocus
+                  />
+                )}
               </div>
             </div>
 
@@ -675,6 +695,14 @@ function DeleteRecordDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket
                   {' '}
                   This is a posted voucher: deleting it recomputes the running balance on every later entry. To
                   correct a wrong figure without that, cancel and use Correct record instead.
+                </>
+              )}
+              {ticket.referenceType === 'cash_transfer' && (
+                <>
+                  {' '}
+                  If this transfer was approved, its RV- receipt is reversed in the Daily Ledger by a reversing
+                  voucher that cites this query; the original stays visible. The transfer and its photo are kept,
+                  marked deleted, and it drops out of the branch&apos;s lists and the production slip.
                 </>
               )}
             </p>
