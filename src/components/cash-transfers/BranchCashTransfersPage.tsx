@@ -23,15 +23,10 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
-import { Banknote, Eye, MessageSquareWarning, Plus } from 'lucide-react';
+import { Banknote, Eye, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { CashDepositModal } from './CashDepositModal';
 import { CashTransferDetailsDialog } from './CashTransferDetailsDialog';
-import {
-  BranchTransferQueriesPanel,
-  RaiseTransferQueryDialog,
-  TransferQueryDialog,
-} from './TransferQueryDialogs';
 import {
   CashTransferStatusBadge,
   cashTransferStatusLabel,
@@ -48,9 +43,7 @@ import {
  * filter bar, table and pager. What is deliberately missing is Change and
  * Delete — a transfer is a claim that money moved, evidenced by one photo of
  * one handover, and the record is final from the moment it is submitted. A
- * wrong one is rejected by Finance (with a reason shown here) and raised again,
- * or — once it is in — the branch raises a Query on its Transfer ID and the
- * Admin corrects or deletes it from the Help Desk (TransferQueryDialogs.tsx).
+ * wrong one is rejected by Finance (with a reason shown here) and raised again.
  *
  * READS ITS OWN ENDPOINT. `GET /api/cash-transfers` scopes to the caller's
  * branch off the JWT; Finance's `/api/finance/cash-transfers` is a different
@@ -90,8 +83,6 @@ export function BranchCashTransfersPage() {
   });
 
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
-  const [queryRow, setQueryRow] = useState<CashTransfer | null>(null);
-  const [openQueryId, setOpenQueryId] = useState<string | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositOpenedOnce, setDepositOpenedOnce] = useState(false);
 
@@ -170,9 +161,6 @@ export function BranchCashTransfersPage() {
           <Button variant="ghost" size="sm" onClick={() => setViewRow(row.original)}>
             <Eye className="mr-1.5 h-4 w-4" /> View
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setQueryRow(row.original)} title="Raise a query with Admin on this transfer">
-            <MessageSquareWarning className="mr-1.5 h-4 w-4" /> Query
-          </Button>
           <span className="text-xs text-muted-foreground" title={lockReason(row.original)}>
             {row.original.status === 'pending' ? 'Submitted' : 'Final'}
           </span>
@@ -236,17 +224,7 @@ export function BranchCashTransfersPage() {
         loading={transfersQ.isLoading}
       />
 
-      <BranchTransferQueriesPanel onOpen={setOpenQueryId} />
-
       <CashTransferDetailsDialog transfer={viewRow} open={!!viewRow} onClose={() => setViewRow(null)} />
-
-      <RaiseTransferQueryDialog
-        transfer={queryRow}
-        open={!!queryRow}
-        onClose={() => setQueryRow(null)}
-        onRaised={(t) => setOpenQueryId(t.id)}
-      />
-      <TransferQueryDialog ticketId={openQueryId} open={!!openQueryId} onClose={() => setOpenQueryId(null)} />
 
       <CashDepositModal open={depositOpen} onOpenChange={setDepositOpen} openedOnce={depositOpenedOnce} />
     </div>

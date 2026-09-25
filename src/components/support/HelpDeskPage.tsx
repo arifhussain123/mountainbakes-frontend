@@ -95,8 +95,7 @@ function NewQueryDialog({ open, onOpenChange, onCreated }: {
         <DialogHeader>
           <DialogTitle>New Query</DialogTitle>
           <DialogDescription>
-            Search a sale (MB-…), demand (DMD-…), expense (EXP-…), stock (STK-…), or cash deposit
-            (CT-…) ID. Its details
+            Search a sale (MB-…), demand (DMD-…), expense (EXP-…), or stock (STK-…) ID. Its details
             load automatically — then describe the issue for the admin.
           </DialogDescription>
         </DialogHeader>

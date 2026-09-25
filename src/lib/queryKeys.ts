@@ -173,10 +173,6 @@ export const qk = {
   // `financeCashTransfers` below, under the finance root so a decision
   // invalidates it with everything else finance.
   branchCashTransfers: (params: Record<string, unknown>) => ['cashTransfers', 'branch', params] as const,
-  // A branch's Help Desk queries on its own transfers. Under the same root so
-  // raising one refreshes the transfer list's per-row query state with it.
-  branchTransferQueries: (params: Record<string, unknown>) => ['cashTransfers', 'queries', params] as const,
-  branchTransferQuery: (id: string) => ['cashTransfers', 'query', id] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
