@@ -46,6 +46,9 @@ import type {
   CashTransferSortKey,
   CashTransferStatus,
   CreateCashTransferInput,
+  FinanceTicket,
+  FinanceTicketMessage,
+  RaiseCashTransferQueryInput,
   PaymentReceivedItem,
   LoginSession,
   LoginAttemptReason,
@@ -1809,6 +1812,71 @@ export function useCreateCashTransfer(token: string) {
           headers: { 'Idempotency-Key': clientOperationId },
           body: JSON.stringify(body),
         },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cashTransfers'] }),
+  });
+}
+
+/**
+ * The Help Desk queries raised from this branch (branch side of
+ * /api/finance/tickets). The server scopes to the caller's branch off the JWT;
+ * `referenceNo` narrows to one transfer.
+ */
+export function useBranchTransferQueries(
+  token: string,
+  opts?: { referenceNo?: string | null; page?: number; pageSize?: number },
+) {
+  const key = { referenceNo: opts?.referenceNo ?? null, page: opts?.page ?? 1, pageSize: opts?.pageSize ?? 25 };
+  return useQuery({
+    queryKey: qk.branchTransferQueries(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(key.page), pageSize: String(key.pageSize) });
+      if (key.referenceNo) params.set('referenceNo', key.referenceNo);
+      return apiCall<{ tickets: FinanceTicket[]; total: number }>(
+        `/api/finance/tickets/branch?${params.toString()}`,
+        {},
+        token,
+      );
+    },
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/** One branch query with its thread — read while the dialog is open. */
+export function useBranchTransferQuery(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.branchTransferQuery(id ?? ''),
+    enabled: !!token && !!id,
+    staleTime: 15_000,
+    queryFn: async () =>
+      (await apiCall<{ ticket: FinanceTicket }>(`/api/finance/tickets/branch/${id}`, {}, token)).ticket,
+  });
+}
+
+/** Raise a query on one of this branch's transfers. Goes straight to Admin. */
+export function useRaiseTransferQuery(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RaiseCashTransferQueryInput) =>
+      apiCall<{ ticket: FinanceTicket }>(
+        '/api/finance/tickets/branch',
+        { method: 'POST', body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cashTransfers'] }),
+  });
+}
+
+/** The branch's reply on its own query. */
+export function useReplyTransferQuery(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) =>
+      apiCall<{ message: FinanceTicketMessage }>(
+        `/api/finance/tickets/branch/${id}/messages`,
+        { method: 'POST', body: JSON.stringify({ body }) },
         token,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cashTransfers'] }),
