@@ -101,6 +101,7 @@ const TYPE_LABEL: Record<SupportReference['type'], string> = {
   demand: 'Demand',
   expense: 'Expense',
   stock: 'Stock',
+  cash_transfer: 'Cash Deposit',
   system: 'System',
 };
 
@@ -1029,7 +1030,7 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
     );
   }
   if (!ref || ref.readOnly) {
-    return <NothingToChangeDialog onClose={onClose} />;
+    return <NothingToChangeDialog onClose={onClose} cashDeposit={ref?.type === 'cash_transfer'} />;
   }
   // Sales get a dedicated line-item editor (change product / qty / amount, add /
   // remove lines) applied live to the order with stock reconciled server-side.
@@ -1423,7 +1424,7 @@ function DeleteDemandDialog({ ticket, stockMoved, onClose, onDone }: {
  * A rejected/cancelled demand no longer lands here: its lines still cannot be
  * corrected, but it can now be deleted, so it routes to DeleteDemandDialog.
  */
-function NothingToChangeDialog({ onClose }: { onClose: () => void }) {
+function NothingToChangeDialog({ onClose, cashDeposit = false }: { onClose: () => void; cashDeposit?: boolean }) {
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="md:max-w-md">
@@ -1432,6 +1433,12 @@ function NothingToChangeDialog({ onClose }: { onClose: () => void }) {
           <DialogDescription>
             This reference is informational only — there is no figure here that can be written
             back. Open <span className="font-medium">View</span> to reply and resolve the query.
+            {cashDeposit && (
+              <>
+                {' '}A cash deposit's amount, method or note is corrected — or the deposit deleted — on
+                the <span className="font-medium">Finance Help Desk</span>, under its CT- ID.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
