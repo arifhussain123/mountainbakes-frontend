@@ -138,10 +138,10 @@ export function UsersPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete ${name}? This deactivates the account and revokes access.`)) return;
+    if (!confirm(`Permanently delete ${name}? The account is removed from the system and cannot be restored. Records they created are kept.`)) return;
     try {
-      await apiCall(`/api/users/${id}`, { method: 'DELETE' }, token);
-      toast.success(`${name} removed`);
+      await apiCall(`/api/users/${id}/permanent`, { method: 'DELETE' }, token);
+      toast.success(`${name} deleted`);
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete user');
