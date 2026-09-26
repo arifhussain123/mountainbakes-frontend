@@ -71,18 +71,18 @@ src/app/
     │   ├── customers/          price-history/     stock-control/
     │   ├── geofencing/         reports/           settings/
     │   ├── notification-recipients/               support/
-    │   ├── users/              user-requests/     daily-sale-records/
+    │   ├── users/              daily-sale-records/
     │   └── special-events/
     │       ├── page.tsx
     │       └── [id]/page.tsx   builds ONE shell at EVENT_ID_PLACEHOLDER;
     │                           firebase.json rewrites real ids onto it
     │
-    ├── (branch)/               branch_manager + branch_user
+    ├── (branch)/               branch_manager
     │   ├── branch-dashboard/   branch-sales/      branch-stock/
     │   ├── branch-orders/      branch-new-orders/ branch-return-stock/
     │   ├── branch-closing/     branch-expenses/   branch-discounts/  branch-cash-transfers/
     │   ├── branch-customers/   branch-events/     branch-reports/
-    │   ├── branch-users/       branch-help-desk/  branch-daily-sale/
+    │   ├── branch-help-desk/   branch-daily-sale/
     │
     ├── (production)/           production_user
     │   ├── production-dashboard/   production-orders/    production-queue/
@@ -131,8 +131,6 @@ src/components/
 │
 ├── branches/               BranchesPage
 ├── branch-locations/       BranchLocationsPage · LocationPickerDialog
-├── branch-users/           AccountRequestsPage · BranchUserRequestsPage
-│                           RequestBranchUserForm · requestStatus
 ├── geofence/               GeofenceGate · GeofenceStatusCard
 │
 ├── products/               ProductsPage · ProductForm · CategoriesPage

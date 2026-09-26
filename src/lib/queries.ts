@@ -24,17 +24,13 @@ import type {
   BackupType,
   BackupVerifyResult,
   ActiveSessionsResponse,
-  ApproveBranchUserRequestInput,
   Branch,
   BranchStockHistoryRow,
   StockReconciliation,
   BranchStockSummaryResult,
   BranchProductionOrder,
-  BranchUserRequest,
-  CreateBranchUserRequestInput,
   Expense,
   Order,
-  RejectBranchUserRequestInput,
   Category,
   Product,
   ProductionBalanceDoc,
@@ -2219,118 +2215,11 @@ export function useRegenerateEventSchedule(token: string) {
  * catalogue ships with no resolved dates, so until this runs the calendar is empty.
  */
 // ───────────────────────────────────────────────────────────────────────────
-// Shift-account requests
-//
-// The manager's Shift Accounts page and the admin's Account Requests queue are
-// two views of ONE endpoint, which scopes itself from the JWT: a manager gets
-// their own branch's rows, an admin gets every branch. So one read hook serves
-// both pages, and the mutations differ only in who is allowed to call them.
-// ───────────────────────────────────────────────────────────────────────────
-
-export function useBranchUserRequests(
-  token: string,
-  opts?: {
-    enabled?: boolean;
-    page?: number;
-    limit?: number;
-    search?: string | null;
-    status?: string | null;
-    sortBy?: 'requestNo' | 'branchName' | 'displayName' | 'email' | 'shift' | 'requestedByName' | 'status' | 'createdAt' | null;
-    sortDir?: 'asc' | 'desc' | null;
-  },
-) {
-  // `limit` defaults to 200, not a real 20-row page — a branch manager's own
-  // queue (the only other caller) is a handful of shift requests and has no
-  // page control; AccountRequestsPage.tsx (the admin's cross-branch view) is
-  // the one that actually pages, and passes both explicitly.
-  const page = opts?.page ?? 1;
-  const limit = opts?.limit ?? 200;
-  const key = {
-    page,
-    limit,
-    search: opts?.search ?? null,
-    status: opts?.status ?? null,
-    sortBy: opts?.sortBy ?? null,
-    sortDir: opts?.sortDir ?? null,
-  };
-  return useQuery({
-    queryKey: qk.branchUserRequests(key),
-    queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (opts?.search) params.set('search', opts.search);
-      if (opts?.status) params.set('status', opts.status);
-      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
-      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
-      return apiCall<{ requests: BranchUserRequest[]; total: number }>(
-        `/api/branch-user-requests?${params.toString()}`,
-        {},
-        token,
-      );
-    },
-    enabled: !!token && (opts?.enabled ?? true),
-    staleTime: LIVE_STALE_TIME,
-  });
-}
-
-/** Manager → Admin. The branch is taken from the JWT, so it is not sent. */
-export function useCreateBranchUserRequest(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CreateBranchUserRequestInput) =>
-      apiCall<{ request: BranchUserRequest }>(
-        '/api/branch-user-requests',
-        { method: 'POST', body: JSON.stringify(body) },
-        token,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
-    },
-  });
-}
-
-/**
- * Admin approval — this is what actually mints the account, on the requesting
- * manager's branch. It also invalidates the Users list, which now has a row in
- * it that was not there a moment ago.
- */
-export function useApproveBranchUserRequest(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...body }: ApproveBranchUserRequestInput & { id: string }) =>
-      apiCall<{ request: BranchUserRequest; userId: string }>(
-        `/api/branch-user-requests/${id}/approve`,
-        { method: 'POST', body: JSON.stringify(body) },
-        token,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
-      qc.invalidateQueries({ queryKey: ['users'] });
-    },
-  });
-}
-
-export function useRejectBranchUserRequest(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: RejectBranchUserRequestInput & { id: string }) =>
-      apiCall<{ request: BranchUserRequest }>(
-        `/api/branch-user-requests/${id}/reject`,
-        { method: 'POST', body: JSON.stringify({ reason }) },
-        token,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
-    },
-  });
-}
-
-// ───────────────────────────────────────────────────────────────────────────
 // Branch Closing
 //
 // The end-of-day sheet is COMPOSED, not fetched: there is no closing endpoint a
 // branch account may call. /api/business-day/close is the admin's once-a-day
-// lock and /api/reports/summary is manager-and-above, so both are out of reach
-// of a shift account by design.
+// lock, so it is out of reach of a branch manager by design.
 //
 // What is in reach is the day's own records — orders, expenses and stock, each
 // already branch-scoped server-side from the JWT. Reading the three together
@@ -2381,10 +2270,9 @@ export function useBranchClosing(token: string, businessDate: string) {
 // Daily Sale Record
 //
 // The one place in this file where NOTHING is composed on the client. Branch
-// Closing above builds its sheet from three endpoints because a shift account
-// may not call a report endpoint; this feature has its own API that aggregates
-// in Postgres and returns the finished figures, so these hooks only pass a
-// window along and hand the answer back.
+// Closing above builds its sheet from three endpoints; this feature has its own
+// API that aggregates in Postgres and returns the finished figures, so these
+// hooks only pass a window along and hand the answer back.
 //
 // Every mutation invalidates the whole ['dailySale'] prefix. That is broader
 // than the sweeping invalidation `useCreateBranchDiscount` deliberately avoids,

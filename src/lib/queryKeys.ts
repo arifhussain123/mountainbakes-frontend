@@ -188,14 +188,6 @@ export const qk = {
   eventNotifications: (eventId?: string | null, status?: string | null) =>
     ['eventNotifications', eventId ?? 'all', status ?? null] as const,
 
-  // Shift-account requests (branch_manager → Admin). One key for both sides of
-  // the queue: the endpoint scopes itself from the JWT, so a manager and an
-  // admin asking for the same key are asking for different rows and never share
-  // a cache entry — the token they read with differs, and signing out clears it.
-  // Keyed by the whole filter object — page/limit/search/status each select a
-  // different set of rows, same convention as `branchReturns`.
-  branchUserRequests: (params: Record<string, unknown>) => ['branchUserRequests', params] as const,
-
   // Branch Closing. One key for the whole sheet rather than three: the orders,
   // expenses and stock behind it are read together, for one business date, and
   // are only meaningful together — a cache that could serve one date's sales

@@ -150,10 +150,6 @@ export const ROUTES = {
    * bounces a super admin to their own home page (see BRANCH_LOCATIONS).
    */
   BRANCH_DAILY_SALE: '/branch-daily-sale',
-  // Where a manager asks Admin for a shift account, and watches the outcome.
-  BRANCH_USERS: '/branch-users',
-  // The admin side of that same queue.
-  USER_REQUESTS: '/user-requests',
 
   /**
    * Finance Ledger.
