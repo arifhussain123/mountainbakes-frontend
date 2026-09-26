@@ -7,6 +7,7 @@
 // The QueryClient (see providers/QueryProvider.tsx) defaults to staleTime 60s, so
 // repeat reads within a minute are served from cache with no network round-trip.
 
+import { normalizeCashTransferList } from '@/lib/cashTransferCompat';
 import { printTrace } from '@/lib/print/diagnostics';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
@@ -1782,7 +1783,8 @@ export function useBranchCashTransfers(
       if (opts?.to) params.set('to', opts.to);
       if (opts?.sortBy) params.set('sortBy', opts.sortBy);
       if (opts?.sortDir) params.set('sortDir', opts.sortDir);
-      return apiCall<{ transfers: CashTransfer[]; total: number }>(`/api/cash-transfers?${params.toString()}`, {}, token);
+      return apiCall<{ transfers: CashTransfer[]; total: number }>(`/api/cash-transfers?${params.toString()}`, {}, token)
+        .then(normalizeCashTransferList);
     },
     // `enabled` exists for the Cash Deposit popup on New Orders, which is
     // mounted on every visit and opened on few — see useBranchDiscounts.

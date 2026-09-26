@@ -1,5 +1,6 @@
 'use client';
 
+import { normalizeCashTransfer, normalizeCashTransferList } from '@/lib/cashTransferCompat';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
@@ -160,7 +161,7 @@ export function useFinanceCashTransfers(filters: CashTransferFilters, opts?: { e
         `/api/finance/cash-transfers${toQuery(filters)}`,
         {},
         token,
-      ),
+      ).then(normalizeCashTransferList),
   });
 }
 
@@ -171,7 +172,7 @@ export function useFinanceCashTransfer(id: string | null) {
     queryKey: qk.financeCashTransfer(id ?? ''),
     enabled: Boolean(token) && Boolean(id),
     staleTime: 15_000,
-    queryFn: () => apiCall<CashTransfer>(`/api/finance/cash-transfers/${id}`, {}, token),
+    queryFn: () => apiCall<CashTransfer>(`/api/finance/cash-transfers/${id}`, {}, token).then(normalizeCashTransfer),
   });
 }
 
