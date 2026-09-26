@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/utils/currency';
-import { methodLabel, shortBranch } from './cashTransferShared';
+import { CashDepositBreakdown, shortBranch } from './cashTransferShared';
 
 /**
  * Finance's two decisions on a pending transfer. Shared by the Cash Transfers
@@ -82,12 +82,9 @@ export function ApproveCashTransferDialog({
 
         {transfer && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-md bg-muted/40 p-3 text-sm">
-            <dt className="text-muted-foreground">Amount</dt>
-            <dd className="text-right text-base font-semibold tabular-nums">{formatCurrency(transfer.amount)}</dd>
             <dt className="text-muted-foreground">Branch</dt>
             <dd className="text-right font-medium">{shortBranch(transfer.branchName)}</dd>
-            <dt className="text-muted-foreground">Payment</dt>
-            <dd className="text-right">{methodLabel(transfer.paymentMethod)}</dd>
+            <CashDepositBreakdown transfer={transfer} className="col-span-2 border-y py-1.5" />
             <dt className="text-muted-foreground">Transfer ID</dt>
             <dd className="text-right font-mono">{transfer.transferNo}</dd>
           </dl>

@@ -72,7 +72,7 @@ export function FinanceCashTransfersPage() {
       },
       { key: 'branchId', label: 'Branch', type: 'select', placement: 'bar' },
       {
-        key: 'paymentMethod', label: 'Payment Method', type: 'select', placement: 'bar',
+        key: 'paymentMethod', label: 'Channel', type: 'select', placement: 'bar',
         options: CASH_TRANSFER_METHODS.map((m) => ({ value: m, label: methodLabel(m) })),
       },
       { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
@@ -122,15 +122,33 @@ export function FinanceCashTransfersPage() {
       meta: { mobile: 'subtitle' },
       cell: (i) => <span className="font-medium">{shortBranch(i.getValue())}</span>,
     }),
-    col.accessor('amount', {
-      header: 'Amount',
+    col.accessor('cashAmount', {
+      header: 'Cash',
+      enableSorting: false,
       meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
+    }),
+    col.accessor('easypaisaAmount', {
+      header: 'Easypaisa',
+      enableSorting: false,
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
+    }),
+    col.accessor('bankAmount', {
+      header: 'Bank',
+      enableSorting: false,
+      meta: { align: 'center' },
+      cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
+    }),
+    col.accessor('amount', {
+      header: 'Total Amount',
+      meta: { align: 'center', mobileLabel: 'Total' },
       cell: (i) => <span className="font-semibold tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
-    col.accessor('paymentMethod', {
-      header: 'Method',
-      meta: { align: 'center' },
-      cell: (i) => <span className="whitespace-nowrap">{methodLabel(i.getValue())}</span>,
+    col.accessor('fuelCharges', {
+      header: 'Fuel Charges',
+      meta: { align: 'center', mobileLabel: 'Fuel' },
+      cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor((t) => t.note ?? '', {
       id: 'note',

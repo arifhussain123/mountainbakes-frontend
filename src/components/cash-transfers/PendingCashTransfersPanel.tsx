@@ -12,7 +12,7 @@ import { ROUTES } from '@/utils/routes';
 import { Banknote, Check, Eye, X } from 'lucide-react';
 import { CashTransferDetailsDialog } from './CashTransferDetailsDialog';
 import { ApproveCashTransferDialog, RejectCashTransferDialog } from './CashTransferDecisionDialogs';
-import { methodLabel, shortBranch } from './cashTransferShared';
+import { channelsLabel, shortBranch } from './cashTransferShared';
 
 /**
  * The Daily Ledger's view of what is WAITING to enter the book.
@@ -58,7 +58,10 @@ export function PendingCashTransfersPanel({ canDecide }: { canDecide: boolean })
             <span className="font-mono text-xs">{t.transferNo}</span>
             <span className="font-medium">{shortBranch(t.branchName)}</span>
             <span className="font-semibold tabular-nums">{formatCurrency(t.amount)}</span>
-            <span className="text-muted-foreground">{methodLabel(t.paymentMethod)} · {formatDate(t.date)}</span>
+            {t.fuelCharges > 0 && (
+              <span className="tabular-nums text-muted-foreground">+ Fuel {formatCurrency(t.fuelCharges)}</span>
+            )}
+            <span className="text-muted-foreground">{channelsLabel(t)} · {formatDate(t.date)}</span>
             <AttachmentGallery attachments={t.attachments} size="xs" title={`${t.transferNo} payment picture`} />
             <span className="ml-auto flex flex-wrap gap-1">
               <Button variant="ghost" size="sm" onClick={() => setViewRow(t)}>

@@ -14,8 +14,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { formatDate, formatDateTime, formatTime } from '@/utils/date';
-import { formatCurrency } from '@/utils/currency';
-import { CashTransferStatusBadge, methodLabel, shortBranch } from './cashTransferShared';
+import { CashDepositBreakdown, CashTransferStatusBadge, shortBranch } from './cashTransferShared';
 
 /**
  * The full record of one cash transfer — ONE component for the four places it
@@ -85,11 +84,7 @@ export function CashTransferDetailsDialog({
             <dt className="text-muted-foreground">Branch</dt>
             <dd className="text-right font-medium">{shortBranch(transfer.branchName)}</dd>
 
-            <dt className="text-muted-foreground">Amount</dt>
-            <dd className="text-right text-base font-semibold tabular-nums">{formatCurrency(transfer.amount)}</dd>
-
-            <dt className="text-muted-foreground">Payment Method</dt>
-            <dd className="text-right">{methodLabel(transfer.paymentMethod)}</dd>
+            <CashDepositBreakdown transfer={transfer} className="col-span-2 border-y py-1.5" />
 
             <dt className="text-muted-foreground">Status</dt>
             <dd className="text-right">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CASH_TRANSFER_METHOD_LABELS, rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem, type PaymentReceivedItem } from '@mb/shared';
+import { cashTransferChannelsLabel, rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem, type PaymentReceivedItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
 import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -1345,7 +1345,7 @@ function PrintCopy({
                       <td className="py-0.5 pr-1 font-mono font-medium">{p.transferNo}</td>
                       <td className="px-1 py-0.5 font-mono">{p.voucherNo ?? '—'}</td>
                       <td className="px-1 py-0.5">{p.date}</td>
-                      <td className="px-1 py-0.5">{CASH_TRANSFER_METHOD_LABELS[p.paymentMethod] ?? p.paymentMethod}</td>
+                      <td className="px-1 py-0.5">{cashTransferChannelsLabel(p)}</td>
                       <td className="py-0.5 pl-1 text-right font-semibold tabular-nums">{money(p.amount, sym)}</td>
                     </tr>
                   ))}

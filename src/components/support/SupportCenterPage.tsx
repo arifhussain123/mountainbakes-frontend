@@ -28,7 +28,7 @@ import {
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
 import { useFinanceTicketStats } from '@/lib/finance';
-import { isBranchRole } from '@mb/shared';
+import { isBranchRole, cashTransferTotal } from '@mb/shared';
 import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
@@ -131,6 +131,11 @@ function ReferenceDetail({ reference }: { reference: SupportReference }) {
  * (they carry `readOnly: true` and no flag) correctable now. Mirrors the same test
  * on the server, which is the one that actually authorises the write.
  */
+/** A rejected CT- deposit is final — nothing was booked, so nothing can be corrected. */
+function isRejectedDeposit(ref: SupportReference | null): boolean {
+  return ref?.type === 'cash_transfer' && ref.fields.some((f) => f.label === 'Status' && f.value === 'Rejected');
+}
+
 function isPoolStockTicket(ticket: SupportTicket): boolean {
   if (ticket.referenceType !== 'stock') return false;
   return ticket.referenceSnapshot?.isProductionPool === true || ticket.raisedByRole === 'production_user';
@@ -153,7 +158,10 @@ function useLiveReference(ticket: SupportTicket) {
   const { token } = useAuth();
   const snapshot = ticket.referenceSnapshot;
   const isPool = isPoolStockTicket(ticket);
-  const canRefresh = Boolean(snapshot) && (snapshot?.readOnly !== true || isPool);
+  // A cash deposit is re-read too: CT- snapshots taken before deposits became
+  // correctable all froze `readOnly: true`, and the live row is what decides.
+  const canRefresh =
+    Boolean(snapshot) && (snapshot?.readOnly !== true || isPool || ticket.referenceType === 'cash_transfer');
   const [reference, setReference] = useState<SupportReference | null>(snapshot);
   const [loading, setLoading] = useState(canRefresh);
 
@@ -388,11 +396,17 @@ export function SupportCenterPage() {
         // no correctable lines, but it can now be deleted (migration 82), and
         // the dialog router sends it straight to the delete confirmation. Left
         // disabled it would be the one demand an admin cannot remove.
+        //
+        // A CASH DEPOSIT overrides it unless the deposit was rejected: CT-
+        // snapshots taken before deposits became correctable say read-only,
+        // and the dialog re-reads the live row (the server refuses a rejected
+        // or deleted one regardless).
         const canChange =
           Boolean(t.referenceSnapshot) &&
           (t.referenceSnapshot?.readOnly !== true ||
             isPoolStockTicket(t) ||
-            t.referenceType === 'demand');
+            t.referenceType === 'demand' ||
+            (t.referenceType === 'cash_transfer' && !isRejectedDeposit(t.referenceSnapshot)));
         const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
         return (
           <>
@@ -1029,6 +1043,11 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
       />
     );
   }
+  // Cash deposits before the read-only gate, for the same reason as the pool:
+  // a legacy CT- snapshot says read-only, and the dialog re-reads the live row.
+  if (ref?.type === 'cash_transfer' && !isRejectedDeposit(ref)) {
+    return <CashDepositDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
+  }
   if (!ref || ref.readOnly) {
     return <NothingToChangeDialog onClose={onClose} cashDeposit={ref?.type === 'cash_transfer'} />;
   }
@@ -1435,8 +1454,8 @@ function NothingToChangeDialog({ onClose, cashDeposit = false }: { onClose: () =
             back. Open <span className="font-medium">View</span> to reply and resolve the query.
             {cashDeposit && (
               <>
-                {' '}A cash deposit's amount, method or note is corrected — or the deposit deleted — on
-                the <span className="font-medium">Finance Help Desk</span>, under its CT- ID.
+                {' '}This cash deposit was rejected, so it is final — nothing was booked for it. The
+                branch records a new deposit instead.
               </>
             )}
           </DialogDescription>
@@ -2068,6 +2087,158 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
           <Button onClick={submit} disabled={busy || loading || !figures || invalid || !changed}>
             {busy ? 'Applying…' : 'Apply & Resolve'}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Cash deposit (CT-) editor ----------------------------------------------
+/**
+ * Corrects a branch cash deposit's Cash, Easypaisa, Bank, Fuel Charges or note.
+ * The Total is shown, never typed: the server recomputes it from the three
+ * channels. Each changed field goes through amend_finance_record — the Finance
+ * Help Desk's own function — so for an APPROVED deposit the receipt of each
+ * changed figure is reversed and a fresh one posted, dated today. The warning below says so
+ * before the admin applies it. Starts from the live row, not the snapshot.
+ */
+/** The correctable money figures of a deposit (migration 121) — the Total follows from the first three. */
+const DEPOSIT_FIGURES = [
+  { key: 'cashAmount', label: 'Cash' },
+  { key: 'easypaisaAmount', label: 'Easypaisa' },
+  { key: 'bankAmount', label: 'Bank' },
+  { key: 'fuelCharges', label: 'Fuel Charges' },
+] as const;
+type DepositFigure = (typeof DEPOSIT_FIGURES)[number]['key'];
+
+function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
+  const { token } = useAuth();
+  const { reference: live, loading } = useLiveReference(ticket);
+
+  const current = useMemo(() => {
+    const get = (key: string) => live?.editableFields.find((f) => f.key === key)?.value;
+    return {
+      ...(Object.fromEntries(DEPOSIT_FIGURES.map((f) => [f.key, String(get(f.key) ?? '0')])) as Record<DepositFigure, string>),
+      note: String(get('note') ?? ''),
+    };
+  }, [live]);
+
+  const [figures, setFigures] = useState<Record<DepositFigure, string>>({
+    cashAmount: '', easypaisaAmount: '', bankAmount: '', fuelCharges: '',
+  });
+  const [depositNote, setDepositNote] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Seed the inputs once the live row arrives (and again if it changes) —
+  // adjusted during render, not in an effect (react-hooks/set-state-in-effect).
+  const [seededFrom, setSeededFrom] = useState<typeof current | null>(null);
+  if (seededFrom !== current) {
+    setSeededFrom(current);
+    setFigures({
+      cashAmount: current.cashAmount,
+      easypaisaAmount: current.easypaisaAmount,
+      bankAmount: current.bankAmount,
+      fuelCharges: current.fuelCharges,
+    });
+    setDepositNote(current.note);
+  }
+
+  const editable = (live?.editableFields.length ?? 0) > 0;
+  const approved = live?.cashTransferApproved === true;
+  const num = (v: string) => (v.trim() === '' ? 0 : Number(v));
+  const changed = DEPOSIT_FIGURES.filter((f) => num(figures[f.key]) !== num(current[f.key])).map((f) => f.key);
+  const noteChanged = depositNote.trim() !== current.note.trim();
+  // Total = Cash + Easypaisa + Bank — shown, never typed (the server recomputes it).
+  const total = cashTransferTotal({
+    cashAmount: num(figures.cashAmount) || 0,
+    easypaisaAmount: num(figures.easypaisaAmount) || 0,
+    bankAmount: num(figures.bankAmount) || 0,
+  });
+
+  async function submit() {
+    const edits: Record<string, string | number> = {};
+    for (const key of changed) {
+      const n = num(figures[key]);
+      if (!Number.isFinite(n) || n < 0) { toast.error('Amounts must be numbers, 0 or more'); return; }
+      edits[key] = n;
+    }
+    if (noteChanged) edits.note = depositNote.trim();
+    if (Object.keys(edits).length === 0) { toast.error('Change at least one value'); return; }
+    setBusy(true);
+    try {
+      await apiCall(
+        `/api/support/${ticket.id}/figures`,
+        { method: 'PATCH', body: JSON.stringify({ edits, note }) },
+        token,
+      );
+      toast.success('Cash deposit corrected & query resolved');
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to apply change');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="md:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Change figures — {ticket.referenceId}</DialogTitle>
+          <DialogDescription>
+            {live?.title ?? 'Cash deposit'}. Changes are written to the deposit and the query is resolved.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading the deposit as it stands now…</p>
+        ) : !editable ? (
+          <p className="text-sm text-muted-foreground">
+            This deposit can no longer be corrected — it was rejected or deleted. Reply from View instead.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              {DEPOSIT_FIGURES.map((f) => (
+                <div key={f.key} className="space-y-1">
+                  <Label>{f.label}</Label>
+                  <Input
+                    type="number" inputMode="decimal" min={0} step="0.01"
+                    value={figures[f.key]}
+                    onChange={(e) => setFigures((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                  />
+                  {changed.includes(f.key) && (
+                    <p className="text-xs text-muted-foreground">Was {money(Number(current[f.key]))}.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+              Total Amount <span className="text-xs text-muted-foreground">(Cash + Easypaisa + Bank)</span>:{' '}
+              <span className="font-semibold tabular-nums">{money(total)}</span>
+            </p>
+
+            <div className="space-y-1">
+              <Label>Deposit note</Label>
+              <Input value={depositNote} onChange={(e) => setDepositNote(e.target.value)} placeholder="Note on the deposit" />
+            </div>
+
+            {approved && changed.length > 0 && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                This deposit is approved and booked in the Daily Ledger. Applying reverses the receipt of each
+                changed figure and posts a corrected one, dated today.
+              </p>
+            )}
+
+            <div className="space-y-1">
+              <Label>Note (optional)</Label>
+              <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Reason for the change" />
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || loading || !editable}>{busy ? 'Applying…' : 'Apply & Resolve'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
