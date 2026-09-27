@@ -131,7 +131,7 @@ function DrawerBody({ target, dashboardBranchId }: { target: DrillTarget; dashbo
                 {debounced ? 'No records match that search.' : 'No source records for this figure.'}
               </p>
             ) : (
-              <ul className={q.isFetching ? 'divide-y opacity-60 transition-opacity' : 'divide-y'}>
+              <ul className={q.isPlaceholderData ? 'divide-y opacity-60 transition-opacity' : 'divide-y'}>
                 {data.rows.map((r) => (
                   <li key={r.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 px-5 py-2.5 text-sm">
                     <div className="min-w-0">
