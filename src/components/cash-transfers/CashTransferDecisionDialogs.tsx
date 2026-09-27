@@ -75,7 +75,7 @@ export function ApproveCashTransferDialog({
         <DialogHeader>
           <DialogTitle>Approve this cash transfer?</DialogTitle>
           <DialogDescription>
-            An RV- receipt is posted to the Daily Ledger for the amount below, under Cash Received from Branch, with
+            An RV- receipt is posted to the Daily Ledger for the amount below, under Company Share, with
             the branch&apos;s own photo. The transfer becomes final.
           </DialogDescription>
         </DialogHeader>
