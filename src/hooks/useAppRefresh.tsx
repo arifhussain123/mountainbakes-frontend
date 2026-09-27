@@ -22,7 +22,7 @@ import type { QueryClient } from '@tanstack/react-query';
  * still exactly one interval, now with the build check on the same tick and a
  * single source of truth the Refresh button can read and drive.
  *
- * The tick fires every SECOND, but ONLY the data half runs that often. The
+ * The tick fires every 30 SECONDS, but ONLY the data half runs that often. The
  * two pieces of work that touch the user's session — the Login History ping and
  * the new-build check that can reload the page — stay on their original 2-minute
  * cadence, measured by the clock rather than by counting ticks. Making the
@@ -36,23 +36,21 @@ import type { QueryClient } from '@tanstack/react-query';
 
 /**
  * How often the data on screen is refetched: one forced refetch of every
- * mounted query, 60 times a minute per open tab. `staleTime` does not apply —
- * `refetchQueries` goes to the network regardless — so this number IS the API
- * request rate for a tab sitting on a busy screen.
+ * mounted query per tick. `staleTime` does not apply — `refetchQueries` goes to
+ * the network regardless — so this number IS the API request rate for a tab
+ * sitting on a busy screen.
  *
- * ONE SECOND, BY DECISION. It has been 2 seconds, 10 seconds and briefly a
- * continuous 1ms loop; the product owner settled on 1 second. The cost is real:
- * every list on a production or sales screen is re-fetched and re-diffed sixty
- * times a minute, and because the tick is paused while a dialog is open,
- * closing one (the print preview included) fires every stale query at once.
- * The guards in `shouldRefetch` and the one-at-a-time ref below keep this from
- * compounding; the offline snapshot is change-gated so it costs nothing when a
- * refetch returns the same rows.
+ * THIRTY SECONDS, BY DECISION (2026-09-27). It had been 2 seconds, 10 seconds,
+ * briefly a continuous 1ms loop, then 1 second; at 1 second every list was
+ * re-fetched sixty times a minute per open tab, which slowed the app and loaded
+ * the API, and the owner asked for it to stop. Changes still arrive promptly:
+ * notifications invalidate the affected lists the moment something happens
+ * (RealtimeBridge), and the Topbar's Refresh button fetches on demand.
  *
  * The session work below is on the clock, not on a tick count, so this number
  * can change without moving the ping or the build check.
  */
-const REFRESH_INTERVAL_MS = 1 * 1000;
+const REFRESH_INTERVAL_MS = 30 * 1000;
 
 /**
  * How often the session-affecting work runs: the 2 minutes both the Login
@@ -95,7 +93,7 @@ function dialogOpen() {
 /**
  * Is a data refetch safe and worth doing *right now*?
  *
- * At a 1-second cadence this question is anything but rhetorical. Each guard is a
+ * At a fast cadence this question is anything but rhetorical. Each guard is a
  * distinct way the tick would otherwise cost more than the freshness is worth:
  *
  *  - **Hidden tab.** A tab left open on another monitor, or a phone with the

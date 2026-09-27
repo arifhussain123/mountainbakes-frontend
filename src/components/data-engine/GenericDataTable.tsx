@@ -155,7 +155,7 @@ export function GenericDataTable<TData>({
   const loading = query.isPending;
   // Dimmed only while an OLD page stands in for a new one — the person changed
   // the page, a filter, the search or the sort. The app-wide refresh tick
-  // (useAppRefresh) refetches the SAME key every second; tying this to
+  // (useAppRefresh) refetches the SAME key on every tick; tying this to
   // isFetching made every list flash on every tick.
   const refreshing = query.isPlaceholderData;
 
