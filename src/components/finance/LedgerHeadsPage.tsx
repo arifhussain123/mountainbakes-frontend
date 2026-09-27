@@ -153,12 +153,10 @@ function HeadGroups({
         <div key={group}>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3>
           <div className="divide-y overflow-hidden rounded-lg border bg-card">
-            {items
-              .slice()
-              .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
-              .map((head) => (
-                <HeadRow key={head.id} head={head} canConfigure={canConfigure} onEdit={onEdit} />
-              ))}
+            {/* The API already orders heads by type, sort_order, name. */}
+            {items.map((head) => (
+              <HeadRow key={head.id} head={head} canConfigure={canConfigure} onEdit={onEdit} />
+            ))}
           </div>
         </div>
       ))}

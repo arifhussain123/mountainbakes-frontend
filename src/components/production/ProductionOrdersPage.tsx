@@ -204,9 +204,10 @@ export function ProductionOrdersPage() {
     }
 
     return {
-      branches: [...branches].sort(),
-      rows: [...products.values()].sort((a, b) => b.total - a.total),
-      packingRows: [...packing.values()].sort((a, b) => b.total - a.total),
+      // In the order the orders list them — no automatic sort.
+      branches: [...branches],
+      rows: [...products.values()],
+      packingRows: [...packing.values()],
       specialRows: special,
       pendingOrders,
       awaitingOrders,

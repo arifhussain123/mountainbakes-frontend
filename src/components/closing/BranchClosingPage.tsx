@@ -87,7 +87,7 @@ export function BranchClosingPage() {
         acc[e.category] = (acc[e.category] ?? 0) + (e.amount || 0);
         return acc;
       }, {}),
-    ).sort((a, b) => b[1] - a[1]);
+    );
 
     return { ...figures, byMethod, byCategory };
   }, [data]);
