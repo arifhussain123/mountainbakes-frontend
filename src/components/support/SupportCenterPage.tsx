@@ -17,7 +17,9 @@ import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, 
 import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, PageSize, StockFigures, ProductionStockFigures, SortState } from '@mb/shared';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal } from 'lucide-react';
+import { Eye, Pencil, SlidersHorizontal, Ban, Trash2, CheckCircle2, Plus, X, MoreHorizontal, FileX } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { FINANCE_QK_ROOT } from '@/lib/queryKeys';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -223,7 +225,7 @@ function SaleItemsTable({ items }: { items: SupportSaleItem[] }) {
   );
 }
 
-type DialogMode = 'view' | 'edit' | 'change' | 'reject' | null;
+type DialogMode = 'view' | 'edit' | 'change' | 'reject' | 'deleteDeposit' | null;
 
 /** What /figures reports back when it applied a stock correction. */
 interface StockCorrectionResult {
@@ -408,6 +410,9 @@ export function SupportCenterPage() {
             t.referenceType === 'demand' ||
             (t.referenceType === 'cash_transfer' && !isRejectedDeposit(t.referenceSnapshot)));
         const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
+        // Any cash deposit query can delete its deposit, whatever the status —
+        // the server answers 409 if it is already gone.
+        const isDeposit = t.referenceType === 'cash_transfer' && Boolean(t.referenceSnapshot?.entityId);
         return (
           <>
             {/* Desktop keeps the dense icon row. */}
@@ -418,6 +423,11 @@ export function SupportCenterPage() {
                 <SlidersHorizontal className="h-3.5 w-3.5" />
               </IconBtn>
               <IconBtn title="Reject" className="text-amber-600" onClick={() => openDialog(t, 'reject')}><Ban className="h-3.5 w-3.5" /></IconBtn>
+              {isDeposit && (
+                <IconBtn title="Delete record — delete this cash deposit" className="text-destructive" onClick={() => openDialog(t, 'deleteDeposit')}>
+                  <FileX className="h-3.5 w-3.5" />
+                </IconBtn>
+              )}
               <IconBtn title="Archive" className="text-destructive" onClick={() => handleArchive(t)}><Trash2 className="h-3.5 w-3.5" /></IconBtn>
             </div>
 
@@ -438,6 +448,11 @@ export function SupportCenterPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openDialog(t, 'reject')}><Ban className="h-4 w-4" /> Reject</DropdownMenuItem>
                 <DropdownMenuSeparator />
+                {isDeposit && (
+                  <DropdownMenuItem variant="destructive" onClick={() => openDialog(t, 'deleteDeposit')}>
+                    <FileX className="h-4 w-4" /> Delete record
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem variant="destructive" onClick={() => handleArchive(t)}>
                   <Trash2 className="h-4 w-4" /> Archive
                 </DropdownMenuItem>
@@ -566,6 +581,7 @@ export function SupportCenterPage() {
       {active && mode === 'edit' && <EditDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
       {active && mode === 'change' && <ChangeDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
       {active && mode === 'reject' && <RejectDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
+      {active && mode === 'deleteDeposit' && <DeleteCashDepositDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
     </div>
   );
 }
@@ -2129,6 +2145,7 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
   const [depositNote, setDepositNote] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Seed the inputs once the live row arrives (and again if it changes) —
   // adjusted during render, not in an effect (react-hooks/set-state-in-effect).
@@ -2177,6 +2194,10 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to apply change');
     } finally { setBusy(false); }
+  }
+
+  if (deleting) {
+    return <DeleteCashDepositDialog ticket={ticket} onClose={() => setDeleting(false)} onDone={onDone} />;
   }
 
   return (
@@ -2236,9 +2257,107 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
           </div>
         )}
 
+        <DialogFooter className="sm:justify-between">
+          <Button variant="ghost" className="text-destructive" onClick={() => setDeleting(true)} disabled={busy || loading || !editable}>
+            <FileX className="h-4 w-4" /> Delete data
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button onClick={submit} disabled={busy || loading || !editable}>{busy ? 'Applying…' : 'Apply & Resolve'}</Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Delete the cash deposit a query names — reached from the row's "Delete record"
+ * and from "Delete data" in the Change figures dialog. The server removes the
+ * deposit and every ledger entry it produced (migration 125); nothing is posted
+ * in their place, so there is no reversal to warn about.
+ */
+function DeleteCashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const [reason, setReason] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const transferNo = ticket.referenceId ?? '';
+  const numberMatches = confirm.trim().toUpperCase() === transferNo.trim().toUpperCase();
+  // Mirrors DeleteCashDepositSchema's `.trim().min(5)`.
+  const reasonValid = reason.trim().length >= 5;
+
+  async function submit() {
+    setBusy(true);
+    try {
+      await apiCall(
+        `/api/support/${ticket.id}/cash-deposit`,
+        { method: 'DELETE', body: JSON.stringify({ reason, confirmTransferNo: confirm, note }) },
+        token,
+      );
+      // The Daily Ledger, deposit lists and totals all move with it.
+      void queryClient.invalidateQueries({ queryKey: FINANCE_QK_ROOT });
+      toast.success('Cash deposit deleted successfully.');
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete the cash deposit');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="md:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-destructive">Delete cash deposit — {transferNo}</DialogTitle>
+          <DialogDescription>
+            The deposit is removed, and so is every ledger entry it produced. Nothing is posted in their place.
+          </DialogDescription>
+        </DialogHeader>
+
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          If this deposit was approved, its RV- entries leave the Daily Ledger and the running balance is
+          recomputed. It drops out of the branch&rsquo;s lists and the production slip. This cannot be undone.
+        </p>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Reason (required, kept in the audit log)</Label>
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this deposit is being deleted"
+            aria-invalid={reason.length > 0 && !reasonValid}
+          />
+          {reason.length > 0 && !reasonValid && (
+            <p className="text-xs text-destructive">Give at least a few words.</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">
+            Type <span className="font-mono font-semibold text-foreground">{transferNo}</span> to confirm
+          </Label>
+          <Input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder={transferNo}
+            autoComplete="off"
+            aria-invalid={confirm.length > 0 && !numberMatches}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Resolution note (sent to the raiser)</Label>
+          <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="What was done" />
+        </div>
+
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || loading || !editable}>{busy ? 'Applying…' : 'Apply & Resolve'}</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="destructive" onClick={submit} disabled={busy || !numberMatches || !reasonValid}>
+            <FileX className="h-4 w-4" /> {busy ? 'Deleting…' : 'Delete cash deposit'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
