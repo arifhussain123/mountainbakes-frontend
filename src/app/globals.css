@@ -35,6 +35,23 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-fin-ink: var(--fin-ink);
+  --color-fin-ink-foreground: var(--fin-ink-foreground);
+  --color-fin-ink-muted: var(--fin-ink-muted);
+  --color-fin-ink-field: var(--fin-ink-field);
+  --color-fin-income: var(--fin-income);
+  --color-fin-expense: var(--fin-expense);
+  --color-fin-soft: var(--fin-soft);
+  --color-fin-peach: var(--fin-peach);
+  --color-fin-peach-foreground: var(--fin-peach-foreground);
+  --color-fin-row-hover: var(--fin-row-hover);
+  --color-fin-share: var(--fin-share);
+  --color-fin-received: var(--fin-received);
+  --color-fin-ledger: var(--fin-ledger);
+  --color-fin-return: var(--fin-return);
+  --color-fin-discount: var(--fin-discount);
+  --color-fin-neutral: var(--fin-neutral);
+  --color-fin-balance: var(--fin-balance);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
@@ -132,6 +149,29 @@
   --stock-returned: #eda100;
   --stock-balance: #e87ba4;
 
+  /* Finance Dashboard — the purple/brown accounting palette. Series colours are
+     fixed to the figure they draw (Company Share is always violet, Received
+     always orange) and were run through the dataviz palette validator per chart
+     set, light and dark each against its own card surface. Demand and Balance
+     are drawn in neutral ink (grey / dashed) rather than a third hue. */
+  --fin-ink: #2a2145;
+  --fin-ink-foreground: #ffffff;
+  --fin-ink-muted: #c9bfea;
+  --fin-ink-field: #3a2f5e;
+  --fin-income: #4f3f8f;
+  --fin-expense: #5c3d26;
+  --fin-soft: #eeeaf8;
+  --fin-peach: #fbdcc6;
+  --fin-peach-foreground: #3a2410;
+  --fin-row-hover: #fbf7f0;
+  --fin-share: #6a58c4;
+  --fin-received: #d9762f;
+  --fin-ledger: #9b5f2e;
+  --fin-return: #1baf7a;
+  --fin-discount: #2a78d6;
+  --fin-neutral: #9a95a8;
+  --fin-balance: #2a2145;
+
   /* Sidebar — dark brown */
   --sidebar: oklch(0.25 0.07 47);
   --sidebar-foreground: oklch(0.95 0.02 88);
@@ -172,6 +212,23 @@
   --stock-sold: #199e70;
   --stock-returned: #c98500;
   --stock-balance: #d55181;
+  --fin-ink: #1d1733;
+  --fin-ink-foreground: #f4f1fb;
+  --fin-ink-muted: #b3a8d9;
+  --fin-ink-field: #2c2448;
+  --fin-income: #3d3170;
+  --fin-expense: #4a301d;
+  --fin-soft: #2a2238;
+  --fin-peach: #3b2a1f;
+  --fin-peach-foreground: #f6dcc8;
+  --fin-row-hover: #2a1c13;
+  --fin-share: #8b7be0;
+  --fin-received: #cc7236;
+  --fin-ledger: #b77a45;
+  --fin-return: #199e70;
+  --fin-discount: #3987e5;
+  --fin-neutral: #8f8a9c;
+  --fin-balance: #e6e0f5;
   --sidebar: oklch(0.12 0.04 47);
   --sidebar-foreground: oklch(0.92 0.018 88);
   --sidebar-primary: oklch(0.702 0.187 41.5);

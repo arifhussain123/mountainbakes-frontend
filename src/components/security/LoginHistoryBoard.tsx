@@ -468,7 +468,7 @@ export function LoginHistoryBoard({
           total={total}
           onPageChange={list.setPage}
           onPageSizeChange={list.setPageSize}
-          loading={query.isFetching}
+          loading={query.isPending}
         />
       )}
     </div>

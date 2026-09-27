@@ -153,7 +153,11 @@ export function GenericDataTable<TData>({
   const rows = page?.data ?? [];
   const total = page?.total ?? 0;
   const loading = query.isPending;
-  const refreshing = query.isFetching && !query.isPending;
+  // Dimmed only while an OLD page stands in for a new one — the person changed
+  // the page, a filter, the search or the sort. The app-wide refresh tick
+  // (useAppRefresh) refetches the SAME key on every tick; tying this to
+  // isFetching made every list flash on every tick.
+  const refreshing = query.isPlaceholderData;
 
   const emptyNode =
     empty ??

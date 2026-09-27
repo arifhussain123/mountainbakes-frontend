@@ -397,7 +397,7 @@ export function FinanceHelpDeskPage({
     [scope, list.state.page, list.state.pageSize, sort],
   );
 
-  const { data, isLoading, isFetching } = useFinanceTickets(apiFilters);
+  const { data, isLoading } = useFinanceTickets(apiFilters);
   const tickets = data?.tickets ?? [];
   const total = data?.total ?? 0;
 
@@ -762,7 +762,7 @@ export function FinanceHelpDeskPage({
       <DataTable
         columns={columns}
         data={tickets}
-        loading={isLoading || (isFetching && tickets.length === 0)}
+        loading={isLoading}
         searchPlaceholder="Search Query ID, reference, subject, user or branch…"
         actions={embedded ? newButton : undefined}
         pager={false}
@@ -803,7 +803,7 @@ export function FinanceHelpDeskPage({
         total={total}
         onPageChange={list.setPage}
         onPageSizeChange={list.setPageSize}
-        loading={isLoading || (isFetching && tickets.length === 0)}
+        loading={isLoading}
       />
 
       <NewQueryDialog key={newKey} open={showNew} onOpenChange={setShowNew} />

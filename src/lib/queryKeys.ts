@@ -227,6 +227,8 @@ export const qk = {
   // `invalidateQueries({ queryKey: ['finance'] })` prefix match, without also
   // clearing the operations caches sitting next to it.
   financeDashboard: (filters: Record<string, unknown>) => ['finance', 'dashboard', filters] as const,
+  financeMonthlyDashboard: (filters: Record<string, unknown>) => ['finance', 'dashboard', 'monthly', filters] as const,
+  financeDashboardRecords: (filters: Record<string, unknown>) => ['finance', 'dashboard', 'records', filters] as const,
   // The ledger key carries its full filter object: the Daily Ledger page changes
   // date, branch and head independently, and a key that dropped any of them
   // would serve one filter's rows under another's heading.
