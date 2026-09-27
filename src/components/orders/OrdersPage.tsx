@@ -194,7 +194,6 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
         columns={columns}
         filters={filters}
         filterOptions={filterOptions}
-        defaultSort={{ key: 'createdAt', direction: 'desc' }}
         searchPlaceholder="Search orders, customers, phone…"
         maxDate={businessDateStr()}
         exportFileName="mountain-bakes-orders"

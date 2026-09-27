@@ -661,7 +661,6 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           { key: 'businessDate', op: 'eq', value: date },
         ]}
         filters={paymentFilters}
-        defaultSort={{ key: 'createdAt', direction: 'desc' }}
         searchPlaceholder="Search customer, phone, order #…"
         namespace={isProduction ? 'production-sales' : 'branch-sales'}
         emptyTitle="No sales recorded"

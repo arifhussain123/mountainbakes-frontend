@@ -47,7 +47,6 @@ export interface GenericDataTableProps<TData> {
   fixedFilters?: FilterValue[];
   /** Starting filters a person may change or clear. */
   defaultFilters?: FilterValue[];
-  defaultSort?: SortState | null;
   defaultPageSize?: PageSize;
   searchable?: boolean;
   searchPlaceholder?: string;
@@ -90,7 +89,6 @@ export function GenericDataTable<TData>({
   filterOptions,
   fixedFilters,
   defaultFilters,
-  defaultSort,
   defaultPageSize,
   searchable = true,
   searchPlaceholder,
@@ -117,7 +115,9 @@ export function GenericDataTable<TData>({
     syncUrl,
     namespace,
     filterKeys,
-    defaults: { pageSize: defaultPageSize, sort: defaultSort ?? null, filters: defaultFilters },
+    // No starting sort: a table sorts only when a header is clicked. Until then
+    // the server's own order for the resource applies (parseListQuery).
+    defaults: { pageSize: defaultPageSize, sort: null, filters: defaultFilters },
   });
   const list = externalList ?? internalList;
 
@@ -148,7 +148,7 @@ export function GenericDataTable<TData>({
   }, [page?.totalPages, page?.total]);
 
   const sorting: SortingState = sortStateToTanstack(list.state.sort);
-  const onSortingChange = (next: SortingState) => list.setSort(tanstackToSortState(next, defaultSort ?? null));
+  const onSortingChange = (next: SortingState) => list.setSort(tanstackToSortState(next));
 
   const rows = page?.data ?? [];
   const total = page?.total ?? 0;

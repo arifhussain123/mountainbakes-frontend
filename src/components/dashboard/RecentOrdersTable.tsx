@@ -147,7 +147,6 @@ export function RecentOrdersTable({ branchId }: { branchId?: string }) {
           filters={filters}
           filterOptions={filterOptions}
           fixedFilters={fixedFilters}
-          defaultSort={{ key: 'createdAt', direction: 'desc' }}
           searchPlaceholder="Search orders, customers, phone…"
           maxDate={businessDateStr()}
           // The dashboard is a landing page, not a list view. Every setter here

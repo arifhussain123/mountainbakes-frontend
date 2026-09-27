@@ -693,7 +693,6 @@ export function ProductionOrdersPage() {
           columns={columns}
           filters={filters}
           filterOptions={filterOptions}
-          defaultSort={{ key: 'businessDate', direction: 'desc' }}
           searchPlaceholder="Search demand #, branch, raised by…"
           exportFileName="production-orders"
           emptyTitle="No orders found"

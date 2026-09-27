@@ -104,7 +104,6 @@ export function CustomersPage() {
         columns={columns}
         filters={filters}
         filterOptions={filterOptions}
-        defaultSort={{ key: 'createdAt', direction: 'desc' }}
         searchPlaceholder="Search name, phone, email…"
         cache="static"
         exportFileName="mountain-bakes-customers"
