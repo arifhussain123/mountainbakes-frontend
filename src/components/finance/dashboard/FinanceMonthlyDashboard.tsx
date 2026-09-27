@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Download, Printer, RefreshCw, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import { businessDateStr, type FinanceDashboardMetric, type FinanceMonthlyDashboard as Dashboard } from '@mb/shared';
 import { useFinanceDashboard, useFinanceMonthlyDashboard } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
@@ -76,7 +75,6 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * a different period from its neighbours.
  */
 export function FinanceMonthlyDashboard() {
-  const qc = useQueryClient();
   const { format } = useMoney();
   // Business date, not the browser's calendar — the day rolls at 02:00 Karachi.
   const today = businessDateStr();
@@ -125,7 +123,6 @@ export function FinanceMonthlyDashboard() {
     setIncGran('monthly');
     setExpGran('monthly');
   };
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['finance', 'dashboard'] });
 
   const name = data ? branchNamer(data) : () => '';
   const scopeLabel = !branchId ? 'All Branches' : data ? name(branchId) : 'Selected branch';
@@ -164,17 +161,13 @@ export function FinanceMonthlyDashboard() {
   };
 
   const selectCls =
-    'h-10 rounded-md border border-fin-income bg-fin-ink-field px-2.5 text-sm font-semibold text-fin-ink-foreground disabled:opacity-60 md:h-9';
-  const labelCls = 'flex flex-col gap-1 text-[10px] font-bold tracking-[0.14em] text-fin-ink-muted';
+    'h-10 rounded-md border border-input bg-background px-2.5 text-sm font-semibold text-foreground disabled:opacity-60 md:h-9';
+  const labelCls = 'flex flex-col gap-1 text-[10px] font-bold tracking-[0.14em] text-muted-foreground';
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {/* ---------------- Header & filters ---------------- */}
-      <div className="-mx-4 -mt-4 flex flex-wrap items-end justify-between gap-x-7 gap-y-4 bg-fin-ink px-4 py-4 text-fin-ink-foreground sm:-mx-6 sm:-mt-6 sm:px-6 print:mx-0 print:mt-0">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.18em] text-fin-ink-muted">MOUNTAIN BAKES</p>
-          <h1 className="text-xl font-extrabold tracking-[0.06em] sm:text-2xl">FINANCE DASHBOARD</h1>
-        </div>
+      <div className="-mx-4 -mt-4 flex flex-wrap items-end justify-end gap-x-7 gap-y-4 border-b bg-card px-4 py-4 text-card-foreground sm:-mx-6 sm:-mt-6 sm:px-6 print:mx-0 print:mt-0">
         <div className="flex w-full flex-wrap items-end gap-3 sm:w-auto print:hidden">
           <label className={labelCls}>
             MONTH
@@ -230,7 +223,7 @@ export function FinanceMonthlyDashboard() {
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-fin-ink-muted">to</span>
+              <span className="text-xs text-muted-foreground">to</span>
               <select
                 className={cn(selectCls, 'w-16')}
                 aria-label="To day"
@@ -269,27 +262,10 @@ export function FinanceMonthlyDashboard() {
           </label>
           <div className="flex gap-2">
             <Button
-              onClick={refresh}
-              className="h-10 bg-fin-peach font-bold text-fin-peach-foreground hover:bg-fin-peach/80 md:h-9"
-              disabled={q.isFetching}
-            >
-              <RefreshCw className={cn('size-4', q.isFetching && 'animate-spin')} aria-hidden />
-              Refresh
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => window.print()}
-              className="h-10 border-fin-ink-muted/50 bg-transparent text-fin-ink-foreground hover:bg-fin-ink-field md:h-9"
-              aria-label="Print"
-            >
-              <Printer className="size-4" aria-hidden />
-              <span className="hidden lg:inline">Print</span>
-            </Button>
-            <Button
               variant="outline"
               onClick={exportCsv}
               disabled={!hasRecords}
-              className="h-10 border-fin-ink-muted/50 bg-transparent text-fin-ink-foreground hover:bg-fin-ink-field md:h-9"
+              className="h-10 md:h-9"
               aria-label="Export CSV"
             >
               <Download className="size-4" aria-hidden />
@@ -298,7 +274,7 @@ export function FinanceMonthlyDashboard() {
             <Button
               variant="outline"
               onClick={reset}
-              className="h-10 border-fin-ink-muted/50 bg-transparent text-fin-ink-foreground hover:bg-fin-ink-field md:h-9"
+              className="h-10 md:h-9"
               aria-label="Reset filters"
             >
               <RotateCcw className="size-4" aria-hidden />
