@@ -578,14 +578,34 @@ function AmendRecordDialog({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="amend-value">New value</Label>
-                <Input
-                  id="amend-value"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                  inputMode={spec?.kind === 'money' ? 'decimal' : 'text'}
-                  className="tabular-nums"
-                  autoFocus
-                />
+                {spec?.kind === 'select' ? (
+                  // A closed list (a cash transfer's payment method): the
+                  // options come from the shared field spec, so the desk can
+                  // only pick a value the SQL accepts.
+                  <select
+                    id="amend-value"
+                    value={newValue}
+                    onChange={(e) => setNewValue(e.target.value)}
+                    className={selectClass}
+                    autoFocus
+                  >
+                    <option value="">Choose…</option>
+                    {(spec.options ?? []).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id="amend-value"
+                    value={newValue}
+                    onChange={(e) => setNewValue(e.target.value)}
+                    inputMode={spec?.kind === 'money' ? 'decimal' : 'text'}
+                    className="tabular-nums"
+                    autoFocus
+                  />
+                )}
               </div>
             </div>
 
@@ -646,7 +666,9 @@ function DeleteRecordDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket
         method: 'DELETE',
         body: { reason: reason.trim(), confirmDelete: true },
       });
-      toast.success(`${ticket.referenceNo} deleted`);
+      toast.success(
+        ticket.referenceType === 'cash_transfer' ? 'Cash deposit deleted successfully.' : `${ticket.referenceNo} deleted`,
+      );
       onDone();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'The record could not be deleted');
@@ -675,6 +697,14 @@ function DeleteRecordDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket
                   {' '}
                   This is a posted voucher: deleting it recomputes the running balance on every later entry. To
                   correct a wrong figure without that, cancel and use Correct record instead.
+                </>
+              )}
+              {ticket.referenceType === 'cash_transfer' && (
+                <>
+                  {' '}
+                  If this deposit was approved, its RV- entries are removed from the Daily Ledger with it and the
+                  running balance is recomputed. No reversal or other entry is posted in their place. The deposit
+                  drops out of the branch&apos;s lists and the production slip.
                 </>
               )}
             </p>

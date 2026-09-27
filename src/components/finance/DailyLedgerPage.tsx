@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { businessDateStr, FINANCE_ACCOUNT_LABELS, type LedgerEntry } from '@mb/shared';
+import { businessDateStr, FINANCE_ACCOUNT_LABELS, type FilterConfig, type LedgerEntry } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { downloadFinanceReport, useFinanceMutation, useLedger, useLedgerHeads, type LedgerFilters } from '@/lib/finance';
@@ -21,12 +21,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
+import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
-import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
 import { LedgerSummaryCards } from './LedgerSummaryCards';
-import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { PendingCashTransfersPanel } from '@/components/cash-transfers/PendingCashTransfersPanel';
+import { CashTransferById } from '@/components/cash-transfers/CashTransferById';
+import { BookOpen, Eye, FileSpreadsheet, FileText, RotateCcw, Undo2 } from 'lucide-react';
 
 /**
  * The Daily Ledger — the cash book.
@@ -47,8 +51,6 @@ import { BookOpen, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, RotateC
  * The layout is deliberately a paper cash book: brought-forward balance on top,
  * debit and credit in facing columns, carried-forward balance in the footer.
  */
-
-const PAGE_SIZE = 50;
 
 /** A row as rendered — either a real ledger entry, or two of them merged into one. */
 type DisplayEntry = LedgerEntry & { merged?: boolean };
@@ -133,143 +135,96 @@ function mergeBranchIncomePairs(entries: LedgerEntry[]): DisplayEntry[] {
   return merged;
 }
 
-/** The filter set, minus paging — kept separate so changing a filter resets the page. */
-interface LedgerFilterState {
-  from: string;
-  to: string;
-  branchId: string;
-  ledgerHeadId: string;
-  type: string;
-  account: string;
-  status: string;
-  search: string;
-  minAmount: string;
-  maxAmount: string;
-}
-
-function defaultLedgerFilters(today: string): LedgerFilterState {
-  return {
-    from: today, to: today, branchId: '', ledgerHeadId: '', type: '',
-    account: '', status: '', search: '', minAmount: '', maxAmount: '',
-  };
-}
-
-interface LedgerUrlState {
-  filters: LedgerFilterState;
-  page: number;
-}
-
-function readLedgerUrlState(today: string): LedgerUrlState {
-  const defaults = defaultLedgerFilters(today);
-  if (typeof window === 'undefined') return { filters: defaults, page: 0 };
-  const params = new URLSearchParams(window.location.search);
-  const get = (key: keyof LedgerFilterState) => params.get(key) ?? defaults[key];
-  const filters: LedgerFilterState = {
-    from: get('from'), to: get('to'), branchId: get('branchId'), ledgerHeadId: get('ledgerHeadId'),
-    type: get('type'), account: get('account'), status: get('status'), search: get('search'),
-    minAmount: get('minAmount'), maxAmount: get('maxAmount'),
-  };
-  const page = Math.max(0, (Number(params.get('page')) || 1) - 1);
-  return { filters, page };
-}
-
-function writeLedgerParams(state: LedgerUrlState, today: string, currentSearch: string): URLSearchParams {
-  const defaults = defaultLedgerFilters(today);
-  const params = new URLSearchParams(currentSearch);
-  for (const key of Object.keys(defaults) as (keyof LedgerFilterState)[]) {
-    const value = state.filters[key];
-    if (value === defaults[key]) params.delete(key);
-    else params.set(key, value);
-  }
-  if (state.page > 0) params.set('page', String(state.page + 1));
-  else params.delete('page');
-  return params;
-}
-
-/**
- * Mirrors filters + page into the address bar with `window.history`, not
- * `useSearchParams` — this is a static export, and Next requires a Suspense
- * boundary around every `useSearchParams` consumer or the whole route bails
- * out of prerendering. Same mechanics as the Data Engine's
- * `useListQueryState` (lib/data-engine/), reimplemented here for this page's
- * flat filter shape since it deliberately isn't a DataTable (see the header
- * comment above). `pushState` for a filter or page change, `replaceState`
- * for search, so the back button steps through meaningful views without one
- * history entry per keystroke.
- */
-function useLedgerUrlState(today: string) {
-  const [state, setState] = useState<LedgerUrlState>(() => readLedgerUrlState(today));
-
-  useEffect(() => {
-    const onPop = () => setState(readLedgerUrlState(today));
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, [today]);
-
-  const pendingMode = useRef<'push' | 'replace' | null>(null);
-  useEffect(() => {
-    if (!pendingMode.current) return;
-    const mode = pendingMode.current;
-    pendingMode.current = null;
-    const params = writeLedgerParams(state, today, window.location.search);
-    const qs = params.toString();
-    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
-    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (next === current) return;
-    if (mode === 'push') window.history.pushState(window.history.state, '', next);
-    else window.history.replaceState(window.history.state, '', next);
-  }, [state, today]);
-
-  const update = useCallback((mode: 'push' | 'replace', fn: (s: LedgerUrlState) => LedgerUrlState) => {
-    pendingMode.current = mode;
-    setState(fn);
-  }, []);
-
-  return { state, update };
-}
-
 export function DailyLedgerPage() {
   const { token } = useAuth();
   const abilities = useFinanceAbilities();
   const today = businessDateStr();
 
-  const { state: urlState, update } = useLedgerUrlState(today);
-  const { filters, page } = urlState;
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['businessDate', 'branchId', 'ledgerHeadId', 'type', 'account', 'status', 'amount'],
+    defaults: {
+      filters: [
+        { key: 'businessDate', op: 'gte', value: today },
+        { key: 'businessDate', op: 'lte', value: today },
+      ],
+    },
+  });
   const [adjusting, setAdjusting] = useState<LedgerEntry | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'excel' | null>(null);
+  /** The cash transfer behind a voucher, opened from its row (migration 118). */
+  const [viewingTransfer, setViewingTransfer] = useState<string | null>(null);
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
 
-  // Amounts are text in the inputs so the fields can be cleared; convert here,
-  // and drop anything that is not a finite number rather than sending NaN.
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+      { key: 'branchId', label: 'Branch', type: 'select', placement: 'bar' },
+      { key: 'ledgerHeadId', label: 'Ledger Head', type: 'select' },
+      {
+        key: 'type', label: 'Type', type: 'select',
+        options: [
+          { value: 'income', label: 'Income' },
+          { value: 'expense', label: 'Expense' },
+        ],
+      },
+      {
+        key: 'account', label: 'Account', type: 'select',
+        options: [
+          { value: 'cash', label: FINANCE_ACCOUNT_LABELS.cash },
+          { value: 'bank', label: FINANCE_ACCOUNT_LABELS.bank },
+        ],
+      },
+      {
+        key: 'status', label: 'Status', type: 'select',
+        options: [
+          { value: 'posted', label: 'Posted' },
+          { value: 'locked', label: 'Locked' },
+          { value: 'reversed', label: 'Reversed' },
+        ],
+      },
+      { key: 'amount', label: 'Amount', type: 'number-range' },
+    ],
+    [],
+  );
+  const filterOptions = useMemo(
+    () => ({
+      branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+      ledgerHeadId: (headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name })),
+    }),
+    [branchesQ.data, headsQ.data],
+  );
+
+  // Amounts are text in the filter controls so the fields can be cleared;
+  // convert here, and drop anything that is not a finite number rather than
+  // sending NaN.
   const query: LedgerFilters = useMemo(() => {
-    const num = (v: string) => (v.trim() === '' || !Number.isFinite(Number(v)) ? undefined : Number(v));
-    return {
-      from: filters.from || undefined,
-      to: filters.to || filters.from || undefined,
-      branchId: filters.branchId || undefined,
-      ledgerHeadId: filters.ledgerHeadId || undefined,
-      type: filters.type || undefined,
-      account: filters.account || undefined,
-      status: filters.status || undefined,
-      search: filters.search.trim() || undefined,
-      minAmount: num(filters.minAmount),
-      maxAmount: num(filters.maxAmount),
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
+    const num = (v: unknown) => {
+      const s = typeof v === 'string' ? v.trim() : '';
+      return s === '' || !Number.isFinite(Number(s)) ? undefined : Number(s);
     };
-  }, [filters, page]);
+    const from = list.getFilter('businessDate', 'gte')?.value as string | null | undefined;
+    const to = list.getFilter('businessDate', 'lte')?.value as string | null | undefined;
+    return {
+      from: from || undefined,
+      to: to || from || undefined,
+      branchId: (list.getFilter('branchId')?.value as string | undefined) || undefined,
+      ledgerHeadId: (list.getFilter('ledgerHeadId')?.value as string | undefined) || undefined,
+      type: (list.getFilter('type')?.value as string | undefined) || undefined,
+      account: (list.getFilter('account')?.value as string | undefined) || undefined,
+      status: (list.getFilter('status')?.value as string | undefined) || undefined,
+      search: list.state.search.trim() || undefined,
+      minAmount: num(list.getFilter('amount', 'gte')?.value),
+      maxAmount: num(list.getFilter('amount', 'lte')?.value),
+      limit: list.state.pageSize,
+      offset: (list.state.page - 1) * list.state.pageSize,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.state.filters, list.state.search, list.state.page, list.state.pageSize]);
 
   const { data, isLoading, isError, error, refetch } = useLedger(query);
-
-  function set<K extends keyof LedgerFilterState>(key: K, value: LedgerFilterState[K]) {
-    update(key === 'search' ? 'replace' : 'push', (s) => ({ filters: { ...s.filters, [key]: value }, page: 0 }));
-  }
-
-  function resetFilters() {
-    update('push', () => ({ filters: defaultLedgerFilters(today), page: 0 }));
-  }
 
   // Branch income posts as two real ledger entries (company share + branch
   // share — see finance-income.service.ts), each under its own head so the
@@ -283,16 +238,13 @@ export function DailyLedgerPage() {
     [data?.entries],
   );
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const rangeFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;
-  const rangeTo = Math.min(total, (page + 1) * PAGE_SIZE);
 
   async function download(format: 'pdf' | 'excel') {
     if (!token) return;
     setDownloading(format);
     try {
       await downloadFinanceReport(
-        { type: 'daily_cash_book', from: filters.from, to: filters.to, branchId: filters.branchId || undefined },
+        { type: 'daily_cash_book', from: query.from, to: query.to, branchId: query.branchId },
         format,
         token,
       );
@@ -328,100 +280,29 @@ export function DailyLedgerPage() {
 
       <ReadOnlyNotice abilities={abilities} />
 
+      {/* Branch handovers not yet in the book — Approve / Reject / View from
+          here, so the cash book's reader can clear the queue in place. */}
+      <PendingCashTransfersPanel canDecide={abilities.approve} />
+
       <LedgerSummaryCards date={query.to ?? today} branchId={query.branchId} />
 
-      <FilterBar>
-        <FilterField label="From">
-          <DateFilter value={filters.from} onChange={(v) => set('from', v)} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={filters.to} onChange={(v) => set('to', v)} />
-        </FilterField>
-        <FilterField label="Branch">
-          <FilterSelect
-            value={filters.branchId}
-            onChange={(v) => set('branchId', v)}
-            allLabel="All branches"
-            options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-          />
-        </FilterField>
-        <FilterField label="Ledger Head">
-          <FilterSelect
-            value={filters.ledgerHeadId}
-            onChange={(v) => set('ledgerHeadId', v)}
-            allLabel="All heads"
-            options={(headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name }))}
-          />
-        </FilterField>
-        <FilterField label="Type">
-          <FilterSelect
-            value={filters.type}
-            onChange={(v) => set('type', v)}
-            allLabel="Income & expense"
-            options={[
-              { value: 'income', label: 'Income' },
-              { value: 'expense', label: 'Expense' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Account">
-          <FilterSelect
-            value={filters.account}
-            onChange={(v) => set('account', v)}
-            allLabel="Cash & bank"
-            options={[
-              { value: 'cash', label: FINANCE_ACCOUNT_LABELS.cash },
-              { value: 'bank', label: FINANCE_ACCOUNT_LABELS.bank },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Status">
-          <FilterSelect
-            value={filters.status}
-            onChange={(v) => set('status', v)}
-            allLabel="Any status"
-            options={[
-              { value: 'posted', label: 'Posted' },
-              { value: 'locked', label: 'Locked' },
-              { value: 'reversed', label: 'Reversed' },
-            ]}
-          />
-        </FilterField>
-        <FilterField label="Min amount">
-          <Input
-            type="number"
-            inputMode="decimal"
-            placeholder="0"
-            value={filters.minAmount}
-            onChange={(e) => set('minAmount', e.target.value)}
-            className="h-11 md:h-9"
-          />
-        </FilterField>
-        <FilterField label="Max amount">
-          <Input
-            type="number"
-            inputMode="decimal"
-            placeholder="Any"
-            value={filters.maxAmount}
-            onChange={(e) => set('maxAmount', e.target.value)}
-            className="h-11 md:h-9"
-          />
-        </FilterField>
-        <FilterField label="Search" className="min-w-[14rem] flex-1 space-y-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Voucher no, description, head or branch…"
-              value={filters.search}
-              onChange={(e) => set('search', e.target.value)}
-              className="h-11 pl-9 md:h-9"
-            />
-          </div>
-        </FilterField>
-        <Button variant="ghost" size="sm" className="h-11 md:h-9" onClick={resetFilters}>
-          Clear
-        </Button>
-      </FilterBar>
+      <FilterBar
+        list={list}
+        filters={filters}
+        options={filterOptions}
+        searchable
+        searchPlaceholder="Voucher no, description, head or branch…"
+        maxDate={today}
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        options={filterOptions}
+        search={list.state.search}
+        onRemove={list.clearFilter}
+        onClearSearch={() => list.setSearch('')}
+        onClearAll={list.clearAll}
+      />
 
       {isError ? (
         <EmptyState
@@ -454,6 +335,7 @@ export function DailyLedgerPage() {
                       {h}
                     </TableHead>
                   ))}
+                  <TableHead className="w-px" />
                   {abilities.adjust && <TableHead className="w-px" />}
                 </TableRow>
               </TableHeader>
@@ -470,13 +352,13 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right font-semibold">
                     <Money value={data?.openingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 2 : 1} />
+                  <TableCell colSpan={abilities.adjust ? 3 : 2} />
                 </TableRow>
 
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: abilities.adjust ? 11 : 10 }).map((__, j) => (
+                      {Array.from({ length: abilities.adjust ? 12 : 11 }).map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-4 w-full" />
                         </TableCell>
@@ -485,7 +367,7 @@ export function DailyLedgerPage() {
                   ))
                 ) : entries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={abilities.adjust ? 11 : 10} className="p-0">
+                    <TableCell colSpan={abilities.adjust ? 12 : 11} className="p-0">
                       <EmptyState
                         icon={BookOpen}
                         title="No vouchers for this selection"
@@ -495,7 +377,7 @@ export function DailyLedgerPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  entries.map((e) => <LedgerRow key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} />)
+                  entries.map((e) => <LedgerRow key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} onViewSource={setViewingTransfer} />)
                 )}
               </TableBody>
 
@@ -518,7 +400,7 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right">
                     <Money value={data?.closingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 2 : 1} className="text-xs font-normal text-muted-foreground">
+                  <TableCell colSpan={abilities.adjust ? 3 : 2} className="text-xs font-normal text-muted-foreground">
                     Carried forward
                   </TableCell>
                 </TableRow>
@@ -542,7 +424,7 @@ export function DailyLedgerPage() {
             ) : entries.length === 0 ? (
               <EmptyState icon={BookOpen} title="No vouchers for this selection" />
             ) : (
-              entries.map((e) => <LedgerCard key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} />)
+              entries.map((e) => <LedgerCard key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={setAdjusting} onViewSource={setViewingTransfer} />)
             )}
 
             <div className="space-y-1 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm font-medium">
@@ -561,42 +443,26 @@ export function DailyLedgerPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              {total === 0 ? 'No entries' : `Showing ${rangeFrom}–${rangeTo} of ${total}`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>
-                Page {page + 1} of {pageCount}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-11 w-11 md:h-7 md:w-7"
-                aria-label="Previous page"
-                disabled={page === 0}
-                onClick={() => update('push', (s) => ({ ...s, page: Math.max(0, s.page - 1) }))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-11 w-11 md:h-7 md:w-7"
-                aria-label="Next page"
-                disabled={page + 1 >= pageCount}
-                onClick={() => update('push', (s) => ({ ...s, page: s.page + 1 }))}
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            page={list.state.page}
+            pageSize={list.state.pageSize}
+            total={total}
+            onPageChange={list.setPage}
+            onPageSizeChange={list.setPageSize}
+            loading={isLoading}
+          />
         </>
       )}
 
       <AdjustDialog entry={adjusting} onClose={() => setAdjusting(null)} />
+      <CashTransferById id={viewingTransfer} onClose={() => setViewingTransfer(null)} />
     </div>
   );
+}
+
+/** The one source a voucher can be opened FROM: a branch cash transfer (118). */
+function sourceTransferId(entry: LedgerEntry): string | null {
+  return entry.sourceType === 'cash_transfer' && entry.sourceId ? entry.sourceId : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -605,12 +471,15 @@ function LedgerRow({
   entry,
   canAdjust,
   onAdjust,
+  onViewSource,
 }: {
   entry: DisplayEntry;
   canAdjust: boolean;
   onAdjust: (entry: LedgerEntry) => void;
+  onViewSource: (transferId: string) => void;
 }) {
   const reversed = entry.status === 'reversed';
+  const transferId = sourceTransferId(entry);
 
   return (
     <TableRow className={cn('hover:bg-muted/30', reversed && 'text-muted-foreground line-through decoration-1')}>
@@ -641,6 +510,16 @@ function LedgerRow({
       <TableCell>
         <StatusBadge status={entry.status} />
       </TableCell>
+      <TableCell>
+        {/* The record behind a branch cash receipt — transfer id, photo at
+            reading size, who submitted and who approved. Other sources have
+            their own screens and no single dialog here. */}
+        {transferId && (
+          <Button variant="ghost" size="icon-sm" aria-label="View cash transfer" onClick={() => onViewSource(transferId)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </TableCell>
       {canAdjust && (
         <TableCell>
           {/* A reversing entry cannot itself be reversed, and neither can one
@@ -662,13 +541,16 @@ function LedgerCard({
   entry,
   canAdjust,
   onAdjust,
+  onViewSource,
 }: {
   entry: DisplayEntry;
   canAdjust: boolean;
   onAdjust: (entry: LedgerEntry) => void;
+  onViewSource: (transferId: string) => void;
 }) {
   const reversed = entry.status === 'reversed';
   const isDebit = entry.debit > 0;
+  const transferId = sourceTransferId(entry);
 
   return (
     <div className={cn('rounded-lg border bg-card p-3', reversed && 'opacity-60')}>
@@ -713,12 +595,20 @@ function LedgerCard({
         className="mt-2.5"
       />
 
-      {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
-        <div className="mt-3 border-t pt-2.5">
-          <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onAdjust(entry)}>
-            <Undo2 className="h-3.5 w-3.5" />
-            Adjust or reverse
-          </Button>
+      {(transferId || (canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged)) && (
+        <div className="mt-3 flex flex-col gap-2 border-t pt-2.5">
+          {transferId && (
+            <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onViewSource(transferId)}>
+              <Eye className="h-3.5 w-3.5" />
+              View cash transfer
+            </Button>
+          )}
+          {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
+            <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onAdjust(entry)}>
+              <Undo2 className="h-3.5 w-3.5" />
+              Adjust or reverse
+            </Button>
+          )}
         </div>
       )}
     </div>

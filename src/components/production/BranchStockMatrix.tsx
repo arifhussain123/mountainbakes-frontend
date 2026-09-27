@@ -4,12 +4,17 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useProductionBranchStock } from '@/lib/queries';
+import { useTableSort } from '@/lib/table/useTableSort';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/data-engine';
-import { Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { DEFAULT_PAGE_SIZE, type PageSize } from '@mb/shared';
+
+/** Not a displayed column — the pseudo-key the default (and post-reset) order sorts by. */
+const TOTAL_STOCK_KEY = 'totalStock';
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
 
@@ -20,7 +25,7 @@ export function BranchStockMatrix() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
 
-  const branches = data?.branches ?? [];
+  const branches = useMemo(() => data?.branches ?? [], [data]);
   // This matrix is bounded by catalog × active-branch size, not by order/
   // history volume, so fetching it in full is fine (see production.routes.ts);
   // what wasn't fine was always RENDERING every product row regardless of how
@@ -30,10 +35,34 @@ export function BranchStockMatrix() {
     () => (data?.rows ?? []).filter((r) => r.productName.toLowerCase().includes(debouncedFilter.toLowerCase())),
     [data, debouncedFilter],
   );
+
+  // The whole matrix is already unpaginated in the browser, so sorting is a
+  // client concern — the backend used to pre-sort by total stock descending;
+  // that default moved here (`production.routes.ts`'s `/branch-stock` route)
+  // so the first render looks unchanged.
+  const { toggle, isSorted, applyClientSort } = useTableSort({
+    defaultSort: { key: TOTAL_STOCK_KEY, direction: 'desc' },
+  });
+  type Row = NonNullable<typeof data>['rows'][number];
+  const sortAccessors = useMemo(() => {
+    const accessors: Record<string, (row: Row) => string | number | null> = {
+      productName: (r) => r.productName,
+      [TOTAL_STOCK_KEY]: (r) => Object.values(r.byBranch).reduce((s, v) => s + (v || 0), 0),
+    };
+    for (const b of branches) accessors[`branch:${b.branchId}`] = (r) => r.byBranch[b.branchId] ?? 0;
+    return accessors;
+  }, [branches]);
+  const sorted = useMemo(() => applyClientSort(filtered, sortAccessors), [filtered, sortAccessors, applyClientSort]);
+
   const rows = useMemo(
-    () => filtered.slice((page - 1) * pageSize, page * pageSize),
-    [filtered, page, pageSize],
+    () => sorted.slice((page - 1) * pageSize, page * pageSize),
+    [sorted, page, pageSize],
   );
+
+  function sortIcon(key: string) {
+    const s = isSorted(key);
+    return s === 'asc' ? <ArrowUp className="h-3 w-3" /> : s === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-50" />;
+  }
 
   function handleFilterChange(value: string) {
     setFilter(value);
@@ -56,9 +85,19 @@ export function BranchStockMatrix() {
         <table className="w-full text-sm">
           <thead>
             <tr data-table-head className="text-left">
-              <th className="sticky left-0 bg-muted/50 px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">Product</th>
+              <th className="sticky left-0 bg-muted/50 px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">
+                <button type="button" onClick={() => toggle('productName')} className={cn('inline-flex items-center gap-1 hover:text-foreground', isSorted('productName') && 'text-foreground')}>
+                  Product
+                  {sortIcon('productName')}
+                </button>
+              </th>
               {branches.map((b) => (
-                <th key={b.branchId} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">{short(b.branchName)}</th>
+                <th key={b.branchId} className="px-3 py-2 text-center text-xs uppercase tracking-wide text-muted-foreground">
+                  <button type="button" onClick={() => toggle(`branch:${b.branchId}`)} className={cn('inline-flex items-center gap-1 hover:text-foreground', isSorted(`branch:${b.branchId}`) && 'text-foreground')}>
+                    {short(b.branchName)}
+                    {sortIcon(`branch:${b.branchId}`)}
+                  </button>
+                </th>
               ))}
             </tr>
           </thead>

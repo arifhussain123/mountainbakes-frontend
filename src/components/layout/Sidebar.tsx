@@ -61,7 +61,7 @@ export function Sidebar() {
  */
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
-  const { settings } = useSettings();
+  const { settings, isPending: settingsPending } = useSettings();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -78,7 +78,16 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <>
       {/* Brand */}
       <div className="flex items-center gap-3 border-b border-sidebar-border px-6 py-7">
-        {settings?.logoUrl ? (
+        {settingsPending ? (
+          // Settings haven't resolved yet — hold a neutral, same-sized
+          // placeholder rather than committing to the generic fallback logo,
+          // which would otherwise flash and get replaced once a custom
+          // `logoUrl` (if any) arrives.
+          <div
+            aria-hidden
+            className="h-16 w-16 flex-shrink-0 animate-pulse rounded-full bg-sidebar-accent"
+          />
+        ) : settings?.logoUrl ? (
           <Image
             src={settings.logoUrl}
             alt={settings.companyName || 'Logo'}

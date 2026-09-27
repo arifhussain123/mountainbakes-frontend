@@ -27,12 +27,10 @@ import { FileSpreadsheet } from 'lucide-react';
  * once-a-day lock that snapshots and freezes the day, runs as Super Admin, and
  * is what the 2 AM scheduler exists to call. Branch Closing is the read a shift
  * hands over on: what sold, what it was paid in, what went out, what is left on
- * the shelf. Nothing here writes anything, which is why a shift account can open
- * it at all.
+ * the shelf. Nothing here writes anything.
  *
  * Every figure is derived from the day's own records rather than a report
- * endpoint, because /api/reports/summary is manager-and-above and a branch_user
- * would get a 403 from it.
+ * endpoint.
  */
 
 // 'staff' takes no money and is excluded from every revenue total (see

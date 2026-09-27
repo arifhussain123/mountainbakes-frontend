@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { apiCall } from '@/utils/api';
-import type { User, Branch, UserRole, UserStatus, BranchShift } from '@mb/shared';
-import { BRANCH_SHIFTS, BRANCH_SHIFT_LABELS, isBranchRole } from '@mb/shared';
+import type { User, Branch, UserRole, UserStatus } from '@mb/shared';
+import { isBranchRole } from '@mb/shared';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,6 @@ import { Loader2 } from 'lucide-react';
 const ROLE_ITEMS = [
   { value: 'super_admin', label: 'Super Admin' },
   { value: 'branch_manager', label: 'Branch Manager' },
-  { value: 'branch_user', label: 'Branch User (shift)' },
   { value: 'production_user', label: 'Production User' },
 ];
 const STATUS_ITEMS = [
@@ -51,7 +50,6 @@ export function EditUserDialog({
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [role, setRole] = useState<UserRole>(user?.role ?? 'branch_manager');
   const [branchId, setBranchId] = useState<string | null>(user?.branchId ?? null);
-  const [shift, setShift] = useState<BranchShift>(user?.shift ?? 'morning');
   const [status, setStatus] = useState<UserStatus>(user?.status ?? 'active');
   const [submitting, setSubmitting] = useState(false);
 
@@ -70,11 +68,6 @@ export function EditUserDialog({
             phone,
             role,
             branchId: isBranchRole(role) ? branchId : null,
-            // Sent as null for any other role so the API clears a stale shift in
-            // the same statement that changes the role — migration 66's check
-            // constraint rejects the pair, and a role change that left the old
-            // shift behind would fail the whole update.
-            shift: role === 'branch_user' ? shift : null,
             status,
           }),
         },
@@ -136,23 +129,6 @@ export function EditUserDialog({
               </SelectContent>
             </Select>
           </div>
-          {role === 'branch_user' && (
-            <div className="space-y-1">
-              <Label>Shift</Label>
-              <Select
-                items={BRANCH_SHIFTS.map((s) => ({ value: s, label: BRANCH_SHIFT_LABELS[s] }))}
-                value={shift}
-                onValueChange={(v) => setShift((v as BranchShift) ?? 'morning')}
-              >
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {BRANCH_SHIFTS.map((s) => (
-                    <SelectItem key={s} value={s}>{BRANCH_SHIFT_LABELS[s]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           {isBranchRole(role) && (
             <div className="space-y-1">
               <Label>Branch</Label>

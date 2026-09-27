@@ -132,5 +132,15 @@ ${kv('Less Returns', money(collection.returnsAmount, symbol))}
 ${kv('Less Discount', money(collection.discountsAmount, symbol))}
 ${rule(true)}
 ${kv('AMOUNT TO COLLECT', money(collection.amountToCollect, symbol), 'total')}
-${rule()}`;
+${
+  // Payment Received sits UNDER the total, as a separate fact about money the
+  // branch already handed over — it is not a deduction and the total above is
+  // unchanged. Printed whenever the server supplied it, at zero too, for the
+  // same fixed-rows reason as the two deductions.
+  collection.paymentsReceived === undefined
+    ? ''
+    : `${kv('Payment Received', money(collection.paymentsReceived, symbol))}
+${kv('Remaining Balance', money(collection.remainingBalance ?? Math.max(0, collection.amountToCollect - collection.paymentsReceived), symbol))}
+`
+}${rule()}`;
 }

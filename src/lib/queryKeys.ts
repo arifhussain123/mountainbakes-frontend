@@ -23,6 +23,8 @@ export const qk = {
     packingMaterialId?: string | null;
     page?: number;
     pageSize?: number;
+    sortBy?: string;
+    sortDir?: string;
   }) =>
     [
       'packingUsage',
@@ -32,14 +34,16 @@ export const qk = {
       filters.packingMaterialId ?? null,
       filters.page ?? 1,
       filters.pageSize ?? 50,
+      filters.sortBy ?? null,
+      filters.sortDir ?? null,
     ] as const,
   categories: () => ['categories'] as const,
   branches: () => ['branches'] as const,
   branchLocations: () => ['branchLocations'] as const,
   geofenceLogs: (filters: { branchId?: string | null; blockedOnly?: boolean }) =>
     ['geofenceLogs', filters.branchId ?? null, filters.blockedOnly ?? false] as const,
-  priceHistory: (productId?: string | null, offset?: number, search?: string | null) =>
-    ['priceHistory', productId ?? 'all', offset ?? 0, search ?? ''] as const,
+  priceHistory: (productId?: string | null, offset?: number, search?: string | null, sortBy?: string | null, sortDir?: string | null) =>
+    ['priceHistory', productId ?? 'all', offset ?? 0, search ?? '', sortBy ?? '', sortDir ?? ''] as const,
   reportSummary: (period: string, branchId?: string | null, from?: string | null, to?: string | null, fields?: string | null) =>
     ['reportSummary', period, branchId ?? null, from ?? null, to ?? null, fields ?? 'full'] as const,
   // Daily Sales analytics. Keyed by every parameter that changes the ANSWER —
@@ -164,6 +168,11 @@ export const qk = {
   // `branchReturns` is.
   productionDiscounts: (params: Record<string, unknown>) => ['discounts', 'production', params] as const,
   branchDiscounts: (params: Record<string, unknown>) => ['discounts', 'branch', params] as const,
+  // Cash transfers (migration 118) — the branch's own list. Its own family for
+  // the reason discounts are: nothing here moves stock. The Finance side is
+  // `financeCashTransfers` below, under the finance root so a decision
+  // invalidates it with everything else finance.
+  branchCashTransfers: (params: Record<string, unknown>) => ['cashTransfers', 'branch', params] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
@@ -178,14 +187,6 @@ export const qk = {
   eventProductionStatus: (eventId: string) => ['eventProductionStatus', eventId] as const,
   eventNotifications: (eventId?: string | null, status?: string | null) =>
     ['eventNotifications', eventId ?? 'all', status ?? null] as const,
-
-  // Shift-account requests (branch_manager → Admin). One key for both sides of
-  // the queue: the endpoint scopes itself from the JWT, so a manager and an
-  // admin asking for the same key are asking for different rows and never share
-  // a cache entry — the token they read with differs, and signing out clears it.
-  // Keyed by the whole filter object — page/limit/search/status each select a
-  // different set of rows, same convention as `branchReturns`.
-  branchUserRequests: (params: Record<string, unknown>) => ['branchUserRequests', params] as const,
 
   // Branch Closing. One key for the whole sheet rather than three: the orders,
   // expenses and stock behind it are read together, for one business date, and
@@ -237,7 +238,8 @@ export const qk = {
   financeLedgerSummary: (filters: Record<string, unknown>) => ['finance', 'ledgerSummary', filters] as const,
   financeHeads: (includeInactive?: boolean) =>
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
-  financeIncome: (filters: Record<string, unknown>) => ['finance', 'income', filters] as const,
+  financeCashTransfers: (filters: Record<string, unknown>) => ['finance', 'cashTransfers', filters] as const,
+  financeCashTransfer: (id: string) => ['finance', 'cashTransfer', id] as const,
   financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,
   financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
   financeEmployees: (includeInactive?: boolean) =>
@@ -292,6 +294,13 @@ export const qk = {
   data: (resource: string, query: string) => ['data', resource, 'list', query] as const,
   dataAggregate: (resource: string, query: string) => ['data', resource, 'aggregate', query] as const,
   dataMeta: (resource: string) => ['data', resource, 'meta'] as const,
+
+  // Database backups. One family so a verify or a manual run refreshes the
+  // status cards and the history table together — they are two views of the
+  // same backup_jobs rows.
+  backupStatus: () => ['backups', 'status'] as const,
+  backupHistory: (params: Record<string, unknown>) => ['backups', 'history', params] as const,
+  backupRestoreTest: () => ['backups', 'restore-test'] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

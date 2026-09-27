@@ -1,17 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { BranchDiscount, BranchDiscountStatus } from '@mb/shared';
+import type { BranchDiscount, BranchDiscountStatus, FilterConfig } from '@mb/shared';
 import { isDiscountOpen } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
@@ -25,7 +26,7 @@ import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { BadgePercent, ChevronLeft, ChevronRight, Eye, Pencil, Trash2 } from 'lucide-react';
+import { BadgePercent, Eye, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DISCOUNT_STATUS_STYLES,
@@ -36,13 +37,6 @@ import {
   parseAmount,
   shortRef,
 } from './discountShared';
-
-const PAGE_SIZE = 50;
-
-// Sentinel rather than an empty string: Base UI's Select treats an absent
-// value as "show the placeholder", so '' as a real option would render as no
-// value — same reasoning as the Production Discounts/Returns filters.
-const ALL_STATUSES = 'all';
 
 /**
  * Branch → Discounts: every claim this branch has made against a demand.
@@ -93,18 +87,28 @@ const STATUSES: BranchDiscountStatus[] = ['pending', 'approved', 'rejected', 're
 
 export function BranchDiscountsPage() {
   const { token } = useAuth();
-  const [status, setStatus] = useState<string>(ALL_STATUSES);
-  const [search, setSearch] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [page, setPage] = useState(0);
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'businessDate'] });
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: STATUSES.map((s) => ({ value: s, label: discountStatusLabel(s) })),
+      },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+    ],
+    [],
+  );
   const discountsQ = useBranchDiscounts(token, {
-    status: status === ALL_STATUSES ? undefined : status,
-    search: search || undefined,
-    from: from || undefined,
-    to: to || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    status: list.getFilter('status')?.value as string | undefined,
+    search: list.state.search || undefined,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
+    sortBy: list.state.sort?.key as
+      | 'date' | 'createdAt' | 'reviewedAt' | 'demandNumber' | 'amount' | 'reason' | 'status'
+      | undefined,
+    sortDir: list.state.sort?.direction,
   });
   const reviseMut = useReviseBranchDiscount(token);
   const withdrawMut = useWithdrawBranchDiscount(token);
@@ -115,21 +119,8 @@ export function BranchDiscountsPage() {
   const [editAmount, setEditAmount] = useState('');
   const [editReason, setEditReason] = useState('');
 
-  /** Every filter/search change resets to page 0 — a stale page on a narrowed result set reads as "nothing claimed". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(0);
-    };
-  }
-
-  function changeStatus(v: string) {
-    setFilter(setStatus)(v ?? ALL_STATUSES);
-  }
-
   const rows = discountsQ.data?.discounts ?? [];
   const total = discountsQ.data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (discountsQ.isError) toast.error('Could not load discounts');
@@ -172,6 +163,7 @@ export function BranchDiscountsPage() {
   const columns = [
     col.accessor('id', {
       header: 'ID',
+      enableSorting: false,
       meta: { mobileLabel: 'Ref' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
     }),
@@ -228,6 +220,7 @@ export function BranchDiscountsPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => {
         const d = row.original;
         return (
@@ -282,72 +275,26 @@ export function BranchDiscountsPage() {
         </div>
       </div>
 
-      {/* Status narrows the table ahead of the search box within it, matching
-          the Production Discounts/Returns boards. Both are server-side: the
-          search box sends `search` to the API rather than filtering the
-          current page in memory. */}
+      <FilterBar list={list} filters={filters} searchable={false} />
+      <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
+
       <DataTable
         columns={columns}
         data={rows}
         loading={discountsQ.isLoading}
         searchPlaceholder="Search demand # or reason…"
         pager={false}
+        sortable
         manual={{
-          page: page + 1,
-          pageSize: PAGE_SIZE,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total,
-          onPageChange: (p) => setPage(p - 1),
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(list.state.sort),
+          onSortingChange: (next) => list.setSort(tanstackToSortState(next)),
         }}
-        leading={
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label htmlFor="discount-status-filter" className="text-xs text-muted-foreground">
-                Status
-              </Label>
-              <Select value={status} onValueChange={(v) => changeStatus((v as string) ?? ALL_STATUSES)}>
-                <SelectTrigger id="discount-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {discountStatusLabel(s)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="discount-from-filter" className="text-xs text-muted-foreground">
-                From
-              </Label>
-              <Input
-                id="discount-from-filter"
-                type="date"
-                value={from}
-                max={to || undefined}
-                onChange={(e) => setFilter(setFrom)(e.target.value)}
-                className="h-11 sm:h-9"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="discount-to-filter" className="text-xs text-muted-foreground">
-                To
-              </Label>
-              <Input
-                id="discount-to-filter"
-                type="date"
-                value={to}
-                min={from || undefined}
-                onChange={(e) => setFilter(setTo)(e.target.value)}
-                className="h-11 sm:h-9"
-              />
-            </div>
-          </div>
-        }
         empty={
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <BadgePercent className="h-8 w-8 text-muted-foreground/50" />
@@ -359,32 +306,14 @@ export function BranchDiscountsPage() {
         }
       />
 
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} total</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={list.state.page}
+        pageSize={list.state.pageSize}
+        total={total}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
+        loading={discountsQ.isLoading}
+      />
 
       {/* ── View ─────────────────────────────────────────────────────────── */}
       <Dialog open={!!viewRow} onOpenChange={(o) => !o && setViewRow(null)}>

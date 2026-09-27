@@ -6,28 +6,42 @@ import {
   businessDateStr,
   FINANCE_REPORT_LABELS,
   FINANCE_REPORT_TYPES,
+  type FilterConfig,
   type FinanceReport,
   type FinanceReportType,
+  type PageSize,
   type ReportCellFormat,
+  type SortState,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import {
   downloadFinanceReport,
+  uniqueDepartments,
   useFinanceEmployees,
   useFinanceReport,
   useLedgerHeads,
 } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { SortableHeaderCell } from '@/components/shared/SortableHeaderCell';
+import { Pagination } from '@/components/data-engine/Pagination';
+import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, useMoney } from './finance-ui';
-import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Table2 } from 'lucide-react';
+import { FileSpreadsheet, FileText, Table2 } from 'lucide-react';
+
+/** Matches the Data Engine's own filter-control sizing so this page's two
+    hand-rolled fields (Report, Salary month) sit flush with the shared ones. */
+const FIELD_CLASS = 'min-w-[9rem] flex-1 space-y-1 sm:flex-none';
+const INPUT_CLASS = 'h-11 md:h-9';
 
 /**
  * The ten reports.
@@ -61,7 +75,6 @@ const PAGINATED_REPORT_TYPES = new Set<FinanceReportType>([
   'salary',
   'partner_expense',
 ]);
-const REPORT_PAGE_SIZE = 50;
 
 const REPORT_FIELDS: Record<FinanceReportType, readonly string[]> = {
   daily_cash_book: ['from', 'to', 'branchId'],
@@ -84,16 +97,20 @@ export function FinanceReportsPage() {
   const monthStart = `${today.slice(0, 7)}-01`;
 
   const [type, setType] = useState<FinanceReportType>('daily_cash_book');
-  const [from, setFrom] = useState(monthStart);
-  const [to, setTo] = useState(today);
-  const [branchId, setBranchId] = useState('');
-  const [ledgerHeadId, setLedgerHeadId] = useState('');
-  const [partnerName, setPartnerName] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
-  const [department, setDepartment] = useState('');
   const [salaryMonth, setSalaryMonth] = useState(today.slice(0, 7));
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+
+  const list = useListQueryState({
+    syncUrl: true,
+    filterKeys: ['businessDate', 'branchId', 'ledgerHeadId', 'department', 'employeeId', 'partnerName'],
+    defaults: { filters: [{ key: 'businessDate', op: 'gte', value: monthStart }, { key: 'businessDate', op: 'lte', value: today }] },
+  });
+
+  /** Changing report type invalidates every filter the previous one used. */
+  function selectType(v: FinanceReportType) {
+    setType(v);
+    list.clearAll();
+  }
 
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads(true);
@@ -102,44 +119,80 @@ export function FinanceReportsPage() {
   const fields = REPORT_FIELDS[type];
   const uses = (field: string) => fields.includes(field);
 
+  const departments = uniqueDepartments(employeesQ.data);
+
+  const filters = useMemo<FilterConfig[]>(() => {
+    const configs: FilterConfig[] = [];
+    if (uses('from') || uses('to')) configs.push({ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' });
+    if (uses('branchId')) configs.push({ key: 'branchId', label: 'Branch', type: 'select' });
+    if (uses('ledgerHeadId')) configs.push({ key: 'ledgerHeadId', label: 'Ledger head', type: 'select' });
+    if (uses('department')) configs.push({ key: 'department', label: 'Department', type: 'select' });
+    if (uses('employeeId')) configs.push({ key: 'employeeId', label: 'Employee', type: 'select' });
+    if (uses('partnerName')) configs.push({ key: 'partnerName', label: 'Partner', type: 'text', placeholder: 'Partner name' });
+    return configs;
+  }, [fields]);
+  const filterOptions = useMemo(
+    () => ({
+      branchId: (branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name })),
+      ledgerHeadId: (headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name })),
+      department: departments.map((d) => ({ value: d, label: d })),
+      employeeId: (employeesQ.data ?? []).map((e) => ({ value: e.id, label: e.name })),
+    }),
+    [branchesQ.data, headsQ.data, departments, employeesQ.data],
+  );
+
   // Only the fields this report uses reach the API. Sending a stale partnerName
   // to a Trial Balance would be rejected by the query schema at best and quietly
   // narrow the result at worst. This is also the query the export buttons use —
   // never paginated, since a download must hold the whole filtered report.
   const filterQuery = useMemo(() => {
     const q: Record<string, unknown> = { type };
-    if (uses('from')) q['from'] = from;
-    if (uses('to')) q['to'] = to;
-    if (uses('branchId') && branchId) q['branchId'] = branchId;
-    if (uses('ledgerHeadId') && ledgerHeadId) q['ledgerHeadId'] = ledgerHeadId;
-    if (uses('partnerName') && partnerName) q['partnerName'] = partnerName;
-    if (uses('employeeId') && employeeId) q['employeeId'] = employeeId;
-    if (uses('department') && department) q['department'] = department;
+    const from = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+    const to = list.getFilter('businessDate', 'lte')?.value as string | undefined;
+    if (uses('from') && from) q['from'] = from;
+    if (uses('to') && to) q['to'] = to;
+    if (uses('branchId')) {
+      const v = list.getFilter('branchId')?.value as string | undefined;
+      if (v) q['branchId'] = v;
+    }
+    if (uses('ledgerHeadId')) {
+      const v = list.getFilter('ledgerHeadId')?.value as string | undefined;
+      if (v) q['ledgerHeadId'] = v;
+    }
+    if (uses('partnerName')) {
+      const v = list.getFilter('partnerName', 'ilike')?.value as string | undefined;
+      if (v) q['partnerName'] = v;
+    }
+    if (uses('employeeId')) {
+      const v = list.getFilter('employeeId')?.value as string | undefined;
+      if (v) q['employeeId'] = v;
+    }
+    if (uses('department')) {
+      const v = list.getFilter('department')?.value as string | undefined;
+      if (v) q['department'] = v;
+    }
     if (uses('salaryMonth') && salaryMonth) q['salaryMonth'] = salaryMonth;
+    // The sortable column SET differs per report type (the API validates
+    // `sortBy` against whichever report it just built), so a sort left over
+    // from a different report type is never sent — `selectType` already
+    // clears it via `list.clearAll()` on every report switch.
+    if (list.state.sort) {
+      q['sortBy'] = list.state.sort.key;
+      q['sortDir'] = list.state.sort.direction;
+    }
     return q;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, from, to, branchId, ledgerHeadId, partnerName, employeeId, department, salaryMonth]);
-
-  // A filter change means the previous page number may no longer make sense
-  // (or even exist) against the new result set, so it resets to 1. Done as a
-  // render-time state adjustment (React's documented pattern for "reset state
-  // when a prop/derived value changes") rather than an effect, which would
-  // cause an extra cascading render.
-  const filterKey = JSON.stringify(filterQuery);
-  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
-  if (filterKey !== prevFilterKey) {
-    setPrevFilterKey(filterKey);
-    setPage(1);
-  }
+  }, [type, list.state.filters, list.state.sort, salaryMonth]);
 
   const query = useMemo(
-    () => (PAGINATED_REPORT_TYPES.has(type) ? { ...filterQuery, page, pageSize: REPORT_PAGE_SIZE } : filterQuery),
-    [filterQuery, type, page],
+    () =>
+      PAGINATED_REPORT_TYPES.has(type)
+        ? { ...filterQuery, page: list.state.page, pageSize: list.state.pageSize }
+        : filterQuery,
+    [filterQuery, type, list.state.page, list.state.pageSize],
   );
 
   const { data: report, isLoading, isError, error } = useFinanceReport(query);
-
-  const departments = Array.from(new Set((employeesQ.data ?? []).map((e) => e.department))).sort();
 
   async function download(format: 'pdf' | 'excel' | 'csv') {
     if (!token) return;
@@ -178,87 +231,48 @@ export function FinanceReportsPage() {
         }
       />
 
-      <FilterBar>
-        <FilterField label="Report" className="min-w-[14rem] flex-1 space-y-1 sm:flex-none">
-          <FilterSelect
-            value={type}
-            onChange={(v) => setType((v || 'daily_cash_book') as FinanceReportType)}
-            allLabel="Daily Cash Book"
-            options={FINANCE_REPORT_TYPES.map((t) => ({ value: t, label: FINANCE_REPORT_LABELS[t] }))}
-          />
-        </FilterField>
-
-        {uses('from') && (
-          <FilterField label="From">
-            <DateFilter value={from} onChange={setFrom} max={today} />
-          </FilterField>
-        )}
-        {uses('to') && (
-          <FilterField label="To">
-            <DateFilter value={to} onChange={setTo} max={today} />
-          </FilterField>
-        )}
-        {uses('salaryMonth') && (
-          <FilterField label="Salary month">
-            <Input
-              type="month"
-              value={salaryMonth}
-              onChange={(e) => setSalaryMonth(e.target.value)}
-              className="h-11 md:h-9"
-            />
-          </FilterField>
-        )}
-        {uses('branchId') && (
-          <FilterField label="Branch">
-            <FilterSelect
-              value={branchId}
-              onChange={setBranchId}
-              allLabel="All branches"
-              options={(branchesQ.data ?? []).map((b) => ({ value: b.id, label: b.name }))}
-            />
-          </FilterField>
-        )}
-        {uses('ledgerHeadId') && (
-          <FilterField label="Ledger head">
-            <FilterSelect
-              value={ledgerHeadId}
-              onChange={setLedgerHeadId}
-              allLabel="All heads"
-              options={(headsQ.data ?? []).map((h) => ({ value: h.id, label: h.name }))}
-            />
-          </FilterField>
-        )}
-        {uses('department') && (
-          <FilterField label="Department">
-            <FilterSelect
-              value={department}
-              onChange={setDepartment}
-              allLabel="All departments"
-              options={departments.map((d) => ({ value: d, label: d }))}
-            />
-          </FilterField>
-        )}
-        {uses('employeeId') && (
-          <FilterField label="Employee">
-            <FilterSelect
-              value={employeeId}
-              onChange={setEmployeeId}
-              allLabel="All employees"
-              options={(employeesQ.data ?? []).map((e) => ({ value: e.id, label: e.name }))}
-            />
-          </FilterField>
-        )}
-        {uses('partnerName') && (
-          <FilterField label="Partner">
-            <Input
-              placeholder="Partner name"
-              value={partnerName}
-              onChange={(e) => setPartnerName(e.target.value)}
-              className="h-11 md:h-9"
-            />
-          </FilterField>
-        )}
-      </FilterBar>
+      <FilterBar
+        list={list}
+        filters={filters}
+        options={filterOptions}
+        searchable={false}
+        maxDate={today}
+        leading={
+          <>
+            <div className={FIELD_CLASS}>
+              <Label className="text-xs text-muted-foreground">Report</Label>
+              <Select value={type} onValueChange={(v) => selectType((v || 'daily_cash_book') as FinanceReportType)}>
+                <SelectTrigger className={cn('w-full', INPUT_CLASS)}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FINANCE_REPORT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{FINANCE_REPORT_LABELS[t]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {uses('salaryMonth') && (
+              <div className={FIELD_CLASS}>
+                <Label className="text-xs text-muted-foreground">Salary month</Label>
+                <Input
+                  type="month"
+                  value={salaryMonth}
+                  onChange={(e) => { setSalaryMonth(e.target.value); list.setPage(1); }}
+                  className={INPUT_CLASS}
+                />
+              </div>
+            )}
+          </>
+        }
+      />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        options={filterOptions}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       {isError ? (
         <EmptyState
@@ -271,7 +285,14 @@ export function FinanceReportsPage() {
           <Skeleton className="h-80 w-full rounded-lg" />
         </div>
       ) : report ? (
-        <ReportView report={report} onPageChange={setPage} />
+        <ReportView
+          report={report}
+          onPageChange={list.setPage}
+          pageSize={list.state.pageSize}
+          onPageSizeChange={list.setPageSize}
+          sort={list.state.sort}
+          onToggleSort={list.toggleSort}
+        />
       ) : null}
     </div>
   );
@@ -279,7 +300,21 @@ export function FinanceReportsPage() {
 
 // ---------------------------------------------------------------------------
 
-function ReportView({ report, onPageChange }: { report: FinanceReport; onPageChange: (page: number) => void }) {
+function ReportView({
+  report,
+  onPageChange,
+  pageSize,
+  onPageSizeChange,
+  sort,
+  onToggleSort,
+}: {
+  report: FinanceReport;
+  onPageChange: (page: number) => void;
+  pageSize: PageSize;
+  onPageSizeChange: (pageSize: PageSize) => void;
+  sort: SortState | null;
+  onToggleSort: (key: string) => void;
+}) {
   const { format: money } = useMoney();
 
   /** Render one cell the way its column says to. */
@@ -337,15 +372,16 @@ function ReportView({ report, onPageChange }: { report: FinanceReport; onPageCha
               <TableHeader>
                 <TableRow data-table-head>
                   {report.columns.map((c) => (
-                    <TableHead
+                    <SortableHeaderCell
                       key={c.key}
-                      className={cn(
-                        'whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground',
-                        alignOf(c.align ?? (c.format === 'money' || c.format === 'number' ? 'right' : 'left')),
-                      )}
+                      canSort
+                      sorted={sort?.key === c.key ? sort.direction : false}
+                      onToggle={() => onToggleSort(c.key)}
+                      align={c.align ?? (c.format === 'money' || c.format === 'number' ? 'right' : 'left')}
+                      className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                     >
                       {c.label}
-                    </TableHead>
+                    </SortableHeaderCell>
                   ))}
                 </TableRow>
               </TableHeader>
@@ -435,41 +471,13 @@ function ReportView({ report, onPageChange }: { report: FinanceReport; onPageCha
       )}
 
       {report.pagination && (
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            {report.pagination.total === 0
-              ? 'No entries'
-              : `Showing ${(report.pagination.page - 1) * report.pagination.pageSize + 1}–${Math.min(
-                  report.pagination.page * report.pagination.pageSize,
-                  report.pagination.total,
-                )} of ${report.pagination.total}`}
-          </span>
-          <div className="flex items-center gap-2">
-            <span>
-              Page {report.pagination.page} of {report.pagination.totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-11 w-11 md:h-7 md:w-7"
-              aria-label="Previous page"
-              disabled={!report.pagination.hasPrevious}
-              onClick={() => onPageChange(report.pagination!.page - 1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-11 w-11 md:h-7 md:w-7"
-              aria-label="Next page"
-              disabled={!report.pagination.hasNext}
-              onClick={() => onPageChange(report.pagination!.page + 1)}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+        <Pagination
+          page={report.pagination.page}
+          pageSize={pageSize}
+          total={report.pagination.total}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
       )}
     </div>
   );

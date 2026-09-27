@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import type { FinanceAuditLog } from '@mb/shared';
+import { useMemo, useState } from 'react';
+import type { FilterConfig, FinanceAuditLog } from '@mb/shared';
 import { useFinanceAudit } from '@/lib/finance';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { Pagination } from '@/components/data-engine/Pagination';
+import { FilterBar, ActiveFilters } from '@/components/data-engine';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader } from './finance-ui';
-import { DateFilter, FilterBar, FilterField, FilterSelect } from './finance-actions';
 import { ChevronDown, ChevronRight, Monitor, ShieldCheck, Wifi } from 'lucide-react';
 
 /**
@@ -23,8 +24,6 @@ import { ChevronDown, ChevronRight, Monitor, ShieldCheck, Wifi } from 'lucide-re
  * what an auditor asks for first: not "who approved this" but "what did it look
  * like before they did".
  */
-
-const PAGE_SIZE = 50;
 
 /**
  * Every action `logFinanceAudit` can write, in FinanceAuditAction's own order.
@@ -57,6 +56,8 @@ const ENTITIES = [
   // The Help Desk query itself. `entityRef` on these rows is the Query ID, which
   // is what makes FIN-HD-… searchable here (§3).
   { value: 'finance_ticket', label: 'Help Desk query' },
+  // A branch cash handover (migration 118): approve / reject decisions.
+  { value: 'cash_transfer', label: 'Branch cash transfer' },
 ];
 
 /** Colour by consequence, matching the status vocabulary used across the module. */
@@ -75,29 +76,31 @@ const ACTION_STYLES: Record<string, string> = {
 };
 
 export function FinanceAuditPage() {
-  const [entity, setEntity] = useState('');
-  const [action, setAction] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [page, setPage] = useState(0);
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['entity', 'action', 'businessDate'] });
+
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      { key: 'entity', label: 'Record type', type: 'select', placement: 'bar', options: ENTITIES },
+      {
+        key: 'action', label: 'Action', type: 'select',
+        options: ACTIONS.map((a) => ({ value: a, label: a.replace(/_/g, ' ') })),
+      },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
+    ],
+    [],
+  );
 
   const { data, isLoading } = useFinanceAudit({
-    entity: entity || undefined,
-    action: action || undefined,
-    from: from || undefined,
-    to: to || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    entity: list.getFilter('entity')?.value as string | undefined,
+    action: list.getFilter('action')?.value as string | undefined,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
   });
 
   const logs = data?.logs ?? [];
   const total = data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  function setFilter(fn: () => void) {
-    fn();
-    setPage(0);
-  }
 
   return (
     <div className="space-y-6">
@@ -106,30 +109,13 @@ export function FinanceAuditPage() {
         description="Every finance action, with who did it, from where, and what changed. Append-only — nothing here can be edited or removed."
       />
 
-      <FilterBar>
-        <FilterField label="Record type">
-          <FilterSelect
-            value={entity}
-            onChange={(v) => setFilter(() => setEntity(v))}
-            allLabel="All records"
-            options={ENTITIES}
-          />
-        </FilterField>
-        <FilterField label="Action">
-          <FilterSelect
-            value={action}
-            onChange={(v) => setFilter(() => setAction(v))}
-            allLabel="All actions"
-            options={ACTIONS.map((a) => ({ value: a, label: a.replace(/_/g, ' ') }))}
-          />
-        </FilterField>
-        <FilterField label="From">
-          <DateFilter value={from} onChange={(v) => setFilter(() => setFrom(v))} />
-        </FilterField>
-        <FilterField label="To">
-          <DateFilter value={to} onChange={(v) => setFilter(() => setTo(v))} />
-        </FilterField>
-      </FilterBar>
+      <FilterBar list={list} filters={filters} searchable={false} />
+      <ActiveFilters
+        filters={list.activeFilters}
+        configs={filters}
+        onRemove={list.clearFilter}
+        onClearAll={list.clearAll}
+      />
 
       {isLoading ? (
         <div className="space-y-2">
@@ -151,30 +137,14 @@ export function FinanceAuditPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} recorded {total === 1 ? 'action' : 'actions'}</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 md:h-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-11 md:h-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={list.state.page}
+        pageSize={list.state.pageSize}
+        total={total}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
+        loading={isLoading}
+      />
     </div>
   );
 }

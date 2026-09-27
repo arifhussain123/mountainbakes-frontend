@@ -88,6 +88,15 @@ export interface PreviousCollection {
   discountsAmount: number;
   /** What the rider actually collects. The server's figure, printed as given. */
   amountToCollect: number;
+  /**
+   * Approved cash transfers in the same window (migration 118). Printed AFTER
+   * the amount to collect as its own line, never subtracted from it — the
+   * money is already an RV- receipt in the ledger. Optional: a preview built
+   * from an older server has neither.
+   */
+  paymentsReceived?: number;
+  /** amountToCollect less paymentsReceived, floored at zero. */
+  remainingBalance?: number;
 }
 
 export interface ProductionOrderDoc {

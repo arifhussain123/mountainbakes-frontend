@@ -1,18 +1,19 @@
 'use client';
 
+import { normalizeCashTransfer, normalizeCashTransferList } from '@/lib/cashTransferCompat';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
   BranchShareBalance,
+  CashTransfer,
   EmployeeAdvance,
   EmployeeAdvanceSummary,
   FinanceAuditLog,
   FinanceDashboard,
   FinanceDayClosing,
   FinanceEmployee,
-  FinanceIncomeApproval,
   FinancePartner,
   FinanceReport,
   FinanceSettings,
@@ -102,7 +103,7 @@ export function useFinanceDashboard(filters: FinanceDashboardFilters = {}) {
  * object type alias an implicit index signature but never gives one to an
  * interface, so only this form is assignable to the `Record<string, unknown>`
  * that `qk.financeLedger` takes. Declared as an interface it fails to compile at
- * the call site below. Same for IncomeFilters.
+ * the call site below.
  */
 export type LedgerFilters = {
   from?: string;
@@ -128,6 +129,50 @@ export function useLedger(filters: LedgerFilters) {
     enabled: Boolean(token),
     staleTime: 15_000,
     queryFn: () => apiCall<LedgerPage>(`/api/finance/ledger${toQuery(filters)}`, {}, token),
+  });
+}
+
+/**
+ * Cash transfers — Finance's review board (migration 118). A `type`, for the
+ * index-signature reason `LedgerFilters` gives.
+ */
+export type CashTransferFilters = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+  status?: string;
+  paymentMethod?: string;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+};
+
+export function useFinanceCashTransfers(filters: CashTransferFilters, opts?: { enabled?: boolean }) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeCashTransfers(filters as Record<string, unknown>),
+    enabled: Boolean(token) && (opts?.enabled ?? true),
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiCall<{ transfers: CashTransfer[]; total: number }>(
+        `/api/finance/cash-transfers${toQuery(filters)}`,
+        {},
+        token,
+      ).then(normalizeCashTransferList),
+  });
+}
+
+/** One transfer by id — what a Daily Ledger row opens from its `sourceId`. */
+export function useFinanceCashTransfer(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeCashTransfer(id ?? ''),
+    enabled: Boolean(token) && Boolean(id),
+    staleTime: 15_000,
+    queryFn: () => apiCall<CashTransfer>(`/api/finance/cash-transfers/${id}`, {}, token).then(normalizeCashTransfer),
   });
 }
 
@@ -172,33 +217,6 @@ export function useLedgerHeads(includeInactive = false) {
 }
 
 // ---------------------------------------------------------------------------
-// Branch income
-// ---------------------------------------------------------------------------
-
-export type IncomeFilters = {
-  status?: string;
-  branchId?: string;
-  from?: string;
-  to?: string;
-  search?: string;
-};
-
-export function useIncomeApprovals(filters: IncomeFilters & { limit?: number; offset?: number }) {
-  const token = useToken();
-  return useQuery({
-    queryKey: qk.financeIncome(filters as Record<string, unknown>),
-    enabled: Boolean(token),
-    staleTime: 15_000,
-    queryFn: () =>
-      apiCall<{ approvals: FinanceIncomeApproval[]; total: number }>(
-        `/api/finance/income${toQuery(filters)}`,
-        {},
-        token,
-      ),
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Manual entries, salaries, partner expenses
 // ---------------------------------------------------------------------------
 
@@ -228,6 +246,26 @@ export function useSalaryPayments(filters: Record<string, unknown>) {
         token,
       ),
   });
+}
+
+/**
+ * Distinct department names for a filter dropdown, case/whitespace-insensitive.
+ *
+ * `department` on `finance_employees` is free text (an `<Input>`, not a
+ * `<Select>`), so "Production" and "production" are different strings to a
+ * plain `Set`. Employee create/edit now normalizes on save, but existing rows
+ * (and anything written outside the app) can still disagree — dedupe here too
+ * so the dropdown never shows the same department twice.
+ */
+export function uniqueDepartments(employees: { department: string }[] | undefined): string[] {
+  const byKey = new Map<string, string>();
+  for (const e of employees ?? []) {
+    const trimmed = e.department.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (!byKey.has(key)) byKey.set(key, trimmed);
+  }
+  return [...byKey.values()].sort();
 }
 
 export function useFinanceEmployees(includeInactive = false) {

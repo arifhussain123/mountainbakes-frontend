@@ -33,6 +33,7 @@ import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
 import { BranchOrderDetail } from './BranchOrderDetail';
 import { DiscountModal } from './DiscountModal';
+import { CashDepositModal } from '@/components/cash-transfers/CashDepositModal';
 import { ReturnItemsModal } from '@/components/stock/ReturnItemsModal';
 
 const col = createColumnHelper<BranchProductionOrder>();
@@ -111,6 +112,8 @@ export function BranchNewOrders() {
   const [demandFor, setDemandFor] = useState<BranchProductionOrder | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountOpenedOnce, setDiscountOpenedOnce] = useState(false);
+  const [cashDepositOpen, setCashDepositOpen] = useState(false);
+  const [cashDepositOpenedOnce, setCashDepositOpenedOnce] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   /**
    * Whether the Return Items popup has ever been opened.
@@ -145,6 +148,11 @@ export function BranchNewOrders() {
   function openDiscount() {
     setDiscountOpenedOnce(true);
     setDiscountOpen(true);
+  }
+
+  function openCashDeposit() {
+    setCashDepositOpenedOnce(true);
+    setCashDepositOpen(true);
   }
 
   function openReturn() {
@@ -264,6 +272,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'demandProducts',
       header: 'Products',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => <span className="tabular-nums">{requestedTotals(i.row.original).products}</span>,
       footer: (p) => (
@@ -275,6 +284,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'demandQty',
       header: 'Demand Qty',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => (
         <span className="font-medium tabular-nums">{requestedTotals(i.row.original).qty.toLocaleString()}</span>
@@ -291,6 +301,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'verifiedProducts',
       header: 'Verified Products',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => {
         const o = i.row.original;
@@ -306,6 +317,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'verifiedQty',
       header: 'Verified Qty',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => {
         const o = i.row.original;
@@ -336,6 +348,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'packing',
       header: 'Packing',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => {
         const n = livePackingItems(i.row.original.packingItems).length;
@@ -365,6 +378,7 @@ export function BranchNewOrders() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: (i) => {
         const o = i.row.original;
         return (
@@ -464,6 +478,7 @@ export function BranchNewOrders() {
         data={rows}
         loading={ordersQ.isLoading}
         searchPlaceholder={tab === 'active' ? 'Search active demands…' : 'Search order history…'}
+        sortable
         empty={
           rows.length === 0 && !ordersQ.isLoading ? (
             <div className="py-12 text-center">
@@ -500,6 +515,7 @@ export function BranchNewOrders() {
         submitting={submitMut.isPending}
         onOpenReturn={openReturn}
         onOpenDiscount={openDiscount}
+        onOpenCashDeposit={openCashDeposit}
       />
 
       {/* Delete a demand Production has not started on. The reason is mandatory
@@ -598,6 +614,16 @@ export function BranchNewOrders() {
         openedOnce={discountOpenedOnce}
         orders={ordersQ.data ?? []}
         loadingOrders={ordersQ.isLoading}
+      />
+
+      {/* Record cash handed to the company. Its own transaction — it touches no
+          demand and no discount — and Branch → Cash Deposits carries the full
+          record with search and detail; the rules the two share live in
+          `cashTransferShared.tsx`. */}
+      <CashDepositModal
+        open={cashDepositOpen}
+        onOpenChange={setCashDepositOpen}
+        openedOnce={cashDepositOpenedOnce}
       />
 
       <Fab onClick={openModal} icon={Plus} label="New production order" />

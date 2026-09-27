@@ -45,6 +45,13 @@ export const ROUTES = {
    */
   SECURITY: '/security',
   /**
+   * Admin → Database Backup. Status of the pg_dump → S3 backups (daily /
+   * weekly / monthly), the run history, verify and download. Named
+   * '/database-backup' — no '/branch-' or '/production-' prefix — and added to
+   * RouteGuard's ADMIN_PREFIXES in the same change.
+   */
+  DATABASE_BACKUP: '/database-backup',
+  /**
    * Admin → Daily Sale Records. Every branch's daily reconciliation, and the only
    * place a locked record can be unlocked or an amended figure entered.
    *
@@ -111,6 +118,13 @@ export const ROUTES = {
    * table and are not interchangeable.
    */
   BRANCH_DISCOUNTS: '/branch-discounts',
+  /**
+   * Branch → Cash Deposits (migration 118): money the branch handed to the
+   * company, with the photo of the slip, and what Finance decided about each.
+   * Same '/branch-' prefix rule as BRANCH_DISCOUNTS; Finance's review board is
+   * FINANCE_CASH_TRANSFERS below and reads the same table.
+   */
+  BRANCH_CASH_TRANSFERS: '/branch-cash-transfers',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
@@ -136,10 +150,6 @@ export const ROUTES = {
    * bounces a super admin to their own home page (see BRANCH_LOCATIONS).
    */
   BRANCH_DAILY_SALE: '/branch-daily-sale',
-  // Where a manager asks Admin for a shift account, and watches the outcome.
-  BRANCH_USERS: '/branch-users',
-  // The admin side of that same queue.
-  USER_REQUESTS: '/user-requests',
 
   /**
    * Finance Ledger.
@@ -153,7 +163,7 @@ export const ROUTES = {
   FINANCE_LOGIN: '/finance-login',
   FINANCE_DASHBOARD: '/finance-dashboard',
   FINANCE_LEDGER: '/finance-ledger',
-  FINANCE_INCOME: '/finance-income',
+  FINANCE_CASH_TRANSFERS: '/finance-cash-transfers',
   FINANCE_ENTRIES: '/finance-entries',
   FINANCE_SALARIES: '/finance-salaries',
   FINANCE_PARTNER_EXPENSES: '/finance-partner-expenses',

@@ -8,10 +8,13 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   canUseLiveCamera,
   captureAndUpload,
+  cropImage,
   formatBytes,
   prefersDeviceCamera,
   subscribeDeviceCamera,
+  type CropArea,
 } from '@/lib/attachments';
+import { CropDialog } from '@/components/shared/CropDialog';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -56,6 +59,8 @@ export function PhotoCapture({
   disabled = false,
   error,
   hint,
+  crop = false,
+  captureLabel = 'Take photo',
 }: {
   entity: AttachmentEntity;
   value: Attachment[];
@@ -67,10 +72,21 @@ export function PhotoCapture({
   /** Validation message from the surrounding form, shown under the buttons. */
   error?: string;
   hint?: string;
+  /**
+   * Open a crop step between capture and upload. Off by default — the
+   * existing capture surfaces store the frame as shot — and on for a document
+   * whose legibility depends on it being the only thing in the picture (a cash
+   * deposit slip). See CropDialog.
+   */
+  crop?: boolean;
+  /** The capture button's wording — "Take photo" unless a form says otherwise. */
+  captureLabel?: string;
 }) {
   const { token } = useAuth();
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  /** The frame waiting in the crop dialog, when `crop` is on. */
+  const [pendingCrop, setPendingCrop] = useState<Blob | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,7 +104,7 @@ export function PhotoCapture({
     else setCameraOpen(true);
   }, [useDeviceCamera]);
 
-  const store = useCallback(
+  const upload = useCallback(
     async (source: Blob) => {
       if (!token) {
         toast.error('Your session has expired. Sign in again.');
@@ -98,6 +114,7 @@ export function PhotoCapture({
       try {
         const attachment = await captureAndUpload(entity, source, token);
         onChange([...value, attachment]);
+        setPendingCrop(null);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Could not save that photo');
       } finally {
@@ -105,6 +122,31 @@ export function PhotoCapture({
       }
     },
     [entity, onChange, token, value],
+  );
+
+  // With `crop` on, a captured frame goes to the crop dialog first and is only
+  // uploaded once the crop is confirmed; without it, straight to upload.
+  const store = useCallback(
+    (source: Blob) => {
+      if (crop) setPendingCrop(source);
+      else void upload(source);
+    },
+    [crop, upload],
+  );
+
+  const confirmCrop = useCallback(
+    async (area: CropArea) => {
+      if (!pendingCrop) return;
+      setBusy(true);
+      try {
+        const cropped = await cropImage(pendingCrop, area);
+        await upload(cropped);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not crop that photo');
+        setBusy(false);
+      }
+    },
+    [pendingCrop, upload],
   );
 
   return (
@@ -150,7 +192,7 @@ export function PhotoCapture({
         {(useDeviceCamera || canUseLiveCamera()) && (
           <Button type="button" variant="outline" disabled={!canCapture} onClick={takePhoto}>
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Camera className="mr-1.5 h-4 w-4" />}
-            Take photo
+            {captureLabel}
           </Button>
         )}
         <Button
@@ -199,6 +241,13 @@ export function PhotoCapture({
       {atLimit && <p className="text-xs text-muted-foreground">Maximum of {max} photos.</p>}
       {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
+
+      <CropDialog
+        source={pendingCrop}
+        busy={busy}
+        onConfirm={(area) => void confirmCrop(area)}
+        onCancel={() => setPendingCrop(null)}
+      />
 
       <CameraDialog
         open={cameraOpen}

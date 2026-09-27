@@ -33,7 +33,7 @@ const MAX_ATTEMPTS = 4;
 export function useSettings() {
   const { token } = useAuth();
 
-  const { data, refetch } = useQuery({
+  const { data, isPending, refetch } = useQuery({
     queryKey: qk.settings(),
     queryFn: () => apiCall<{ settings: AppSettings }>('/api/settings', {}, token),
     select: (r) => r.settings,
@@ -57,5 +57,10 @@ export function useSettings() {
     await refetch();
   }, [refetch]);
 
-  return { settings: data ?? null, refreshSettings };
+  // `settings` collapses "still loading" and "resolved, nothing configured"
+  // into the same `null` — most callers only care about the resolved value.
+  // `isPending` is exposed separately for the few (e.g. Sidebar's logo) that
+  // need to tell those two states apart to avoid flashing a fallback before
+  // the real value has had a chance to arrive.
+  return { settings: data ?? null, isPending, refreshSettings };
 }

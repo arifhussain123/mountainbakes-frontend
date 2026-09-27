@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { ProductionReturn } from '@mb/shared';
+import type { FilterConfig, ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useBranchReturns,
@@ -13,13 +13,16 @@ import {
 } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { DataTable } from '@/components/shared/DataTable';
+import { Pagination } from '@/components/data-engine/Pagination';
+import { ActiveFilters, FilterBar } from '@/components/data-engine';
+import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -31,10 +34,8 @@ import {
 import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
+import { Eye, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-const PAGE_SIZE = 50;
 
 /**
  * Branch → Return Stock: everything this branch has sent back to production.
@@ -121,38 +122,35 @@ function lockReason(r: ProductionReturn): string {
   return 'This return can no longer be changed.';
 }
 
-// Sentinel rather than an empty string: Base UI's Select treats an absent value
-// as "show the placeholder", so '' as a real option would render as no value.
-const ALL_STATUSES = 'all';
-
 const col = createColumnHelper<ProductionReturn>();
 
 export function BranchReturnStockPage() {
   const { token } = useAuth();
-  const [page, setPage] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES);
-  const [productFilter, setProductFilter] = useState<string>(ALL_STATUSES);
-  const [search, setSearch] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-
-  /** Every filter/search change resets to page 0 — a stale page on a narrowed result set reads as "nothing returned". */
-  function setFilter<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      setPage(0);
-    };
-  }
-
+  const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'productId', 'businessDate'] });
   const productsQ = useProducts(token);
+  const filters = useMemo<FilterConfig[]>(
+    () => [
+      {
+        key: 'status', label: 'Status', type: 'select', placement: 'bar',
+        options: Object.keys(STATUS_LABELS).map((s) => ({ value: s, label: statusLabel(s) })),
+      },
+      { key: 'productId', label: 'Product', type: 'select', placement: 'bar', options: (productsQ.data ?? []).map((p) => ({ value: p.id, label: p.name })) },
+      { key: 'businessDate', label: 'Date', type: 'date-range' },
+    ],
+    [productsQ.data],
+  );
   const returnsQ = useBranchReturns(token, {
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
-    status: statusFilter === ALL_STATUSES ? undefined : statusFilter,
-    productId: productFilter === ALL_STATUSES ? undefined : productFilter,
-    search: search || undefined,
-    from: from || undefined,
-    to: to || undefined,
+    limit: list.state.pageSize,
+    offset: (list.state.page - 1) * list.state.pageSize,
+    status: list.getFilter('status')?.value as string | undefined,
+    productId: list.getFilter('productId')?.value as string | undefined,
+    search: list.state.search || undefined,
+    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
+    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    sortBy: list.state.sort?.key as
+      | 'date' | 'createdAt' | 'reviewedAt' | 'productName' | 'qty' | 'status'
+      | undefined,
+    sortDir: list.state.sort?.direction,
   });
   const reviseMut = useReviseBranchReturn(token);
   const withdrawMut = useWithdrawBranchReturn(token);
@@ -171,7 +169,6 @@ export function BranchReturnStockPage() {
 
   const rows = returnsQ.data?.returns ?? [];
   const total = returnsQ.data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (returnsQ.isError) toast.error('Could not load returns');
@@ -236,6 +233,7 @@ export function BranchReturnStockPage() {
   const columns = [
     col.accessor('id', {
       header: 'ID',
+      enableSorting: false,
       meta: { mobileLabel: 'Ref' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
     }),
@@ -289,6 +287,7 @@ export function BranchReturnStockPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => {
         const r = row.original;
         const editable = isCorrectable(r);
@@ -351,70 +350,8 @@ export function BranchReturnStockPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="return-status-filter" className="text-xs text-muted-foreground">
-            Status
-          </Label>
-          <Select value={statusFilter} onValueChange={(v) => setFilter(setStatusFilter)((v as string) ?? ALL_STATUSES)}>
-            <SelectTrigger id="return-status-filter" className="h-11 w-full sm:h-9 sm:w-44">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
-              {Object.keys(STATUS_LABELS).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {statusLabel(s)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-product-filter" className="text-xs text-muted-foreground">
-            Product
-          </Label>
-          <Select value={productFilter} onValueChange={(v) => setFilter(setProductFilter)(v ?? ALL_STATUSES)}>
-            <SelectTrigger id="return-product-filter" className="h-11 w-full sm:h-9 sm:w-44">
-              <SelectValue placeholder="All products" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_STATUSES}>All products</SelectItem>
-              {(productsQ.data ?? []).map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-from-filter" className="text-xs text-muted-foreground">
-            From
-          </Label>
-          <Input
-            id="return-from-filter"
-            type="date"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => setFilter(setFrom)(e.target.value)}
-            className="h-11 sm:h-9"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="return-to-filter" className="text-xs text-muted-foreground">
-            To
-          </Label>
-          <Input
-            id="return-to-filter"
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => setFilter(setTo)(e.target.value)}
-            className="h-11 sm:h-9"
-          />
-        </div>
-      </div>
+      <FilterBar list={list} filters={filters} searchable={false} />
+      <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
       <DataTable
         columns={columns}
@@ -422,13 +359,16 @@ export function BranchReturnStockPage() {
         loading={returnsQ.isLoading}
         searchPlaceholder="Search reason or product…"
         pager={false}
+        sortable
         manual={{
-          page: page + 1,
-          pageSize: PAGE_SIZE,
+          page: list.state.page,
+          pageSize: list.state.pageSize,
           total,
-          onPageChange: (p) => setPage(p - 1),
-          search,
-          onSearchChange: setFilter(setSearch),
+          onPageChange: list.setPage,
+          search: list.state.search,
+          onSearchChange: list.setSearch,
+          sorting: sortStateToTanstack(list.state.sort),
+          onSortingChange: (next) => list.setSort(tanstackToSortState(next)),
         }}
         empty={
           <div className="flex flex-col items-center gap-2 py-10 text-center">
@@ -440,33 +380,14 @@ export function BranchReturnStockPage() {
           </div>
         }
       />
-
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span>{total} total</span>
-        <div className="flex items-center gap-2">
-          <span>Page {page + 1} of {pageCount}</span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 md:h-7 md:w-7"
-            disabled={page + 1 >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            aria-label="Next page"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={list.state.page}
+        pageSize={list.state.pageSize}
+        total={total}
+        onPageChange={list.setPage}
+        onPageSizeChange={list.setPageSize}
+        loading={returnsQ.isLoading}
+      />
 
       {/* ── View ────────────────────────────────────────────────────────────
           Read-only, so deliberately NOT behind GeofenceGate — being out of area

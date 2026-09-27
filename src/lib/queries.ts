@@ -7,6 +7,7 @@
 // The QueryClient (see providers/QueryProvider.tsx) defaults to staleTime 60s, so
 // repeat reads within a minute are served from cache with no network round-trip.
 
+import { normalizeCashTransferList } from '@/lib/cashTransferCompat';
 import { printTrace } from '@/lib/print/diagnostics';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
@@ -15,18 +16,21 @@ import { qk } from './queryKeys';
 // date into the UTC instants /api/orders filters created_at on.
 import { businessDayBounds, businessDateStr } from '@mb/shared';
 import type {
+  BackupDownloadUrlResponse,
+  BackupHistoryResponse,
+  BackupRestoreTest,
+  BackupRunResponse,
+  BackupStatusResponse,
+  BackupType,
+  BackupVerifyResult,
   ActiveSessionsResponse,
-  ApproveBranchUserRequestInput,
   Branch,
   BranchStockHistoryRow,
   StockReconciliation,
   BranchStockSummaryResult,
   BranchProductionOrder,
-  BranchUserRequest,
-  CreateBranchUserRequestInput,
   Expense,
   Order,
-  RejectBranchUserRequestInput,
   Category,
   Product,
   ProductionBalanceDoc,
@@ -34,6 +38,12 @@ import type {
   ProductionReturnStatus,
   BranchDiscount,
   BranchDiscountStatus,
+  CashTransfer,
+  CashTransferMethod,
+  CashTransferSortKey,
+  CashTransferStatus,
+  CreateCashTransferInput,
+  PaymentReceivedItem,
   LoginSession,
   LoginAttemptReason,
   LoginAttemptsPage,
@@ -129,7 +139,15 @@ export function useCategories(token: string, opts?: { enabled?: boolean }) {
 
 export function usePriceHistory(
   token: string,
-  opts?: { productId?: string; limit?: number; offset?: number; search?: string; enabled?: boolean },
+  opts?: {
+    productId?: string;
+    limit?: number;
+    offset?: number;
+    search?: string;
+    enabled?: boolean;
+    sortBy?: 'priceNumber' | 'productName' | 'oldPrice' | 'newPrice' | 'effectiveDate' | 'changedByName' | 'changedOn' | 'status';
+    sortDir?: 'asc' | 'desc';
+  },
 ) {
   const offset = opts?.offset ?? 0;
   const params = new URLSearchParams();
@@ -137,10 +155,12 @@ export function usePriceHistory(
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (offset) params.set('offset', String(offset));
   if (opts?.search) params.set('search', opts.search);
+  if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+  if (opts?.sortDir) params.set('sortDir', opts.sortDir);
   const qs = params.toString();
 
   return useQuery({
-    queryKey: qk.priceHistory(opts?.productId, offset, opts?.search),
+    queryKey: qk.priceHistory(opts?.productId, offset, opts?.search, opts?.sortBy, opts?.sortDir),
     queryFn: () =>
       apiCall<{ history: PriceHistoryDoc[]; total: number }>(
         `/api/products/price/history${qs ? `?${qs}` : ''}`,
@@ -302,6 +322,8 @@ export interface PackingUsageResponse {
  * pager — a wide date range across every branch/material can produce far more
  * rows than one screen should render at once.
  */
+export type PackingUsageSortKey = 'date' | 'branchName' | 'materialName' | 'requestedQty' | 'approvedQty' | 'deliveredQty';
+
 export function usePackingUsage(
   token: string,
   filters: {
@@ -311,6 +333,8 @@ export function usePackingUsage(
     packingMaterialId?: string | null;
     page?: number;
     pageSize?: number;
+    sortBy?: PackingUsageSortKey;
+    sortDir?: 'asc' | 'desc';
   },
   opts?: { enabled?: boolean },
 ) {
@@ -324,6 +348,8 @@ export function usePackingUsage(
       if (filters.packingMaterialId) qs.set('packingMaterialId', filters.packingMaterialId);
       if (filters.page) qs.set('page', String(filters.page));
       if (filters.pageSize) qs.set('pageSize', String(filters.pageSize));
+      if (filters.sortBy) qs.set('sortBy', filters.sortBy);
+      if (filters.sortDir) qs.set('sortDir', filters.sortDir);
       const query = qs.toString();
       return apiCall<PackingUsageResponse>(`/api/reports/packing-usage${query ? `?${query}` : ''}`, {}, token);
     },
@@ -732,6 +758,18 @@ export interface PreviousOrderBalance {
   /** The exact approved claims that discountsValue was built from. */
   discountItems: { demandNumber: string; amount: number }[];
   amountToCollect: number;
+  /**
+   * Approved cash transfers (migration 118) in the same window — DISPLAYED
+   * beside the figures above, never deducted from `amountToCollect`. The
+   * transfer was already booked as an RV- receipt when Finance approved it;
+   * netting it here as well would count the same money twice. Absent on a
+   * server older than the release that added it, hence the `?? 0` at every
+   * read site.
+   */
+  paymentsReceivedValue?: number;
+  paymentItems?: PaymentReceivedItem[];
+  /** `amountToCollect − paymentsReceivedValue`, floored at zero. Display only. */
+  remainingBalance?: number;
 }
 
 /**
@@ -955,12 +993,23 @@ export function useProductionStock(token: string, date?: string | null, opts?: {
  * next one loads — a table that empties on every keystroke of a search box reads
  * as "no results" when it means "still asking".
  */
+export type ProductionLedgerSortKey =
+  | 'businessDate'
+  | 'createdAt'
+  | 'productName'
+  | 'type'
+  | 'delta'
+  | 'balanceAfter'
+  | 'transactionNo'
+  | 'createdByName';
+
 export function useProductionLedger(
   token: string,
   params: {
     from?: string; to?: string; productId?: string; categoryId?: string;
     branchId?: string; movementType?: string; search?: string;
     limit?: number; offset?: number;
+    sortBy?: ProductionLedgerSortKey; sortDir?: 'asc' | 'desc';
   },
   opts?: { enabled?: boolean },
 ) {
@@ -1194,6 +1243,18 @@ export function useLoginHistory(token: string, opts?: { userId?: string | null; 
  * instant. Undefined values are dropped before the request rather than sent as
  * the string 'undefined', which the API would then reject as a bad UUID.
  */
+export type LoginSessionSortKey =
+  | 'loginAt'
+  | 'userName'
+  | 'browserEmail'
+  | 'city'
+  | 'country'
+  | 'browser'
+  | 'browserVersion'
+  | 'os'
+  | 'deviceType'
+  | 'ipAddress';
+
 export function useLoginHistoryPage(
   token: string,
   filters: {
@@ -1211,6 +1272,8 @@ export function useLoginHistoryPage(
     deviceType?: LoginDeviceType | null;
     page?: number;
     pageSize?: number;
+    sortBy?: LoginSessionSortKey;
+    sortDir?: 'asc' | 'desc';
   },
 ) {
   return useQuery({
@@ -1234,6 +1297,8 @@ export function useLoginHistoryPage(
       put('deviceType', filters.deviceType);
       put('page', filters.page ?? 1);
       put('pageSize', filters.pageSize ?? 25);
+      put('sortBy', filters.sortBy);
+      put('sortDir', filters.sortDir);
       return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
     },
     enabled: !!token,
@@ -1289,6 +1354,8 @@ export function useLoginFilterOptions(token: string, enabled = true) {
  * columns with a `LoginSession` beyond the device and the address that was
  * typed. See the type's own note on why those rows are client-reported.
  */
+export type LoginAttemptSortKey = 'attemptedAt' | 'email' | 'country' | 'city' | 'ipAddress' | 'reason';
+
 export function useLoginAttempts(
   token: string,
   filters: {
@@ -1299,6 +1366,8 @@ export function useLoginAttempts(
     to?: string | null;
     page?: number;
     pageSize?: number;
+    sortBy?: LoginAttemptSortKey;
+    sortDir?: 'asc' | 'desc';
   },
   enabled = true,
 ) {
@@ -1316,6 +1385,8 @@ export function useLoginAttempts(
       put('to', filters.to);
       put('page', filters.page ?? 1);
       put('pageSize', filters.pageSize ?? 25);
+      put('sortBy', filters.sortBy);
+      put('sortDir', filters.sortDir);
       return apiCall<LoginAttemptsPage>(`/api/login-attempts?${params.toString()}`, {}, token);
     },
     enabled: !!token && enabled,
@@ -1405,6 +1476,8 @@ export function useBranchReturns(
     search?: string | null;
     from?: string | null;
     to?: string | null;
+    sortBy?: 'date' | 'createdAt' | 'reviewedAt' | 'productName' | 'qty' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const days = opts?.days ?? 90;
@@ -1419,6 +1492,8 @@ export function useBranchReturns(
     search: opts?.search ?? null,
     from: opts?.from ?? null,
     to: opts?.to ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.branchReturns(key),
@@ -1434,6 +1509,8 @@ export function useBranchReturns(
       if (opts?.productId) params.set('productId', opts.productId);
       if (opts?.status) params.set('status', opts.status);
       if (opts?.search) params.set('search', opts.search);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ returns: ProductionReturn[]; total: number }>(`/api/stock/returns?${params.toString()}`, {}, token);
     },
     enabled: !!token,
@@ -1501,6 +1578,8 @@ export function useProductionReturns(
     productId?: string | null;
     status?: string | null;
     search?: string | null;
+    sortBy?: 'date' | 'createdAt' | 'branchName' | 'productName' | 'qty' | 'source' | 'reason' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const limit = opts?.limit ?? 20;
@@ -1514,6 +1593,8 @@ export function useProductionReturns(
     productId: opts?.productId ?? null,
     status: opts?.status ?? null,
     search: opts?.search ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.productionReturns(key),
@@ -1525,6 +1606,8 @@ export function useProductionReturns(
       if (opts?.productId) params.set('productId', opts.productId);
       if (opts?.status) params.set('status', opts.status);
       if (opts?.search) params.set('search', opts.search);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ returns: ProductionReturn[]; total: number }>(
         `/api/production-returns?${params.toString()}`,
         {},
@@ -1596,6 +1679,8 @@ export function useBranchDiscounts(
     from?: string | null;
     to?: string | null;
     enabled?: boolean;
+    sortBy?: 'date' | 'createdAt' | 'reviewedAt' | 'demandNumber' | 'amount' | 'reason' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const days = opts?.days ?? 90;
@@ -1609,6 +1694,8 @@ export function useBranchDiscounts(
     search: opts?.search ?? null,
     from: opts?.from ?? null,
     to: opts?.to ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.branchDiscounts(key),
@@ -1623,6 +1710,8 @@ export function useBranchDiscounts(
       if (opts?.search) params.set('search', opts.search);
       if (opts?.from) params.set('from', opts.from);
       if (opts?.to) params.set('to', opts.to);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ discounts: BranchDiscount[]; total: number }>(`/api/branch-discounts?${params.toString()}`, {}, token);
     },
     // `enabled` exists for the New Orders popup, which is mounted on every visit
@@ -1632,6 +1721,95 @@ export function useBranchDiscounts(
     // of being that page.
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Cash transfers — the branch's side (migration 118).
+//
+// Same shape as the discount hooks above, and keyed as their own family for the
+// same reason: nothing here moves stock. Finance's review hooks live in
+// lib/finance.ts under the finance root, so an approval there refreshes the
+// ledger, the dashboard and the finance list together.
+// ───────────────────────────────────────────────────────────────────────────
+
+export function useBranchCashTransfers(
+  token: string,
+  opts?: {
+    branchId?: string | null;
+    days?: number;
+    status?: CashTransferStatus | null;
+    paymentMethod?: CashTransferMethod | null;
+    limit?: number;
+    offset?: number;
+    search?: string | null;
+    from?: string | null;
+    to?: string | null;
+    enabled?: boolean;
+    sortBy?: CashTransferSortKey | null;
+    sortDir?: 'asc' | 'desc' | null;
+  },
+) {
+  const days = opts?.days ?? 90;
+  const offset = opts?.offset ?? 0;
+  const key = {
+    branchId: opts?.branchId ?? null,
+    days,
+    status: opts?.status ?? null,
+    paymentMethod: opts?.paymentMethod ?? null,
+    offset,
+    limit: opts?.limit ?? null,
+    search: opts?.search ?? null,
+    from: opts?.from ?? null,
+    to: opts?.to ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
+  };
+  return useQuery({
+    queryKey: qk.branchCashTransfers(key),
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(days) });
+      if (opts?.branchId) params.set('branchId', opts.branchId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.paymentMethod) params.set('paymentMethod', opts.paymentMethod);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (offset) params.set('offset', String(offset));
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.from) params.set('from', opts.from);
+      if (opts?.to) params.set('to', opts.to);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
+      return apiCall<{ transfers: CashTransfer[]; total: number }>(`/api/cash-transfers?${params.toString()}`, {}, token)
+        .then(normalizeCashTransferList);
+    },
+    // `enabled` exists for the Cash Deposit popup on New Orders, which is
+    // mounted on every visit and opened on few — see useBranchDiscounts.
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Record a handover. The photo is uploaded FIRST (PhotoCapture → POST
+ * /api/attachments) and only its id travels here — see attachment.schemas.ts.
+ * `clientOperationId` becomes the Idempotency-Key, so a double click or a retry
+ * after a dropped connection replays the first response rather than booking
+ * the same cash twice.
+ */
+export function useCreateCashTransfer(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientOperationId, ...body }: CreateCashTransferInput & { clientOperationId: string }) =>
+      apiCall<CashTransfer>(
+        '/api/cash-transfers',
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': clientOperationId },
+          body: JSON.stringify(body),
+        },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cashTransfers'] }),
   });
 }
 
@@ -1683,6 +1861,8 @@ export function useProductionDiscounts(
     branchId?: string | null;
     status?: string | null;
     search?: string | null;
+    sortBy?: 'date' | 'createdAt' | 'branchName' | 'demandNumber' | 'amount' | 'reason' | 'status' | null;
+    sortDir?: 'asc' | 'desc' | null;
   },
 ) {
   const limit = opts?.limit ?? 20;
@@ -1695,6 +1875,8 @@ export function useProductionDiscounts(
     branchId: opts?.branchId ?? null,
     status: opts?.status ?? null,
     search: opts?.search ?? null,
+    sortBy: opts?.sortBy ?? null,
+    sortDir: opts?.sortDir ?? null,
   };
   return useQuery({
     queryKey: qk.productionDiscounts(key),
@@ -1705,6 +1887,8 @@ export function useProductionDiscounts(
       if (opts?.branchId) params.set('branchId', opts.branchId);
       if (opts?.status) params.set('status', opts.status);
       if (opts?.search) params.set('search', opts.search);
+      if (opts?.sortBy) params.set('sortBy', opts.sortBy);
+      if (opts?.sortDir) params.set('sortDir', opts.sortDir);
       return apiCall<{ discounts: BranchDiscount[]; total: number }>(
         `/api/production-discounts?${params.toString()}`,
         {},
@@ -2031,107 +2215,11 @@ export function useRegenerateEventSchedule(token: string) {
  * catalogue ships with no resolved dates, so until this runs the calendar is empty.
  */
 // ───────────────────────────────────────────────────────────────────────────
-// Shift-account requests
-//
-// The manager's Shift Accounts page and the admin's Account Requests queue are
-// two views of ONE endpoint, which scopes itself from the JWT: a manager gets
-// their own branch's rows, an admin gets every branch. So one read hook serves
-// both pages, and the mutations differ only in who is allowed to call them.
-// ───────────────────────────────────────────────────────────────────────────
-
-export function useBranchUserRequests(
-  token: string,
-  opts?: {
-    enabled?: boolean;
-    page?: number;
-    limit?: number;
-    search?: string | null;
-    status?: string | null;
-  },
-) {
-  // `limit` defaults to 200, not a real 20-row page — a branch manager's own
-  // queue (the only other caller) is a handful of shift requests and has no
-  // page control; AccountRequestsPage.tsx (the admin's cross-branch view) is
-  // the one that actually pages, and passes both explicitly.
-  const page = opts?.page ?? 1;
-  const limit = opts?.limit ?? 200;
-  const key = { page, limit, search: opts?.search ?? null, status: opts?.status ?? null };
-  return useQuery({
-    queryKey: qk.branchUserRequests(key),
-    queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (opts?.search) params.set('search', opts.search);
-      if (opts?.status) params.set('status', opts.status);
-      return apiCall<{ requests: BranchUserRequest[]; total: number }>(
-        `/api/branch-user-requests?${params.toString()}`,
-        {},
-        token,
-      );
-    },
-    enabled: !!token && (opts?.enabled ?? true),
-    staleTime: LIVE_STALE_TIME,
-  });
-}
-
-/** Manager → Admin. The branch is taken from the JWT, so it is not sent. */
-export function useCreateBranchUserRequest(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CreateBranchUserRequestInput) =>
-      apiCall<{ request: BranchUserRequest }>(
-        '/api/branch-user-requests',
-        { method: 'POST', body: JSON.stringify(body) },
-        token,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
-    },
-  });
-}
-
-/**
- * Admin approval — this is what actually mints the account, on the requesting
- * manager's branch. It also invalidates the Users list, which now has a row in
- * it that was not there a moment ago.
- */
-export function useApproveBranchUserRequest(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...body }: ApproveBranchUserRequestInput & { id: string }) =>
-      apiCall<{ request: BranchUserRequest; userId: string }>(
-        `/api/branch-user-requests/${id}/approve`,
-        { method: 'POST', body: JSON.stringify(body) },
-        token,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
-      qc.invalidateQueries({ queryKey: ['users'] });
-    },
-  });
-}
-
-export function useRejectBranchUserRequest(token: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: RejectBranchUserRequestInput & { id: string }) =>
-      apiCall<{ request: BranchUserRequest }>(
-        `/api/branch-user-requests/${id}/reject`,
-        { method: 'POST', body: JSON.stringify({ reason }) },
-        token,
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branchUserRequests'] });
-    },
-  });
-}
-
-// ───────────────────────────────────────────────────────────────────────────
 // Branch Closing
 //
 // The end-of-day sheet is COMPOSED, not fetched: there is no closing endpoint a
 // branch account may call. /api/business-day/close is the admin's once-a-day
-// lock and /api/reports/summary is manager-and-above, so both are out of reach
-// of a shift account by design.
+// lock, so it is out of reach of a branch manager by design.
 //
 // What is in reach is the day's own records — orders, expenses and stock, each
 // already branch-scoped server-side from the JWT. Reading the three together
@@ -2182,10 +2270,9 @@ export function useBranchClosing(token: string, businessDate: string) {
 // Daily Sale Record
 //
 // The one place in this file where NOTHING is composed on the client. Branch
-// Closing above builds its sheet from three endpoints because a shift account
-// may not call a report endpoint; this feature has its own API that aggregates
-// in Postgres and returns the finished figures, so these hooks only pass a
-// window along and hand the answer back.
+// Closing above builds its sheet from three endpoints; this feature has its own
+// API that aggregates in Postgres and returns the finished figures, so these
+// hooks only pass a window along and hand the answer back.
 //
 // Every mutation invalidates the whole ['dailySale'] prefix. That is broader
 // than the sweeping invalidation `useCreateBranchDiscount` deliberately avoids,
@@ -2392,5 +2479,64 @@ export function useSetPaymentMethodLock(token: string) {
         token,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+  });
+}
+
+// ─── Database backups (Admin → Database Backup) ──────────────────────────────
+// Super admin only; every endpoint 403s otherwise. Status is polled while a run
+// is in progress so a manual backup started from the screen is seen finishing.
+
+export function useBackupStatus(token: string) {
+  return useQuery({
+    queryKey: qk.backupStatus(),
+    queryFn: () => apiCall<BackupStatusResponse>('/api/admin/backups/status', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    refetchInterval: (q) => (q.state.data?.running.length ? 10_000 : false),
+  });
+}
+
+export function useBackupHistory(token: string, params: { page: number; pageSize: number; type?: BackupType }) {
+  const qs = new URLSearchParams({ page: String(params.page), pageSize: String(params.pageSize), ...(params.type ? { type: params.type } : {}) });
+  return useQuery({
+    queryKey: qk.backupHistory(params),
+    queryFn: () => apiCall<BackupHistoryResponse>(`/api/admin/backups/history?${qs}`, {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useLatestRestoreTest(token: string) {
+  return useQuery({
+    queryKey: qk.backupRestoreTest(),
+    queryFn: () => apiCall<{ restoreTest: BackupRestoreTest | null }>('/api/admin/backups/restore-tests/latest', {}, token),
+    enabled: !!token,
+  });
+}
+
+export function useVerifyBackup(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall<BackupVerifyResult>(`/api/admin/backups/${id}/verify`, { method: 'POST' }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+/** Starts a backup (202) — only ever CREATES; nothing on the screen can delete. */
+export function useRunBackup(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { type: BackupType; force?: boolean }) =>
+      apiCall<BackupRunResponse>('/api/admin/backups/run', { method: 'POST', body: JSON.stringify(v) }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+/** A five-minute presigned link, issued on demand and logged by the API. Never cached. */
+export function useBackupDownloadUrl(token: string) {
+  return useMutation({
+    mutationFn: (v: { id: string; file: 'main' | 'auth' }) =>
+      apiCall<BackupDownloadUrlResponse>(`/api/admin/backups/${v.id}/download-url?file=${v.file}`, {}, token),
   });
 }

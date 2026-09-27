@@ -13,6 +13,7 @@ const ACTION_LABELS: Record<string, string> = {
   user_updated: 'Updated User',
   user_activated: 'Activated User',
   user_deactivated: 'Deactivated User',
+  user_deleted: 'Deleted User',
   branch_location_updated: 'Updated Branch Location',
   branch_location_removed: 'Removed Branch Location',
 };

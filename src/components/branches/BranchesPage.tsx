@@ -128,6 +128,7 @@ export function BranchesPage() {
     col.display({
       id: 'icon',
       header: '',
+      enableSorting: false,
       // Decoration that earns its place only in a wide row — a card already has
       // the branch name as its heading.
       meta: { mobile: 'hidden' },
@@ -144,6 +145,7 @@ export function BranchesPage() {
     col.display({
       id: 'share',
       header: 'Company / Branch',
+      enableSorting: false,
       cell: ({ row }) => {
         const split = resolveShareSplit(row.original.companySharePct, defaultCompanyPct);
         return (
@@ -169,6 +171,7 @@ export function BranchesPage() {
     col.display({
       id: 'actions',
       header: '',
+      enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
@@ -201,7 +204,7 @@ export function BranchesPage() {
         <Button onClick={() => { setEditBranch(null); form.reset(); setSharePct(INHERIT); setShowForm(true); }}>+ Add Branch</Button>
       </div>
 
-      <DataTable columns={columns} data={branches} loading={loading} searchPlaceholder="Search branchesâ€¦" />
+      <DataTable columns={columns} data={branches} loading={loading} searchPlaceholder="Search branchesâ€¦" sortable />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="md:max-w-md">

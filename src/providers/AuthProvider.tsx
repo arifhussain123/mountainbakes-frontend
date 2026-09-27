@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase/client';
 import { isValidRole } from '@/utils/roleHome';
 import { forgetIdentity, readIdentity, rememberIdentity } from '@/lib/offline/lastSession';
@@ -71,6 +72,7 @@ function toAuthUser(u: SupabaseUser): AuthUser | null {
  * on API calls; role/branch come from the user's `app_metadata`.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -192,10 +194,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // see lib/loginHistory.ts — so sign-out cannot fail on its account.
       await endLoginSession();
       await supabase.auth.signOut();
+      // AFTER signOut succeeds, not before or in `finally`: a failed sign-out
+      // should leave a still-valid session's cache alone. Without this, the
+      // QueryClient (a singleton that outlives the sign-out/sign-in boundary —
+      // there is no page reload) keeps every cached query in memory, so the
+      // next person to sign in on this device/tab — a shared branch till,
+      // say — can briefly be served the previous user's cached orders,
+      // customers or finance figures before the next background refetch
+      // corrects it. Mirrors RealtimeProvider's own per-user clearing on this
+      // same boundary.
+      queryClient.clear();
     } finally {
       signingOut.current = false;
     }
-  }, []);
+  }, [queryClient]);
 
   const refreshToken = useCallback(async () => {
     const { data } = await supabase.auth.refreshSession();
