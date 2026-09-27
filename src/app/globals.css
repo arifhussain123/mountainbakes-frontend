@@ -149,19 +149,17 @@
   --stock-returned: #eda100;
   --stock-balance: #e87ba4;
 
-  /* Finance Dashboard — header bands (page filter bar, INCOME/EXPENSES, drawer)
-     follow the app theme's primary colour like every other screen. The
-     accounting series palette below is unchanged. Series colours are
+  /* Finance Dashboard — the purple/brown accounting palette. Series colours are
      fixed to the figure they draw (Company Share is always violet, Received
      always orange) and were run through the dataviz palette validator per chart
      set, light and dark each against its own card surface. Demand and Balance
      are drawn in neutral ink (grey / dashed) rather than a third hue. */
-  --fin-ink: var(--primary);
-  --fin-ink-foreground: var(--primary-foreground);
-  --fin-ink-muted: color-mix(in oklch, var(--primary-foreground) 85%, var(--primary));
-  --fin-ink-field: color-mix(in oklch, black 18%, var(--primary));
-  --fin-income: var(--primary);
-  --fin-expense: var(--chart-5);
+  --fin-ink: #2a2145;
+  --fin-ink-foreground: #ffffff;
+  --fin-ink-muted: #c9bfea;
+  --fin-ink-field: #3a2f5e;
+  --fin-income: #4f3f8f;
+  --fin-expense: #5c3d26;
   --fin-soft: #eeeaf8;
   --fin-peach: #fbdcc6;
   --fin-peach-foreground: #3a2410;
@@ -214,12 +212,12 @@
   --stock-sold: #199e70;
   --stock-returned: #c98500;
   --stock-balance: #d55181;
-  --fin-ink: var(--primary);
-  --fin-ink-foreground: var(--primary-foreground);
-  --fin-ink-muted: color-mix(in oklch, var(--primary-foreground) 85%, var(--primary));
-  --fin-ink-field: color-mix(in oklch, black 18%, var(--primary));
-  --fin-income: var(--primary);
-  --fin-expense: var(--chart-5);
+  --fin-ink: #1d1733;
+  --fin-ink-foreground: #f4f1fb;
+  --fin-ink-muted: #b3a8d9;
+  --fin-ink-field: #2c2448;
+  --fin-income: #3d3170;
+  --fin-expense: #4a301d;
   --fin-soft: #2a2238;
   --fin-peach: #3b2a1f;
   --fin-peach-foreground: #f6dcc8;

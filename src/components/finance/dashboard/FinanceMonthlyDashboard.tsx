@@ -161,14 +161,14 @@ export function FinanceMonthlyDashboard() {
   };
 
   const selectCls =
-    'h-10 rounded-md border border-input bg-background px-2.5 text-sm font-semibold text-foreground disabled:opacity-60 md:h-9';
-  const labelCls = 'flex flex-col gap-1 text-[10px] font-bold tracking-[0.14em] text-muted-foreground';
+    'h-10 rounded-md border border-fin-income bg-fin-ink-field px-2.5 text-sm font-semibold text-fin-ink-foreground disabled:opacity-60 md:h-9';
+  const labelCls = 'flex flex-col gap-1 text-[10px] font-bold tracking-[0.14em] text-fin-ink-muted';
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {/* ---------------- Header & filters ---------------- */}
-      <div className="-mx-4 -mt-4 flex flex-wrap items-end justify-end gap-x-7 gap-y-4 border-b bg-card px-4 py-4 text-card-foreground sm:-mx-6 sm:-mt-6 sm:px-6 print:mx-0 print:mt-0">
-        <div className="flex w-full flex-wrap items-end gap-3 sm:w-auto print:hidden">
+      <div className="-mx-4 -mt-4 flex flex-wrap items-end justify-end gap-x-7 gap-y-4 bg-fin-ink px-4 py-4 text-fin-ink-foreground sm:-mx-6 sm:-mt-6 sm:px-6 print:mx-0 print:mt-0">
+        <div className="flex w-full flex-wrap items-end justify-end gap-3 print:hidden">
           <label className={labelCls}>
             MONTH
             <select
@@ -223,7 +223,7 @@ export function FinanceMonthlyDashboard() {
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-muted-foreground">to</span>
+              <span className="text-xs text-fin-ink-muted">to</span>
               <select
                 className={cn(selectCls, 'w-16')}
                 aria-label="To day"
@@ -265,7 +265,7 @@ export function FinanceMonthlyDashboard() {
               variant="outline"
               onClick={exportCsv}
               disabled={!hasRecords}
-              className="h-10 md:h-9"
+              className="h-10 border-fin-ink-muted/50 bg-transparent text-fin-ink-foreground hover:bg-fin-ink-field md:h-9"
               aria-label="Export CSV"
             >
               <Download className="size-4" aria-hidden />
@@ -274,7 +274,7 @@ export function FinanceMonthlyDashboard() {
             <Button
               variant="outline"
               onClick={reset}
-              className="h-10 md:h-9"
+              className="h-10 border-fin-ink-muted/50 bg-transparent text-fin-ink-foreground hover:bg-fin-ink-field md:h-9"
               aria-label="Reset filters"
             >
               <RotateCcw className="size-4" aria-hidden />
