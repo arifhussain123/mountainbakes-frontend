@@ -89,6 +89,11 @@ export function ProductionOrdersPage() {
   // order, the invalidated refetch is reflected immediately instead of leaving
   // the dialog showing what View originally captured.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The row View was clicked on. The table lists EVERY order (data engine), but
+  // useProductionOrders only returns the last 7 business days, so an older order
+  // is not in `orders` — without this it opened an empty dialog. The data-engine
+  // row carries the lines and packing items, so it previews in full.
+  const [clicked, setClicked] = useState<BranchProductionOrder | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -105,7 +110,10 @@ export function ProductionOrdersPage() {
   // Orders table below carrying the reason. That is the deletion: it stops being
   // work to do without becoming something nobody can account for.
   const waiting = useMemo(() => orders.filter(isWaitingOrder), [orders]);
-  const selected = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
+  const selected = useMemo(
+    () => orders.find((o) => o.id === selectedId) ?? (clicked?.id === selectedId ? clicked : null),
+    [orders, selectedId, clicked],
+  );
 
   // Demand summary pivots: Product × Branch and Packing Material × Branch, both
   // over the waiting set above (not yet verified by the branch).
@@ -268,6 +276,7 @@ export function ProductionOrdersPage() {
 
   function openOrder(order: BranchProductionOrder) {
     setSelectedId(order.id);
+    setClicked(order);
     setModalOpen(true);
   }
 

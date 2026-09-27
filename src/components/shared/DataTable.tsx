@@ -10,6 +10,7 @@ import {
   type ColumnDef,
   type SortingState,
   type Table as TanstackTable,
+  type Cell,
 } from '@tanstack/react-table';
 import { useState } from 'react';
 import {
@@ -25,6 +26,24 @@ import { Pagination } from '@/components/data-engine/Pagination';
 import { EmptyState } from './EmptyState';
 import { SortableHeaderCell } from './SortableHeaderCell';
 import { alignClass, bucketCells, mobileLabel } from './table-meta';
+
+/**
+ * One cell's content, rendered through a component whose TYPE never changes.
+ *
+ * `flexRender(columnDef.cell, ctx)` mounts the `cell` function itself as a
+ * component. Most pages build `columns` inline, so every page re-render (a
+ * token refresh, a background refetch) handed React a new function — a new
+ * component type — and it remounted the cell, wiping any state inside it. That
+ * is how Finance's Reject popup, whose open state lives in the row's
+ * DocumentActions, closed the moment it opened. Calling `cell` from here keeps
+ * the element tree's types stable, so that state survives; hook order inside a
+ * cell is unchanged because every render calls the same column's `cell`.
+ */
+function CellContent<TData>({ cell }: { cell: Cell<TData, unknown> }) {
+  const render = cell.column.columnDef.cell;
+  if (typeof render !== 'function') return <>{render ?? null}</>;
+  return <>{render(cell.getContext())}</>;
+}
 
 interface DataTableProps<TData> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,7 +283,7 @@ export function DataTable<TData>({
                 <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className={alignClass(cell.column.columnDef.meta?.align)}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      <CellContent cell={cell} />
                     </TableCell>
                   ))}
                 </TableRow>
@@ -383,19 +402,19 @@ function DataTableCards<TData>({
               <div className="min-w-0">
                 {title && (
                   <div className="font-medium">
-                    {flexRender(title.column.columnDef.cell, title.getContext())}
+                    <CellContent cell={title} />
                   </div>
                 )}
                 {subtitle && (
                   <div className="text-xs text-muted-foreground">
-                    {flexRender(subtitle.column.columnDef.cell, subtitle.getContext())}
+                    <CellContent cell={subtitle} />
                   </div>
                 )}
               </div>
               {badges.length > 0 && (
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                   {badges.map((c) => (
-                    <span key={c.id}>{flexRender(c.column.columnDef.cell, c.getContext())}</span>
+                    <span key={c.id}><CellContent cell={c} /></span>
                   ))}
                 </div>
               )}
@@ -426,7 +445,7 @@ function DataTableCards<TData>({
                           full ? 'w-full text-left' : 'text-right tabular-nums'
                         )}
                       >
-                        {flexRender(c.column.columnDef.cell, c.getContext())}
+                        <CellContent cell={c} />
                       </dd>
                     </div>
                   );
@@ -440,7 +459,7 @@ function DataTableCards<TData>({
               // descendant selector outranks those single-class utilities anyway —
               // so every actions column reaches 44px without touching a call site.
               <div className="mt-3 flex flex-wrap items-center justify-end gap-1 border-t pt-2.5 [&_button]:min-h-11 [&_button]:min-w-11 [&_svg]:size-4.5">
-                {flexRender(actions.column.columnDef.cell, actions.getContext())}
+                <CellContent cell={actions} />
               </div>
             )}
           </div>
