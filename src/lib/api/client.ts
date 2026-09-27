@@ -228,6 +228,22 @@ export async function apiCall<T = unknown>(
 }
 
 /**
+ * A non-JSON error body as a sentence a person can read. Express's default 404
+ * is an HTML page ("Cannot DELETE /api/…"), and a proxy or gateway error is HTML
+ * too; shown as-is it put a whole document in the toast. The route's own text
+ * still goes to the console via the caller's log line.
+ */
+function readableErrorText(raw: string, status: number): string {
+  const looksLikeHtml = /^\s*</.test(raw);
+  const text = (looksLikeHtml ? raw.replace(/<[^>]*>/g, ' ') : raw).replace(/\s+/g, ' ').trim();
+  if (status === 404 && (looksLikeHtml || /^Cannot [A-Z]+ \//.test(text))) {
+    return 'This action is not available on the server yet — it may still be updating. Try again in a minute.';
+  }
+  if (looksLikeHtml) return `The server returned an unexpected error (HTTP ${status}).`;
+  return text.slice(0, 300);
+}
+
+/**
  * `mayRetry` is spent by the one 401 refresh-and-replay below, so a token that is
  * still rejected after a genuine refresh surfaces as an error instead of looping.
  */
@@ -276,8 +292,13 @@ async function request<T>(
       try {
         body = JSON.parse(raw);
       } catch {
-        body = { error: raw.slice(0, 300) };
+        body = { error: readableErrorText(raw, response.status) };
       }
+    }
+    // The API's catch-all 404 (app.ts) names the route for the logs; the person
+    // gets the same sentence an HTML 404 produces.
+    if (response.status === 404 && body.error?.startsWith('No API route for ')) {
+      body.error = readableErrorText(`Cannot ${body.error.slice('No API route for '.length)}`, 404);
     }
     let message = body.error || `Request failed (HTTP ${response.status})`;
     // A validation failure (middleware/validate.ts) carries per-field detail.
