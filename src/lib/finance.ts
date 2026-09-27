@@ -12,7 +12,10 @@ import type {
   EmployeeAdvanceSummary,
   FinanceAuditLog,
   FinanceDashboard,
+  FinanceDashboardMetric,
+  FinanceDashboardRecordsPage,
   FinanceDayClosing,
+  FinanceMonthlyDashboard,
   FinanceEmployee,
   FinancePartner,
   FinanceReport,
@@ -95,6 +98,60 @@ export function useFinanceDashboard(filters: FinanceDashboardFilters = {}) {
     // 60s default would show pending counts that are already dealt with.
     staleTime: 15_000,
     queryFn: () => apiCall<FinanceDashboard>(`/api/finance/dashboard${toQuery(filters)}`, {}, token),
+  });
+}
+
+/** The monthly Finance Dashboard's filters. `month` is 'YYYY-MM'; `from`/`to` narrow it. */
+export type FinanceMonthlyDashboardFilters = {
+  month: string;
+  from?: string;
+  to?: string;
+  branchId?: string;
+};
+
+/**
+ * The monthly dashboard (migration 128). One request per filter change — every
+ * card, chart and table on the page reads this one response, so they cannot show
+ * different months or branches. The previous response stays on screen while the
+ * next loads (`placeholderData`), so changing a filter never blanks the page.
+ */
+export function useFinanceMonthlyDashboard(filters: FinanceMonthlyDashboardFilters) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeMonthlyDashboard(filters),
+    enabled: Boolean(token),
+    staleTime: 60_000,
+    placeholderData: (previous) => previous,
+    queryFn: () => apiCall<FinanceMonthlyDashboard>(`/api/finance/dashboard/monthly${toQuery(filters)}`, {}, token),
+  });
+}
+
+export type FinanceDashboardRecordsFilters = {
+  metric: FinanceDashboardMetric;
+  from: string;
+  to: string;
+  branchId?: string;
+  noBranch?: boolean;
+  ledgerHeadId?: string;
+  search?: string;
+  page: number;
+  pageSize: number;
+};
+
+/** The source records behind one dashboard figure, paged on the server. */
+export function useFinanceDashboardRecords(filters: FinanceDashboardRecordsFilters | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeDashboardRecords(filters ?? {}),
+    enabled: Boolean(token) && filters !== null,
+    staleTime: 60_000,
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiCall<FinanceDashboardRecordsPage>(
+        `/api/finance/dashboard/records${toQuery({ ...filters, noBranch: filters?.noBranch ? 'true' : undefined })}`,
+        {},
+        token,
+      ),
   });
 }
 
