@@ -74,7 +74,7 @@ export function StockCheckModal({
    * already gone wrong, and a physical count is exactly how it gets caught.
    */
   const held = useMemo(
-    () => rows.filter((r) => r.balance !== 0).sort((a, b) => a.productName.localeCompare(b.productName)),
+    () => rows.filter((r) => r.balance !== 0),
     [rows],
   );
   const hiddenAtZero = rows.length - held.length;
@@ -149,10 +149,6 @@ export function StockCheckModal({
       else if (diff < 0) deficit.push(entry);
       else matched++;
     }
-
-    // Biggest gaps first — those are the ones worth walking back to the shelf for.
-    surplus.sort((a, b) => b.diff - a.diff);
-    deficit.sort((a, b) => a.diff - b.diff);
 
     // Drop any search term with the verdict: the search box is hidden while the
     // result is up, so a leftover term would silently hide a discrepancy row.

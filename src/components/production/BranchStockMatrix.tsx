@@ -37,12 +37,9 @@ export function BranchStockMatrix() {
   );
 
   // The whole matrix is already unpaginated in the browser, so sorting is a
-  // client concern — the backend used to pre-sort by total stock descending;
-  // that default moved here (`production.routes.ts`'s `/branch-stock` route)
-  // so the first render looks unchanged.
-  const { toggle, isSorted, applyClientSort } = useTableSort({
-    defaultSort: { key: TOTAL_STOCK_KEY, direction: 'desc' },
-  });
+  // client concern. No starting sort: like every table, it sorts only when a
+  // header is clicked, and shows the API's order until then.
+  const { toggle, isSorted, applyClientSort } = useTableSort({});
   type Row = NonNullable<typeof data>['rows'][number];
   const sortAccessors = useMemo(() => {
     const accessors: Record<string, (row: Row) => string | number | null> = {

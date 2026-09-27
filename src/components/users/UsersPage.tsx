@@ -246,7 +246,6 @@ export function UsersPage() {
             columns={columns}
             filters={filters}
             filterOptions={filterOptions}
-            defaultSort={{ key: 'createdAt', direction: 'desc' }}
             searchPlaceholder="Search name, email, username, code…"
             cache="static"
             exportFileName="mountain-bakes-users"

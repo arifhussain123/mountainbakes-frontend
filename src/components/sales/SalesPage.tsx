@@ -402,9 +402,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         totalQty += qty;
       }
     }
-    // Busiest first: on a summary the useful reading is what moved most, not
-    // where a name happens to fall in the alphabet.
-    const rows = [...byProduct.values()].sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name));
+    // In the order the sales arrived — no automatic sort (tables sort only when
+    // a header is clicked).
+    const rows = [...byProduct.values()];
     return { rows, totalQty };
   }, [sales]);
 
@@ -661,7 +661,6 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           { key: 'businessDate', op: 'eq', value: date },
         ]}
         filters={paymentFilters}
-        defaultSort={{ key: 'createdAt', direction: 'desc' }}
         searchPlaceholder="Search customer, phone, order #…"
         namespace={isProduction ? 'production-sales' : 'branch-sales'}
         emptyTitle="No sales recorded"

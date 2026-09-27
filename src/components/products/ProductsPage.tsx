@@ -198,7 +198,6 @@ export function ProductsPage() {
             columns={columns}
             filters={filters}
             filterOptions={filterOptions}
-            defaultSort={{ key: 'name', direction: 'asc' }}
             searchPlaceholder="Search products, SKU, code…"
             cache="static"
             exportFileName="mountain-bakes-products"

@@ -80,7 +80,7 @@ export function ReturnItemsModal({
 
   // Only products with stock on hand can be returned.
   const returnable = useMemo(
-    () => rows.filter((r) => r.balance > 0).sort((a, b) => a.productName.localeCompare(b.productName)),
+    () => rows.filter((r) => r.balance > 0),
     [rows],
   );
   const byId = useMemo(() => new Map(returnable.map((r) => [r.productId, r])), [returnable]);
