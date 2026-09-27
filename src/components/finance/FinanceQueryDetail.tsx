@@ -666,7 +666,9 @@ function DeleteRecordDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket
         method: 'DELETE',
         body: { reason: reason.trim(), confirmDelete: true },
       });
-      toast.success(`${ticket.referenceNo} deleted`);
+      toast.success(
+        ticket.referenceType === 'cash_transfer' ? 'Cash deposit deleted successfully.' : `${ticket.referenceNo} deleted`,
+      );
       onDone();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'The record could not be deleted');
@@ -700,9 +702,9 @@ function DeleteRecordDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket
               {ticket.referenceType === 'cash_transfer' && (
                 <>
                   {' '}
-                  If this transfer was approved, its RV- receipt is reversed in the Daily Ledger by a reversing
-                  voucher that cites this query; the original stays visible. The transfer and its photo are kept,
-                  marked deleted, and it drops out of the branch&apos;s lists and the production slip.
+                  If this deposit was approved, its RV- entries are removed from the Daily Ledger with it and the
+                  running balance is recomputed. No reversal or other entry is posted in their place. The deposit
+                  drops out of the branch&apos;s lists and the production slip.
                 </>
               )}
             </p>
