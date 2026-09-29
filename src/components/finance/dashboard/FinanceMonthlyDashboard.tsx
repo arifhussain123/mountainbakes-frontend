@@ -133,7 +133,10 @@ export function FinanceMonthlyDashboard() {
 
   const s = data?.summary;
   const hasRecords = !!s && s.orders + s.receipts + s.ledgerEntries + s.returnCount + s.discountCount > 0;
-  const updating = q.isFetching && !!data;
+  // Dim only while a new month/branch/range stands on the previous figures
+  // (placeholder data) — never on a same-filter refresh, which swaps the new
+  // figures in silently so the background tick does not flash the screen.
+  const updating = q.isPlaceholderData && !!data;
 
   const exportCsv = () => {
     if (!data) return;

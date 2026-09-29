@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F2F9;font-family:'Archivo',system-ui,sans-serif;color:#2A2145;font-variant-numeric:tabular-nums}
+a{color:#4F3F8F}a:hover{color:#2A2145}
+select,button{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+
+<div style="background:#2A2145;color:#fff;padding:14px 24px;display:flex;flex-wrap:wrap;gap:16px 28px;align-items:flex-end;justify-content:space-between">
+  <div style="display:flex;flex-direction:column;gap:2px">
+    <div style="font-size:11px;letter-spacing:.18em;color:#C9BFEA;font-weight:600">MOUNTAIN BAKES</div>
+    <div style="font-size:22px;font-weight:800;letter-spacing:.06em">FINANCE SUMMARY</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.14em;font-weight:700;color:#C9BFEA">MONTH
+      <select value="{{ month }}" onChange="{{ onMonth }}" style="min-width:170px;height:38px;padding:0 10px;border-radius:6px;border:1px solid #4F3F8F;background:#3A2F5E;color:#fff;font-size:14px;font-weight:600">
+        <sc-for list="{{ monthOpts }}" as="o" hint-placeholder-count="6"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+      </select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.14em;font-weight:700;color:#C9BFEA">BRANCH NAME
+      <select value="{{ branch }}" onChange="{{ onBranch }}" disabled="{{ branchLocked }}" style="min-width:200px;height:38px;padding:0 10px;border-radius:6px;border:1px solid #4F3F8F;background:#3A2F5E;color:#fff;font-size:14px;font-weight:600">
+        <sc-for list="{{ branchOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+      </select>
+    </label>
+    <button onClick="{{ resetFilters }}" style="height:38px;padding:0 14px;border-radius:6px;border:1px solid #6B5BA8;background:transparent;color:#fff;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#3A2F5E">Reset filters</button>
+  </div>
+</div>
+
+<sc-if value="{{ showSampleNote }}" hint-placeholder-val="{{ true }}">
+  <div style="background:#FBDCC6;color:#5A2E12;padding:8px 24px;font-size:12.5px;display:flex;gap:8px;flex-wrap:wrap">
+    <strong>Design mock · sample data.</strong><span>Figures come from a local mock adapter. Company Share uses a placeholder rule until wired to the Mountain Bakes backend.</span>
+  </div>
+</sc-if>
+<sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+  <div style="background:#2A2145;color:#FBDCC6;padding:8px 24px;font-size:12.5px;font-weight:600">You're offline. Showing the last loaded figures; they may be out of date.</div>
+</sc-if>
+
+<div style="width:100%;max-width:1440px;margin:0 auto;padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+
+<sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="font-size:13px;color:#6B6580;font-weight:600">Loading {{ monthLabel }} · {{ scopeLabel }}…</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">
+      <sc-for list="{{ skel5 }}" as="s" hint-placeholder-count="5"><div style="height:92px;border-radius:8px;background:#E7E3F1"></div></sc-for>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:16px">
+      <div style="height:280px;border-radius:10px;background:#E7E3F1"></div>
+      <div style="height:280px;border-radius:10px;background:#E7E3F1"></div>
+    </div>
+    <div style="height:320px;border-radius:10px;background:#E7E3F1"></div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+  <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+    <div style="font-size:18px;font-weight:700">Couldn't load finance figures</div>
+    <div style="font-size:14px;color:#6B6580;max-width:460px">The finance summary request for {{ monthLabel }} · {{ scopeLabel }} failed. No figures are shown so nothing stale is mistaken for current.</div>
+    <button onClick="{{ retry }}" style="height:40px;padding:0 20px;border-radius:6px;border:0;background:#4F3F8F;color:#fff;font-size:14px;font-weight:600;cursor:pointer" style-hover="background:#2A2145">Retry</button>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+  <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+    <div style="font-size:18px;font-weight:700">No approved records for {{ monthLabel }}</div>
+    <div style="font-size:14px;color:#6B6580;max-width:460px">{{ scopeLabel }} has no approved demand, ledger receipts or ledger expenses in this month.</div>
+    <button onClick="{{ resetFilters }}" style="height:40px;padding:0 20px;border-radius:6px;border:1px solid #4F3F8F;background:#fff;color:#4F3F8F;font-size:14px;font-weight:600;cursor:pointer">Reset filters</button>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+
+  <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+    <div style="background:#4F3F8F;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+      <div style="font-size:13px;font-weight:800;letter-spacing:.12em">INCOME</div>
+      <div style="font-size:12.5px;color:#E4DEF6;font-weight:500">{{ monthLabel }} · {{ scopeLabel }}</div>
+    </div>
+    <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;background:#F8F6FC">
+      <sc-for list="{{ incCards }}" as="c" hint-placeholder-count="5">
+        <div onClick="{{ c.onClick }}" style="background:#fff;border:1px solid #E3DFEE;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;cursor:{{ c.cursor }}" style-hover="border-color:#A99BDB">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.1em;color:#6B6580"><span style="width:10px;height:10px;border-radius:2px;background:{{ c.color }}"></span>{{ c.label }}</div>
+          <div style="font-size:24px;font-weight:800;color:{{ c.valColor }};letter-spacing:-.01em">{{ c.value }}</div>
+          <div style="font-size:12px;color:#6B6580">{{ c.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px">
+    <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+      <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">COMPANY SHARE vs RECEIVED · DAILY</div>
+      <div style="padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:16px;font-size:12px;color:#6B6580"><span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#4F3F8F;border-radius:2px"></span>Company Share</span><span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#E8955C;border-radius:2px"></span>Received</span></div>
+        <div style="display:flex;gap:8px">
+          <div style="position:relative;width:36px;height:200px">
+            <sc-for list="{{ dayTicks }}" as="t" hint-placeholder-count="5"><div style="position:absolute;right:0;bottom:{{ t.bottom }}%;transform:translateY(50%);font-size:10.5px;color:#8A849C">{{ t.label }}</div></sc-for>
+          </div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+            <div style="position:relative;height:200px;border-left:1px solid #D8D2E8;border-bottom:1px solid #D8D2E8;display:flex;align-items:flex-end;gap:2px;padding:0 2px">
+              <sc-for list="{{ dayTicks }}" as="t" hint-placeholder-count="5"><div style="position:absolute;left:0;right:0;bottom:{{ t.bottom }}%;border-top:1px dashed #EEEAF4"></div></sc-for>
+              <sc-for list="{{ days }}" as="d" hint-placeholder-count="30">
+                <div title="{{ d.title }}" style="position:relative;flex:1;height:100%;display:flex;align-items:flex-end;gap:1px">
+                  <div style="flex:1;height:{{ d.shareH }}%;background:#4F3F8F;border-radius:2px 2px 0 0"></div>
+                  <div style="flex:1;height:{{ d.recvH }}%;background:#E8955C;border-radius:2px 2px 0 0"></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:2px;padding:0 2px">
+              <sc-for list="{{ days }}" as="d" hint-placeholder-count="30"><div style="flex:1;text-align:center;font-size:10px;color:#8A849C">{{ d.label }}</div></sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+      <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">MONTHLY INCOME TREND · 6 MONTHS</div>
+      <div style="padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#6B6580">
+          <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:3px;background:#A99BDB"></span>Demand</span>
+          <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:3px;background:#4F3F8F"></span>Company Share</span>
+          <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:3px;background:#E8955C"></span>Received</span>
+          <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:0;border-top:2px dashed #2A2145"></span>Balance</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div style="position:relative;width:36px;height:200px">
+            <sc-for list="{{ trendTicks }}" as="t" hint-placeholder-count="5"><div style="position:absolute;right:0;bottom:{{ t.bottom }}%;transform:translateY(50%);font-size:10.5px;color:#8A849C">{{ t.label }}</div></sc-for>
+          </div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+            <div style="position:relative;height:200px;border-left:1px solid #D8D2E8;border-bottom:1px solid #D8D2E8">
+              <sc-for list="{{ trendTicks }}" as="t" hint-placeholder-count="5"><div style="position:absolute;left:0;right:0;bottom:{{ t.bottom }}%;border-top:1px dashed #EEEAF4"></div></sc-for>
+              <svg viewBox="0 0 600 200" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+                <polyline points="{{ trend.demand }}" fill="none" stroke="#A99BDB" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{ trend.share }}" fill="none" stroke="#4F3F8F" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{ trend.recv }}" fill="none" stroke="#E8955C" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{ trend.bal }}" fill="none" stroke="#2A2145" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></polyline>
+              </svg>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <sc-for list="{{ trendMonths }}" as="m" hint-placeholder-count="6"><div style="font-size:10.5px;color:#8A849C;font-weight:{{ m.weight }}">{{ m.label }}</div></sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px">
+    <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+      <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">BALANCE RECONCILIATION</div>
+      <div style="padding:18px;display:flex;flex-wrap:wrap;gap:24px;align-items:center">
+        <div style="width:132px;height:132px;border-radius:50%;background:{{ recon.ring }};display:flex;align-items:center;justify-content:center;flex:none">
+          <div style="width:100px;height:100px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <div style="font-size:22px;font-weight:800">{{ recon.rate }}</div>
+            <div style="font-size:10.5px;color:#6B6580;font-weight:600;letter-spacing:.06em">COLLECTED</div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:240px;display:flex;flex-direction:column">
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #EEEAF4;font-size:14px"><span style="color:#6B6580">Last month balance · {{ prevMonthLabel }}</span><strong>{{ recon.last }}</strong></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #EEEAF4;font-size:14px"><span style="color:#6B6580">+ Company Share</span><strong>{{ recon.share }}</strong></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #EEEAF4;font-size:14px"><span style="color:#6B6580">− Received</span><strong>{{ recon.recv }}</strong></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:2px solid #2A2145;font-size:14px"><span style="color:#6B6580">Month balance (Share − Received)</span><strong>{{ recon.bal }}</strong></div>
+          <div style="display:flex;justify-content:space-between;padding:10px 0 0;font-size:15px"><span style="font-weight:700">Closing balance carried forward</span><strong style="font-size:17px;color:#4F3F8F">{{ recon.closing }}</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ isAll }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+        <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">BRANCH COMPARISON · INCOME</div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#6B6580">
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#A99BDB;border-radius:2px"></span>Demand</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#4F3F8F;border-radius:2px"></span>Company Share</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#E8955C;border-radius:2px"></span>Received</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#2A2145;border-radius:2px"></span>Balance</span>
+          </div>
+          <sc-for list="{{ branchInc }}" as="b" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:center">
+              <div style="font-size:13px;font-weight:600">{{ b.name }}</div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:6px"><div style="height:7px;width:{{ b.dW }}%;background:#A99BDB;border-radius:0 3px 3px 0"></div><span style="font-size:10.5px;color:#6B6580">{{ b.dF }}</span></div>
+                <div style="display:flex;align-items:center;gap:6px"><div style="height:7px;width:{{ b.sW }}%;background:#4F3F8F;border-radius:0 3px 3px 0"></div><span style="font-size:10.5px;color:#6B6580">{{ b.sF }}</span></div>
+                <div style="display:flex;align-items:center;gap:6px"><div style="height:7px;width:{{ b.rW }}%;background:#E8955C;border-radius:0 3px 3px 0"></div><span style="font-size:10.5px;color:#6B6580">{{ b.rF }}</span></div>
+                <div style="display:flex;align-items:center;gap:6px"><div style="height:7px;width:{{ b.bW }}%;background:#2A2145;border-radius:0 3px 3px 0"></div><span style="font-size:10.5px;color:#6B6580">{{ b.bF }}</span></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+    <div style="background:#4F3F8F;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+      <div style="font-size:13px;font-weight:800;letter-spacing:.12em">EXPENSES</div>
+      <div style="font-size:12.5px;color:#E4DEF6;font-weight:500">{{ monthLabel }} · {{ scopeLabel }}</div>
+    </div>
+    <div style="padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;background:#F8F6FC;align-items:stretch">
+      <div style="background:#fff;border:1px solid #E3DFEE;border-radius:8px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="background:#EEEAF8;padding:8px 12px;font-size:11.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">EXPENSE SUMMARY</div>
+        <sc-for list="{{ expSummary }}" as="r" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:120px 1fr;font-size:13px;border-bottom:1px solid #EEEAF4">
+            <div style="padding:7px 12px;color:#6B6580;font-weight:600;background:#FBFAFD;border-right:1px solid #EEEAF4">{{ r.k }}</div>
+            <div style="padding:7px 12px;text-align:{{ r.align }};font-weight:{{ r.w }}">{{ r.v }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+        <sc-for list="{{ expCards }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.onClick }}" style="background:{{ c.bg }};border:1px solid #E3DFEE;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:5px;cursor:{{ c.cursor }}" style-hover="border-color:#A99BDB">
+            <div style="display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:700;letter-spacing:.1em;color:{{ c.lbl }}"><span style="width:9px;height:9px;border-radius:2px;background:{{ c.color }}"></span>{{ c.label }}</div>
+            <div style="font-size:20px;font-weight:800;color:{{ c.fg }};letter-spacing:-.01em">{{ c.value }}</div>
+            <div style="font-size:11.5px;color:{{ c.lbl }}">{{ c.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="background:#fff;border:1px solid #E3DFEE;border-radius:8px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="background:#EEEAF8;padding:8px 12px;font-size:11.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">LEDGER HEAD vs RETURN vs DISCOUNT</div>
+        <div style="flex:1;display:flex;align-items:flex-end;justify-content:space-around;gap:14px;padding:14px 16px 0;min-height:170px;border-bottom:1px solid #D8D2E8;margin:0 12px">
+          <sc-for list="{{ expBars }}" as="b" hint-placeholder-count="3">
+            <div onClick="{{ b.onClick }}" style="flex:1;max-width:64px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;cursor:pointer">
+              <span style="font-size:11px;font-weight:700">{{ b.k }}</span>
+              <div style="width:100%;height:{{ b.h }}%;background:{{ b.color }};border-radius:3px 3px 0 0"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;justify-content:space-around;gap:14px;padding:6px 28px 10px">
+          <sc-for list="{{ expBars }}" as="b" hint-placeholder-count="3"><div style="flex:1;max-width:64px;text-align:center;font-size:11px;color:#6B6580;font-weight:600">{{ b.label }}</div></sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px">
+    <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+      <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">EXPENSE ACTUAL AMOUNT TREND · DAILY</div>
+      <div style="padding:14px 16px 0;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#6B6580">
+        <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:3px;background:#4F3F8F"></span>Ledger expense</span>
+        <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:3px;background:#E8955C"></span>Return</span>
+        <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:3px;background:#A99BDB"></span>Discount</span>
+        <span style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:0;border-top:2px dashed #2A2145"></span>Total expense</span>
+      </div>
+      <div style="padding:10px 16px 12px;display:flex;gap:8px">
+        <div style="position:relative;width:36px;height:200px">
+          <sc-for list="{{ expTicks }}" as="t" hint-placeholder-count="5"><div style="position:absolute;right:0;bottom:{{ t.bottom }}%;transform:translateY(50%);font-size:10.5px;color:#8A849C">{{ t.label }}</div></sc-for>
+        </div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div style="position:relative;height:200px;border-left:1px solid #D8D2E8;border-bottom:1px solid #D8D2E8">
+            <sc-for list="{{ expTicks }}" as="t" hint-placeholder-count="5"><div style="position:absolute;left:0;right:0;bottom:{{ t.bottom }}%;border-top:1px dashed #EEEAF4"></div></sc-for>
+            <svg viewBox="0 0 600 200" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+              <polyline points="{{ expTrend.ledger }}" fill="none" stroke="#4F3F8F" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+              <polyline points="{{ expTrend.ret }}" fill="none" stroke="#E8955C" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
+              <polyline points="{{ expTrend.disc }}" fill="none" stroke="#A99BDB" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
+              <polyline points="{{ expTrend.total }}" fill="none" stroke="#2A2145" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></polyline>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex">
+              <sc-for list="{{ expDays }}" as="d" hint-placeholder-count="30"><div title="{{ d.title }}" style="flex:1" style-hover="background:rgba(79,63,143,.08)"></div></sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:2px">
+            <sc-for list="{{ days }}" as="d" hint-placeholder-count="30"><div style="flex:1;text-align:center;font-size:10px;color:#8A849C">{{ d.label }}</div></sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+      <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">EXPENSE BREAKDOWN · LEDGER HEAD, RETURN, DISCOUNT</div>
+      <div style="padding:18px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:18px 12px">
+        <sc-for list="{{ donuts }}" as="h" hint-placeholder-count="6">
+          <button onClick="{{ h.onClick }}" style="all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+            <div style="width:76px;height:76px;border-radius:50%;background:{{ h.ring }};display:flex;align-items:center;justify-content:center">
+              <div style="width:54px;height:54px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800">{{ h.pct }}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="font-size:12.5px;font-weight:700">{{ h.head }}</div>
+              <div style="font-size:11.5px;color:#6B6580">{{ h.amount }}</div>
+            </div>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px">
+    <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+      <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">RETURN vs DISCOUNT · WEEKLY</div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:16px;font-size:12px;color:#6B6580"><span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#E8955C;border-radius:2px"></span>Return</span><span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#A99BDB;border-radius:2px"></span>Discount</span></div>
+        <div style="display:flex;align-items:flex-end;gap:16px;height:170px;border-bottom:1px solid #D8D2E8;padding:0 8px">
+          <sc-for list="{{ weeks }}" as="w" hint-placeholder-count="5">
+            <div style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;gap:4px">
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;flex:1;max-width:34px"><span style="font-size:10px;color:#6B6580">{{ w.retK }}</span><div style="width:100%;height:{{ w.retH }}%;background:#E8955C;border-radius:3px 3px 0 0"></div></div>
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;flex:1;max-width:34px"><span style="font-size:10px;color:#6B6580">{{ w.disK }}</span><div style="width:100%;height:{{ w.disH }}%;background:#A99BDB;border-radius:3px 3px 0 0"></div></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:16px;padding:0 8px">
+          <sc-for list="{{ weeks }}" as="w" hint-placeholder-count="5"><div style="flex:1;text-align:center;font-size:11px;color:#6B6580">{{ w.label }}</div></sc-for>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ isAll }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+        <div style="background:#EEEAF8;color:#2A2145;padding:10px 16px;font-size:12.5px;font-weight:800;letter-spacing:.1em;border-bottom:1px solid #E3DFEE">BRANCH COMPARISON · EXPENSE</div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#6B6580">
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#4F3F8F;border-radius:2px"></span>Ledger expense</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#E8955C;border-radius:2px"></span>Return</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="width:10px;height:10px;background:#A99BDB;border-radius:2px"></span>Discount</span>
+          </div>
+          <sc-for list="{{ branchExp }}" as="b" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:130px 1fr 96px;gap:10px;align-items:center">
+              <div style="font-size:13px;font-weight:600">{{ b.name }}</div>
+              <div style="display:flex;height:16px;border-radius:3px;overflow:hidden;background:#F4F2F9">
+                <div style="width:{{ b.lW }}%;background:#4F3F8F"></div>
+                <div style="width:{{ b.rW }}%;background:#E8955C"></div>
+                <div style="width:{{ b.dW }}%;background:#A99BDB"></div>
+              </div>
+              <div style="font-size:12.5px;font-weight:700;text-align:right">{{ b.totalF }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+    <div style="background:#4F3F8F;color:#fff;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:800;letter-spacing:.12em">INCOME</div>
+      <div style="display:flex;background:#3A2F5E;border-radius:6px;padding:3px;gap:2px">
+        <sc-for list="{{ incGranBtns }}" as="g" hint-placeholder-count="3"><button onClick="{{ g.onClick }}" style="border:0;border-radius:4px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:{{ g.bg }};color:{{ g.fg }}">{{ g.label }}</button></sc-for>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <div style="min-width:900px">
+        <div style="display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(140px,1.2fr) repeat(5,minmax(110px,1fr));background:#FBDCC6;font-size:12px;font-weight:700;color:#3A2410">
+          <div onClick="{{ sI.period }}" style="padding:10px 12px;cursor:pointer">{{ incPeriodLabel }} {{ aI.period }}</div>
+          <div onClick="{{ sI.branch }}" style="padding:10px 12px;cursor:pointer">Branch Name {{ aI.branch }}</div>
+          <div onClick="{{ sI.demand }}" style="padding:10px 12px;cursor:pointer;text-align:right">Demand Amount {{ aI.demand }}</div>
+          <div onClick="{{ sI.share }}" style="padding:10px 12px;cursor:pointer;text-align:right">Company Share {{ aI.share }}</div>
+          <div onClick="{{ sI.recv }}" style="padding:10px 12px;cursor:pointer;text-align:right">Received Amount {{ aI.recv }}</div>
+          <div onClick="{{ sI.bal }}" style="padding:10px 12px;cursor:pointer;text-align:right">Balance {{ aI.bal }}</div>
+          <div onClick="{{ sI.last }}" style="padding:10px 12px;cursor:pointer;text-align:right">Last Month Balance {{ aI.last }}</div>
+        </div>
+        <sc-for list="{{ incRows }}" as="r" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(140px,1.2fr) repeat(5,minmax(110px,1fr));font-size:13px;border-bottom:1px solid #EEEAF4" style-hover="background:#F8F6FC">
+            <div style="padding:9px 12px">{{ r.period }}</div>
+            <div style="padding:9px 12px;font-weight:600">{{ r.branch }}</div>
+            <div style="padding:9px 12px;text-align:right"><button onClick="{{ r.onDemand }}" style="all:unset;cursor:pointer;border-bottom:1px dotted #A99BDB">{{ r.demandF }}</button></div>
+            <div style="padding:9px 12px;text-align:right"><button onClick="{{ r.onShare }}" style="all:unset;cursor:pointer;border-bottom:1px dotted #A99BDB">{{ r.shareF }}</button></div>
+            <div style="padding:9px 12px;text-align:right"><button onClick="{{ r.onRecv }}" style="all:unset;cursor:pointer;border-bottom:1px dotted #A99BDB">{{ r.recvF }}</button></div>
+            <div style="padding:9px 12px;text-align:right;font-weight:700;color:{{ r.balColor }}">{{ r.balF }}</div>
+            <div style="padding:9px 12px;text-align:right;color:#6B6580">{{ r.lastF }}</div>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(140px,1.2fr) repeat(5,minmax(110px,1fr));font-size:13px;font-weight:800;background:#EEEAF8">
+          <div style="padding:10px 12px">TOTAL</div><div style="padding:10px 12px"></div>
+          <div style="padding:10px 12px;text-align:right">{{ incTot.demand }}</div>
+          <div style="padding:10px 12px;text-align:right">{{ incTot.share }}</div>
+          <div style="padding:10px 12px;text-align:right">{{ incTot.recv }}</div>
+          <div style="padding:10px 12px;text-align:right">{{ incTot.bal }}</div>
+          <div style="padding:10px 12px;text-align:right">{{ incTot.last }}</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;font-size:12.5px;color:#6B6580;gap:12px;flex-wrap:wrap">
+      <span>{{ incPager.text }}</span>
+      <div style="display:flex;gap:6px">
+        <button onClick="{{ incPager.prev }}" disabled="{{ incPager.noPrev }}" style="height:30px;padding:0 12px;border:1px solid #D8D2E8;border-radius:5px;background:#fff;cursor:pointer;font-size:12.5px;color:#2A2145">Previous</button>
+        <button onClick="{{ incPager.next }}" disabled="{{ incPager.noNext }}" style="height:30px;padding:0 12px;border:1px solid #D8D2E8;border-radius:5px;background:#fff;cursor:pointer;font-size:12.5px;color:#2A2145">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:#fff;border:1px solid #E3DFEE;border-radius:10px;overflow:hidden">
+    <div style="background:#4F3F8F;color:#fff;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:800;letter-spacing:.12em">EXPENSES</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <input value="{{ expQ }}" onChange="{{ onExpQ }}" placeholder="Search ID, branch, ledger head" style="height:30px;width:210px;border-radius:5px;border:0;background:#3A2F5E;color:#fff;font-size:12px;padding:0 10px;font-family:inherit">
+        <select value="{{ expDay }}" onChange="{{ onExpDay }}" style="height:30px;border-radius:5px;border:0;background:#3A2F5E;color:#fff;font-size:12px;font-weight:600;padding:0 8px">
+          <sc-for list="{{ dayOpts }}" as="o" hint-placeholder-count="10"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+        </select>
+        <select value="{{ expHead }}" onChange="{{ onExpHead }}" style="height:30px;border-radius:5px;border:0;background:#3A2F5E;color:#fff;font-size:12px;font-weight:600;padding:0 8px">
+          <sc-for list="{{ headOpts }}" as="o" hint-placeholder-count="7"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+        </select>
+        <div style="display:flex;background:#3A2F5E;border-radius:6px;padding:3px;gap:2px">
+          <sc-for list="{{ expGranBtns }}" as="g" hint-placeholder-count="3"><button onClick="{{ g.onClick }}" style="border:0;border-radius:4px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:{{ g.bg }};color:{{ g.fg }}">{{ g.label }}</button></sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <div style="min-width:1000px">
+        <div style="display:grid;grid-template-columns:minmax(140px,1.1fr) minmax(130px,1.2fr) minmax(140px,1.2fr) minmax(190px,1.5fr) repeat(3,minmax(110px,1fr));background:#FBDCC6;font-size:12px;font-weight:700;color:#3A2410">
+          
+          <div onClick="{{ sE.period }}" style="padding:10px 12px;cursor:pointer">{{ expPeriodLabel }} {{ aE.period }}</div>
+          <div onClick="{{ sE.branch }}" style="padding:10px 12px;cursor:pointer">Branch Name {{ aE.branch }}</div>
+          <div onClick="{{ sE.head }}" style="padding:10px 12px;cursor:pointer">Ledger Head {{ aE.head }}</div>
+          <div onClick="{{ sE.amount }}" style="padding:10px 12px;cursor:pointer;text-align:right">Amount {{ aE.amount }}</div>
+          <div onClick="{{ sE.ret }}" style="padding:10px 12px;cursor:pointer;text-align:right">Return {{ aE.ret }}</div>
+          <div onClick="{{ sE.disc }}" style="padding:10px 12px;cursor:pointer;text-align:right">Discount {{ aE.disc }}</div>
+        </div>
+        <sc-for list="{{ expRows }}" as="r" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:minmax(140px,1.1fr) minmax(130px,1.2fr) minmax(140px,1.2fr) minmax(190px,1.5fr) repeat(3,minmax(110px,1fr));font-size:13px;border-bottom:1px solid #EEEAF4" style-hover="background:#F8F6FC">
+            
+            <div style="padding:9px 12px">{{ r.period }}</div>
+            <div style="padding:9px 12px;font-weight:600">{{ r.branch }}</div>
+            <div style="padding:9px 12px;color:{{ r.headColor }}">{{ r.head }}</div>
+            <div style="padding:9px 12px;text-align:right"><button onClick="{{ r.onAmount }}" style="all:unset;cursor:pointer;border-bottom:1px dotted {{ r.amtLine }}">{{ r.amountF }}</button></div>
+            <div style="padding:9px 12px;text-align:right"><button onClick="{{ r.onRet }}" style="all:unset;cursor:pointer;border-bottom:1px dotted {{ r.prodLine }}">{{ r.retF }}</button></div>
+            <div style="padding:9px 12px;text-align:right"><button onClick="{{ r.onDisc }}" style="all:unset;cursor:pointer;border-bottom:1px dotted {{ r.prodLine }}">{{ r.discF }}</button></div>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:minmax(140px,1.1fr) minmax(130px,1.2fr) minmax(140px,1.2fr) minmax(190px,1.5fr) repeat(3,minmax(110px,1fr));font-size:13px;font-weight:800;background:#EEEAF8">
+          <div style="padding:10px 12px">TOTAL</div><div style="padding:10px 12px"></div><div style="padding:10px 12px"></div><div style="padding:10px 12px"></div>
+          <div style="padding:10px 12px;text-align:right">{{ expTot.amount }}</div>
+          <div style="padding:10px 12px;text-align:right">{{ expTot.ret }}</div>
+          <div style="padding:10px 12px;text-align:right">{{ expTot.disc }}</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;font-size:12.5px;color:#6B6580;gap:12px;flex-wrap:wrap">
+      <span>{{ expPager.text }}</span>
+      <div style="display:flex;gap:6px">
+        <button onClick="{{ expPager.prev }}" disabled="{{ expPager.noPrev }}" style="height:30px;padding:0 12px;border:1px solid #D8D2E8;border-radius:5px;background:#fff;cursor:pointer;font-size:12.5px;color:#2A2145">Previous</button>
+        <button onClick="{{ expPager.next }}" disabled="{{ expPager.noNext }}" style="height:30px;padding:0 12px;border:1px solid #D8D2E8;border-radius:5px;background:#fff;cursor:pointer;font-size:12.5px;color:#2A2145">Next</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:50;display:flex;justify-content:flex-end">
+    <div onClick="{{ closeDrill }}" style="position:absolute;inset:0;background:rgba(42,33,69,.45)"></div>
+    <div style="position:relative;width:min(640px,100%);height:100%;background:#fff;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(42,33,69,.2)">
+      <div style="background:#4F3F8F;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:16px;font-weight:800">{{ dr.title }}</div>
+          <div style="font-size:12.5px;color:#E4DEF6">{{ dr.subtitle }}</div>
+        </div>
+        <button onClick="{{ closeDrill }}" style="border:0;background:#3A2F5E;color:#fff;width:32px;height:32px;border-radius:6px;font-size:16px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:14px 18px;display:grid;grid-template-columns:110px 1fr;gap:6px 12px;font-size:12.5px;background:#F8F6FC;border-bottom:1px solid #E3DFEE">
+        <span style="color:#6B6580;font-weight:600">Source</span><span>{{ dr.def.source }}</span>
+        <span style="color:#6B6580;font-weight:600">Calculation</span><span>{{ dr.def.calc }}</span>
+        <span style="color:#6B6580;font-weight:600">Status</span><span>{{ dr.def.status }}</span>
+        <span style="color:#6B6580;font-weight:600">Date field</span><span>{{ dr.def.date }}</span>
+        <span style="color:#6B6580;font-weight:600">Branch field</span><span>{{ dr.def.branch }}</span>
+      </div>
+      <div style="flex:1;overflow:auto">
+        <div style="min-width:560px">
+          <div style="display:grid;grid-template-columns:128px 64px 1fr 1.4fr 76px 100px;background:#FBDCC6;font-size:11.5px;font-weight:700;color:#3A2410;position:sticky;top:0">
+            <div style="padding:8px 10px">{{ dr.idLabel }}</div><div style="padding:8px 10px">Date</div><div style="padding:8px 10px">Branch</div><div style="padding:8px 10px">{{ dr.refLabel }}</div><div style="padding:8px 10px">Status</div><div style="padding:8px 10px;text-align:right">Amount</div>
+          </div>
+          <sc-for list="{{ dr.rows }}" as="x" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:128px 64px 1fr 1.4fr 76px 100px;font-size:12.5px;border-bottom:1px solid #EEEAF4">
+              <div style="padding:8px 10px;font-weight:600;color:#4F3F8F;font-size:11.5px">{{ x.id }}</div>
+              <div style="padding:8px 10px">{{ x.date }}</div>
+              <div style="padding:8px 10px">{{ x.branch }}</div>
+              <div style="padding:8px 10px;color:#6B6580;display:flex;flex-direction:column;gap:2px"><span>{{ x.ref }}</span><span style="font-size:10.5px;color:#8A849C">{{ x.audit }}</span></div>
+              <div style="padding:8px 10px"><span style="font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;background:#E6F1E4;color:#285C22">{{ x.status }}</span></div>
+              <div style="padding:8px 10px;text-align:right;font-weight:700">{{ x.amount }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border-top:1px solid #E3DFEE;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#6B6580">{{ dr.pageText }}</span><strong style="font-size:15px">Total {{ dr.total }}</strong></div>
+        <div style="display:flex;gap:6px">
+          <button onClick="{{ dr.prev }}" disabled="{{ dr.noPrev }}" style="height:32px;padding:0 12px;border:1px solid #D8D2E8;border-radius:5px;background:#fff;cursor:pointer;font-size:12.5px;color:#2A2145">Previous</button>
+          <button onClick="{{ dr.next }}" disabled="{{ dr.noNext }}" style="height:32px;padding:0 12px;border:1px solid #D8D2E8;border-radius:5px;background:#fff;cursor:pointer;font-size:12.5px;color:#2A2145">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Admin&quot;,&quot;Finance&quot;,&quot;Branch user&quot;],&quot;default&quot;:&quot;Admin&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;dataState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;loading&quot;,&quot;empty&quot;,&quot;error&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showSampleNote&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+// ---- MOCK DATA ADAPTER (replace with Mountain Bakes API: branches from Admin, month-scoped server aggregates) ----
+const SHARE_RATE = 0.72; // placeholder only — backend company-share rule is authoritative
+const HEADS = ['Rent','Utilities','Packaging Material','Vehicle Maintenance','Transport','Miscellaneous'];
+const APPROVERS = ['Finance · S. Ahmed','Finance · R. Khan','Admin · M. Iqbal'];
+const BRANCHES = [{id:'BR-01',name:'DHA'},{id:'BR-02',name:'North Nazimabad'},{id:'BR-03',name:'Gulshan-e-Iqbal'},{id:'BR-04',name:'Clifton'}];
+const FACT = {'BR-01':1.15,'BR-02':0.9,'BR-03':0.8,'BR-04':1};
+const MONTHS = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09'];
+const TODAY = {ym:'2026-09', d:27};
+const pad = n => String(n).padStart(2,'0');
+function hash(s){let h=2166136261;for(const ch of s){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const fmt = n => n==null?'—':(n<0?'−':'')+'Rs. '+Math.abs(Math.round(n)).toLocaleString('en-US');
+const fmtK = n => {const a=Math.abs(n);return a>=1e6?(n/1e6).toFixed(a>=1e7?0:1)+'M':a>=1e3?Math.round(n/1e3)+'k':String(Math.round(n))};
+const pct = (a,b) => b?(a/b*100).toFixed(1)+'%':'—';
+const ymP = ym => ym.split('-').map(Number);
+const monLong = ym => {const [y,m]=ymP(ym);return new Date(y,m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'})};
+const monShort = ym => {const [y,m]=ymP(ym);return new Date(y,m-1,1).toLocaleString('en-US',{month:'short'})};
+const dim = ym => {const [y,m]=ymP(ym);return new Date(y,m,0).getDate()};
+const niceMax = v => {if(v<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(v)));for(const s of [1,2,2.5,5,10]) if(s*p>=v) return s*p;return 10*p};
+const sum = (a,f) => a.reduce((s,x)=>s+f(x),0);
+const bName = id => (BRANCHES.find(b=>b.id===id)||{}).name||id;
+const cache = {}, closeCache = {};
+function gen(ym,bid){
+  const k=ym+bid; if(cache[k]) return cache[k];
+  const out={prod:[],recv:[],exp:[]};
+  const last = ym>TODAY.ym?0:ym===TODAY.ym?TODAY.d:dim(ym);
+  const r=rng(hash(k)), f=FACT[bid], [y,m]=ymP(ym), tag=String(y).slice(2)+pad(m), b=bid.slice(3);
+  for(let d=1; d<=last; d++){
+    if(r()<0.07) continue;
+    const demand=Math.round((38000+r()*52000)*f/100)*100, share=Math.round(demand*SHARE_RATE);
+    out.prod.push({id:`PRD-${tag}-${b}${pad(d)}`, did:`DMD-${tag}-${b}${pad(d)}`, d, bid, demand, share, ret:Math.round(demand*(0.008+r()*0.03)/10)*10, disc:Math.round(demand*(0.004+r()*0.014)/10)*10});
+    if(r()<0.72) out.recv.push({id:`LED-${tag}-R${b}${pad(d)}`, d, bid, ref:r()<0.5?'Bank transfer':'Cash deposit', amount:Math.round(share*(0.7+r()*0.5)/100)*100});
+    if(r()<0.25) out.recv.push({id:`LED-${tag}-F${b}${pad(d)}`, d, bid, ref:'Fuel charge (income)', amount:Math.round((1500+r()*4500)/10)*10});
+    if(d===1) out.exp.push({id:`LED-${tag}-E${b}${pad(d)}0`, d, bid, head:HEADS[0], amount:Math.round((25000+r()*20000)*f/100)*100});
+    if(r()<0.4) out.exp.push({id:`LED-${tag}-E${b}${pad(d)}1`, d, bid, head:HEADS[1+Math.floor(r()*5)], amount:Math.round((1500+r()*16000)/10)*10});
+  }
+  return cache[k]=out;
+}
+function lastBal(ym,bid){const i=MONTHS.indexOf(ym);return i>0?closing(MONTHS[i-1],bid):Math.round(rng(hash('open'+bid))()*30000/100)*100}
+function closing(ym,bid){const k=ym+bid;if(k in closeCache)return closeCache[k];const g=gen(ym,bid);return closeCache[k]=lastBal(ym,bid)+sum(g.prod,x=>x.share)-sum(g.recv,x=>x.amount)}
+function scope(ym,bids){const o={prod:[],recv:[],exp:[]};bids.forEach(b=>{const g=gen(ym,b);o.prod.push(...g.prod);o.recv.push(...g.recv);o.exp.push(...g.exp)});return o}
+// ---- END MOCK ----
+
+const DEFS = {
+  demand:{title:'Demand Amount',idLabel:'Production ID',refLabel:'Demand ID',source:'Production · daily demand approved by branch',calc:'Sum of approved demand amount',status:'Branch-approved, saved in Production',date:'Business date (backend cutoff)',branch:'Production branch'},
+  share:{title:'Company Share',idLabel:'Production ID',refLabel:'Demand ID · approved demand',source:'Production · approved daily demand',calc:'Backend company-share rule, date-wise (mock uses 72% of demand)',status:'Branch-approved, saved in Production',date:'Business date',branch:'Production branch'},
+  received:{title:'Received Amount',idLabel:'Ledger ID',refLabel:'Entry type',source:'Branch ledger · received entries, incl. fuel charges',calc:'Sum of approved received amounts',status:'Approved in ledger',date:'Ledger entry date',branch:'Ledger branch'},
+  ledger:{title:'Ledger Expense',idLabel:'Ledger ID',refLabel:'Ledger Head',source:'Finance ledger · company expense credits (branch operational expenses excluded)',calc:'Sum of approved company expense amounts',status:'Approved in ledger',date:'Ledger entry date',branch:'Ledger branch'},
+  ret:{title:'Return',idLabel:'Production ID',refLabel:'Demand ID',source:'Production · return against approved demand',calc:'Sum of recorded return amounts',status:'Branch-approved, saved in Production',date:'Business date',branch:'Production branch'},
+  disc:{title:'Discount',idLabel:'Production ID',refLabel:'Demand ID',source:'Production · discount against approved demand',calc:'Sum of recorded discount amounts',status:'Branch-approved, saved in Production',date:'Business date',branch:'Production branch'}
+};
+
+class Component extends DCLogic {
+  state = { month: TODAY.ym, branch: 'all', loading: true, incGran:'monthly', expGran:'daily', expQ:'', expDay:'all', expHead:'all', incSort:{k:'branch',dir:1}, expSort:{k:'branch',dir:1}, incPg:0, expPg:0, drill:null, dPg:0, retried:false, offline: typeof navigator!=='undefined' && !navigator.onLine };
+  componentDidMount(){
+    this.t=setTimeout(()=>this.setState({loading:false}),500);
+    this.on=()=>this.setState({offline:!navigator.onLine});
+    window.addEventListener('online',this.on);window.addEventListener('offline',this.on);
+  }
+  componentWillUnmount(){clearTimeout(this.t);window.removeEventListener('online',this.on);window.removeEventListener('offline',this.on)}
+  setFilter(p){clearTimeout(this.t);this.setState({...p,loading:true,incPg:0,expPg:0,drill:null});this.t=setTimeout(()=>this.setState({loading:false}),350)}
+  sortBy(which,k){const key=which+'Sort';this.setState(s=>({[key]:{k,dir:s[key].k===k?-s[key].dir:1},[which+'Pg']:0}))}
+  drill(metric,bid,bucket,gran,head){this.setState({drill:{metric,bid,bucket,gran,head},dPg:0})}
+
+  bucketOf(gran,ym,d){return gran==='monthly'?ym:gran==='weekly'?'W'+Math.ceil(d/7):'D'+pad(d)}
+  bucketLabel(gran,ym,key){
+    if(gran==='monthly') return monLong(ym);
+    if(gran==='weekly'){const w=+key.slice(1),a=(w-1)*7+1,b=Math.min(w*7,dim(ym));return `Week ${w} · ${a}–${b} ${monShort(ym)}`}
+    return `${key.slice(1)} ${monShort(ym)} ${ymP(ym)[0]}`;
+  }
+  sorter(sort){return (a,b)=>{const x=a[sort.k],y=b[sort.k];if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;const c=typeof x==='string'?x.localeCompare(y):x-y;return c*sort.dir||a._o-b._o}}
+  pager(len,pg,key,size){const pages=Math.max(1,Math.ceil(len/size)),p=Math.min(pg,pages-1);return {p,size,text:len?`Showing ${p*size+1}–${Math.min(len,(p+1)*size)} of ${len} rows`:'No rows',noPrev:p===0,noNext:p>=pages-1,prev:()=>this.setState({[key]:p-1}),next:()=>this.setState({[key]:p+1})}}
+
+  renderVals(){
+    const s=this.state, role=this.props.role??'Admin', locked=role==='Branch user';
+    const branch = locked?'BR-01':s.branch, isAll=branch==='all';
+    const bids = isAll?BRANCHES.map(b=>b.id):[branch];
+    const ym=s.month, mi=MONTHS.indexOf(ym), prevYm=MONTHS[mi-1];
+    const scopeLabel = isAll?'All Branches':bName(branch)+' Branch';
+    const D=scope(ym,bids);
+    const T={demand:sum(D.prod,x=>x.demand),share:sum(D.prod,x=>x.share),recv:sum(D.recv,x=>x.amount),ret:sum(D.prod,x=>x.ret),disc:sum(D.prod,x=>x.disc),ledger:sum(D.exp,x=>x.amount)};
+    T.bal=T.share-T.recv; T.last=sum(bids,b=>lastBal(ym,b)); T.closing=T.last+T.bal;
+    let ds=this.props.dataState??'live'; if(s.retried&&ds==='error') ds='live';
+    if(ds==='live'&&!D.prod.length&&!D.exp.length) ds='empty';
+    const isLoading=s.loading||ds==='loading';
+    const dr=(m,b,k,g)=>()=>this.drill(m,b,k,g);
+
+    const incCards=[
+      {label:'DEMAND AMOUNT',value:fmt(T.demand),sub:`${D.prod.length} approved demand days`,color:'#A99BDB',onClick:dr('demand'),cursor:'pointer',valColor:'#2A2145'},
+      {label:'COMPANY SHARE',value:fmt(T.share),sub:`${pct(T.share,T.demand)} of demand`,color:'#4F3F8F',onClick:dr('share'),cursor:'pointer',valColor:'#2A2145'},
+      {label:'RECEIVED',value:fmt(T.recv),sub:`${pct(T.recv,T.share)} of company share`,color:'#E8955C',onClick:dr('received'),cursor:'pointer',valColor:'#2A2145'},
+      {label:'BALANCE',value:fmt(T.bal),sub:'Company Share − Received',color:'#2A2145',cursor:'default',valColor:T.bal<0?'#B4232A':'#4F3F8F'},
+      {label:'LAST MONTH BALANCE',value:fmt(T.last),sub:prevYm?`Closing, ${monLong(prevYm)}`:'Opening balance',color:'#D8D2E8',cursor:'default',valColor:'#2A2145'}
+    ];
+    const totExp=T.ledger+T.ret+T.disc;
+    const expCards=[
+      {label:'LEDGER HEAD',value:fmt(T.ledger),sub:`${D.exp.length} approved company credits`,color:'#4F3F8F',onClick:dr('ledger'),cursor:'pointer'},
+      {label:'RETURN',value:fmt(T.ret),sub:`${pct(T.ret,T.demand)} of demand`,color:'#E8955C',onClick:dr('ret'),cursor:'pointer'},
+      {label:'DISCOUNT',value:fmt(T.disc),sub:`${pct(T.disc,T.demand)} of demand`,color:'#A99BDB',onClick:dr('disc'),cursor:'pointer'},
+      {label:'TOTAL',value:fmt(totExp),sub:'Ledger Head + Return + Discount',color:'#FBDCC6',cursor:'default',bg:'#2A2145',fg:'#fff',lbl:'#D8D0F0'}
+    ].map(c=>({bg:'#fff',fg:'#2A2145',lbl:'#6B6580',...c}));
+    const expSummary=[
+      {k:'Month',v:monLong(ym)},{k:'Branch Name',v:scopeLabel},
+      {k:'Ledger Heads',v:`${new Set(D.exp.map(x=>x.head)).size} heads · ${D.exp.length} entries`},
+      {k:'Amount',v:fmt(T.ledger),align:'right'},{k:'Return',v:fmt(T.ret),align:'right'},{k:'Discount',v:fmt(T.disc),align:'right'},
+      {k:'Total',v:fmt(totExp),align:'right',w:800}
+    ].map(r=>({align:'left',w:500,...r}));
+    const ebMax=Math.max(1,T.ledger,T.ret,T.disc);
+    const expBars=[{label:'Ledger Head',a:T.ledger,color:'#4F3F8F',m:'ledger'},{label:'Return',a:T.ret,color:'#E8955C',m:'ret'},{label:'Discount',a:T.disc,color:'#A99BDB',m:'disc'}]
+      .map(b=>({label:b.label,color:b.color,k:fmtK(b.a),h:b.a/ebMax*80,onClick:dr(b.m)}));
+
+    const nd=dim(ym), dayArr=[...Array(nd)].map((_,i)=>i+1);
+    const byDay=dayArr.map(d=>({d,share:sum(D.prod.filter(x=>x.d===d),x=>x.share),recv:sum(D.recv.filter(x=>x.d===d),x=>x.amount),exp:sum(D.exp.filter(x=>x.d===d),x=>x.amount)}));
+    const dMax=niceMax(Math.max(...byDay.map(x=>Math.max(x.share,x.recv))));
+    const ticks=m=>[0,.25,.5,.75,1].map(t=>({label:fmtK(m*t),bottom:t*100}));
+    const days=byDay.map(x=>({label:(x.d===1||x.d%5===0)?pad(x.d):'',shareH:x.share/dMax*100,recvH:x.recv/dMax*100,title:`${pad(x.d)} ${monShort(ym)} · Share ${fmt(x.share)} · Received ${fmt(x.recv)}`}));
+
+    const tm=MONTHS.slice(Math.max(0,mi-5),mi+1);
+    const tv=tm.map(m=>{const q=scope(m,bids);const sh=sum(q.prod,x=>x.share),rc=sum(q.recv,x=>x.amount);return {demand:sum(q.prod,x=>x.demand),share:sh,recv:rc,bal:sh-rc}});
+    const tMax=niceMax(Math.max(...tv.map(v=>v.demand)));
+    const pts=k=>tv.map((v,i)=>`${tm.length>1?i/(tm.length-1)*600:300},${200-Math.max(0,v[k])/tMax*200}`).join(' ');
+    const eS=byDay.map(x=>{const pq=D.prod.filter(p=>p.d===x.d);const ret=sum(pq,p=>p.ret),disc=sum(pq,p=>p.disc);return {...x,ret,disc,tot:x.exp+ret+disc}});
+    const eMax=niceMax(Math.max(...eS.map(x=>x.tot)));
+    const eP=k=>eS.map((x,i)=>`${(i+0.5)/nd*600},${200-x[k]/eMax*200}`).join(' ');
+
+    const heads=HEADS.map(h=>({h,a:sum(D.exp.filter(x=>x.head===h),x=>x.amount)})).filter(x=>x.a>0);
+    const cats=[...heads.map(x=>({name:x.h,a:x.a,c:'#4F3F8F',m:'ledger',h:x.h})),{name:'Return',a:T.ret,c:'#E8955C',m:'ret'},{name:'Discount',a:T.disc,c:'#A99BDB',m:'disc'}].filter(x=>x.a>0);
+    const donuts=cats.map(x=>{const p=x.a/(totExp||1)*100;return {head:x.name,pct:p.toFixed(1)+'%',amount:fmt(x.a),ring:`conic-gradient(${x.c} 0 ${p}%, #EEEAF8 ${p}% 100%)`,onClick:()=>this.drill(x.m,null,null,null,x.h)}});
+    const nw=Math.ceil(nd/7), wv=[...Array(nw)].map((_,i)=>{const q=D.prod.filter(x=>Math.ceil(x.d/7)===i+1);return {ret:sum(q,x=>x.ret),dis:sum(q,x=>x.disc)}});
+    const wMax=niceMax(Math.max(...wv.map(w=>Math.max(w.ret,w.dis))));
+    const weeks=wv.map((w,i)=>({label:'W'+(i+1),retH:w.ret/wMax*85,disH:w.dis/wMax*85,retK:fmtK(w.ret),disK:fmtK(w.dis)}));
+
+    const bStats=bids.map(b=>{const g=gen(ym,b);const sh=sum(g.prod,x=>x.share),rc=sum(g.recv,x=>x.amount);return {b,demand:sum(g.prod,x=>x.demand),share:sh,recv:rc,bal:sh-rc,ledger:sum(g.exp,x=>x.amount),ret:sum(g.prod,x=>x.ret),disc:sum(g.prod,x=>x.disc)}});
+    const biMax=Math.max(1,...bStats.map(x=>x.demand)), beMax=Math.max(1,...bStats.map(x=>x.ledger+x.ret+x.disc));
+    const w=v=>Math.abs(v)/biMax*85;
+    const branchInc=bStats.map(x=>({name:bName(x.b),dW:w(x.demand),sW:w(x.share),rW:w(x.recv),bW:w(x.bal),dF:fmtK(x.demand),sF:fmtK(x.share),rF:fmtK(x.recv),bF:fmtK(x.bal)}));
+    const branchExp=bStats.map(x=>({name:bName(x.b),lW:x.ledger/beMax*100,rW:x.ret/beMax*100,dW:x.disc/beMax*100,totalF:fmt(x.ledger+x.ret+x.disc)}));
+    const rate=T.share?T.recv/T.share*100:0;
+
+    // income table
+    const ig=s.incGran, im={};
+    const ik=(b,d)=>{const k=this.bucketOf(ig,ym,d);const id=k+'|'+b;return im[id]||(im[id]={k,b,demand:0,share:0,recv:0})};
+    D.prod.forEach(x=>{const r=ik(x.bid,x.d);r.demand+=x.demand;r.share+=x.share});
+    D.recv.forEach(x=>{ik(x.bid,x.d).recv+=x.amount});
+    let incAll=Object.values(im).map((r,i)=>({...r,_o:i,period:r.k,branch:bName(r.b),bal:r.share-r.recv,last:ig==='monthly'?lastBal(ym,r.b):null}));
+    incAll.sort((a,b)=>a.period.localeCompare(b.period)||a.branch.localeCompare(b.branch)).forEach((r,i)=>r._o=i);
+    incAll.sort(this.sorter(s.incSort));
+    const ip=this.pager(incAll.length,s.incPg,'incPg',ig==='monthly'?50:12);
+    const incRows=incAll.slice(ip.p*ip.size,(ip.p+1)*ip.size).map(r=>({period:this.bucketLabel(ig,ym,r.k),branch:r.branch,demandF:fmt(r.demand),shareF:fmt(r.share),recvF:fmt(r.recv),balF:fmt(r.bal),lastF:fmt(r.last),balColor:r.bal<0?'#B4232A':'#2A2145',onDemand:dr('demand',r.b,r.k,ig),onShare:dr('share',r.b,r.k,ig),onRecv:dr('received',r.b,r.k,ig)}));
+
+    // expense table
+    const eg=s.expGran, em={}, dailyE=eg==='daily', eq=s.expQ.trim().toLowerCase();
+    const dayOk=x=>s.expDay==='all'||x.d===+s.expDay;
+    D.exp.filter(x=>(s.expHead==='all'||s.expHead===x.head)&&dayOk(x)).forEach(x=>{const k=this.bucketOf(eg,ym,x.d),id=dailyE?x.id:k+'|'+x.bid+'|'+x.head;const r=em[id]||(em[id]={k,b:x.bid,head:x.head,amount:0,ret:null,disc:null,n:0,rid:x.id});r.amount+=x.amount;r.n++});
+    if(s.expHead==='all'||s.expHead==='prod') D.prod.filter(dayOk).forEach(x=>{const k=this.bucketOf(eg,ym,x.d),id=k+'|'+x.bid+'|~';const r=em[id]||(em[id]={k,b:x.bid,head:'Production · Return / Discount',prod:true,amount:null,ret:0,disc:0,n:0,rid:x.id});r.ret+=x.ret;r.disc+=x.disc;r.n++});
+    let expAll=Object.values(em).map(r=>({...r,period:r.k,branch:bName(r.b),id:r.n===1?r.rid:`${r.n} records`})).filter(r=>!eq||[r.id,r.branch,r.head].some(v=>v.toLowerCase().includes(eq)));
+    expAll.sort((a,b)=>a.period.localeCompare(b.period)||a.branch.localeCompare(b.branch)||(a.prod?1:0)-(b.prod?1:0)||a.head.localeCompare(b.head)).forEach((r,i)=>r._o=i);
+    expAll.sort(this.sorter(s.expSort));
+    const ep=this.pager(expAll.length,s.expPg,'expPg',eg==='daily'?15:25);
+    const expRows=expAll.slice(ep.p*ep.size,(ep.p+1)*ep.size).map(r=>({idF:r.id,period:this.bucketLabel(eg,ym,r.k),branch:r.branch,head:r.head,headColor:r.prod?'#6B6580':'#2A2145',amountF:fmt(r.amount),retF:fmt(r.ret),discF:fmt(r.disc),amtLine:r.prod?'transparent':'#A99BDB',prodLine:r.prod?'#A99BDB':'transparent',onAmount:r.prod?undefined:()=>this.drill('ledger',r.b,r.k,eg,r.head),onRet:r.prod?dr('ret',r.b,r.k,eg):undefined,onDisc:r.prod?dr('disc',r.b,r.k,eg):undefined}));
+    const fl=a=>sum(a,x=>x||0);
+
+    const arrows=(sort,keys)=>Object.fromEntries(keys.map(k=>[k,sort.k===k?(sort.dir>0?'↑':'↓'):'↕']));
+    const sorts=(w,keys)=>Object.fromEntries(keys.map(k=>[k,()=>this.sortBy(w,k)]));
+    const IK=['period','branch','demand','share','recv','bal','last'], EK=['id','period','branch','head','amount','ret','disc'];
+    const granBtns=(cur,key)=>['daily','weekly','monthly'].map(g=>({label:g[0].toUpperCase()+g.slice(1),bg:cur===g?'#fff':'transparent',fg:cur===g?'#2A2145':'#E4DEF6',onClick:()=>this.setState({[key]:g,[key==='incGran'?'incPg':'expPg']:0})}));
+    const perLbl=g=>g==='monthly'?'Month':g==='weekly'?'Week':'Date';
+
+    // drill-down
+    let drawer={rows:[],def:{}};
+    if(s.drill){
+      const q=s.drill, def=DEFS[q.metric];
+      const inB=x=>(!q.bid||x.bid===q.bid)&&(!q.bucket||this.bucketOf(q.gran,ym,x.d)===q.bucket)&&(!q.head||x.head===q.head);
+      const src=q.metric==='received'?D.recv:q.metric==='ledger'?D.exp:D.prod;
+      const recs=src.filter(inB).sort((a,b)=>a.d-b.d||a.bid.localeCompare(b.bid)).map(x=>({id:x.id,date:`${pad(x.d)} ${monShort(ym)}`,branch:bName(x.bid),status:'Approved',
+        audit:src===D.prod?`Branch-approved · Production ${x.id}`:`Approved by ${APPROVERS[hash(x.id)%3]} · ${pad(x.d)} ${monShort(ym)}`,
+        ref:q.metric==='received'?x.ref:q.metric==='ledger'?x.head:q.metric==='share'?`${x.did} · ${fmt(x.demand)}`:x.did,
+        amt:q.metric==='demand'?x.demand:q.metric==='share'?x.share:q.metric==='ret'?x.ret:q.metric==='disc'?x.disc:x.amount}));
+      const size=12,pages=Math.max(1,Math.ceil(recs.length/size)),p=Math.min(s.dPg,pages-1);
+      const parts=[q.bid?bName(q.bid)+' Branch':scopeLabel,q.bucket?this.bucketLabel(q.gran,ym,q.bucket):monLong(ym)];if(q.head)parts.push(q.head);
+      drawer={title:def.title+' · source records',subtitle:parts.join(' · '),idLabel:def.idLabel,refLabel:def.refLabel,def,
+        rows:recs.slice(p*size,(p+1)*size).map(r=>({...r,amount:fmt(r.amt)})),total:fmt(sum(recs,r=>r.amt)),
+        pageText:recs.length?`${p*size+1}–${Math.min(recs.length,(p+1)*size)} of ${recs.length} records`:'No records',
+        noPrev:p===0,noNext:p>=pages-1,prev:()=>this.setState({dPg:p-1}),next:()=>this.setState({dPg:p+1})};
+    }
+
+    return {
+      monthOpts:MONTHS.slice(3).map(m=>({value:m,label:monLong(m)})).reverse(),
+      month:ym, onMonth:e=>this.setFilter({month:e.target.value}),
+      branchOpts:locked?[{value:'BR-01',label:bName('BR-01')}]:[{value:'all',label:'All Branches'},...BRANCHES.map(b=>({value:b.id,label:b.name}))],
+      branch, branchLocked:locked, onBranch:e=>this.setFilter({branch:e.target.value}),
+      resetFilters:()=>this.setFilter({month:TODAY.ym,branch:'all',expHead:'all',expQ:'',expDay:'all',incGran:'monthly',expGran:'daily',retried:true}),
+      showSampleNote:this.props.showSampleNote??true, offline:s.offline,
+      isLoading, isError:!isLoading&&ds==='error', isEmpty:!isLoading&&ds==='empty', isLive:!isLoading&&ds==='live',
+      retry:()=>this.setFilter({retried:true}), skel5:[1,2,3,4,5],
+      monthLabel:monLong(ym), prevMonthLabel:prevYm?monLong(prevYm):'Opening', scopeLabel, isAll,
+      incCards, expCards, expSummary, expBars, days, dayTicks:ticks(dMax),
+      trend:{demand:pts('demand'),share:pts('share'),recv:pts('recv'),bal:pts('bal')}, trendTicks:ticks(tMax),
+      trendMonths:tm.map(m=>({label:monShort(m),weight:m===ym?800:400})),
+      recon:{last:fmt(T.last),share:fmt(T.share),recv:fmt(T.recv),bal:fmt(T.bal),closing:fmt(T.closing),rate:rate.toFixed(0)+'%',ring:`conic-gradient(#E8955C 0 ${Math.min(rate,100)}%, #EEEAF8 ${Math.min(rate,100)}% 100%)`},
+      branchInc, branchExp, donuts, weeks,
+      expTrend:{ledger:eP('exp'),ret:eP('ret'),disc:eP('disc'),total:eP('tot')}, expTicks:ticks(eMax),
+      expDays:eS.map(x=>({title:`${pad(x.d)} ${monShort(ym)} · Ledger ${fmt(x.exp)} · Return ${fmt(x.ret)} · Discount ${fmt(x.disc)} · Total ${fmt(x.tot)}`})),
+      expQ:s.expQ, onExpQ:e=>this.setState({expQ:e.target.value,expPg:0}),
+      expDay:s.expDay, onExpDay:e=>this.setState({expDay:e.target.value,expPg:0}),
+      dayOpts:[{value:'all',label:'All dates'},...[...new Set([...D.exp,...D.prod].map(x=>x.d))].sort((a,b)=>a-b).map(d=>({value:String(d),label:`${pad(d)} ${monShort(ym)}`}))],
+      incGranBtns:granBtns(ig,'incGran'), expGranBtns:granBtns(eg,'expGran'),
+      incPeriodLabel:perLbl(ig), expPeriodLabel:perLbl(eg),
+      sI:sorts('inc',IK), aI:arrows(s.incSort,IK), sE:sorts('exp',EK), aE:arrows(s.expSort,EK),
+      incRows, incPager:ip, incTot:{demand:fmt(T.demand),share:fmt(T.share),recv:fmt(T.recv),bal:fmt(T.bal),last:ig==='monthly'?fmt(T.last):'—'},
+      expRows, expPager:ep, expTot:{amount:fmt(fl(expAll.map(r=>r.amount))),ret:fmt(fl(expAll.map(r=>r.ret))),disc:fmt(fl(expAll.map(r=>r.disc)))},
+      headOpts:[{value:'all',label:'All ledger heads'},...heads.map(x=>({value:x.h,label:x.h})),{value:'prod',label:'Production (Return / Discount)'}],
+      expHead:s.expHead, onExpHead:e=>this.setState({expHead:e.target.value,expPg:0}),
+      drawerOpen:!!s.drill, dr:drawer, closeDrill:()=>this.setState({drill:null})
+    };
+  }
+}
+</script>
+</body>
+</html>

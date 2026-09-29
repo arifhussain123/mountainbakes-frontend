@@ -82,6 +82,12 @@ export function DatabaseBackupPage() {
   const { token } = useAuth();
   const statusQ = useBackupStatus(token);
   const historyQ = useBackupHistory(token, { page: 1, pageSize: 100 });
+  // Spin only for a click — the background refresh tick swaps data in silently.
+  const [refreshing, setRefreshing] = useState(false);
+  const manualRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([statusQ.refetch(), historyQ.refetch()]); } finally { setRefreshing(false); }
+  };
   const restoreQ = useLatestRestoreTest(token);
   const verify = useVerifyBackup(token);
   const run = useRunBackup(token);
@@ -178,8 +184,8 @@ export function DatabaseBackupPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => { statusQ.refetch(); historyQ.refetch(); }} disabled={statusQ.isFetching}>
-            <RefreshCw className={cn('h-4 w-4 mr-1', statusQ.isFetching && 'animate-spin')} /> Refresh
+          <Button variant="outline" size="sm" onClick={() => void manualRefresh()} disabled={refreshing}>
+            <RefreshCw className={cn('h-4 w-4 mr-1', refreshing && 'animate-spin')} /> Refresh
           </Button>
           <Button size="sm" onClick={onCreateManual} disabled={run.isPending || notConfigured}>
             <HardDriveDownload className="h-4 w-4 mr-1" /> Create backup

@@ -179,13 +179,19 @@ export function AdminBranchStockPage() {
   // there is no single ledger to write to.
   const editing = !!branchId && branchId !== ALL_BRANCHES;
 
-  const { data: rows = [], isPending, isFetching, refetch } = useAdminStockRows(token ?? '', {
+  const { data: rows = [], isPending, refetch } = useAdminStockRows(token ?? '', {
     branchId,
     date,
     // ALL_BRANCHES is truthy, so the hook's own `!!branchId` guard would let it
     // fire and ask the API for a branch called "all".
     enabled: editing,
   });
+  // Spin only for a click — the background refresh tick swaps rows in silently.
+  const [refreshing, setRefreshing] = useState(false);
+  const manualRefresh = async () => {
+    setRefreshing(true);
+    try { await refetch(); } finally { setRefreshing(false); }
+  };
   // The same bridge the branch's own Stock page uses: a Production approval or a
   // sale landing while this page is open invalidates the whole ['stock'] prefix,
   // which this page's key sits under.
@@ -400,8 +406,8 @@ export function AdminBranchStockPage() {
         <Button variant="outline" onClick={resetDrafts} disabled={dirtyRows.length === 0 || busy}>
           Discard
         </Button>
-        <Button variant="ghost" onClick={() => refetch()} disabled={!branchId || isFetching}>
-          <RotateCcw className={cn('mr-1.5 h-4 w-4', isFetching && 'animate-spin')} /> Refresh
+        <Button variant="ghost" onClick={() => void manualRefresh()} disabled={!branchId || refreshing}>
+          <RotateCcw className={cn('mr-1.5 h-4 w-4', refreshing && 'animate-spin')} /> Refresh
         </Button>
         <p className="ml-auto text-sm text-muted-foreground">
           {branchName ? `${branchName} · ${date}` : 'Choose a branch'}
