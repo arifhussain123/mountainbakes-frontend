@@ -21,6 +21,8 @@ import { toast } from 'sonner';
 import {
   AlertTriangle,
   ArchiveRestore,
+  ArrowRight,
+  CheckCircle2,
   Copy,
   FileEdit,
   History,
@@ -30,6 +32,7 @@ import {
   Save,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Trash2,
   UserCog,
   Wand2,
@@ -44,6 +47,7 @@ import {
   FINANCE_TICKET_STATUS_LABELS,
   FINANCE_TICKET_TRANSITIONS,
   FINANCE_TICKET_VERSION_ACTION_LABELS,
+  financeAmendableValue,
   financeHelpDeskCan,
   isFinanceRecordAmendable,
   isFinanceTicketTerminal,
@@ -58,7 +62,7 @@ import {
 } from '@mb/shared';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { apiCall } from '@/utils/api';
+import { apiCall, ApiError } from '@/utils/api';
 import { useBranches } from '@/lib/queries';
 import {
   useFinanceMutation,
@@ -456,201 +460,492 @@ export function ReasonDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Correct the RECORD behind the query (migration 94) — unchanged in substance
+// Correct record — the RECORD behind the query, edited in place (migration 129)
+//
+// The Support Center's "Change figures" shape: every correctable field of the
+// linked record, prefilled from the live row → see what changes → note →
+// Apply & Resolve. All fields, the amendment rows, the resolve and the version
+// are written by one database function in one transaction, so a correction is
+// never half-applied. Which fields appear is FINANCE_AMENDABLE_FIELDS — the
+// mirror of amend_finance_record's whitelist — so nothing is offered that the
+// database would refuse (a posted voucher, for one, is corrected by amount only).
 // ---------------------------------------------------------------------------
 
-function AmendRecordDialog({
+const MONEY_INPUT = /^\d{1,12}(\.\d{1,2})?$/;
+const paisa = (v: string) => Math.round(Number(v || 0) * 100);
+/** Stable, so the prefilled values are not recomputed (and the form re-seeded) every render. */
+const NO_FIELDS: FinanceAmendableField[] = [];
+
+type CorrectionResult = {
+  applied: {
+    field: string;
+    label: string;
+    originalValue: string | null;
+    newValue: string | null;
+    difference: number | null;
+    ledger?: { ledgerAmended?: boolean; reversalVoucherNo?: string; correctedVoucherNo?: string };
+  }[];
+  summary: string;
+  ticket: FinanceTicket;
+};
+
+type RecordChange = { spec: FinanceAmendableField; from: string; to: string; difference: number | null };
+
+function CorrectRecordDialog({
   ticket,
   live,
   onClose,
-  onDone,
+  onReload,
+  onDeleteRecord,
 }: {
   ticket: FinanceTicket;
   live: Record<string, unknown> | null | undefined;
   onClose: () => void;
-  onDone: () => void;
+  /** Refetch the query and its live record — after a conflict. */
+  onReload: () => void;
+  onDeleteRecord: () => void;
 }) {
-  const mutation = useFinanceMutation();
+  const mutation = useFinanceMutation<CorrectionResult>();
   const { format } = useMoney();
+  const referenceType = ticket.referenceType!;
+  const fields = FINANCE_AMENDABLE_FIELDS[referenceType] ?? NO_FIELDS;
+  const typeLabel = FINANCE_TICKET_REFERENCE_LABELS[referenceType];
+  const recordDeleted = !live || Boolean(live['deletedAt']);
 
-  const fields: FinanceAmendableField[] = ticket.referenceType ? (FINANCE_AMENDABLE_FIELDS[ticket.referenceType] ?? []) : [];
+  const current = useMemo(
+    () => Object.fromEntries(fields.map((f) => [f.key, financeAmendableValue(referenceType, live, f.key)])) as Record<string, string>,
+    [fields, referenceType, live],
+  );
 
-  const [fieldKey, setFieldKey] = useState(fields[0]?.key ?? '');
-  const [newValue, setNewValue] = useState('');
-  const [reason, setReason] = useState('');
+  const [values, setValues] = useState<Record<string, string>>(current);
+  const [note, setNote] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [phase, setPhase] = useState<'edit' | 'confirm' | 'done'>('edit');
+  const [resolveIntent, setResolveIntent] = useState(true);
+  const [conflict, setConflict] = useState<string | null>(null);
+  const [result, setResult] = useState<CorrectionResult | null>(null);
 
-  const spec = fields.find((f) => f.key === fieldKey);
-  const current = live?.[fieldKey];
-  const currentText = current === undefined || current === null ? '' : String(current);
+  // A reload that brings a newer record re-seeds the form from it — adjusted
+  // during render, not in an effect (react-hooks/set-state-in-effect). Not once
+  // the correction is done: the refetch it triggers must not wipe the summary.
+  const [seededFrom, setSeededFrom] = useState(current);
+  if (phase !== 'done' && seededFrom !== current) {
+    setSeededFrom(current);
+    setValues(current);
+    setConflict(null);
+    setPhase('edit');
+  }
 
-  const status = String(live?.['status'] ?? '');
-  const isApproved = ['approved', 'posted', 'locked'].includes(status);
-  const action = isApproved ? 'overwrite' : 'amend';
+  const recordStatus = String(live?.['status'] ?? '');
+  const isApproved = ['approved', 'posted', 'locked'].includes(recordStatus);
+  const canResolve = FINANCE_TICKET_TRANSITIONS[ticket.status].includes('resolved') && !ticket.deletedAt;
 
-  const difference = (() => {
-    if (spec?.kind !== 'money') return null;
-    const a = Number(currentText);
-    const b = Number(newValue);
-    if (!Number.isFinite(a) || !Number.isFinite(b) || newValue.trim() === '') return null;
-    return b - a;
-  })();
+  const invalid = fields.filter((f) => f.kind === 'money' && !MONEY_INPUT.test((values[f.key] ?? '').trim())).map((f) => f.key);
 
-  async function submit() {
-    if (!spec) return;
+  const changes: RecordChange[] = fields.flatMap((spec): RecordChange[] => {
+    const from = current[spec.key] ?? '';
+    const to = (values[spec.key] ?? '').trim();
+    if (spec.kind === 'money') {
+      if (!MONEY_INPUT.test(to) || paisa(to) === paisa(from)) return [];
+      return [{ spec, from, to, difference: (paisa(to) - paisa(from)) / 100 }];
+    }
+    if (to === from.trim()) return [];
+    return [{ spec, from, to, difference: null }];
+  });
+
+  const shown = (spec: FinanceAmendableField, v: string) => {
+    if (spec.kind === 'money') return format(Number(v || 0));
+    if (spec.kind === 'select') return spec.options?.find((o) => o.value === v)?.label ?? (v || '—');
+    return v ? `“${v}”` : '—';
+  };
+  const signed = (d: number) => `${d > 0 ? '+' : '−'}${format(Math.abs(d))}`;
+  const repostsLedger = changes.some((c) => c.spec.movesLedger) && ['approved', 'posted', 'locked'].includes(recordStatus);
+
+  const blocked =
+    mutation.isPending || recordDeleted || changes.length === 0 || invalid.length > 0 || (isApproved && !confirmed);
+
+  function review(resolve: boolean) {
+    setResolveIntent(resolve && canResolve);
+    setPhase('confirm');
+  }
+
+  async function apply() {
     try {
-      await mutation.mutateAsync({
-        path: `/api/finance/tickets/${ticket.id}/amend`,
+      const res = await mutation.mutateAsync({
+        path: `/api/finance/tickets/${ticket.id}/correct-record`,
         body: {
-          action,
-          field: fieldKey,
-          newValue: newValue.trim(),
-          reason: reason.trim(),
-          ...(action === 'overwrite' ? { confirmOverwrite: confirmed } : {}),
+          edits: changes.map((c) => ({ field: c.spec.key, value: c.to, expected: c.from })),
+          ...(note.trim() ? { note: note.trim() } : {}),
+          resolve: resolveIntent,
+          expectedVersion: ticket.version,
+          ...(isApproved ? { confirmOverwrite: confirmed } : {}),
         },
       });
-      toast.success(`${ticket.referenceNo} corrected`);
-      onDone();
+      setResult(res);
+      setPhase('done');
+      toast.success(
+        resolveIntent ? `${ticket.referenceNo} corrected · ${ticket.queryNo} resolved` : `${ticket.referenceNo} corrected`,
+      );
     } catch (err) {
+      setPhase('edit');
+      if (err instanceof ApiError && err.status === 409 && (err.details as { code?: string } | undefined)?.code === 'conflict') {
+        setConflict(err.message);
+        return;
+      }
       toast.error(err instanceof Error ? err.message : 'The correction could not be applied');
     }
   }
 
-  const blocked =
-    mutation.isPending || !spec || newValue.trim() === '' || reason.trim().length < 3 || (action === 'overwrite' && !confirmed);
+  // ---- Done ----
+  if (phase === 'done' && result) {
+    const resolved = result.ticket.status === 'resolved';
+    return (
+      <Dialog open onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" /> Finance record corrected
+            </DialogTitle>
+            <DialogDescription>The record itself was changed, and every change is in the query&apos;s history.</DialogDescription>
+          </DialogHeader>
+          <dl className="space-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">Record</dt>
+              <dd className="font-mono font-medium">{ticket.referenceNo}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Changes</dt>
+              <dd>
+                <ul className="space-y-1">
+                  {result.applied.map((a) => {
+                    const spec = fields.find((f) => f.key === a.field);
+                    return (
+                      <li key={a.field} className="tabular-nums">
+                        <span className="text-muted-foreground">{a.label}: </span>
+                        {spec ? shown(spec, a.originalValue ?? '') : a.originalValue} →{' '}
+                        <span className="font-medium">{spec ? shown(spec, a.newValue ?? '') : a.newValue}</span>
+                        {a.ledger?.ledgerAmended && (
+                          <span className="block text-xs text-muted-foreground">
+                            {a.ledger.reversalVoucherNo} reversal · {a.ledger.correctedVoucherNo} corrected entry
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </dd>
+            </div>
+            <div className="flex flex-wrap gap-x-8 gap-y-3">
+              <div>
+                <dt className="text-xs text-muted-foreground">Query</dt>
+                <dd className="font-mono font-medium">{ticket.queryNo}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Status</dt>
+                <dd>
+                  <QueryStatusBadge status={result.ticket.status} />
+                  {!resolved && <span className="ml-2 text-xs text-muted-foreground">(unchanged)</span>}
+                </dd>
+              </div>
+            </div>
+          </dl>
+          <DialogFooter>
+            <Button onClick={onClose}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
+  // ---- Confirm ----
+  if (phase === 'confirm') {
+    return (
+      <Dialog open onOpenChange={(v) => !v && !mutation.isPending && setPhase('edit')}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{resolveIntent ? 'Apply changes and resolve query?' : `Apply these changes to ${ticket.referenceNo}?`}</DialogTitle>
+            <DialogDescription>
+              {resolveIntent
+                ? `${ticket.referenceNo} is corrected and ${ticket.queryNo} is marked Resolved (Fixed), together — if either fails, neither happens.`
+                : `${ticket.referenceNo} is corrected. ${ticket.queryNo} keeps its current status.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
+            <RecordSide title="Current record" tone="muted">
+              {fields.map((spec) => (
+                <SideRow key={spec.key} label={spec.label} value={shown(spec, current[spec.key] ?? '')} />
+              ))}
+            </RecordSide>
+            <div className="flex items-center justify-center text-muted-foreground" aria-hidden>
+              <ArrowRight className="h-5 w-5 rotate-90 sm:rotate-0" />
+            </div>
+            <RecordSide title="Changed record" tone="changed">
+              {fields.map((spec) => {
+                const change = changes.find((c) => c.spec.key === spec.key);
+                return (
+                  <SideRow
+                    key={spec.key}
+                    label={spec.label}
+                    value={shown(spec, change ? change.to : (current[spec.key] ?? ''))}
+                    changed={Boolean(change)}
+                    extra={change?.difference ? signed(change.difference) : undefined}
+                    negative={(change?.difference ?? 0) < 0}
+                  />
+                );
+              })}
+            </RecordSide>
+          </div>
+
+          {repostsLedger && (
+            <p className="text-xs text-muted-foreground">
+              Posted figures are corrected with a reversal of the original voucher and a corrected entry dated today.
+              The original stays visible in the ledger.
+            </p>
+          )}
+          <p className="rounded-md bg-muted/60 px-3 py-2 text-sm">
+            <span className="text-xs text-muted-foreground">Note: </span>
+            {note.trim() || <span className="text-muted-foreground">none — the Query ID is recorded as the reason</span>}
+          </p>
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" disabled={mutation.isPending} onClick={() => setPhase('edit')}>
+              Cancel
+            </Button>
+            <Button variant={isApproved ? 'destructive' : 'default'} disabled={mutation.isPending} onClick={() => void apply()}>
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" /> Applying…
+                </>
+              ) : resolveIntent ? (
+                'Apply & Resolve'
+              ) : (
+                'Apply changes'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ---- Edit ----
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="md:max-w-lg">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {action === 'overwrite' ? 'Overwrite' : 'Correct'} {ticket.referenceNo}
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            Correct record — <span className="font-mono">{ticket.referenceNo}</span>
           </DialogTitle>
           <DialogDescription>
-            This changes the FINANCIAL RECORD, not the query. It is recorded against {ticket.queryNo} with
-            the original value, the new value and your reason.
+            {typeLabel} {ticket.referenceNo}
+            {live?.['branchName'] ? ` — ${String(live['branchName'])}` : ''}
+            {recordStatus ? ` · ${recordStatus.replace(/_/g, ' ')}` : ''}. Changes are written to the record itself, not to
+            the query.
           </DialogDescription>
         </DialogHeader>
 
-        {fields.length === 0 ? (
+        {recordDeleted ? (
+          <p className="text-sm text-muted-foreground">
+            {ticket.referenceNo} has been deleted, so there is nothing left to correct.
+          </p>
+        ) : fields.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing on this record can be changed directly.</p>
         ) : (
           <div className="space-y-4">
-            {isApproved && (
-              <div className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <p>
-                  <span className="font-semibold">Warning:</span> you are about to modify an approved financial
-                  record. This action will be recorded in the audit trail.
+            {conflict && (
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950/40">
+                <p className="flex gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  {conflict}
                 </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setConflict(null);
+                    onReload();
+                  }}
+                >
+                  <RotateCcw className="mr-1 h-4 w-4" /> Reload latest
+                </Button>
               </div>
             )}
 
-            <div className="space-y-1">
-              <Label htmlFor="amend-field">Field</Label>
-              <select
-                id="amend-field"
-                value={fieldKey}
-                onChange={(e) => {
-                  setFieldKey(e.target.value);
-                  setNewValue('');
-                }}
-                className={selectClass}
-              >
-                {fields.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-              {spec?.movesLedger && (
-                <p className="text-xs text-muted-foreground">
-                  This figure is in the cash book. Correcting it posts a reversal of the original voucher and a
-                  corrected entry beside it — the original stays visible.
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label>Original value</Label>
-                <Input value={currentText || '—'} readOnly className="bg-muted tabular-nums" />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="amend-value">New value</Label>
-                {spec?.kind === 'select' ? (
-                  // A closed list (a cash transfer's payment method): the
-                  // options come from the shared field spec, so the desk can
-                  // only pick a value the SQL accepts.
-                  <select
-                    id="amend-value"
-                    value={newValue}
-                    onChange={(e) => setNewValue(e.target.value)}
-                    className={selectClass}
-                    autoFocus
-                  >
-                    <option value="">Choose…</option>
-                    {(spec.options ?? []).map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input
-                    id="amend-value"
-                    value={newValue}
-                    onChange={(e) => setNewValue(e.target.value)}
-                    inputMode={spec?.kind === 'money' ? 'decimal' : 'text'}
-                    className="tabular-nums"
-                    autoFocus
-                  />
-                )}
-              </div>
-            </div>
-
-            {difference !== null && difference !== 0 && (
-              <p className="text-sm">
-                <span className="text-muted-foreground">Difference: </span>
-                <span className={difference < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}>
-                  {difference > 0 ? '+' : '−'} {format(Math.abs(difference))}
-                </span>
+            {referenceType === 'ledger_entry' && (
+              <p className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                A posted voucher is corrected by its amount only — its description, date and ledger head are part of the
+                entry. Applying posts a reversal of {ticket.referenceNo} and a corrected entry dated today.
               </p>
             )}
 
-            <div className="space-y-1">
-              <Label htmlFor="amend-reason">Reason</Label>
-              <Textarea
-                id="amend-reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={3}
-                placeholder="e.g. Incorrect branch collection entered"
-              />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {fields.map((spec) => {
+                const id = `cr-${spec.key}`;
+                const change = changes.find((c) => c.spec.key === spec.key);
+                const bad = invalid.includes(spec.key);
+                return (
+                  <div key={spec.key} className={cn('space-y-1', spec.kind === 'text' && 'sm:col-span-2')}>
+                    <Label htmlFor={id}>{spec.label}</Label>
+                    {spec.kind === 'select' ? (
+                      <select
+                        id={id}
+                        value={values[spec.key] ?? ''}
+                        onChange={(e) => setValues((prev) => ({ ...prev, [spec.key]: e.target.value }))}
+                        className={selectClass}
+                      >
+                        {!(spec.options ?? []).some((o) => o.value === current[spec.key]) && (
+                          <option value={current[spec.key] ?? ''}>{current[spec.key] || '—'}</option>
+                        )}
+                        {(spec.options ?? []).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        id={id}
+                        value={values[spec.key] ?? ''}
+                        onChange={(e) =>
+                          setValues((prev) => ({
+                            ...prev,
+                            [spec.key]: spec.kind === 'money' ? e.target.value.replace(/[^\d.]/g, '') : e.target.value,
+                          }))
+                        }
+                        inputMode={spec.kind === 'money' ? 'decimal' : 'text'}
+                        maxLength={spec.kind === 'money' ? 16 : 500}
+                        aria-invalid={bad || undefined}
+                        className={cn(spec.kind === 'money' && 'tabular-nums', bad && 'border-destructive')}
+                      />
+                    )}
+                    {bad ? (
+                      <p className="text-xs text-destructive">Enter an amount of 0 or more, with at most 2 decimals.</p>
+                    ) : change ? (
+                      <p className="text-xs text-muted-foreground">
+                        Was {shown(spec, change.from)}
+                        {change.difference !== null && (
+                          <span className={cn('ml-1 font-medium', change.difference < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400')}>
+                            ({signed(change.difference)})
+                          </span>
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
 
-            {action === 'overwrite' && (
-              <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
-                <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5" />
+            <Separator />
+
+            <section className="space-y-2">
+              <h4 className="text-sm font-semibold">Changes</h4>
+              {changes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No changes detected.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {changes.map((c) => (
+                    <li key={c.spec.key} className="flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
+                      <span className="w-full text-muted-foreground sm:w-32 sm:shrink-0">{c.spec.label}</span>
+                      <span className="text-muted-foreground line-through decoration-muted-foreground/50">{shown(c.spec, c.from)}</span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="font-medium">{shown(c.spec, c.to)}</span>
+                      {c.difference !== null && (
+                        <span className={c.difference < 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}>
+                          {signed(c.difference)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {isApproved && changes.length > 0 && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 h-4 w-4" />
                 <span>
-                  I understand this modifies an approved financial record, and that it will be recorded in the
-                  audit trail against {ticket.queryNo}.
+                  {ticket.referenceNo} is an approved financial record. I understand this overwrites it, and that the change is
+                  recorded in the audit trail against {ticket.queryNo}.
                 </span>
               </label>
+            )}
+
+            <div className="space-y-1">
+              <Label htmlFor="cr-note">Note (optional)</Label>
+              <Textarea id="cr-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} placeholder="Reason for the change" />
+            </div>
+
+            {!canResolve && (
+              <p className="text-xs text-muted-foreground">
+                {ticket.queryNo} is {FINANCE_TICKET_STATUS_LABELS[ticket.status]}, so the correction is applied without changing its status.
+              </p>
             )}
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
+        <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button
+            variant="ghost"
+            className="text-destructive"
+            disabled={mutation.isPending || recordDeleted}
+            onClick={onDeleteRecord}
+          >
+            <Trash2 className="mr-1 h-4 w-4" /> Delete record
           </Button>
-          <Button variant={action === 'overwrite' ? 'destructive' : 'default'} disabled={blocked} onClick={() => void submit()}>
-            {mutation.isPending ? 'Applying…' : action === 'overwrite' ? 'Overwrite record' : 'Apply correction'}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            {canResolve && (
+              <Button variant="secondary" disabled={blocked} onClick={() => review(false)} title="Correct the record and leave the query open">
+                Apply only
+              </Button>
+            )}
+            <Button disabled={blocked} onClick={() => review(canResolve)}>
+              {canResolve ? 'Apply & Resolve' : 'Apply correction'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function RecordSide({ title, tone, children }: { title: string; tone: 'muted' | 'changed'; children: React.ReactNode }) {
+  return (
+    <div className={cn('min-w-0 rounded-lg border p-3', tone === 'muted' ? 'bg-muted/40' : 'border-primary/40 bg-primary/5')}>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <dl className="space-y-1.5">{children}</dl>
+    </div>
+  );
+}
+
+function SideRow({
+  label,
+  value,
+  changed,
+  extra,
+  negative,
+}: {
+  label: string;
+  value: string;
+  changed?: boolean;
+  extra?: string;
+  negative?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 justify-between gap-3 text-sm">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className={cn('min-w-0 break-words text-right tabular-nums', changed && 'font-semibold')}>
+        {value}
+        {extra && (
+          <span className={cn('block text-xs font-medium', negative ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400')}>
+            {extra}
+          </span>
+        )}
+      </dd>
+    </div>
   );
 }
 
@@ -1321,7 +1616,6 @@ type Pending =
   | { kind: 'assign' }
   | { kind: 'deleteQuery' }
   | { kind: 'deleteRecord' }
-  | { kind: 'correctRecord' }
   | { kind: 'reopen' }
   | { kind: 'history' }
   | { kind: 'status'; target: FinanceTicketStatus };
@@ -1332,12 +1626,15 @@ function QueryDetailBody({
   onClose,
   onRefetch,
   onOpenOther,
+  onCorrectRecord,
 }: {
   ticket: FinanceTicket;
   live: Record<string, unknown> | null | undefined;
   onClose: () => void;
   onRefetch: () => void;
   onOpenOther?: (id: string) => void;
+  /** Opens Correct record — hosted by the outer dialog so it outlives this body's remount. */
+  onCorrectRecord: () => void;
 }) {
   const abilities = useHelpDeskAbilities();
   const { user, token } = useAuth();
@@ -1524,7 +1821,14 @@ function QueryDetailBody({
           <>
             <Separator />
             <section className="space-y-3">
-              <h4 className="text-sm font-semibold">Referenced record</h4>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold">Referenced record</h4>
+                {canTouchRecord && !recordDeleted && (
+                  <Button size="sm" onClick={onCorrectRecord}>
+                    <SlidersHorizontal className="mr-1 h-4 w-4" /> Correct {ticket.referenceNo}
+                  </Button>
+                )}
+              </div>
               <RecordFigures record={ticket.referenceSnapshot} heading={`As raised · ${ticket.referenceNo}`} />
               {abilities.admin && live && <RecordFigures record={live} heading={`Now · ${ticket.referenceNo}`} />}
               {!abilities.admin && (
@@ -1678,7 +1982,11 @@ function QueryDetailBody({
                     variant="secondary"
                     disabled={!adminFeeds || terminal || feedIncomplete || mutation.isPending}
                     onClick={() => setPending({ kind: 'amend' })}
-                    title={terminal ? 'Reopen the query to amend it' : 'Save the form as a new AMENDED version, with a reason'}
+                    title={
+                      terminal
+                        ? 'Reopen the query to amend it'
+                        : 'Save the QUERY form as a new AMENDED version, with a reason. The financial record is not changed — use Correct record for that.'
+                    }
                   >
                     <Wand2 className="mr-1 h-4 w-4" /> Amend
                   </Button>
@@ -1707,9 +2015,9 @@ function QueryDetailBody({
                             ? 'That record has already been deleted'
                             : 'Change the financial record behind this query'
                     }
-                    onClick={() => setPending({ kind: 'correctRecord' })}
+                    onClick={onCorrectRecord}
                   >
-                    Correct record
+                    <SlidersHorizontal className="mr-1 h-4 w-4" /> Correct record
                   </Button>
                   <Button size="sm" variant="ghost" className="text-destructive" disabled={!canTouchRecord || recordDeleted} onClick={() => setPending({ kind: 'deleteRecord' })}>
                     <Trash2 className="mr-1 h-4 w-4" /> Delete record
@@ -1812,7 +2120,6 @@ function QueryDetailBody({
         />
       )}
       {pending?.kind === 'history' && <HistoryDialog ticket={ticket} onClose={() => setPending(null)} />}
-      {pending?.kind === 'correctRecord' && <AmendRecordDialog ticket={ticket} live={live} onClose={() => setPending(null)} onDone={done} />}
       {pending?.kind === 'deleteRecord' && <DeleteRecordDialog ticket={ticket} onClose={() => setPending(null)} onDone={done} />}
       {pending?.kind === 'assign' && <AssignDialog ticket={ticket} onClose={() => setPending(null)} onDone={done} />}
       {pending?.kind === 'deleteQuery' && <DeleteQueryDialog ticket={ticket} onClose={() => setPending(null)} onDone={done} />}
@@ -1838,6 +2145,10 @@ export function FinanceQueryDetailDialog({
 }) {
   const { data: ticket, isLoading, error, refetch } = useFinanceTicket(ticketId);
   const live = (ticket as (FinanceTicket & { liveRecord?: Record<string, unknown> | null }) | undefined)?.liveRecord;
+  // Correct record lives here, outside the body: applying it bumps the query's
+  // version, which remounts the body (it is keyed on the version) — and would
+  // take the correction's success summary with it.
+  const [recordAction, setRecordAction] = useState<'correct' | 'delete' | null>(null);
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -1861,6 +2172,26 @@ export function FinanceQueryDetailDialog({
             onClose={onClose}
             onRefetch={() => void refetch()}
             onOpenOther={onOpenOther}
+            onCorrectRecord={() => setRecordAction('correct')}
+          />
+        )}
+        {ticket && recordAction === 'correct' && (
+          <CorrectRecordDialog
+            ticket={ticket}
+            live={live}
+            onClose={() => setRecordAction(null)}
+            onReload={() => void refetch()}
+            onDeleteRecord={() => setRecordAction('delete')}
+          />
+        )}
+        {ticket && recordAction === 'delete' && (
+          <DeleteRecordDialog
+            ticket={ticket}
+            onClose={() => setRecordAction('correct')}
+            onDone={() => {
+              setRecordAction(null);
+              void refetch();
+            }}
           />
         )}
       </DialogContent>
