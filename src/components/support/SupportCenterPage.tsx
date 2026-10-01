@@ -237,7 +237,13 @@ interface StockCorrectionResult {
 }
 
 export function SupportCenterPage() {
-  const [source, setSource] = useState<SupportSource>('all');
+  // `?source=finance` is how the old Finance Help Desk URL lands on its tab.
+  // Read from window.location rather than useSearchParams — static export.
+  const [source, setSource] = useState<SupportSource>(() => {
+    if (typeof window === 'undefined') return 'all';
+    const wanted = new URLSearchParams(window.location.search).get('source');
+    return (SOURCES as readonly string[]).includes(wanted ?? '') ? (wanted as SupportSource) : 'all';
+  });
   const { token } = useAuth();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [total, setTotal] = useState(0);
@@ -327,6 +333,8 @@ export function SupportCenterPage() {
   const financeOpenCount = financeStats
     ? financeStats.open + financeStats.underReview + financeStats.waiting + financeStats.amended + financeStats.reopened
     : 0;
+  // Every finance query on the queue — what the Finance section's table lists.
+  const financeTotal = financeStats?.total ?? 0;
 
   const columns = [
     col.accessor('ticketNumber', {
@@ -521,12 +529,19 @@ export function SupportCenterPage() {
         </div>
       </div>
 
+      {source === 'all' && (
+        <p className="text-sm text-muted-foreground">
+          {total + financeTotal} quer{total + financeTotal === 1 ? 'y' : 'ies'} raised from branches,
+          production and finance.
+        </p>
+      )}
+
       {showOperations && (
         <section className="space-y-3">
           {source === 'all' && (
-            <h3 className="text-sm font-semibold">Branches &amp; Production</h3>
+            <h3 className="text-sm font-semibold">Branches &amp; Production ({total})</h3>
           )}
-          <p className="text-sm text-muted-foreground">
+          <p className={cn('text-sm text-muted-foreground', source === 'all' && 'hidden')}>
             {total} quer{total === 1 ? 'y' : 'ies'} raised from{' '}
             {source === 'branch'
               ? 'branches'
@@ -572,8 +587,10 @@ export function SupportCenterPage() {
           for beside every Query ID. */}
       {showFinance && (
         <section className="space-y-3">
-          {source === 'all' && <h3 className="text-sm font-semibold">Finance Queries</h3>}
-          <FinanceHelpDeskPage embedded sourceTag />
+          {source === 'all' && <h3 className="text-sm font-semibold">Finance Queries ({financeTotal})</h3>}
+          {/* Under "All" the cards are dropped so the finance rows sit directly
+              below the branch and production rows, not a screen further down. */}
+          <FinanceHelpDeskPage embedded sourceTag cards={source === 'finance'} />
         </section>
       )}
 

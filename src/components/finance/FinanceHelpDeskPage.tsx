@@ -21,6 +21,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { ApiError } from '@/utils/api';
 import { toast } from 'sonner';
 import {
   AlertOctagon,
@@ -38,12 +42,15 @@ import {
   Headset,
   History,
   Inbox,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   Send,
   ShieldAlert,
+  SlidersHorizontal,
   Timer,
   Trash2,
   Wand2,
@@ -61,23 +68,27 @@ import {
   FINANCE_QUERY_PRIORITY_LABELS,
   FINANCE_QUERY_TYPES,
   FINANCE_QUERY_TYPE_LABELS,
+  FINANCE_TICKET_PREFIXES,
   FINANCE_TICKET_REFERENCE_LABELS,
   FINANCE_TICKET_REOPENABLE_STATUSES,
   FINANCE_TICKET_STATUSES,
   FINANCE_TICKET_STATUS_LABELS,
   FINANCE_TICKET_TRANSITIONS,
+  isFinanceRecordAmendable,
   isFinanceTicketTerminal,
   type Attachment,
   type FilterConfig,
   type FinanceQueryPriority,
   type FinanceQueryType,
   type FinanceTicket,
+  type FinanceTicketReferenceLookup,
   type FinanceTicketStatus,
   type SortState,
 } from '@mb/shared';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useBranches } from '@/lib/queries';
 import {
+  lookupFinanceReference,
   useFinanceHelpDeskUsers,
   useFinanceMutation,
   useFinanceTicketStats,
@@ -85,6 +96,7 @@ import {
 } from '@/lib/finance';
 import { FinancePageHeader, useMoney } from './finance-ui';
 import {
+  ChangeFiguresDialog,
   DeleteQueryDialog,
   FinanceQueryDetailDialog,
   HistoryDialog,
@@ -94,9 +106,9 @@ import {
   StatusDialog,
   type QuickFeedMode,
 } from './FinanceQueryDetail';
-import { EMPTY_FEED, QueryFeedForm, feedToPayload, type FeedState } from './QueryFeedForm';
 import {
   QueryPriorityBadge,
+  RecordFigures,
   QueryStatusBadge,
   formatQueryDate,
   useHelpDeskAbilities,
@@ -135,7 +147,7 @@ type View = 'queue' | 'drafts' | 'deleted';
 type RowAction =
   | { kind: QuickFeedMode; ticket: FinanceTicket }
   | { kind: 'status'; ticket: FinanceTicket; target: FinanceTicketStatus }
-  | { kind: 'delete' | 'restore' | 'reopen' | 'history'; ticket: FinanceTicket };
+  | { kind: 'delete' | 'restore' | 'reopen' | 'history' | 'figures'; ticket: FinanceTicket };
 
 function IconBtn({
   children,
@@ -161,76 +173,204 @@ function IconBtn({
 // New Query (§2)
 // ---------------------------------------------------------------------------
 
+type LookupStatus = 'idle' | 'loading' | 'found' | 'not_found' | 'error';
+
+/** A lookup failure in words a Finance user can act on — never the raw error. */
+function lookupFailure(err: unknown): { status: LookupStatus; message: string } {
+  const status = err instanceof ApiError ? err.status : -1;
+  if (status === 404) {
+    return { status: 'not_found', message: 'Reference not found. Please check the Reference ID and try again.' };
+  }
+  if (status === 400) {
+    return {
+      status: 'not_found',
+      message: `That is not a reference this desk knows. It should start with ${REFERENCE_PREFIX_HINT}.`,
+    };
+  }
+  if (status === 401 || status === 403) {
+    return { status: 'error', message: 'You do not have access to this record.' };
+  }
+  if (status === 0) {
+    return {
+      status: 'error',
+      message:
+        typeof navigator !== 'undefined' && navigator.onLine === false
+          ? 'You are offline. Reconnect and try again.'
+          : 'Unable to load this record right now. Please try again.',
+    };
+  }
+  return { status: 'error', message: 'Unable to load this record right now. Please try again.' };
+}
+
+const REFERENCE_PREFIX_HINT = FINANCE_TICKET_PREFIXES.map((p) => `${p}-`).join(', ');
+
+/**
+ * Reference first, like the branch Help Desk's New Query: type the record's ID,
+ * Find it, read what the books say, describe what is wrong. The type, amount,
+ * branch and date are read from the record by the API when the query is saved,
+ * so nothing the user could have copied wrong is ever typed here.
+ */
 function NewQueryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { token } = useAuth();
   const mutation = useFinanceMutation<{ ticket: FinanceTicket }>();
-  const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) && open });
 
-  const [feed, setFeed] = useState<FeedState>(EMPTY_FEED);
+  const [referenceId, setReferenceId] = useState('');
+  const [lookupStatus, setLookupStatus] = useState<LookupStatus>('idle');
+  const [lookupError, setLookupError] = useState('');
+  const [reference, setReference] = useState<FinanceTicketReferenceLookup | null>(null);
+  const [description, setDescription] = useState('');
+  const [remarks, setRemarks] = useState('');
   const [photos, setPhotos] = useState<Attachment[]>([]);
-  const [saving, setSaving] = useState<'submit' | 'draft' | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   // Remounted via `key` each time it opens, so state starts fresh with no reset effect.
 
-  async function save(draft: boolean) {
+  const looking = lookupStatus === 'loading';
+
+  async function handleLookup() {
+    const ref = referenceId.trim().toUpperCase();
+    if (!ref || looking) return;
+    setLookupStatus('loading');
+    setLookupError('');
+    setReference(null);
+    try {
+      const found = await lookupFinanceReference(ref, token);
+      setReference(found);
+      setReferenceId(found.referenceNo);
+      setLookupStatus('found');
+    } catch (err) {
+      const failure = lookupFailure(err);
+      setLookupStatus(failure.status);
+      setLookupError(failure.message);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!reference || submitting) return;
     const parsed = CreateFinanceTicketSchema.safeParse({
-      ...feedToPayload(feed),
+      referenceNo: reference.referenceNo,
+      description,
+      remarks: remarks.trim() || null,
       attachmentIds: photos.map((p) => p.id),
-      draft,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? 'Please complete the form');
       return;
     }
-    setSaving(draft ? 'draft' : 'submit');
+    setSubmitting(true);
     try {
       const { ticket } = await mutation.mutateAsync({ path: '/api/finance/tickets', body: parsed.data });
-      toast.success(draft ? `Draft ${ticket.queryNo} saved` : `${ticket.queryNo} sent to the Admin`);
+      toast.success(`Query submitted successfully. Query ID: ${ticket.queryNo}`);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save the query');
+      const status = err instanceof ApiError ? err.status : -1;
+      toast.error(
+        status === 0 || status >= 500
+          ? 'Unable to submit the query right now. Please try again.'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to submit the query',
+      );
     } finally {
-      setSaving(null);
+      setSubmitting(false);
     }
   }
 
-  const incomplete = feed.subject.trim().length < 3 || feed.description.trim().length < 3;
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
+    <Dialog open={open} onOpenChange={(v) => !submitting && onOpenChange(v)}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Query</DialogTitle>
           <DialogDescription>
-            Report a financial issue, an incorrect transaction, a calculation problem or a data
-            discrepancy. It goes straight to the Admin — the Query ID is assigned when you save.
+            Search a ledger voucher (RV-/PV-/FV-…), branch income (INC-…), transaction (FTX-…),
+            salary (SAL-…), advance (ADV-…), partner expense (PEX-…), branch share (BSP-…), sale
+            (MB-…) or cash transfer (CT-…) ID. Its details load automatically — then describe the
+            issue for the admin.
           </DialogDescription>
         </DialogHeader>
 
-        <QueryFeedForm value={feed} onChange={setFeed} branches={branches} idPrefix="nq" />
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="nq-ref">Reference ID</Label>
+            <div className="flex gap-2">
+              <Input
+                id="nq-ref"
+                value={referenceId}
+                onChange={(e) => {
+                  // A different ID is a different record: drop the loaded one so
+                  // the query can never be sent against what was found before.
+                  setReferenceId(e.target.value);
+                  setReference(null);
+                  setLookupStatus('idle');
+                  setLookupError('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleLookup();
+                  }
+                }}
+                placeholder="e.g. PV-000012"
+                disabled={submitting}
+                autoFocus
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void handleLookup()}
+                disabled={looking || submitting || !referenceId.trim()}
+              >
+                {looking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                <span className="ml-1">{looking ? 'Searching…' : 'Find'}</span>
+              </Button>
+            </div>
+            {lookupError && <p className="text-xs text-destructive">{lookupError}</p>}
+          </div>
 
-        <PhotoCapture
-          entity="finance_ticket"
-          value={photos}
-          onChange={setPhotos}
-          label="Attachments"
-          hint="Optional — a photo of the slip, statement or screen"
-        />
+          {reference && (
+            <>
+              <RecordFigures record={reference.snapshot} heading={`${reference.label} · ${reference.referenceNo}`} />
 
-        <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving !== null}>
+              <div className="space-y-1">
+                <Label htmlFor="nq-desc">Describe the issue</Label>
+                <Textarea
+                  id="nq-desc"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What looks wrong, and what did you expect instead?"
+                  rows={4}
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="nq-remarks">Remarks</Label>
+                <Textarea
+                  id="nq-remarks"
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  placeholder="Optional"
+                  rows={2}
+                  disabled={submitting}
+                />
+              </div>
+
+              <PhotoCapture
+                entity="finance_ticket"
+                value={photos}
+                onChange={setPhotos}
+                label="Attachments"
+                hint="Optional — photo of slip, statement, receipt, or supporting document"
+              />
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            variant="secondary"
-            onClick={() => void save(true)}
-            disabled={saving !== null || incomplete}
-            title="Keep it with you. Nothing is sent until you submit."
-          >
-            <FileEdit className="mr-1 h-4 w-4" />
-            {saving === 'draft' ? 'Saving…' : 'Save Draft'}
-          </Button>
-          <Button onClick={() => void save(false)} disabled={saving !== null || incomplete}>
-            {saving === 'submit' ? 'Sending…' : 'Submit Query'}
+          <Button onClick={() => void handleSubmit()} disabled={submitting || !reference || description.trim().length < 3}>
+            {submitting ? 'Sending…' : 'Submit to Admin'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -278,8 +418,11 @@ function DashboardCards({ isAdmin }: { isAdmin: boolean }) {
 export function FinanceHelpDeskPage({
   embedded = false,
   sourceTag = false,
+  cards = true,
 }: {
   embedded?: boolean;
+  /** The summary cards. Off under the Support Center's "All", where two queues share the page. */
+  cards?: boolean;
   /**
    * Renders the FINANCE badge beside every Query ID — on inside the Admin
    * Support Center, where this table sits beside the branch and production
@@ -545,6 +688,14 @@ export function FinanceHelpDeskPage({
           const canReject = nexts.includes('rejected');
           const canReopen = !deleted && (FINANCE_TICKET_REOPENABLE_STATUSES as readonly FinanceTicketStatus[]).includes(t.status);
           const canFeed = abilities.admin && !deleted && !draft;
+          // The record behind the query, not the query: only where there is one this desk may change.
+          const canChangeFigures =
+            canFeed && Boolean(t.referenceType) && Boolean(t.referenceId) && isFinanceRecordAmendable(t.referenceType);
+          const figuresTitle = canChangeFigures
+            ? `Change figures — ${t.referenceNo}`
+            : t.referenceType
+              ? 'This record cannot be changed from here'
+              : 'This query names no finance record';
 
           if (!abilities.admin) {
             // A Finance user: open the query, or — on their own draft — edit and submit it.
@@ -582,6 +733,12 @@ export function FinanceHelpDeskPage({
                   </IconBtn>
                 ) : (
                   <>
+                    <IconBtn title="Edit" disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title={figuresTitle} disabled={!canChangeFigures} onClick={() => setRowAction({ kind: 'figures', ticket: t })}>
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                    </IconBtn>
                     <IconBtn title={terminal ? 'Reopen to amend' : 'Amend'} disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}>
                       <Wand2 className="h-3.5 w-3.5" />
                     </IconBtn>
@@ -623,6 +780,8 @@ export function FinanceHelpDeskPage({
                     <DropdownMenuItem onClick={() => setRowAction({ kind: 'restore', ticket: t })}><ArchiveRestore className="h-4 w-4" /> Restore</DropdownMenuItem>
                   ) : (
                     <>
+                      <DropdownMenuItem disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                      <DropdownMenuItem disabled={!canChangeFigures} onClick={() => setRowAction({ kind: 'figures', ticket: t })}><SlidersHorizontal className="h-4 w-4" /> Change figures</DropdownMenuItem>
                       <DropdownMenuItem disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}><Wand2 className="h-4 w-4" /> Amend</DropdownMenuItem>
                       {nexts.map((s) => (
                         <DropdownMenuItem key={s} onClick={() => setRowAction({ kind: 'status', ticket: t, target: s })}>
@@ -736,7 +895,7 @@ export function FinanceHelpDeskPage({
         />
       )}
 
-      <DashboardCards isAdmin={abilities.admin} />
+      {cards && <DashboardCards isAdmin={abilities.admin} />}
 
       <FilterBar
         list={list}
@@ -810,7 +969,7 @@ export function FinanceHelpDeskPage({
       )}
 
       {/* Row actions — the same dialogs the detail screen uses, opened from the row. */}
-      {rowAction && (rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
+      {rowAction && (rowAction.kind === 'edit' || rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
         <QuickFeedDialog
           ticket={rowAction.ticket}
           mode={rowAction.kind}
@@ -826,6 +985,9 @@ export function FinanceHelpDeskPage({
       )}
       {rowAction?.kind === 'reopen' && (
         <ReopenDialog ticket={rowAction.ticket} isAdmin={abilities.admin} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'figures' && (
+        <ChangeFiguresDialog ticketId={rowAction.ticket.id} onClose={() => setRowAction(null)} />
       )}
       {rowAction?.kind === 'history' && <HistoryDialog ticket={rowAction.ticket} onClose={() => setRowAction(null)} />}
       {rowAction?.kind === 'restore' && (
