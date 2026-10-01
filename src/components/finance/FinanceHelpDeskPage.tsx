@@ -95,8 +95,8 @@ import {
   useFinanceTickets,
 } from '@/lib/finance';
 import { FinancePageHeader, useMoney } from './finance-ui';
+import { ChangeFiguresDialog } from './FinanceRecordCorrectionPopup';
 import {
-  ChangeFiguresDialog,
   DeleteQueryDialog,
   FinanceQueryDetailDialog,
   HistoryDialog,

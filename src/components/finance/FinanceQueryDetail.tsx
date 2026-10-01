@@ -1168,7 +1168,7 @@ export function StatusDialog({
 // Assign
 // ---------------------------------------------------------------------------
 
-function AssignDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket; onClose: () => void; onDone: () => void }) {
+export function AssignDialog({ ticket, onClose, onDone }: { ticket: FinanceTicket; onClose: () => void; onDone: () => void }) {
   const { token } = useAuth();
   const mutation = useFinanceMutation();
   const [admins, setAdmins] = useState<{ id: string; label: string }[]>([]);
@@ -2196,59 +2196,5 @@ export function FinanceQueryDetailDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Change figures — Correct record, opened straight from a queue row
-// ---------------------------------------------------------------------------
-
-/**
- * The same Correct record dialog the detail screen hosts, for a row that has no
- * detail screen to open it from. It loads the query itself, because the queue
- * row carries no live record and the correction is checked against that.
- */
-export function ChangeFiguresDialog({ ticketId, onClose }: { ticketId: string; onClose: () => void }) {
-  const { data: ticket, isLoading, error, refetch } = useFinanceTicket(ticketId);
-  const live = (ticket as (FinanceTicket & { liveRecord?: Record<string, unknown> | null }) | undefined)?.liveRecord;
-  const [deleting, setDeleting] = useState(false);
-
-  if (!ticket) {
-    return (
-      <Dialog open onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="md:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Change figures</DialogTitle>
-          </DialogHeader>
-          {isLoading || !error ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading record…
-            </div>
-          ) : (
-            <p className="py-2 text-sm text-destructive">{error instanceof Error ? error.message : 'Could not load the query'}</p>
-          )}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  if (deleting) {
-    return (
-      <DeleteRecordDialog
-        ticket={ticket}
-        onClose={() => setDeleting(false)}
-        onDone={onClose}
-      />
-    );
-  }
-
-  return (
-    <CorrectRecordDialog
-      ticket={ticket}
-      live={live}
-      onClose={onClose}
-      onReload={() => void refetch()}
-      onDeleteRecord={() => setDeleting(true)}
-    />
   );
 }
