@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { LedgerSummaryCards } from './LedgerSummaryCards';
 import { PendingCashTransfersPanel } from '@/components/cash-transfers/PendingCashTransfersPanel';
+import { PendingApprovalsPanel } from './PendingApprovalsPanel';
 import { CashTransferById } from '@/components/cash-transfers/CashTransferById';
 import { BookOpen, Eye, FileSpreadsheet, FileText, RotateCcw, Undo2 } from 'lucide-react';
 
@@ -283,6 +284,10 @@ export function DailyLedgerPage() {
       {/* Branch handovers not yet in the book — Approve / Reject / View from
           here, so the cash book's reader can clear the queue in place. */}
       <PendingCashTransfersPanel canDecide={abilities.approve} />
+
+      {/* Income, expense, partner, salary and advance documents not yet in the
+          book either — listed whatever their date, so an old one is not lost. */}
+      <PendingApprovalsPanel />
 
       <LedgerSummaryCards date={query.to ?? today} branchId={query.branchId} />
 
