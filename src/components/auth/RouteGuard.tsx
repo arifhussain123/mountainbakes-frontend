@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { canAccessFinance, getRoleHome } from '@/utils/roleHome';
-import { normalizePath, ROUTES } from '@/utils/routes';
+import { normalizePath } from '@/utils/routes';
 import { isBranchRole } from '@mb/shared';
 
 /**
@@ -121,13 +121,6 @@ function redirectFor(
   // /reset-password stays reachable while signed in: recovery establishes a real
   // session, so bouncing it to the role home would break the reset flow.
   if (pathname.startsWith('/reset-password')) return null;
-
-  // An admin works finance queries inside the Support Center; the standalone
-  // Finance Help Desk page is the Finance roles' own. Old links and bookmarks
-  // land where the queue now is rather than on a page the menu no longer offers.
-  if (user.role === 'super_admin' && pathname.startsWith(ROUTES.FINANCE_HELP_DESK)) {
-    return ROUTES.SUPPORT_CENTER;
-  }
 
   const wrongRole =
     (ADMIN_PREFIXES.some((p) => pathname.startsWith(p)) && user.role !== 'super_admin') ||

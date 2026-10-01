@@ -59,6 +59,9 @@ export const ADMIN_NAV: NavItem[] = [
   // the money, and it is where a branch's disputed day gets unlocked or amended.
   { label: 'Daily Sale Records', href: ROUTES.DAILY_SALE_RECORDS, icon: Scale },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
+  // The Finance Help Desk is also a tab inside the Support Center; this is the
+  // direct door for an Admin working the finance queue on its own.
+  { label: 'Finance Help Desk', href: ROUTES.FINANCE_HELP_DESK, icon: Headset },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
   { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
