@@ -28,6 +28,8 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
+import { useFinanceTicketStats } from '@/lib/finance';
 import { isBranchRole, cashTransferTotal } from '@mb/shared';
 import { cn } from '@/lib/utils';
 
@@ -43,15 +45,16 @@ const col = createColumnHelper<SupportTicket>();
  * query both come from a branch; a demand comes from a branch but is worked by
  * Production. It is derived from `raisedByRole`, which is who actually raised it.
  */
-type SupportSource = 'all' | 'branch' | 'production';
+type SupportSource = 'all' | 'finance' | 'branch' | 'production';
 
 const SOURCE_LABELS: Record<SupportSource, string> = {
   all: 'All',
+  finance: 'Finance',
   branch: 'Branch',
   production: 'Production',
 };
 
-const SOURCES = ['all', 'branch', 'production'] as const satisfies readonly SupportSource[];
+const SOURCES = ['all', 'finance', 'branch', 'production'] as const satisfies readonly SupportSource[];
 
 /**
  * A ticket's source, from the role that raised it.
@@ -71,6 +74,7 @@ function sourceOfTicket(ticket: SupportTicket): Exclude<SupportSource, 'all'> | 
 
 /** The badge that makes §5's "FINANCE / FIN-HD-…" identification literal. */
 const SOURCE_BADGE: Record<Exclude<SupportSource, 'all'>, string> = {
+  finance: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
   branch: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
   production: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
 };
@@ -263,10 +267,16 @@ export function SupportCenterPage() {
     };
   }
 
+  // Which queues the chosen source shows. 'all' shows both, stacked under their
+  // own headings; every other value shows exactly one.
+  const showFinance = source === 'all' || source === 'finance';
+  const showOperations = source !== 'finance';
+
   // Server-filtered and server-paginated: branch/production tickets, the
   // selected source, search and page all reach GET /api/support directly.
+  // Skipped entirely while only the Finance section is showing.
   useEffect(() => {
-    if (!token) return;
+    if (!token || !showOperations) return;
     let stale = false;
     void (async () => {
       setLoading(true);
@@ -286,7 +296,7 @@ export function SupportCenterPage() {
       }
     })();
     return () => { stale = true; };
-  }, [token, refreshKey, page, pageSize, search, source, sort]);
+  }, [token, refreshKey, page, pageSize, search, source, showOperations, sort]);
 
   useEffect(() => {
     if (!token) return;
@@ -308,6 +318,15 @@ export function SupportCenterPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to archive');
     }
   }
+
+  // Just for the Finance button's badge. The Finance section fetches the queue
+  // again with its own filters; this is the UNFILTERED count, which is what a
+  // badge should show — a "(3)" that moved when you filtered inside the section
+  // would be telling you about a different list than the one you were reading.
+  const { data: financeStats } = useFinanceTicketStats();
+  const financeOpenCount = financeStats
+    ? financeStats.open + financeStats.underReview + financeStats.waiting + financeStats.amended + financeStats.reopened
+    : 0;
 
   const columns = [
     col.accessor('ticketNumber', {
@@ -451,14 +470,29 @@ export function SupportCenterPage() {
         <div>
           <h2 className="text-lg font-semibold">Support Center</h2>
           <p className="text-sm text-muted-foreground">
-            Queries raised from branches and production — all of them land here.
+            Queries raised from branches, production and Finance — all of them land here.
           </p>
         </div>
       </div>
 
-      {/* §5's Source filter — a filter rather than tabs, because "All" has to
-          mean all: everything outstanding, from every source, without picking a
-          tab first. Finance queries are worked on the Finance Help Desk. */}
+      {/* §5's Source filter.
+          
+          It replaces a two-tab layout, and it is a filter rather than four tabs
+          because "All" has to mean all: an admin opening this desk in the
+          morning wants everything outstanding, from every source, without
+          picking a tab first.
+          
+          What it does NOT do is merge the two queues into one table, and that
+          restraint is deliberate. They share a shape and nothing else: an
+          operations ticket corrects a sale or a demand and is resolved by an
+          admin OR a manager, while a finance query corrects the BOOKS, can only
+          be resolved by an admin, and carries a reason, an amendment record and
+          a Query ID on every change. One table would mean an Action column that
+          means two different things depending on the row, and one Delete button
+          with two sets of consequences. Under "All" they are two sections with
+          two headings, each keeping its own controls — which is what §5 asks for
+          ("Finance queries must be clearly identified") rather than what it
+          would forbid. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">Source</span>
         {/* flex-wrap on the group, not just its container: four labels with
@@ -479,6 +513,7 @@ export function SupportCenterPage() {
               )}
             >
               {SOURCE_LABELS[s]}
+              {s === 'finance' && financeOpenCount > 0 ? ` (${financeOpenCount})` : ''}
               {s === 'branch' && stats.branchOpen > 0 ? ` (${stats.branchOpen})` : ''}
               {s === 'production' && stats.productionOpen > 0 ? ` (${stats.productionOpen})` : ''}
             </button>
@@ -486,43 +521,61 @@ export function SupportCenterPage() {
         </div>
       </div>
 
-      <section className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          {total} quer{total === 1 ? 'y' : 'ies'} raised from{' '}
-          {source === 'branch'
-            ? 'branches'
-            : source === 'production'
-              ? 'production'
-              : 'branches & production'}
-          .
-        </p>
-        <DataTable
-          columns={columns}
-          data={tickets}
-          loading={loading}
-          searchPlaceholder="Search tickets…"
-          pager={false}
-          sortable
-          manual={{
-            page,
-            pageSize,
-            total,
-            onPageChange: setPage,
-            search,
-            onSearchChange: setFilter(setSearch),
-            sorting: sortStateToTanstack(sort),
-            onSortingChange: (next) => setSort(tanstackToSortState(next)),
-          }}
-        />
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={setPage}
-          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
-          loading={loading}
-        />
-      </section>
+      {showOperations && (
+        <section className="space-y-3">
+          {source === 'all' && (
+            <h3 className="text-sm font-semibold">Branches &amp; Production</h3>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {total} quer{total === 1 ? 'y' : 'ies'} raised from{' '}
+            {source === 'branch'
+              ? 'branches'
+              : source === 'production'
+                ? 'production'
+                : 'branches & production'}
+            .
+          </p>
+          <DataTable
+            columns={columns}
+            data={tickets}
+            loading={loading}
+            searchPlaceholder="Search tickets…"
+            pager={false}
+            sortable
+            manual={{
+              page,
+              pageSize,
+              total,
+              onPageChange: setPage,
+              search,
+              onSearchChange: setFilter(setSearch),
+              sorting: sortStateToTanstack(sort),
+              onSortingChange: (next) => setSort(tanstackToSortState(next)),
+            }}
+          />
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+            loading={loading}
+          />
+        </section>
+      )}
+
+      {/* The Finance Help Desk itself, not a copy of it. The page already renders
+          the admin half of the queue for anyone `financeHelpDeskCan` says may
+          respond, so embedding it here gives the admin the same controls in both
+          places rather than a second implementation that drifts. `embedded`
+          drops its own page heading; `sourceTag` adds the FINANCE badge §5 asks
+          for beside every Query ID. */}
+      {showFinance && (
+        <section className="space-y-3">
+          {source === 'all' && <h3 className="text-sm font-semibold">Finance Queries</h3>}
+          <FinanceHelpDeskPage embedded sourceTag />
+        </section>
+      )}
 
       {active && mode === 'view' && <ViewDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
       {active && mode === 'edit' && <EditDialog ticket={active} onClose={closeDialog} onDone={() => { closeDialog(); reload(); }} />}
