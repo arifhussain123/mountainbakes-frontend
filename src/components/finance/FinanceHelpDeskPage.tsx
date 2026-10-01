@@ -582,9 +582,6 @@ export function FinanceHelpDeskPage({
                   </IconBtn>
                 ) : (
                   <>
-                    <IconBtn title="Edit" disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </IconBtn>
                     <IconBtn title={terminal ? 'Reopen to amend' : 'Amend'} disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}>
                       <Wand2 className="h-3.5 w-3.5" />
                     </IconBtn>
@@ -626,7 +623,6 @@ export function FinanceHelpDeskPage({
                     <DropdownMenuItem onClick={() => setRowAction({ kind: 'restore', ticket: t })}><ArchiveRestore className="h-4 w-4" /> Restore</DropdownMenuItem>
                   ) : (
                     <>
-                      <DropdownMenuItem disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
                       <DropdownMenuItem disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}><Wand2 className="h-4 w-4" /> Amend</DropdownMenuItem>
                       {nexts.map((s) => (
                         <DropdownMenuItem key={s} onClick={() => setRowAction({ kind: 'status', ticket: t, target: s })}>
@@ -814,7 +810,7 @@ export function FinanceHelpDeskPage({
       )}
 
       {/* Row actions — the same dialogs the detail screen uses, opened from the row. */}
-      {rowAction && (rowAction.kind === 'edit' || rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
+      {rowAction && (rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
         <QuickFeedDialog
           ticket={rowAction.ticket}
           mode={rowAction.kind}
