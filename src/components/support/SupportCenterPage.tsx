@@ -2278,7 +2278,7 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
             {approved && (changed.length > 0 || dateChanged) && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                 This deposit is approved and booked in the Daily Ledger.
-                {changed.length > 0 && ' Applying reverses the receipt of each changed figure and posts a corrected one, dated today.'}
+                {changed.length > 0 && ' Applying corrects its receipts in place — they keep their numbers and nothing is reversed.'}
                 {dateChanged && ' Changing the date moves its receipts to the new date — nothing is reversed.'}
               </p>
             )}

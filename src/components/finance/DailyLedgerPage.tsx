@@ -532,7 +532,7 @@ function LedgerRow({
               offered. A merged branch-income row is two real entries at once,
               so it has no single id to adjust — see mergeBranchIncomePairs. */}
           {!reversed && entry.reversesEntryId === null && !entry.merged && (
-            <Button variant="ghost" size="icon-sm" aria-label="Adjust or reverse" onClick={() => onAdjust(entry)}>
+            <Button variant="ghost" size="icon-sm" aria-label="Adjust or remove" onClick={() => onAdjust(entry)}>
               <Undo2 className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -611,7 +611,7 @@ function LedgerCard({
           {canAdjust && !reversed && entry.reversesEntryId === null && !entry.merged && (
             <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={() => onAdjust(entry)}>
               <Undo2 className="h-3.5 w-3.5" />
-              Adjust or reverse
+              Adjust or remove
             </Button>
           )}
         </div>
@@ -665,7 +665,7 @@ function AdjustDialog({ entry, onClose }: { entry: LedgerEntry | null; onClose: 
           ...(correct && description.trim() ? { correctedDescription: description.trim() } : {}),
         },
       });
-      toast.success(correct ? 'Reversed and re-posted at the corrected amount' : 'Reversing entry posted');
+      toast.success(correct ? 'Voucher corrected' : 'Voucher removed');
       close();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not adjust this entry');
@@ -680,8 +680,8 @@ function AdjustDialog({ entry, onClose }: { entry: LedgerEntry | null; onClose: 
         <DialogHeader>
           <DialogTitle>Adjust {entry?.voucherNo}</DialogTitle>
           <DialogDescription>
-            A posted entry is never edited. This posts a reversing voucher that cancels it, and — if you give a
-            corrected amount — a second voucher at the right figure. Both stay in the book.
+            Change the amount of this voucher, or remove it. The voucher keeps its number and no reversing entry is
+            posted; the reason is kept in the audit trail.
           </DialogDescription>
         </DialogHeader>
 
@@ -717,9 +717,9 @@ function AdjustDialog({ entry, onClose }: { entry: LedgerEntry | null; onClose: 
                 onChange={(e) => setCorrect(e.target.checked)}
               />
               <span>
-                <span className="font-medium">Re-post at a corrected amount</span>
+                <span className="font-medium">Change to a corrected amount</span>
                 <span className="block text-xs text-muted-foreground">
-                  Leave unticked for a straight reversal that cancels the voucher entirely.
+                  Leave unticked to remove the voucher from the ledger entirely.
                 </span>
               </span>
             </label>
@@ -764,7 +764,7 @@ function AdjustDialog({ entry, onClose }: { entry: LedgerEntry | null; onClose: 
             Cancel
           </Button>
           <Button disabled={mut.isPending} onClick={() => void submit()}>
-            {mut.isPending ? 'Posting…' : correct ? 'Reverse and re-post' : 'Post reversal'}
+            {mut.isPending ? 'Saving…' : correct ? 'Save correction' : 'Remove voucher'}
           </Button>
         </DialogFooter>
       </DialogContent>
