@@ -16,6 +16,7 @@ import {
   type FinanceAmendableField,
   type FinanceTicket,
   type FinanceTicketStatus,
+  businessDateStr,
 } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,7 +24,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { useFinanceMutation, useFinanceTicket } from '@/lib/finance';
+import { useAuth } from '@/hooks/useAuth';
+import { useBranches } from '@/lib/queries';
+import { useFinanceMutation, useFinanceTicket, useLedgerHeads } from '@/lib/finance';
 import { useMoney } from './finance-ui';
 import { QueryStatusBadge, formatQueryDate } from './help-desk-ui';
 import {
@@ -49,9 +52,11 @@ import {
  *
  * Confirm-before-apply and delete-record are overlays inside the same window.
  *
- * Which fields are correctable is FINANCE_AMENDABLE_FIELDS, the mirror of
- * amend_finance_record's whitelist; everything else about the record is shown
- * but cannot be typed into, because no route may change it. The correction
+ * Which fields are correctable is FINANCE_AMENDABLE_FIELDS, the mirror of what
+ * the database accepts: for a voucher and a transaction that is every field but
+ * the type (migration 130); for the other records, their figures. Anything else
+ * about the record is shown but cannot be typed into, because no route may
+ * change it. The correction
  * itself is POST /correct-record (migration 129): the record, the amendment
  * rows, the resolve and the query's version in one transaction, refused on a
  * concurrent change.
@@ -124,6 +129,9 @@ function FinanceRecordCorrectionPopup({
   onRefetch: () => Promise<unknown>;
 }) {
   const { format } = useMoney();
+  const { token } = useAuth();
+  const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) });
+  const { data: heads = [] } = useLedgerHeads();
   const mutation = useFinanceMutation();
   const correctMutation = useFinanceMutation<CorrectionResult>();
 
@@ -150,6 +158,12 @@ function FinanceRecordCorrectionPopup({
         : {},
     [fields, referenceType, live],
   );
+  // The record's own names, for an id the lists do not carry (an inactive category).
+  const currentHeadName = String(live?.['ledgerHeadName'] ?? '') || '—';
+  const currentBranchName = String(live?.['branchName'] ?? '') || '—';
+  const recordType = String(live?.['ledgerHeadType'] ?? live?.['txnType'] ?? '');
+  // A correction keeps the entry on its side of the book: same-type categories only.
+  const headOptions = heads.filter((h) => !recordType || h.type === recordType);
   const [draft, setDraft] = useState<Record<string, string>>(current);
   const [note, setNote] = useState('');
   const [resolve, setResolve] = useState(true);
@@ -189,7 +203,10 @@ function FinanceRecordCorrectionPopup({
   const shown = (spec: FinanceAmendableField | undefined, v: string | null) => {
     if (!spec) return v || '—';
     if (spec.kind === 'money') return format(Number(v || 0));
-    if (spec.kind === 'select') return spec.options?.find((o) => o.value === v)?.label ?? (v || '—');
+    if (spec.kind === 'select') return spec.options?.find((o) => o.value === v)?.label ?? (v ? titleCase(v) : '—');
+    if (spec.kind === 'date') return v ? fmtDate(v) : '—';
+    if (spec.kind === 'head') return heads.find((h) => h.id === v)?.name ?? (v === current[spec.key] ? currentHeadName : v) ?? '—';
+    if (spec.kind === 'branch') return v ? (branches.find((b) => b.id === v)?.name ?? (v === current[spec.key] ? currentBranchName : v)) : 'Company-wide';
     return v ? `“${v}”` : '—';
   };
   /** The trail stores figures as plain numbers ("2500.00"); show them as money. */
@@ -367,19 +384,20 @@ function FinanceRecordCorrectionPopup({
   const recordRows = (() => {
     if (!live && !ticket.referenceSnapshot) return [];
     const rec = (live ?? ticket.referenceSnapshot) as Record<string, unknown>;
-    const rows: { label: string; value: string }[] = [];
+    const rows: { key: string; label: string; value: string }[] = [];
     if (referenceType) {
       for (const f of fields) {
+        if (f.kind !== 'money') continue;
         const v = financeAmendableValue(referenceType, rec, f.key);
-        rows.push({ label: f.label, value: f.kind === 'money' ? format(Number(v || 0)) : v || '—' });
+        rows.push({ key: f.key, label: f.label, value: format(Number(v || 0)) });
       }
     }
-    const taken = new Set(fields.map((f) => f.key));
+    const taken = new Set(fields.filter((f) => f.kind === 'money').map((f) => f.key));
     for (const fact of RECORD_FACTS) {
       const key = fact.keys.find((k) => !taken.has(k) && rec[k] !== null && rec[k] !== undefined && rec[k] !== '');
       if (!key) continue;
       const raw = String(rec[key]);
-      rows.push({ label: fact.label, value: fact.kind === 'date' ? fmtDate(raw) : fact.kind === 'type' ? titleCase(raw) : raw });
+      rows.push({ key, label: fact.label, value: fact.kind === 'date' ? fmtDate(raw) : fact.kind === 'type' ? titleCase(raw) : raw });
     }
     return rows;
   })();
@@ -389,7 +407,12 @@ function FinanceRecordCorrectionPopup({
     (live ?? ticket.referenceSnapshot)?.['createdAt']) as string | undefined;
 
   // What the record says that this desk may not change — shown, never typed into.
-  const readOnlyRows = recordRows.filter((r) => !fields.some((f) => f.label === r.label));
+  const editableKeys = new Set([
+    ...fields.map((f) => f.key),
+    ...(fields.some((f) => f.kind === 'head') ? ['ledgerHeadName', 'category'] : []),
+    ...(fields.some((f) => f.kind === 'branch') ? ['branchName'] : []),
+  ]);
+  const readOnlyRows = recordRows.filter((r) => !editableKeys.has(r.key));
 
   const queryRows: { label: string; value: string; mono?: boolean; wide?: boolean }[] = [
     { label: 'Subject', value: ticket.subject || '—' },
@@ -536,10 +559,11 @@ function FinanceRecordCorrectionPopup({
             Loaded the latest version of {ticket.referenceNo}. Your earlier edits were cleared; make your correction again.
           </div>
         )}
-        {referenceType === 'ledger_entry' && (
+        {(referenceType === 'ledger_entry' || (referenceType === 'finance_transaction' && approved)) && (
           <p className="text-xs text-muted-foreground">
-            A posted voucher is corrected by its amount only — its date, head, branch and description are part of the entry.
-            Applying posts a reversal of {ticket.referenceNo} and a corrected entry dated today; the original stays visible.
+            Applying posts a reversal of the original voucher and one corrected entry carrying every change below; the
+            original stays visible. The corrected entry is dated today unless you change the date. Type follows the
+            category, so only {recordType || 'same-type'} categories are offered.
           </p>
         )}
 
@@ -578,11 +602,36 @@ function FinanceRecordCorrectionPopup({
                 ) : spec.kind === 'select' ? (
                   <select id={id} value={draft[spec.key] ?? ''} onChange={(e) => set(e.target.value)} className={control}>
                     {!(spec.options ?? []).some((o) => o.value === current[spec.key]) && (
-                      <option value={current[spec.key] ?? ''}>{current[spec.key] || '—'}</option>
+                      <option value={current[spec.key] ?? ''}>{current[spec.key] ? titleCase(current[spec.key]!) : '—'}</option>
                     )}
                     {(spec.options ?? []).map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : spec.kind === 'date' ? (
+                  <input id={id} type="date" max={businessDateStr()} value={draft[spec.key] ?? ''} onChange={(e) => set(e.target.value)} className={control} />
+                ) : spec.kind === 'head' ? (
+                  <select id={id} value={draft[spec.key] ?? ''} onChange={(e) => set(e.target.value)} className={control}>
+                    {!headOptions.some((h) => h.id === current[spec.key]) && (
+                      <option value={current[spec.key] ?? ''}>{currentHeadName}</option>
+                    )}
+                    {headOptions.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : spec.kind === 'branch' ? (
+                  <select id={id} value={draft[spec.key] ?? ''} onChange={(e) => set(e.target.value)} className={control}>
+                    <option value="">Company-wide</option>
+                    {current[spec.key] && !branches.some((b) => b.id === current[spec.key]) && (
+                      <option value={current[spec.key]}>{currentBranchName}</option>
+                    )}
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
                       </option>
                     ))}
                   </select>
