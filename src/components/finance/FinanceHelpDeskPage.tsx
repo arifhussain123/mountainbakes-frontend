@@ -50,6 +50,7 @@ import {
   Search,
   Send,
   ShieldAlert,
+  SlidersHorizontal,
   Timer,
   Trash2,
   Wand2,
@@ -73,6 +74,7 @@ import {
   FINANCE_TICKET_STATUSES,
   FINANCE_TICKET_STATUS_LABELS,
   FINANCE_TICKET_TRANSITIONS,
+  isFinanceRecordAmendable,
   isFinanceTicketTerminal,
   type Attachment,
   type FilterConfig,
@@ -94,6 +96,7 @@ import {
 } from '@/lib/finance';
 import { FinancePageHeader, useMoney } from './finance-ui';
 import {
+  ChangeFiguresDialog,
   DeleteQueryDialog,
   FinanceQueryDetailDialog,
   HistoryDialog,
@@ -144,7 +147,7 @@ type View = 'queue' | 'drafts' | 'deleted';
 type RowAction =
   | { kind: QuickFeedMode; ticket: FinanceTicket }
   | { kind: 'status'; ticket: FinanceTicket; target: FinanceTicketStatus }
-  | { kind: 'delete' | 'restore' | 'reopen' | 'history'; ticket: FinanceTicket };
+  | { kind: 'delete' | 'restore' | 'reopen' | 'history' | 'figures'; ticket: FinanceTicket };
 
 function IconBtn({
   children,
@@ -685,6 +688,14 @@ export function FinanceHelpDeskPage({
           const canReject = nexts.includes('rejected');
           const canReopen = !deleted && (FINANCE_TICKET_REOPENABLE_STATUSES as readonly FinanceTicketStatus[]).includes(t.status);
           const canFeed = abilities.admin && !deleted && !draft;
+          // The record behind the query, not the query: only where there is one this desk may change.
+          const canChangeFigures =
+            canFeed && Boolean(t.referenceType) && Boolean(t.referenceId) && isFinanceRecordAmendable(t.referenceType);
+          const figuresTitle = canChangeFigures
+            ? `Change figures — ${t.referenceNo}`
+            : t.referenceType
+              ? 'This record cannot be changed from here'
+              : 'This query names no finance record';
 
           if (!abilities.admin) {
             // A Finance user: open the query, or — on their own draft — edit and submit it.
@@ -722,6 +733,12 @@ export function FinanceHelpDeskPage({
                   </IconBtn>
                 ) : (
                   <>
+                    <IconBtn title="Edit" disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </IconBtn>
+                    <IconBtn title={figuresTitle} disabled={!canChangeFigures} onClick={() => setRowAction({ kind: 'figures', ticket: t })}>
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                    </IconBtn>
                     <IconBtn title={terminal ? 'Reopen to amend' : 'Amend'} disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}>
                       <Wand2 className="h-3.5 w-3.5" />
                     </IconBtn>
@@ -763,6 +780,8 @@ export function FinanceHelpDeskPage({
                     <DropdownMenuItem onClick={() => setRowAction({ kind: 'restore', ticket: t })}><ArchiveRestore className="h-4 w-4" /> Restore</DropdownMenuItem>
                   ) : (
                     <>
+                      <DropdownMenuItem disabled={!canFeed} onClick={() => setRowAction({ kind: 'edit', ticket: t })}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                      <DropdownMenuItem disabled={!canChangeFigures} onClick={() => setRowAction({ kind: 'figures', ticket: t })}><SlidersHorizontal className="h-4 w-4" /> Change figures</DropdownMenuItem>
                       <DropdownMenuItem disabled={!canFeed || terminal} onClick={() => setRowAction({ kind: 'amend', ticket: t })}><Wand2 className="h-4 w-4" /> Amend</DropdownMenuItem>
                       {nexts.map((s) => (
                         <DropdownMenuItem key={s} onClick={() => setRowAction({ kind: 'status', ticket: t, target: s })}>
@@ -950,7 +969,7 @@ export function FinanceHelpDeskPage({
       )}
 
       {/* Row actions — the same dialogs the detail screen uses, opened from the row. */}
-      {rowAction && (rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
+      {rowAction && (rowAction.kind === 'edit' || rowAction.kind === 'amend' || rowAction.kind === 'recreate') && (
         <QuickFeedDialog
           ticket={rowAction.ticket}
           mode={rowAction.kind}
@@ -966,6 +985,9 @@ export function FinanceHelpDeskPage({
       )}
       {rowAction?.kind === 'reopen' && (
         <ReopenDialog ticket={rowAction.ticket} isAdmin={abilities.admin} onClose={() => setRowAction(null)} onDone={() => setRowAction(null)} />
+      )}
+      {rowAction?.kind === 'figures' && (
+        <ChangeFiguresDialog ticketId={rowAction.ticket.id} onClose={() => setRowAction(null)} />
       )}
       {rowAction?.kind === 'history' && <HistoryDialog ticket={rowAction.ticket} onClose={() => setRowAction(null)} />}
       {rowAction?.kind === 'restore' && (

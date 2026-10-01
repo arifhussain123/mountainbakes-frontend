@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
+  CASH_DEPOSITS_PER_DAY,
   businessDateStr,
   businessDaysAgoStr,
   type Attachment,
@@ -60,10 +61,11 @@ import {
  * different figures for one day. It only fills the form; nothing is saved
  * until the person reads it back and confirms.
  *
- * ONE DEPOSIT PER BRANCH PER DAY. A day that already has a pending or approved
- * deposit is flagged as soon as the date is picked, Auto refuses to fill it,
- * and the server refuses a second one (409). Corrections to the existing one go
- * through the Help Desk, which re-posts the ledger.
+ * UP TO CASH_DEPOSITS_PER_DAY DEPOSITS PER BRANCH PER DAY. A day's pending and
+ * approved deposits are counted as soon as the date is picked; at the limit the
+ * form is flagged and the server refuses another (409). Auto fills the WHOLE
+ * day's figures, so it only runs for the day's first deposit — a later one is
+ * typed by hand. Corrections go through the Help Desk, which re-posts the ledger.
  *
  * ONE DIALOG, THREE FACES — never two stacked. The form turns over into a
  * confirmation, and Confirm is the only thing that creates a record. Clear
@@ -109,7 +111,9 @@ export function CashDepositModal({
 
   // The chosen day's own deposits — to warn before anything is typed.
   const dayQ = useBranchCashTransfers(token, { enabled: open && !!date, from: date, to: date, limit: 10 });
-  const existing = (dayQ.data?.transfers ?? []).find((t) => t.status !== 'rejected') ?? null;
+  const dayDeposits = (dayQ.data?.transfers ?? []).filter((t) => t.status !== 'rejected');
+  /** Set once the day has used its whole allowance. */
+  const existing = dayDeposits.length >= CASH_DEPOSITS_PER_DAY ? dayDeposits : null;
 
   const transfers = transfersQ.data?.transfers ?? [];
   const busy = createMut.isPending;
@@ -152,7 +156,7 @@ export function CashDepositModal({
       ]);
       const dup = deposits.transfers.find((t) => t.status !== 'rejected');
       if (dup) {
-        toast.error(`Cash deposit already exists for this date and branch (${dup.transferNo}).`);
+        toast.error(`${dup.transferNo} already covers this date — enter this deposit's amounts by hand.`);
         return;
       }
       const record = dsr.records.find((r) => r.businessDate === date);
@@ -181,7 +185,7 @@ export function CashDepositModal({
 
   function save() {
     setPhotoTouched(true);
-    if (existing) { toast.error(`Cash deposit already exists for this date and branch (${existing.transferNo}).`); return; }
+    if (existing) { toast.error(`This date already has ${CASH_DEPOSITS_PER_DAY} cash deposits for this branch.`); return; }
     if (dateError || draftError) { toast.error((dateError ?? draftError)!); return; }
     setFace('confirm');
   }
@@ -331,11 +335,18 @@ export function CashDepositModal({
                 <div role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   <p>
-                    Cash deposit already exists for this date and branch —{' '}
-                    <span className="font-mono font-medium">{existing.transferNo}</span> ({existing.status === 'approved' ? 'approved' : 'awaiting Finance'}).
-                    It is listed below; ask Finance through the Help Desk to correct it.
+                    This date already has {CASH_DEPOSITS_PER_DAY} cash deposits for this branch —{' '}
+                    <span className="font-mono font-medium">{existing.map((t) => t.transferNo).join(', ')}</span>.
+                    They are listed below; ask Finance through the Help Desk to correct one.
                   </p>
                 </div>
+              )}
+              {!existing && dayDeposits.length > 0 && (
+                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  {dayDeposits.length} of {CASH_DEPOSITS_PER_DAY} deposits already made for this date (
+                  <span className="font-mono">{dayDeposits.map((t) => t.transferNo).join(', ')}</span>). Enter only what
+                  this deposit adds.
+                </p>
               )}
 
               <CashDepositFormFields
@@ -352,7 +363,7 @@ export function CashDepositModal({
                       variant="secondary"
                       size="sm"
                       onClick={auto}
-                      disabled={busy || autoBusy || !!existing || !!dateError}
+                      disabled={busy || autoBusy || dayDeposits.length > 0 || !!dateError}
                     >
                       <Wand2 className="mr-1.5 h-4 w-4" />
                       {autoBusy ? 'Reading…' : 'Auto'}
