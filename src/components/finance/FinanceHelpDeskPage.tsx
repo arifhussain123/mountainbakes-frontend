@@ -576,7 +576,6 @@ export function FinanceHelpDeskPage({
             <>
               {/* Desktop keeps the dense icon row — the branch queue's shape. */}
               <div className="hidden items-center justify-end gap-0.5 md:flex">
-                <IconBtn title="View" onClick={() => setViewing(t.id)}><Eye className="h-3.5 w-3.5" /></IconBtn>
                 {deleted ? (
                   <IconBtn title="Restore" className="text-emerald-600" onClick={() => setRowAction({ kind: 'restore', ticket: t })}>
                     <ArchiveRestore className="h-3.5 w-3.5" />
@@ -623,7 +622,6 @@ export function FinanceHelpDeskPage({
                   <MoreHorizontal className="h-5 w-5" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setViewing(t.id)}><Eye className="h-4 w-4" /> View</DropdownMenuItem>
                   {deleted ? (
                     <DropdownMenuItem onClick={() => setRowAction({ kind: 'restore', ticket: t })}><ArchiveRestore className="h-4 w-4" /> Restore</DropdownMenuItem>
                   ) : (
@@ -821,11 +819,7 @@ export function FinanceHelpDeskPage({
           ticket={rowAction.ticket}
           mode={rowAction.kind}
           onClose={() => setRowAction(null)}
-          onDone={(result) => {
-            const wasRecreate = rowAction.kind === 'recreate';
-            setRowAction(null);
-            if (wasRecreate && result) setViewing(result.id);
-          }}
+          onDone={() => setRowAction(null)}
         />
       )}
       {rowAction?.kind === 'status' && (
