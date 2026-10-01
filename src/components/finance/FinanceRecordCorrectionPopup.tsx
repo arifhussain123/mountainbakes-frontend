@@ -167,7 +167,6 @@ function FinanceRecordCorrectionPopup({
   const [draft, setDraft] = useState<Record<string, string>>(current);
   const [note, setNote] = useState('');
   const [resolve, setResolve] = useState(true);
-  const [overwriteOk, setOverwriteOk] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,7 +197,7 @@ function FinanceRecordCorrectionPopup({
   });
   const willResolve = resolve && canResolve;
   const applyDisabled =
-    correctMutation.isPending || !canCorrect || changes.length === 0 || invalid.length > 0 || (approved && !overwriteOk);
+    correctMutation.isPending || !canCorrect || changes.length === 0 || invalid.length > 0;
 
   const shown = (spec: FinanceAmendableField | undefined, v: string | null) => {
     if (!spec) return v || '—';
@@ -217,7 +216,6 @@ function FinanceRecordCorrectionPopup({
     setDraft(current);
     setNote('');
     setResolve(true);
-    setOverwriteOk(false);
     setConflict(null);
     setError(null);
     setReloaded(false);
@@ -252,7 +250,7 @@ function FinanceRecordCorrectionPopup({
           ...(note.trim() ? { note: note.trim() } : {}),
           resolve: willResolve,
           expectedVersion: ticket.version,
-          ...(approved ? { confirmOverwrite: overwriteOk } : {}),
+          ...(approved ? { confirmOverwrite: true } : {}),
         },
       });
       setLastApplied(
@@ -700,15 +698,6 @@ function FinanceRecordCorrectionPopup({
           )}
         </section>
 
-        {approved && changes.length > 0 && (
-          <label className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
-            <input type="checkbox" checked={overwriteOk} onChange={(e) => setOverwriteOk(e.target.checked)} className="mt-0.5 h-[18px] w-[18px] accent-[var(--primary)]" />
-            <span>
-              {ticket.referenceNo} is an approved financial record. I understand this overwrites it, and that the change is
-              recorded in the audit trail against {ticket.queryNo}.
-            </span>
-          </label>
-        )}
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="aq-note" className={fieldLabel}>
@@ -861,6 +850,12 @@ function FinanceRecordCorrectionPopup({
                 ))}
               </div>
               {note.trim() && <p className="text-sm text-muted-foreground">Reason: {note.trim()}</p>}
+              {approved && (
+                <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+                  {ticket.referenceNo} is an approved financial record. Applying overwrites it, and the change is
+                  recorded in the audit trail against {ticket.queryNo}.
+                </p>
+              )}
               {willResolve && (
                 <p className="text-xs text-muted-foreground">
                   The record is corrected and {ticket.queryNo} is resolved together — if either fails, neither happens.

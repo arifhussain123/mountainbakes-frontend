@@ -30,7 +30,8 @@ import {
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
 import { useFinanceTicketStats } from '@/lib/finance';
-import { isBranchRole, cashTransferTotal } from '@mb/shared';
+import { businessDateStr, isBranchRole, cashTransferTotal } from '@mb/shared';
+import { formatDate } from '@/utils/date';
 import { cn } from '@/lib/utils';
 
 const col = createColumnHelper<SupportTicket>();
@@ -2153,6 +2154,7 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
     return {
       ...(Object.fromEntries(DEPOSIT_FIGURES.map((f) => [f.key, String(get(f.key) ?? '0')])) as Record<DepositFigure, string>),
       note: String(get('note') ?? ''),
+      date: live?.businessDate ?? '',
     };
   }, [live]);
 
@@ -2160,6 +2162,7 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
     cashAmount: '', easypaisaAmount: '', bankAmount: '', fuelCharges: '',
   });
   const [depositNote, setDepositNote] = useState('');
+  const [date, setDate] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -2176,6 +2179,7 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
       fuelCharges: current.fuelCharges,
     });
     setDepositNote(current.note);
+    setDate(current.date);
   }
 
   const editable = (live?.editableFields.length ?? 0) > 0;
@@ -2183,6 +2187,8 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
   const num = (v: string) => (v.trim() === '' ? 0 : Number(v));
   const changed = DEPOSIT_FIGURES.filter((f) => num(figures[f.key]) !== num(current[f.key])).map((f) => f.key);
   const noteChanged = depositNote.trim() !== current.note.trim();
+  const today = businessDateStr();
+  const dateChanged = date !== '' && date !== current.date;
   // Total = Cash + Easypaisa + Bank — shown, never typed (the server recomputes it).
   const total = cashTransferTotal({
     cashAmount: num(figures.cashAmount) || 0,
@@ -2198,6 +2204,10 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
       edits[key] = n;
     }
     if (noteChanged) edits.note = depositNote.trim();
+    if (dateChanged) {
+      if (date > today) { toast.error('The date cannot be in the future'); return; }
+      edits.businessDate = date;
+    }
     if (Object.keys(edits).length === 0) { toast.error('Change at least one value'); return; }
     setBusy(true);
     try {
@@ -2235,6 +2245,11 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
           </p>
         ) : (
           <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="ct-date">Date</Label>
+              <Input id="ct-date" type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
+              {dateChanged && <p className="text-xs text-muted-foreground">Was {formatDate(current.date)}.</p>}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {DEPOSIT_FIGURES.map((f) => (
                 <div key={f.key} className="space-y-1">
@@ -2260,10 +2275,11 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
               <Input value={depositNote} onChange={(e) => setDepositNote(e.target.value)} placeholder="Note on the deposit" />
             </div>
 
-            {approved && changed.length > 0 && (
+            {approved && (changed.length > 0 || dateChanged) && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                This deposit is approved and booked in the Daily Ledger. Applying reverses the receipt of each
-                changed figure and posts a corrected one, dated today.
+                This deposit is approved and booked in the Daily Ledger.
+                {changed.length > 0 && ' Applying reverses the receipt of each changed figure and posts a corrected one, dated today.'}
+                {dateChanged && ' Changing the date reverses its receipts and posts them again on the new date.'}
               </p>
             )}
 
