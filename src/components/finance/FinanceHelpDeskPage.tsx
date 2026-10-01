@@ -415,8 +415,11 @@ function DashboardCards({ isAdmin }: { isAdmin: boolean }) {
 export function FinanceHelpDeskPage({
   embedded = false,
   sourceTag = false,
+  cards = true,
 }: {
   embedded?: boolean;
+  /** The summary cards. Off under the Support Center's "All", where two queues share the page. */
+  cards?: boolean;
   /**
    * Renders the FINANCE badge beside every Query ID — on inside the Admin
    * Support Center, where this table sits beside the branch and production
@@ -875,7 +878,7 @@ export function FinanceHelpDeskPage({
         />
       )}
 
-      <DashboardCards isAdmin={abilities.admin} />
+      {cards && <DashboardCards isAdmin={abilities.admin} />}
 
       <FilterBar
         list={list}

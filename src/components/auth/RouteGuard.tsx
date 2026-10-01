@@ -126,7 +126,7 @@ function redirectFor(
   // Finance Help Desk page is the Finance roles' own. Old links and bookmarks
   // land where the queue now is rather than on a page the menu no longer offers.
   if (user.role === 'super_admin' && pathname.startsWith(ROUTES.FINANCE_HELP_DESK)) {
-    return ROUTES.SUPPORT_CENTER;
+    return `${ROUTES.SUPPORT_CENTER}?source=finance`;
   }
 
   const wrongRole =
