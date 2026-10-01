@@ -130,6 +130,10 @@ import {
  * filters, and the cards are counted in SQL over the whole queue rather than
  * over the rows on screen. The search box is debounced so a person typing a
  * Query ID does not fire a request per keystroke.
+ *
+ * The same component backs the Admin Support Center's Finance Queries tab, so an
+ * admin never has to go looking in the finance module for work addressed to them
+ * (§3). `embedded` drops the page heading there; nothing else differs.
  */
 
 const col = createColumnHelper<FinanceTicket>();
@@ -408,7 +412,18 @@ function DashboardCards({ isAdmin }: { isAdmin: boolean }) {
 // The page
 // ---------------------------------------------------------------------------
 
-export function FinanceHelpDeskPage() {
+export function FinanceHelpDeskPage({
+  embedded = false,
+  sourceTag = false,
+}: {
+  embedded?: boolean;
+  /**
+   * Renders the FINANCE badge beside every Query ID — on inside the Admin
+   * Support Center, where this table sits beside the branch and production
+   * queue and the tag is how a row says which desk it came from.
+   */
+  sourceTag?: boolean;
+}) {
   const abilities = useHelpDeskAbilities();
   const { token, user } = useAuth();
   const { format: money } = useMoney();
@@ -584,6 +599,14 @@ export function FinanceHelpDeskPage() {
           return (
             <div className="space-y-1 text-sm">
               <div className="flex items-center gap-2">
+                {sourceTag && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300"
+                  >
+                    Finance
+                  </Badge>
+                )}
                 <span>{t.branchName || '—'}</span>
               </div>
               <p className="truncate text-xs text-muted-foreground">
@@ -765,7 +788,7 @@ export function FinanceHelpDeskPage() {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [money, user?.uid, abilities.admin],
+    [sourceTag, money, user?.uid, abilities.admin],
   );
 
   async function submitDraft(t: FinanceTicket) {
@@ -828,6 +851,7 @@ export function FinanceHelpDeskPage() {
 
   const newButton = abilities.report ? (
     <Button
+      size={embedded ? 'sm' : 'default'}
       onClick={() => {
         setNewKey((k) => k + 1);
         setShowNew(true);
@@ -839,15 +863,17 @@ export function FinanceHelpDeskPage() {
 
   return (
     <div className="space-y-6">
-      <FinancePageHeader
-        title="Finance Help Desk"
-        description={
-          abilities.admin
-            ? 'Queries raised by Finance. Open one to feed, amend, resolve, delete, restore or recreate it — every change is versioned and written to the audit trail, and none of it touches the books until you correct the record itself.'
-            : 'Report an incorrect transaction, a calculation problem or a data discrepancy directly to the Admin. Save a draft, submit when ready, follow the response here.'
-        }
-        actions={newButton}
-      />
+      {!embedded && (
+        <FinancePageHeader
+          title="Finance Help Desk"
+          description={
+            abilities.admin
+              ? 'Queries raised by Finance. Open one to feed, amend, resolve, delete, restore or recreate it — every change is versioned and written to the audit trail, and none of it touches the books until you correct the record itself.'
+              : 'Report an incorrect transaction, a calculation problem or a data discrepancy directly to the Admin. Save a draft, submit when ready, follow the response here.'
+          }
+          actions={newButton}
+        />
+      )}
 
       <DashboardCards isAdmin={abilities.admin} />
 
@@ -871,6 +897,7 @@ export function FinanceHelpDeskPage() {
         data={tickets}
         loading={isLoading}
         searchPlaceholder="Search Query ID, reference, subject, user or branch…"
+        actions={embedded ? newButton : undefined}
         pager={false}
         sortable
         manual={{
