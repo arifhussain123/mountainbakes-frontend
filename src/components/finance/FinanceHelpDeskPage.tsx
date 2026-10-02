@@ -9,7 +9,6 @@ import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
-import { StatCard } from '@/components/shared/StatCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,18 +26,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/utils/api';
 import { toast } from 'sonner';
 import {
-  AlertOctagon,
-  Archive,
   ArchiveRestore,
   Ban,
-  Bell,
   CheckCircle2,
-  CircleDot,
-  Clock,
   Copy,
   Eye,
   FileEdit,
-  FileQuestion,
   Headset,
   History,
   Inbox,
@@ -49,7 +42,6 @@ import {
   RotateCcw,
   Search,
   Send,
-  ShieldAlert,
   SlidersHorizontal,
   Timer,
   Trash2,
@@ -94,7 +86,7 @@ import {
   useFinanceTicketStats,
   useFinanceTickets,
 } from '@/lib/finance';
-import { FinancePageHeader, useMoney } from './finance-ui';
+import { FinancePageHeader, FinStat, useMoney } from './finance-ui';
 import { ChangeFiguresDialog } from './FinanceRecordCorrectionPopup';
 import {
   DeleteQueryDialog,
@@ -386,26 +378,26 @@ function DashboardCards({ isAdmin }: { isAdmin: boolean }) {
   const { data: s, isLoading } = useFinanceTicketStats();
   const v = (n: number | undefined) => n ?? 0;
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      <StatCard title="Pending" value={v(s?.open)} icon={CircleDot} color="blue" loading={isLoading} />
-      <StatCard title="In Review" value={v(s?.underReview)} icon={Timer} color="orange" loading={isLoading} />
-      <StatCard title="High Priority" value={v(s?.highPriority)} icon={ShieldAlert} color="red" loading={isLoading} />
-      <StatCard title="Waiting for Finance" value={v(s?.waiting)} icon={Clock} color="brown" loading={isLoading} />
-      <StatCard title="Resolved" value={v(s?.resolved)} icon={CheckCircle2} color="green" loading={isLoading} />
-      <StatCard title="Amended" value={v(s?.amended)} icon={Wand2} color="brown" loading={isLoading} />
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
+      <FinStat label="Pending" value={v(s?.open)} tone="discount" loading={isLoading} />
+      <FinStat label="In Review" value={v(s?.underReview)} tone="received" loading={isLoading} />
+      <FinStat label="High Priority" value={v(s?.highPriority)} tone="danger" loading={isLoading} />
+      <FinStat label="Waiting for Finance" value={v(s?.waiting)} tone="ledger" loading={isLoading} />
+      <FinStat label="Resolved" value={v(s?.resolved)} tone="return" loading={isLoading} />
+      <FinStat label="Amended" value={v(s?.amended)} tone="ledger" loading={isLoading} />
 
       {isAdmin && (
         <>
-          <StatCard title="Reopened" value={v(s?.reopened)} icon={RotateCcw} color="red" loading={isLoading} />
-          <StatCard title="All Queries" value={v(s?.total)} icon={Inbox} color="blue" loading={isLoading} />
-          <StatCard title="Unassigned" value={v(s?.unassigned)} icon={FileQuestion} color="orange" loading={isLoading} />
-          <StatCard title="Urgent" value={v(s?.urgent)} icon={AlertOctagon} color="red" loading={isLoading} />
-          <StatCard title="Recently Updated" value={v(s?.recent)} icon={Bell} color="green" loading={isLoading} />
-          <StatCard title="Deleted" value={v(s?.deleted)} icon={Archive} color="brown" loading={isLoading} />
+          <FinStat label="Reopened" value={v(s?.reopened)} tone="danger" loading={isLoading} />
+          <FinStat label="All Queries" value={v(s?.total)} tone="discount" loading={isLoading} />
+          <FinStat label="Unassigned" value={v(s?.unassigned)} tone="received" loading={isLoading} />
+          <FinStat label="Urgent" value={v(s?.urgent)} tone="danger" loading={isLoading} />
+          <FinStat label="Recently Updated" value={v(s?.recent)} tone="return" loading={isLoading} />
+          <FinStat label="Deleted" value={v(s?.deleted)} tone="ledger" loading={isLoading} />
         </>
       )}
       {!isAdmin && (
-        <StatCard title="My Drafts" value={v(s?.draft)} icon={FileEdit} color="brown" loading={isLoading} />
+        <FinStat label="My Drafts" value={v(s?.draft)} tone="ledger" loading={isLoading} />
       )}
     </div>
   );

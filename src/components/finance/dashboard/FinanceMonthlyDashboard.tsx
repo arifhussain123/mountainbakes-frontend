@@ -959,7 +959,7 @@ function CashStrip({
         Bank <strong className="tabular-nums">{format(cash.bankBalance)}</strong>
       </span>
       <Link
-        href={ROUTES.FINANCE_ENTRIES}
+        href={ROUTES.FINANCE_LEDGER}
         className="ml-auto font-semibold text-fin-share underline-offset-2 hover:underline"
       >
         {cash.pendingExpenseApprovals} pending approval

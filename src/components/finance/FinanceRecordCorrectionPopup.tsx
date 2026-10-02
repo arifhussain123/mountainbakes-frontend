@@ -559,8 +559,7 @@ function FinanceRecordCorrectionPopup({
         )}
         {(referenceType === 'ledger_entry' || (referenceType === 'finance_transaction' && approved)) && (
           <p className="text-xs text-muted-foreground">
-            Applying posts a reversal of the original voucher and one corrected entry carrying every change below; the
-            original stays visible. The corrected entry is dated today unless you change the date. Type follows the
+            Applying changes the voucher itself: it keeps its number and no reversal is posted. Type follows the
             category, so only {recordType || 'same-type'} categories are offered.
           </p>
         )}

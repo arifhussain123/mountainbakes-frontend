@@ -12,6 +12,7 @@ import type {
   EmployeeAdvanceSummary,
   FinanceAuditLog,
   FinanceDashboard,
+  FinancePendingApproval,
   FinanceDashboardMetric,
   FinanceDashboardRecordsPage,
   FinanceDayClosing,
@@ -98,6 +99,22 @@ export function useFinanceDashboard(filters: FinanceDashboardFilters = {}) {
     // 60s default would show pending counts that are already dealt with.
     staleTime: 15_000,
     queryFn: () => apiCall<FinanceDashboard>(`/api/finance/dashboard${toQuery(filters)}`, {}, token),
+  });
+}
+
+/**
+ * Every document waiting for approval — the rows behind the dashboard's
+ * "pending approval" figure. Under the finance root key, so approving or
+ * rejecting any document refreshes it.
+ */
+export function useFinancePendingApprovals() {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePendingApprovals(),
+    enabled: Boolean(token),
+    staleTime: 15_000,
+    queryFn: async () =>
+      (await apiCall<{ items: FinancePendingApproval[] }>('/api/finance/pending-approvals', {}, token)).items,
   });
 }
 
