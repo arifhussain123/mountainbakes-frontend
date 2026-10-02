@@ -436,23 +436,3 @@
 
 /* Hidden on screen; revealed inside the @media print block above. */
 .print-only { display: none; }
-
-/* Finance pages share the Finance Dashboard's table dress (design: Finance
-   Dashboard v2): a card-edged table, a peach column-header band and the warm
-   row hover. Scoped to `.fin-page`, which the finance route group's layout and
-   the Support Center put on their root, so no other screen's tables change. */
-.fin-page [data-slot="table-container"] {
-  border-radius: 0.75rem;
-}
-.fin-page [data-slot="table-header"] [data-slot="table-row"],
-.fin-page [data-slot="table-header"] [data-slot="table-row"]:hover {
-  background: var(--fin-peach);
-}
-.fin-page [data-slot="table-head"] {
-  color: var(--fin-peach-foreground);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-.fin-page [data-slot="table-body"] [data-slot="table-row"]:hover {
-  background: var(--fin-row-hover);
-}
