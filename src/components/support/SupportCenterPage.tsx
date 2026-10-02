@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { FinanceHelpDeskPage } from '@/components/finance/FinanceHelpDeskPage';
+import { FinancePageHeader } from '@/components/finance/finance-ui';
 import { useFinanceTicketStats } from '@/lib/finance';
 import { businessDateStr, isBranchRole, cashTransferTotal } from '@mb/shared';
 import { formatDate } from '@/utils/date';
@@ -474,15 +475,11 @@ export function SupportCenterPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Support Center</h2>
-          <p className="text-sm text-muted-foreground">
-            Queries raised from branches, production and Finance — all of them land here.
-          </p>
-        </div>
-      </div>
+    <div className="fin-page space-y-4">
+      <FinancePageHeader
+        title="Support Center"
+        description="Queries raised from branches, production and Finance — all of them land here."
+      />
 
       {/* §5's Source filter.
           

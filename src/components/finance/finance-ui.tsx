@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useFinanceSettings } from '@/lib/finance';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import {
   financeCan,
@@ -209,13 +210,75 @@ export function FinancePageHeader({
   description?: string;
   actions?: React.ReactNode;
 }) {
+  // The Finance Dashboard's ink band (design: Finance Dashboard v2), full-bleed:
+  // the negative margins cancel the page wrapper's `p-4 sm:p-6`, which every
+  // page that renders this header uses.
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="-mx-4 -mt-4 flex flex-col gap-3 bg-fin-ink px-4 py-4 text-fin-ink-foreground sm:-mx-6 sm:-mt-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 print:mx-0 print:mt-0">
       <div className="min-w-0">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+        <h2 className="text-[15px] font-extrabold tracking-[0.08em] uppercase">{title}</h2>
+        {description && <p className="mt-1 max-w-4xl text-sm text-fin-ink-muted">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 text-foreground">{actions}</div>}
+    </div>
+  );
+}
+
+/**
+ * A figure in the Finance Dashboard's card style: a small-caps label with a
+ * colour key, and the value in heavy tabular figures. `tone` picks the key from
+ * the dashboard's own series colours, so a page's cards read as one family with
+ * the dashboard's.
+ */
+const FIN_STAT_TONES = {
+  share: 'var(--fin-share)',
+  received: 'var(--fin-received)',
+  ledger: 'var(--fin-ledger)',
+  return: 'var(--fin-return)',
+  discount: 'var(--fin-discount)',
+  neutral: 'var(--fin-neutral)',
+  danger: 'var(--destructive)',
+} as const;
+
+export function FinStat({
+  label,
+  value,
+  sub,
+  tone = 'neutral',
+  loading,
+  inverse,
+}: {
+  label: string;
+  /** Already formatted — a count or a money string. */
+  value: React.ReactNode;
+  sub?: string;
+  tone?: keyof typeof FIN_STAT_TONES;
+  loading?: boolean;
+  /** The ink card: the one figure the row is leading up to. */
+  inverse?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex min-w-0 flex-col gap-1 rounded-lg border px-3.5 py-3',
+        inverse ? 'border-transparent bg-fin-ink text-fin-ink-foreground' : 'bg-card',
+      )}
+    >
+      <span
+        className={cn(
+          'flex items-center gap-2 text-[10.5px] font-bold tracking-[0.1em] uppercase',
+          inverse ? 'text-fin-ink-muted' : 'text-muted-foreground',
+        )}
+      >
+        <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: FIN_STAT_TONES[tone] }} aria-hidden />
+        <span className="truncate">{label}</span>
+      </span>
+      {loading ? (
+        <Skeleton className="h-7 w-20" />
+      ) : (
+        <span className="text-lg font-extrabold tracking-tight tabular-nums sm:text-xl">{value}</span>
+      )}
+      {sub && <span className={cn('text-[11.5px]', inverse ? 'text-fin-ink-muted' : 'text-muted-foreground')}>{sub}</span>}
     </div>
   );
 }
