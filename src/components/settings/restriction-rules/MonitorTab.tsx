@@ -23,9 +23,9 @@ export function MonitorTab({ cashLimit }: { cashLimit: number }) {
           <thead>
             <tr>
               <th className={TH}>Branch</th>
-              <th className={cn(TH, 'text-center')}>Pending</th>
-              <th className={TH}>Pending demand numbers</th>
-              <th className={TH}>Oldest pending</th>
+              <th className={cn(TH, 'text-center')}>Awaiting verification</th>
+              <th className={TH}>Demand numbers</th>
+              <th className={TH}>Oldest awaiting</th>
               <th className={cn(TH, 'text-center')}>Sales this hour</th>
               <th className={cn(TH, 'text-center')}>Deposits today</th>
               <th className={TH}>Demand status</th>
