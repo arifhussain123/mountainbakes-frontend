@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -14,11 +14,14 @@ import {
   type CreateFinanceTransactionInput,
   type FinanceTransaction,
   type LedgerHeadType,
+  type Restriction,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import { useFinanceMutation, useLedgerHeads } from '@/lib/finance';
 import { ApiError } from '@/utils/api';
+import { RestrictionNotice, RestrictionPanel } from '@/components/shared/RestrictionNotice';
+import { restrictionFromError, useRestrictionCheck } from '@/lib/restrictions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -62,6 +65,16 @@ function isDuplicateIncomeDetails(
     typeof (details as { existing?: unknown }).existing === 'object'
   );
 }
+/** A value that only changes once it has stopped changing for `ms`. */
+function useSettled<T>(value: T, ms = 400): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return settled;
+}
+
 export function FinanceEntryForm({
   entry,
   onSuccess,
@@ -123,6 +136,42 @@ export function FinanceEntryForm({
   const account = form.watch('account');
   const paymentMethod = form.watch('paymentMethod');
   const branchId = form.watch('branchId');
+  const businessDate = form.watch('businessDate');
+  const amount = form.watch('amount');
+  const description = form.watch('description');
+
+  /**
+   * Restriction Rules (migration 136) — the ledger back-entry period and
+   * Company Share keyed as income. The server answers for exactly this head,
+   * date and amount, because that is what an Admin approval is bound to; the
+   * amount is debounced so the question is asked once per figure, not per digit.
+   *
+   * On an edit it is only asked when one of the three has actually changed —
+   * the server does not re-examine an untouched entry either, and asking would
+   * hold a description fix hostage to an approval already used.
+   */
+  const settledAmount = useSettled(Number.isFinite(Number(amount)) && Number(amount) > 0 ? Number(amount) : null);
+  const entryMoved =
+    !entry ||
+    entry.ledgerHeadId !== ledgerHeadId ||
+    entry.businessDate !== businessDate ||
+    (settledAmount !== null && Number(entry.amount) !== settledAmount);
+  const checkEnabled = !!ledgerHeadId && !!businessDate && entryMoved;
+  const preflight = useRestrictionCheck(
+    token ?? '',
+    'finance-entry',
+    { ledgerHeadId, businessDate, amount: settledAmount },
+    checkEnabled,
+  );
+  /** The restriction a save was refused with, when the preflight had not already shown it. */
+  const [refused, setRefused] = useState<Restriction | null>(null);
+  // Held back while the server is being asked, when it cannot be reached, and
+  // when it has said no. With no head chosen yet there is nothing to ask.
+  const restricted = checkEnabled && !preflight.allowed;
+  const approvalType =
+    preflight.restriction?.code === 'LEDGER_BACKDATE' || preflight.restriction?.code === 'COMPANY_SHARE_INCOME'
+      ? preflight.restriction.code
+      : null;
 
   // Expense entries are only ever booked against Production or Other — never a
   // retail branch, and never company-wide. Income keeps the full branch list
@@ -135,6 +184,8 @@ export function FinanceEntryForm({
 
   async function save(data: CreateFinanceTransactionInput, asDraft: boolean) {
     setDuplicateWarning(null);
+    setRefused(null);
+    if (restricted) return;
     try {
       if (entry) {
         // Editing only ever touches a draft or a rejected document — a posted one
@@ -167,6 +218,13 @@ export function FinanceEntryForm({
           : null;
       if (duplicate) {
         setDuplicateWarning({ match: duplicate, data, asDraft });
+        return;
+      }
+      // A restriction is explained by the notice in this form, not a toast.
+      const restriction = restrictionFromError(err);
+      if (restriction) {
+        setRefused(restriction);
+        preflight.refetch();
         return;
       }
       toast.error(err instanceof Error ? err.message : 'Could not save this entry');
@@ -372,6 +430,34 @@ export function FinanceEntryForm({
         </div>
       )}
 
+      {checkEnabled && (preflight.unverified || preflight.restriction) ? (
+        <RestrictionPanel
+          preflight={preflight}
+          token={token ?? ''}
+          request={
+            approvalType && settledAmount !== null
+              ? {
+                  type: approvalType,
+                  date: businessDate ?? businessDateStr(),
+                  ledgerHeadId,
+                  amount: settledAmount,
+                  description: description?.trim() || undefined,
+                  branchId: branchId ?? null,
+                }
+              : null
+          }
+          note={
+            approvalType && settledAmount === null
+              ? 'Enter the amount first — an approval covers one head, date and amount.'
+              : preflight.restriction?.severity === 'approved'
+                ? 'The approval covers this head, date and amount. Changing any of them needs a new one.'
+                : undefined
+          }
+        />
+      ) : (
+        refused && <RestrictionNotice restriction={refused} />
+      )}
+
       <div className="flex flex-col gap-2 sm:flex-row">
         {!entry && (
           <Button
@@ -379,13 +465,13 @@ export function FinanceEntryForm({
             variant="outline"
             size="lg"
             className="flex-1"
-            disabled={mut.isPending}
+            disabled={mut.isPending || restricted}
             onClick={() => void form.handleSubmit((d) => save(d, true))()}
           >
             Save as draft
           </Button>
         )}
-        <Button type="submit" size="lg" className="flex-1" disabled={mut.isPending}>
+        <Button type="submit" size="lg" className="flex-1" disabled={mut.isPending || restricted}>
           {mut.isPending ? 'Saving…' : entry ? 'Save changes' : 'Submit for approval'}
         </Button>
       </div>

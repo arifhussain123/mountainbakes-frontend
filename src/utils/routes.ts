@@ -91,6 +91,13 @@ export const ROUTES = {
   PRODUCTION_EVENTS: '/production-events',
   USERS: '/users',
   SETTINGS: '/settings',
+  /**
+   * Admin → Settings → Restriction Rules (migration 136). Nested under
+   * '/settings' on purpose: RouteGuard's ADMIN_PREFIXES matches by prefix, so
+   * this route is admin-only without a new entry there, and the Settings nav
+   * item stays lit while it is open.
+   */
+  RESTRICTION_RULES: '/settings/restriction-rules',
 
   // Branch
   BRANCH_DASHBOARD: '/branch-dashboard',

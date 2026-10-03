@@ -10,6 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
+import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
+import { ROUTES } from '@/utils/routes';
 import { useTheme, ACCENTS } from '@/providers/ThemeProvider';
 import type { AppSettings } from '@mb/shared';
 import { toast } from 'sonner';
@@ -64,6 +67,23 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      {/* Restriction Rules live on their own screen: they are saved per group,
+          carry an approvals queue and an audit log, and would bury the settings
+          below under five more cards. */}
+      <Link
+        href={ROUTES.RESTRICTION_RULES}
+        className="flex items-center justify-between gap-4 rounded-xl border bg-card px-5 py-4 outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <div className="space-y-0.5">
+          <p className="text-base font-semibold">Restriction Rules</p>
+          <p className="text-sm text-muted-foreground">
+            Limits on branch demands, sales, cash deposits, ledger back-entries and company share — with approvals,
+            branch monitor and audit log.
+          </p>
+        </div>
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+      </Link>
+
       {/* Company */}
       <Card>
         <CardHeader><CardTitle className="text-base">Company</CardTitle></CardHeader>

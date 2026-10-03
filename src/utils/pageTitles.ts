@@ -36,6 +36,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.SPECIAL_EVENTS]: 'Special Events',
   [ROUTES.USERS]: 'Users',
   [ROUTES.SETTINGS]: 'Settings',
+  [ROUTES.RESTRICTION_RULES]: 'Settings / Restriction Rules',
 
   // Branch
   [ROUTES.BRANCH_DASHBOARD]: 'Branch Dashboard',

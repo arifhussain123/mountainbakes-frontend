@@ -3,14 +3,16 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
-  CASH_DEPOSITS_PER_DAY,
   businessDateStr,
   businessDaysAgoStr,
   type Attachment,
   type CashTransfer,
   type DailySaleRecordList,
+  type Restriction,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
+import { RestrictionNotice, RestrictionPanel } from '@/components/shared/RestrictionNotice';
+import { restrictionFromError, useRestrictionCheck } from '@/lib/restrictions';
 import { useBranchCashTransfers, useCreateCashTransfer } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,9 +63,12 @@ import {
  * different figures for one day. It only fills the form; nothing is saved
  * until the person reads it back and confirms.
  *
- * UP TO CASH_DEPOSITS_PER_DAY DEPOSITS PER BRANCH PER DAY. A day's pending and
- * approved deposits are counted as soon as the date is picked; at the limit the
- * form is flagged and the server refuses another (409). Auto fills the WHOLE
+ * A DAILY LIMIT, SET IN ADMIN SETTINGS → RESTRICTION RULES. The server counts
+ * the day's pending and approved deposits and says whether another may be
+ * forwarded; this popup asks as soon as the date is picked, shows the server's
+ * notice (with the real CT numbers) and offers the one-time Admin exception
+ * when the rule allows one. The server refuses past the limit regardless (409).
+ * Auto fills the WHOLE
  * day's figures, so it only runs for the day's first deposit — a later one is
  * typed by hand. Corrections go through the Help Desk, which re-posts the ledger.
  *
@@ -112,8 +117,14 @@ export function CashDepositModal({
   // The chosen day's own deposits — to warn before anything is typed.
   const dayQ = useBranchCashTransfers(token, { enabled: open && !!date, from: date, to: date, limit: 10 });
   const dayDeposits = (dayQ.data?.transfers ?? []).filter((t) => t.status !== 'rejected');
-  /** Set once the day has used its whole allowance. */
-  const existing = dayDeposits.length >= CASH_DEPOSITS_PER_DAY ? dayDeposits : null;
+  /**
+   * The server's word on the daily limit for the chosen date. Not derived from
+   * `dayDeposits`: the limit is configuration this screen does not hold, and an
+   * approved Admin exception lifts it.
+   */
+  const preflight = useRestrictionCheck(token, 'cash-deposit', { businessDate: date }, open && !!date);
+  /** The restriction a submit was refused with, when the preflight had not already shown it. */
+  const [refused, setRefused] = useState<Restriction | null>(null);
 
   const transfers = transfersQ.data?.transfers ?? [];
   const busy = createMut.isPending;
@@ -122,7 +133,7 @@ export function CashDepositModal({
     Object.values(draft).some((v) => v !== '') || note !== '' || photos.length > 0 || date !== today;
   const draftError = depositDraftError(draft, photos.length);
   const dateError = date > today ? 'The date cannot be in the future.' : date < earliest ? `Pick a date from ${formatDate(earliest)} onwards.` : null;
-  const valid = !draftError && !dateError && !existing;
+  const valid = !draftError && !dateError && preflight.allowed;
   const photoNeeded = figures.total > 0;
   const photoError = photoTouched && photoNeeded && photos.length === 0 ? 'Payment proof photo is required.' : undefined;
 
@@ -185,7 +196,8 @@ export function CashDepositModal({
 
   function save() {
     setPhotoTouched(true);
-    if (existing) { toast.error(`This date already has ${CASH_DEPOSITS_PER_DAY} cash deposits for this branch.`); return; }
+    // The limit is explained by the notice above the form — no toast on top.
+    if (!preflight.allowed) return;
     if (dateError || draftError) { toast.error((dateError ?? draftError)!); return; }
     setFace('confirm');
   }
@@ -216,11 +228,18 @@ export function CashDepositModal({
       // already exists, a photo that vanished between upload and submit — and
       // is more use than a generic failure. Nothing is reset: the same attempt
       // can be retried under the same operation id.
-      toast.error(
-        err instanceof ApiError || err instanceof Error
-          ? err.message
-          : 'Unable to submit cash deposit. Please try again.',
-      );
+      const restriction = restrictionFromError(err);
+      if (restriction) {
+        // Shown as the notice on the form, not as a toast over it.
+        setRefused(restriction);
+        preflight.refetch();
+      } else {
+        toast.error(
+          err instanceof ApiError || err instanceof Error
+            ? err.message
+            : 'Unable to submit cash deposit. Please try again.',
+        );
+      }
       setFace('form');
     }
   }
@@ -313,7 +332,7 @@ export function CashDepositModal({
                     value={date}
                     min={earliest}
                     max={today}
-                    onChange={(e) => { setDate(e.target.value); setAutoSource(null); }}
+                    onChange={(e) => { setDate(e.target.value); setAutoSource(null); setRefused(null); }}
                     disabled={busy}
                     className="text-base sm:text-sm"
                   />
@@ -331,22 +350,22 @@ export function CashDepositModal({
                 </div>
               </div>
 
-              {existing && (
-                <div role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <p>
-                    This date already has {CASH_DEPOSITS_PER_DAY} cash deposits for this branch —{' '}
-                    <span className="font-mono font-medium">{existing.map((t) => t.transferNo).join(', ')}</span>.
-                    They are listed below; ask Finance through the Help Desk to correct one.
+              {preflight.unverified || preflight.restriction ? (
+                <RestrictionPanel
+                  preflight={preflight}
+                  token={token}
+                  request={{ type: 'CASH_DEPOSIT_LIMIT', date }}
+                />
+              ) : refused ? (
+                <RestrictionNotice restriction={refused} />
+              ) : (
+                dayDeposits.length > 0 && (
+                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    {dayDeposits.length} {dayDeposits.length === 1 ? 'deposit' : 'deposits'} already made for this date (
+                    <span className="font-mono">{dayDeposits.map((t) => t.transferNo).join(', ')}</span>). Enter only what
+                    this deposit adds.
                   </p>
-                </div>
-              )}
-              {!existing && dayDeposits.length > 0 && (
-                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                  {dayDeposits.length} of {CASH_DEPOSITS_PER_DAY} deposits already made for this date (
-                  <span className="font-mono">{dayDeposits.map((t) => t.transferNo).join(', ')}</span>). Enter only what
-                  this deposit adds.
-                </p>
+                )
               )}
 
               <CashDepositFormFields
