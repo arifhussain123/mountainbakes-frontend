@@ -26,9 +26,12 @@ import { Separator } from '@/components/ui/separator';
 import { usePrintCapability } from '@/hooks/usePrintCapability';
 import { Trash2, Plus, Printer, Download, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import { RestrictionNotice } from '@/components/shared/RestrictionNotice';
+import { restrictionFromError, useRestrictionCheck } from '@/lib/restrictions';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, UNPAID_PAYMENT_METHOD } from '@/utils/constants';
 import { cn } from '@/lib/utils';
 import type { InvoiceData } from './InvoiceView';
+import type { Restriction } from '@mb/shared';
 
 // Re-check stock while the sale dialog is open so approvals / other cashiers' sales
 // are reflected without a manual reload. Stock is also refreshed on open and after
@@ -130,6 +133,18 @@ export function SaleForm({
 }) {
   const { token } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * Hourly sales activity (Restriction Rules, migration 136) — branch POS sales
+   * only; the production counter's endpoint is not subject to it. The server
+   * counts this hour's entries by its own clock and says whether to warn or
+   * block. A failed check does NOT hold the till: the rule's default is a
+   * warning, and POST /api/orders/pos enforces a block regardless.
+   */
+  const salesCheck = useRestrictionCheck(token, 'sale', {}, endpoint === '/api/orders/pos');
+  /** The restriction a save was refused with, when the preflight had not already shown it. */
+  const [refused, setRefused] = useState<Restriction | null>(null);
+  const saleRestriction = salesCheck.restriction ?? refused;
+  const salesBlocked = salesCheck.check !== null && !salesCheck.check.allowed;
   const printRef = useRef(false);
   // Names the second submit after the device: no printer set up here means the
   // same click ends at "Save as PDF" in the browser dialog, so say so.
@@ -334,11 +349,21 @@ export function SaleForm({
       toast.success(`Sale ${result.orderNumber} saved — ${cur} ${result.grandTotal.toLocaleString()}`);
       form.reset({ branchId, customerName: '', customerPhone: '', items: [{ productId: '', qty: 1, discount: 0 }], paymentMethod: 'cash', notes: '' });
       setDiscountRaw({});
+      setRefused(null);
+      // This sale counts towards the hour; ask again before the next one.
+      salesCheck.refetch();
       onSaved(invoice, shouldPrint);
     } catch (err) {
+      const restriction = restrictionFromError(err);
+      if (restriction) {
+        // The hourly sales rule refused this entry. The notice above the Save
+        // buttons explains it; a toast as well would say it twice.
+        setRefused(restriction);
+        salesCheck.refetch();
+      }
       // Race condition: stock changed between load and save. Re-sync and surface the
       // server's per-product shortfall so the user can correct the quantities.
-      if (err instanceof ApiError && err.status === 409) {
+      else if (err instanceof ApiError && err.status === 409) {
         onRefreshStock();
         const details = Array.isArray(err.details) ? (err.details as StockShortfall[]) : [];
         const detail = details.map((d) => `${d.productName}: only ${d.available} left`).join(' · ');
@@ -640,11 +665,13 @@ export function SaleForm({
           </p>
         )}
 
+        {saleRestriction && <RestrictionNotice restriction={saleRestriction} />}
+
         <div className="grid grid-cols-2 gap-3">
-          <Button type="submit" variant="outline" size="lg" disabled={submitting || stockBlocked || cashShort} onClick={() => { printRef.current = false; }}>
+          <Button type="submit" variant="outline" size="lg" disabled={submitting || stockBlocked || cashShort || salesBlocked} onClick={() => { printRef.current = false; }}>
             <Save className="h-4 w-4 mr-1.5" /> {submitting ? 'Saving…' : 'Save Sale'}
           </Button>
-          <Button type="submit" size="lg" disabled={submitting || stockBlocked || cashShort} onClick={() => { printRef.current = true; }}>
+          <Button type="submit" size="lg" disabled={submitting || stockBlocked || cashShort || salesBlocked} onClick={() => { printRef.current = true; }}>
             {canPrint ? <Printer className="h-4 w-4 mr-1.5" /> : <Download className="h-4 w-4 mr-1.5" />}
             {canPrint ? 'Save & Print' : 'Save & PDF'}
           </Button>

@@ -304,6 +304,18 @@ export const qk = {
   backupStatus: () => ['backups', 'status'] as const,
   backupHistory: (params: Record<string, unknown>) => ['backups', 'history', params] as const,
   backupRestoreTest: () => ['backups', 'restore-test'] as const,
+
+  // Restriction Rules (migration 136). Two roots, deliberately:
+  //   ['restrictions', …]     the Admin Settings screen — rules, requests,
+  //                           monitor, audit. One prefix refreshes all four.
+  //   ['restrictionCheck', …] a popup's preflight. Its own root so it is never
+  //                           persisted offline (see queryPersist.ts) and so an
+  //                           admin-side invalidation does not refetch it.
+  restrictionRules: () => ['restrictions', 'rules'] as const,
+  restrictionRequests: (filters: Record<string, unknown>) => ['restrictions', 'requests', filters] as const,
+  restrictionMonitor: () => ['restrictions', 'monitor'] as const,
+  restrictionEvents: (ruleCode: string | null) => ['restrictions', 'events', ruleCode] as const,
+  restrictionCheck: (kind: string, params: Record<string, unknown>) => ['restrictionCheck', kind, params] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

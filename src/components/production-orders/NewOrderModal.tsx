@@ -35,6 +35,9 @@ import { cn } from '@/lib/utils';
 import { sortProducts } from '@/utils/productSort';
 import { formatCurrency as money } from '@/utils/currency';
 import { toast } from 'sonner';
+import { RestrictionNotice, RestrictionPanel } from '@/components/shared/RestrictionNotice';
+import { restrictionFromError, useRestrictionCheck } from '@/lib/restrictions';
+import type { Restriction } from '@mb/shared';
 
 const EMPTY_PRODUCT_MESSAGE = 'Please enter the quantity for at least one product.';
 const MISSING_REQUIRED_DATE_MESSAGE = 'Please choose the date this demand is required by.';
@@ -238,6 +241,17 @@ export function NewOrderModal({
   const draftKey = branchId ? `mb:po-draft:${branchId}` : 'mb:po-draft';
   const { token } = useAuth();
 
+  /**
+   * Restriction Rules (migration 136) — pending demands, a backdated date, low
+   * sales after closing. Asked of the server while the popup is open and again
+   * whenever the Required Date changes; the answer is drawn in the footer,
+   * beside the button it governs. This is a preview: POST /api/production-orders
+   * re-decides, and what it refuses lands in `refused` below.
+   */
+  const preflight = useRestrictionCheck(token, 'demand', { requiredDate: requiredDate || null }, open);
+  /** The restriction a submit was refused with, when the preflight had not already shown it. */
+  const [refused, setRefused] = useState<Restriction | null>(null);
+
   // Order window comes from Admin → Business Hours (default 8:00 AM–2:00 AM, wraps midnight).
   const { settings } = useSettings();
   const openMin = hhmmToMinutes(settings?.orderStartTime ?? '') ?? ORDER_WINDOW_OPEN_MINUTES;
@@ -425,6 +439,13 @@ export function NewOrderModal({
    */
   const minRequiredDate = now ? businessDateStr(now) : '';
   const requiredDateInPast = requiredDate !== '' && minRequiredDate !== '' && requiredDate < minRequiredDate;
+  /**
+   * A past date is a BACKDATED demand, which Admin can approve — the server's
+   * notice explains and offers the request. Only when the server has no such
+   * rule to apply (it is switched off) does the old flat refusal stand.
+   */
+  const backdatedHandled = preflight.isLoading || preflight.unverified || preflight.restriction?.code === 'BACKDATED_DEMAND';
+  const pastDateRefused = requiredDateInPast && !backdatedHandled;
 
   // Declared after the packing and special tallies because it now depends on
   // them: a demand of packing materials or special items alone is a real demand.
@@ -435,7 +456,10 @@ export function NewOrderModal({
     // advisory only — a typed date bypasses the picker — so the value is
     // re-checked here rather than trusted to the browser.
     requiredDate !== '' &&
-    !requiredDateInPast &&
+    !pastDateRefused &&
+    // The server's say on the restriction rules. False while it is still being
+    // asked and when it cannot be reached, so the button never outruns it.
+    preflight.allowed &&
     withinWindow &&
     !submitting;
 
@@ -503,10 +527,12 @@ export function NewOrderModal({
       toast.error(MISSING_REQUIRED_DATE_MESSAGE);
       return;
     }
-    if (requiredDateInPast) {
+    if (pastDateRefused) {
       toast.error('The required date cannot be in the past.');
       return;
     }
+    if (!preflight.allowed) return;
+    setRefused(null);
     setConfirmOpen(true);
   }
 
@@ -539,7 +565,16 @@ export function NewOrderModal({
       setConfirmOpen(false);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to submit order');
+      // A restriction is explained by the notice in this popup, not by a toast
+      // on top of it. Re-ask the server so the notice reflects what just
+      // changed (a demand that went pending in another tab, an approval spent).
+      const restriction = restrictionFromError(err);
+      if (restriction) {
+        setRefused(restriction);
+        preflight.refetch();
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Failed to submit order');
+      }
       setConfirmOpen(false);
     }
   }
@@ -1004,19 +1039,20 @@ export function NewOrderModal({
                 type="date"
                 required
                 value={requiredDate}
-                min={minRequiredDate || undefined}
-                onChange={(e) => setRequiredDate(e.target.value)}
+                onChange={(e) => { setRequiredDate(e.target.value); setRefused(null); }}
                 disabled={submitting}
-                aria-invalid={requiredDate === '' || requiredDateInPast}
+                aria-invalid={requiredDate === '' || pastDateRefused}
                 className={cn(
                   'h-9 w-full sm:w-48',
-                  (requiredDate === '' || requiredDateInPast) && 'border-destructive',
+                  (requiredDate === '' || pastDateRefused) && 'border-destructive',
                 )}
               />
               <span className="text-xs text-muted-foreground">
-                {requiredDateInPast
+                {pastDateRefused
                   ? 'The required date cannot be in the past.'
-                  : requiredDate === ''
+                  : requiredDateInPast
+                    ? 'This is a previous business date — see the notice below.'
+                    : requiredDate === ''
                     ? 'Choose when you need this delivered — the order cannot be submitted without it.'
                     : 'When you need this delivered by.'}
               </span>
@@ -1050,6 +1086,21 @@ export function NewOrderModal({
                 </span>
               </div>
             )}
+
+            {/* The server's restriction notice, directly above the button it
+                governs. One notice: the preflight's, or — when a submit was
+                refused for something the preflight had not seen — that one. */}
+            {withinWindow &&
+              (preflight.unverified || preflight.restriction ? (
+                <RestrictionPanel
+                  preflight={preflight}
+                  token={token}
+                  request={requiredDateInPast ? { type: 'BACKDATED_DEMAND', date: requiredDate } : null}
+                  className="max-h-[38vh] overflow-y-auto"
+                />
+              ) : (
+                refused && <RestrictionNotice restriction={refused} className="max-h-[38vh] overflow-y-auto" />
+              ))}
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <Button variant="outline" className="w-full sm:w-auto" onClick={clearAll} disabled={submitting}>

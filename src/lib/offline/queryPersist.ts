@@ -133,7 +133,10 @@ export async function saveSnapshot(client: QueryClient, userId: string, opts: { 
 
     const queries = successfulQueries(client);
     const state = dehydrate(client, {
-      shouldDehydrateQuery: (q) => q.state.status === 'success',
+      // Restriction checks are never written to disk: they describe what the
+      // SERVER would allow right now, and a restored copy read offline would be
+      // a stale answer dressed up as a current one.
+      shouldDehydrateQuery: (q) => q.state.status === 'success' && q.queryKey[0] !== 'restrictionCheck',
     });
     const snapshot: Snapshot = { userId, savedAt: Date.now(), state };
 
