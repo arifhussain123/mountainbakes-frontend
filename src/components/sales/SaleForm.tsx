@@ -136,9 +136,9 @@ export function SaleForm({
   /**
    * Hourly sales activity (Restriction Rules, migration 136) — branch POS sales
    * only; the production counter's endpoint is not subject to it. The server
-   * counts this hour's entries by its own clock and says whether to warn or
-   * block. A failed check does NOT hold the till: the rule's default is a
-   * warning, and POST /api/orders/pos enforces a block regardless.
+   * counts this hour's completed sales by its own clock and warns while the
+   * branch is below the required number. It is a warning only: neither it nor a
+   * failed check ever holds the till.
    */
   const salesCheck = useRestrictionCheck(token, 'sale', {}, endpoint === '/api/orders/pos');
   /** The restriction a save was refused with, when the preflight had not already shown it. */

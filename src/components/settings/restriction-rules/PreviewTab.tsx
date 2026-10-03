@@ -10,6 +10,7 @@ import {
   evalLedgerBackdate,
   evalLowSales,
   evalPendingDemand,
+  evalProductionShortage,
   pickRestriction,
   restrictionDmy,
   type RequestState,
@@ -36,7 +37,7 @@ const SAMPLE: Record<RequestState['status'], RequestState> = {
 
 interface Scenario {
   key: string;
-  popup: 'New Demand' | 'New Sale' | 'Cash Deposit' | 'Ledger Entry' | 'Income';
+  popup: 'New Demand' | 'New Sale' | 'Cash Deposit' | 'Ledger Entry' | 'Income' | 'Production Demand';
   label: string;
   endpoint: string;
   submit: string;
@@ -78,14 +79,23 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
-    key: 'salesAt', popup: 'New Sale', label: 'Hourly sales · at threshold', endpoint: '/api/orders/pos', submit: 'Save Sale',
+    key: 'salesNone', popup: 'New Sale', label: 'Hourly sales · none this hour', endpoint: '/api/restrictions/check/sale', submit: 'Save Sale',
     fields: () => [['Product', 'Chicken Patties ×6'], ['Total', 'Rs. 1,080']],
-    build: (s) => evalHourlySales(s.rules.sales.hourly, { count: s.rules.sales.hourly.threshold, hourLabel: '10:00–11:00' }),
+    build: (s) => evalHourlySales(s.rules.sales.hourly, { count: 0, hourLabel: '10:00–11:00' }),
   },
   {
-    key: 'salesOver', popup: 'New Sale', label: 'Hourly sales · threshold exceeded', endpoint: '/api/orders/pos', submit: 'Save Sale',
+    key: 'salesLow', popup: 'New Sale', label: 'Hourly sales · below required', endpoint: '/api/restrictions/check/sale', submit: 'Save Sale',
     fields: () => [['Product', 'Chicken Patties ×6'], ['Total', 'Rs. 1,080']],
-    build: (s) => evalHourlySales(s.rules.sales.hourly, { count: s.rules.sales.hourly.threshold + 1, hourLabel: '10:00–11:00' }),
+    build: (s) => evalHourlySales(s.rules.sales.hourly, { count: Math.max(s.rules.sales.hourly.threshold - 1, 0), hourLabel: '10:00–11:00' }),
+  },
+  {
+    key: 'production', popup: 'Production Demand', label: 'Stock shortage', endpoint: '/api/production-orders/:id/review', submit: 'Submit for Verification',
+    fields: () => [['Branch', 'Gulberg'], ['Demand', 'DMD-002226']],
+    build: () =>
+      evalProductionShortage([
+        { productName: 'Cream Puff', requested: 100, available: 75, shortage: 25 },
+        { productName: 'Lotus Pastry', requested: 50, available: 40, shortage: 10 },
+      ]),
   },
   {
     key: 'cash', popup: 'Cash Deposit', label: 'Daily limit reached', endpoint: '/api/cash-transfers', submit: 'Save',
@@ -113,7 +123,7 @@ const SCENARIOS: Scenario[] = [
     build: (s) => evalCompanyShare(s.rules.company.shareIncome, { isCompanyShare: true, request: st === 'none' ? null : SAMPLE.approved }),
   })),
   {
-    key: 'offline', popup: 'New Demand', label: 'Offline · connection required', endpoint: '/api/production-orders', submit: 'Submit Order',
+    key: 'offline', popup: 'New Demand', label: 'Offline · verification required', endpoint: '/api/production-orders', submit: 'Submit Order',
     fields: (t) => [['Branch', 'Gulberg'], ['Required date', t]],
     build: () => 'offline',
   },
