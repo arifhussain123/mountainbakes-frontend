@@ -213,6 +213,10 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
         ),
       },
       moneyColumn('totalSale', 'Total Sale', (r) => r.autoTotalSale, symbol, true),
+      // Server-computed: Total Sale × the branch's Admin company share (the
+      // percentage booked on the day's income approval where there is one).
+      // Nothing is multiplied here, so the column cannot disagree with the API.
+      moneyColumn('companyShare', 'Company Share', (r) => r.companyShare, symbol, true, 'text-red-600 dark:text-red-400 font-bold', paisaMoney),
       moneyColumn('cash', 'Cash', (r) => r.autoCash, symbol),
       moneyColumn('easypaisa', 'Easypaisa', (r) => r.autoEasypaisa, symbol),
       moneyColumn('foodpanda', 'Foodpanda', (r) => r.autoFoodpanda, symbol),
@@ -627,6 +631,18 @@ function RowActions({
 }
 
 /**
+ * Money that keeps its paisa when it has any: "Rs. 750", "Rs. 28,312.50".
+ *
+ * `money` rounds to whole rupees, which is right for takings and wrong for a
+ * percentage of them — 75% of 37,750 is 28,312.50, and showing 28,313 would be a
+ * figure nobody can reproduce from the row.
+ */
+function paisaMoney(n: number, symbol: string): string {
+  if (Number.isInteger(n)) return money(n, symbol);
+  return `${symbol} ${n.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
  * One right-aligned money column.
  *
  * A factory rather than nine near-identical literals, because the alignment,
@@ -640,21 +656,32 @@ function moneyColumn(
   pick: (r: DailySaleRecord) => number,
   symbol: string,
   strong = false,
+  tone = '',
+  format: (n: number, symbol: string) => string = money,
 ): ColumnDef<DailySaleRecord> {
+  // A figure the API did not send (an API one release behind this build) reads
+  // as a dash, never as "Rs. NaN", and sorts and totals as 0.
+  const value = (r: DailySaleRecord) => {
+    const v = pick(r);
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  };
   return {
     id,
-    accessorFn: pick,
+    accessorFn: (r) => value(r) ?? 0,
     header,
     meta: { align: 'right', mobileLabel: header },
-    cell: ({ row }) => (
-      <span className={`tabular-nums ${strong ? 'font-semibold' : ''}`}>
-        {money(pick(row.original), symbol)}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const v = value(row.original);
+      return (
+        <span className={`tabular-nums ${strong ? 'font-semibold' : ''} ${tone}`}>
+          {v === null ? '—' : format(v, symbol)}
+        </span>
+      );
+    },
     footer: ({ table }) => (
-      <span className="tabular-nums">
-        {money(
-          table.getFilteredRowModel().rows.reduce((s, r) => s + pick(r.original), 0),
+      <span className={`tabular-nums ${tone}`}>
+        {format(
+          Math.round(table.getFilteredRowModel().rows.reduce((s, r) => s + (value(r.original) ?? 0), 0) * 100) / 100,
           symbol,
         )}
       </span>
