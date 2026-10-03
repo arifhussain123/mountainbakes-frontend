@@ -50,8 +50,11 @@ import { toast } from 'sonner';
  * off the shop's balance as it was raised, because the goods physically left the
  * shop — while a Production-recorded return has moved nothing at all:
  *
+ * Approving never adds to production stock. Returned goods are Branch Return
+ * Stock, a separate inventory; only an explicit transfer moves them on.
+ *
  *                     from a branch                    recorded here
- *   Approve           into the production pool          pool ↑ and branch ↓
+ *   Approve           into Branch Return Stock          return stock ↑ and branch ↓
  *   Reject            back onto the branch's balance    nothing to undo
  *   Send Back         nothing — the branch corrects it  not offered
  *
@@ -110,8 +113,8 @@ function confirmCopy(r: ProductionReturn, status: ProductionReturnStatus): { tit
     return {
       title: 'Approve this return?',
       body: fromBranch
-        ? `${units} goes into production stock. ${short(r.branchName)} has already had it taken off their balance, so nothing changes at the branch. The return becomes final.`
-        : `${units} goes into production stock and comes off ${short(r.branchName)}'s balance. The return becomes final.`,
+        ? `${units} goes into Branch Return Stock — it is not added to production stock. ${short(r.branchName)} has already had it taken off their balance, so nothing changes at the branch. The return becomes final.`
+        : `${units} goes into Branch Return Stock — it is not added to production stock — and comes off ${short(r.branchName)}'s balance. The return becomes final.`,
     };
   }
   if (status === 'rejected') {
@@ -191,7 +194,7 @@ export function ProductionReturnsPage() {
       await reviewMut.mutateAsync({ id: row.id, status });
       toast.success(
         status === 'accepted'
-          ? `Approved — ${row.qty} × ${row.productName} added to production stock`
+          ? `Approved — ${row.qty} × ${row.productName} added to return stock`
           : status === 'rejected'
             ? `Rejected — ${row.qty} × ${row.productName} back with ${short(row.branchName)}`
             : `Sent back to ${short(row.branchName)} to correct`,

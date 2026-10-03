@@ -28,6 +28,7 @@ const REPORTS = [
   { value: 'pending-balance', label: 'Pending Balance' },
   { value: 'returned-products', label: 'Returned Products' },
   { value: 'production-stock', label: 'Production Stock' },
+  { value: 'branch-return-stock', label: 'Branch Return Stock' },
   { value: 'branch-stock', label: 'Branch Stock' },
 ];
 

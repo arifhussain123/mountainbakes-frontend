@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api/client';
 import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
+import { mergeRules, RESTRICTION_GROUPS } from '@mb/shared';
 import type {
   CreateRestrictionRequestInput,
   Restriction,
@@ -112,6 +113,18 @@ export function useRestrictionRules(token: string) {
   return useQuery({
     queryKey: qk.restrictionRules(),
     queryFn: () => apiCall<RestrictionRulesState & { pendingRequests: number }>('/api/restrictions/rules', {}, token),
+    // The state can be OLDER than this bundle: restored from the offline
+    // snapshot, or answered by an API that has not been updated yet. A group
+    // added since then is missing from it, and the screen reads every group —
+    // so fill the gaps from the defaults rather than crash on `undefined`.
+    select: (data) => ({
+      ...data,
+      rules: mergeRules(data.rules ?? {}),
+      saved: {
+        ...(Object.fromEntries(RESTRICTION_GROUPS.map((g) => [g, { updatedAt: null, updatedByName: null }])) as RestrictionRulesState['saved']),
+        ...data.saved,
+      },
+    }),
     enabled: !!token,
   });
 }

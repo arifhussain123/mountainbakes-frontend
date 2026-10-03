@@ -52,6 +52,7 @@ import type {
   LoginSessionState,
   RevokeSessionResult,
   ProductionStockRow,
+  ReturnStockRow,
   ProductionStockLedgerRow,
   ProductionStockFigures,
   PriceHistoryDoc,
@@ -895,6 +896,8 @@ export interface ProductionOverviewCards {
   totalProducts: number;
   totalDemandQty: number;
   availableProductionStock: number;
+  /** Branch Return Stock on hand. A separate inventory — never part of the figure above. */
+  branchReturnStock: number;
 }
 
 export interface ProductionOverview {
@@ -975,6 +978,26 @@ export function useProductionStock(token: string, date?: string | null, opts?: {
     queryFn: () =>
       apiCall<{ rows: ProductionStockRow[]; date: string }>(
         `/api/production-stock${date ? `?date=${date}` : ''}`,
+        {},
+        token,
+      ),
+    select: (r) => r.rows ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * Branch Return Stock for a Karachi day (defaults to today) — goods branches sent
+ * back. A SEPARATE inventory from `useProductionStock`: the two are shown side by
+ * side and never added together on the client.
+ */
+export function useReturnStock(token: string, date?: string | null, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.returnStock(date),
+    queryFn: () =>
+      apiCall<{ rows: ReturnStockRow[]; date: string }>(
+        `/api/return-stock${date ? `?date=${date}` : ''}`,
         {},
         token,
       ),
