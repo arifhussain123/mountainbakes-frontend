@@ -40,7 +40,7 @@ export interface RestrictionPreflight {
   allowed: boolean;
   /**
    * The server could not be asked — the device is offline or the request
-   * failed. The popup shows "Connection Required" and does not submit: a cached
+   * failed. The popup shows "Verification Required" and does not submit: a cached
    * answer is never treated as permission.
    */
   unverified: boolean;

@@ -20,6 +20,9 @@ import type { ProductionOrderDoc } from '@/lib/print/receipt/types';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { RestrictionNotice } from '@/components/shared/RestrictionNotice';
+import { restrictionFromError } from '@/lib/restrictions';
+import type { Restriction } from '@mb/shared';
 import { COMPANY_NAME } from '@/utils/constants';
 import { formatDate, formatTime } from '@/utils/date';
 
@@ -144,6 +147,12 @@ function PreviewBody({
     order.status === 'verified' ||
     order.status === 'approved';
   const [editing, setEditing] = useState(false);
+  /**
+   * The stock shortage the server refused Submit for Verification with — every
+   * short product and its exact quantities. Shown above the action bar, in this
+   * popup, rather than as a toast that names nothing.
+   */
+  const [shortage, setShortage] = useState<Restriction | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState(order.changeReason ?? '');
@@ -307,12 +316,15 @@ function PreviewBody({
   // outcome — only the label changes. The order becomes 'approved' once the
   // branch checks what physically arrived and verifies it (BranchOrderDetail).
   async function submitForVerification() {
+    setShortage(null);
     try {
       await review({ id: order.id, status: 'awaiting_verification', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
       toast.success('Sent to branch for verification — stock transferred');
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to submit order');
+      const restriction = restrictionFromError(err);
+      if (restriction) setShortage(restriction);
+      else toast.error(err instanceof Error ? err.message : 'Failed to submit order');
     }
   }
 
@@ -975,6 +987,12 @@ function PreviewBody({
           <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
         )}
       </PrintPortal>
+
+      {shortage && (
+        <div className="no-print max-h-[40vh] shrink-0 overflow-y-auto border-t bg-card px-4 pt-3">
+          <RestrictionNotice restriction={shortage} />
+        </div>
+      )}
 
       {/* Action bar — hidden on print */}
       <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

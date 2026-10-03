@@ -279,7 +279,6 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
   const dpErr = !(n(dp.warnAt) < n(dp.blockAt));
   const csErr = !(n(cs.minSoldPercent) >= 1 && n(cs.minSoldPercent) <= 100);
   const closes = time12(state.closingTime);
-  const hsBlock = hs.mode === 'block';
   const lgFrom = restrictionDmy(addDaysToDateStr(state.businessDate, -n(lg.allowedDays)));
   const today = restrictionDmy(state.businessDate);
 
@@ -361,60 +360,21 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
         <WideRule
           name="Hourly sales activity"
           code="HOURLY_SALES_LIMIT"
-          description={`Counts sales entered by a branch in the current business hour, determined by the server in ${state.timezone} time. Device clocks are ignored. The counter resets each hour.`}
+          description={`Counts the completed sales a branch has recorded in the current business hour, determined by the server in ${state.timezone} time. Device clocks are ignored. While the count is below the required number, the popup shows a warning. The counter resets each hour.`}
           enabled={hs.enabled}
           onEnabled={(v) => patch('sales', 'hourly', { enabled: v })}
         >
-          <div className={cn('flex flex-col gap-3', !hs.enabled && 'opacity-45')}>
-            <div className="flex flex-wrap items-end gap-5">
-              <NumberField label="Hourly threshold" unit="entries / hour" min={1} value={hs.threshold} onChange={(v) => patch('sales', 'hourly', { threshold: v })} />
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold">After threshold</span>
-                <div role="radiogroup" aria-label="After threshold" className="flex gap-[3px] rounded-lg bg-muted p-[3px]">
-                  {([['warn', 'Warn & record audit'], ['block', 'Block sale']] as const).map(([mode, label]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      role="radio"
-                      aria-checked={hs.mode === mode}
-                      onClick={() => patch('sales', 'hourly', { mode })}
-                      className={cn(
-                        'h-[26px] rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                        hs.mode === mode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex h-8 items-center">
-                <OptionSwitch checked={hs.warnAtThreshold} onChange={(v) => patch('sales', 'hourly', { warnAtThreshold: v })}>
-                  Warning at threshold
-                </OptionSwitch>
-              </div>
-            </div>
+          <div className={cn('flex flex-wrap items-end gap-5', !hs.enabled && 'opacity-45')}>
+            <NumberField label="Required sales" unit="sales / hour" min={1} value={hs.threshold} onChange={(v) => patch('sales', 'hourly', { threshold: v })} />
             <Ladder
-              className="self-start"
               steps={[
-                { range: range(0, n(hs.threshold) - 1), text: 'Normal', tone: 'ok' },
-                {
-                  range: String(n(hs.threshold)),
-                  text: hsBlock ? 'Next sale blocked' : hs.warnAtThreshold ? 'Warning' : 'Normal',
-                  tone: hsBlock ? 'block' : hs.warnAtThreshold ? 'warn' : 'ok',
-                },
-                { range: `${n(hs.threshold) + 1}+`, text: hsBlock ? 'Blocked' : 'Warn + audit', tone: hsBlock ? 'block' : 'warn' },
+                { range: range(0, n(hs.threshold) - 1), text: 'Warning', tone: 'warn' },
+                { range: `${n(hs.threshold)}+`, text: 'Normal', tone: 'ok' },
               ]}
             />
-            <p className="text-[11.5px] text-muted-foreground">
-              The ranges count entries already recorded this hour. Blocking refuses every sale past the threshold,
-              including a batch of offline sales a phone delivers at once.
-            </p>
           </div>
           <Summary>
-            {hs.enabled
-              ? `${n(hs.threshold)} entries/hour${hs.warnAtThreshold && !hsBlock ? ' shows warning' : ''} · above that: ${hsBlock ? 'sale blocked' : 'sale allowed, warning recorded to audit'}`
-              : OFF}
+            {hs.enabled ? `Warn while a branch has fewer than ${n(hs.threshold)} sales in the current hour · sales are never blocked` : OFF}
           </Summary>
         </WideRule>
       </Section>
@@ -481,7 +441,7 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
         </div>
         <div className="flex flex-col gap-1">
           <span className="font-bold">Offline</span>
-          <span className="leading-normal text-muted-foreground">Restricted actions show “Connection Required” in the popup. Cached results are never authoritative.</span>
+          <span className="leading-normal text-muted-foreground">Restricted actions show “Verification Required” in the popup. Cached results are never authoritative.</span>
         </div>
         <div className="flex flex-col gap-1">
           <span className="font-bold">Admin only</span>

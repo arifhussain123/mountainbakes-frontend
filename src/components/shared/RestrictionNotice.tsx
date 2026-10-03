@@ -106,6 +106,31 @@ export function RestrictionNotice({
           </div>
         )}
 
+        {r.shortages && r.shortages.length > 0 && (
+          <div className="overflow-x-auto rounded-md bg-background">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="text-muted-foreground">
+                  <th className="px-3 py-2 text-left font-medium">Product</th>
+                  <th className="px-3 py-2 text-center font-medium">Required Qty</th>
+                  <th className="px-3 py-2 text-center font-medium">Available Qty</th>
+                  <th className="px-3 py-2 text-center font-medium">Less Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.shortages.map((s) => (
+                  <tr key={s.productName} className="border-t">
+                    <td className="px-3 py-2 font-semibold">{s.productName}</td>
+                    <td className="px-3 py-2 text-center tabular-nums">{s.required}</td>
+                    <td className="px-3 py-2 text-center tabular-nums">{s.available}</td>
+                    <td className={cn('px-3 py-2 text-center font-bold tabular-nums', tone.accent)}>{s.short}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {r.after?.map((m) => (
           <p key={m} className="leading-normal text-foreground/90">{m}</p>
         ))}
@@ -159,8 +184,8 @@ export function ConnectionRequiredNotice({ onRetry, className }: { onRetry?: () 
         // The code is irrelevant to the render; any member satisfies the type.
         code: 'DEMAND_PENDING_LIMIT',
         severity: 'info',
-        title: 'Connection Required',
-        messages: ['This action requires current server verification.', 'Please reconnect to the internet and try again.'],
+        title: 'Verification Required',
+        messages: ['This action requires an online server verification before it can be submitted.', 'Please reconnect to the internet and try again.'],
         requiresAdminApproval: false,
       }}
     >
@@ -175,7 +200,7 @@ export function ConnectionRequiredNotice({ onRetry, className }: { onRetry?: () 
 
 /**
  * The preflight result, as a popup renders it: the server's notice, or
- * "Connection Required" when it could not be reached, or nothing.
+ * "Verification Required" when it could not be reached, or nothing.
  *
  * When the restriction can be lifted by Admin, the request form is drawn inside
  * the notice. `request` is everything the request needs except the reason —
