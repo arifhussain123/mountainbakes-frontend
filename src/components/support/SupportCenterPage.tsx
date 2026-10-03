@@ -1903,7 +1903,8 @@ const PRODUCTION_FIELDS = [
   { key: 'preparedToday', label: 'Prepared Today', hint: 'units made today' },
   { key: 'demandFulfilled', label: 'Demand Fulfilled', hint: 'units verified out to branches' },
   { key: 'soldToday', label: 'Sold', hint: 'units sold at the counter' },
-  { key: 'returned', label: 'Returned', hint: 'units taken back from branches' },
+  // No Returned figure: a branch return is Branch Return Stock, a separate
+  // inventory, and is not a production-pool figure to correct here.
 ] as const;
 
 /**
@@ -1923,7 +1924,7 @@ const PRODUCTION_FIELDS = [
  *     and a product already negative has to stay correctable. It is warned about
  *     rather than refused.
  *
- * Total Stock is shown but not editable: it is prepared + returned, so it follows
+ * Total Stock is shown but not editable: it is opening + prepared, so it follows
  * the figures above it and has no movement of its own to correct.
  */
 function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
@@ -1946,25 +1947,24 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
           preparedToday: String(figures.preparedToday),
           approvedQty: String(figures.demandFulfilled),
           soldToday: String(figures.soldToday),
-          returned: String(figures.returned),
         }
       : {}),
     ...edited,
   };
-  // Until the admin edits Today's Balance themselves, it tracks the four figures
+  // Until the admin edits Today's Balance themselves, it tracks the three figures
   // above it.
   const balanceTouched = edited['balance'] !== undefined;
 
   /**
-   * Today's balance implied by the figures as typed. Prepared and returned add to
-   * the day; approved and sold take from it — the same arithmetic the server
-   * applies (migration 88), so the preview and the write agree.
+   * Today's balance implied by the figures as typed. Prepared adds to the day;
+   * approved and sold take from it — the same arithmetic the server applies
+   * (migration 88), so the preview and the write agree. Branch returns are not
+   * in it: they are Branch Return Stock, a separate inventory.
    */
   const implied = figures
     ? figures.balance +
       (num(t['preparedToday']) - figures.preparedToday) -
-      (num(t['approvedQty']) - figures.demandFulfilled) +
-      (num(t['returned']) - figures.returned) -
+      (num(t['approvedQty']) - figures.demandFulfilled) -
       (num(t['soldToday']) - figures.soldToday)
     : 0;
 
@@ -2002,7 +2002,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
   const changed = Object.keys(edits).length > 0;
 
   async function submit() {
-    if (invalid) { toast.error('Prepared, Approved, Sold and Returned must each be 0 or more'); return; }
+    if (invalid) { toast.error('Prepared, Approved and Sold must each be 0 or more'); return; }
     if (!changed) { toast.error('Change at least one figure'); return; }
     setBusy(true);
     try {
@@ -2045,7 +2045,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
                   — nothing carried over — so a query raised from that page has to
                   resolve against the same figures, and a carried-forward balance
                   here would not be one of them. Derived, so not editable. */}
-              <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="prepared + returned today" />
+              <FigureRow label="Total Stock" value={String(figures.totalStock)} hint="opening + prepared today" />
               {figures.adjustment !== 0 && (
                 <FigureRow
                   label="Adjustment so far"

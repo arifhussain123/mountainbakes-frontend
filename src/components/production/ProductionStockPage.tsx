@@ -17,6 +17,7 @@ import { PreparedDetailExportModal } from './PreparedDetailExportModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { StockLedgerPanel } from './StockLedgerPanel';
 import { ProductStockDetail } from './ProductStockDetail';
+import { BranchReturnStockPanel } from './BranchReturnStockPanel';
 
 const col = createColumnHelper<ProductionStockRow>();
 
@@ -83,7 +84,7 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
 export function ProductionStockPage() {
   const { token } = useAuth();
   const today = businessDateStr();
-  // The pool's day-scoped figures (Prepared / Approved / Sold / Returned) are
+  // The pool's day-scoped figures (Prepared / Approved / Sold) are
   // only ever computed for one business date, so the page needs to say which —
   // and let it be moved back to read a closed day.
   const [date, setDate] = useState(today);
@@ -149,6 +150,7 @@ export function ProductionStockPage() {
       branchDemand: n(r.branchDemand),
       demandFulfilled: n(r.demandFulfilled),
       soldToday: n(r.soldToday),
+      returnTransferIn: n(r.returnTransferIn),
       returned: n(r.returned),
       adjustment: n(r.adjustment),
       balance: n(r.balance),
@@ -190,11 +192,11 @@ export function ProductionStockPage() {
           total: t.total + r.totalStock,
           demand: t.demand + r.branchDemand,
           sold: t.sold + r.soldToday,
-          returned: t.returned + r.returned,
+          fromReturns: t.fromReturns + r.returnTransferIn + r.returned,
           adjustment: t.adjustment + r.adjustment,
           balance: t.balance + r.balance,
         }),
-        { opening: 0, prepared: 0, total: 0, demand: 0, sold: 0, returned: 0, adjustment: 0, balance: 0 },
+        { opening: 0, prepared: 0, total: 0, demand: 0, sold: 0, fromReturns: 0, adjustment: 0, balance: 0 },
       ),
     [dayRows],
   );
@@ -211,8 +213,13 @@ export function ProductionStockPage() {
     // ── The nine figures, left to right as the ledger reads ──────────────────
     //
     //     totalStock = opening + prepared
-    //     balance    = opening + prepared + returned + adjustment
+    //     balance    = opening + prepared + fromReturns + adjustment
     //                  − demandFulfilled − sold
+    //
+    // "From Returns" is ONLY what was explicitly transferred in from Branch
+    // Return Stock (plus, on days before the split, the old automatic credit).
+    // A branch return on its own is not in this table at all — it is in the
+    // Branch Return Stock panel below, which is a different inventory.
     //
     // Branch Demand is DISPLAYED, not subtracted. A branch asking for goods does
     // not consume them — the units stay on the shelf until the branch verifies
@@ -237,7 +244,7 @@ export function ProductionStockPage() {
       },
     }),
     col.accessor('soldToday', { header: 'Sale', meta: { align: 'center', mobileLabel: 'Production sale' }, cell: (i) => <span className="tabular-nums">{i.getValue() || '—'}</span> }),
-    col.accessor('returned', { header: 'Return', meta: { align: 'center', mobileLabel: 'Return stock' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue() || '—'}</span> }),
+    col.accessor((r) => r.returnTransferIn + r.returned, { id: 'fromReturns', header: 'From Returns', meta: { align: 'center', mobileLabel: 'Transferred from returns' }, cell: (i) => <span className="tabular-nums text-muted-foreground">{i.getValue() || '—'}</span> }),
     col.accessor('adjustment', {
       header: 'Adjustment',
       meta: { align: 'center' },
@@ -365,7 +372,7 @@ export function ProductionStockPage() {
         <StatCard label="Total Stock" value={totals.total} />
         <StatCard label="Branch Demand" value={totals.demand} />
         <StatCard label="Sale" value={totals.sold} />
-        <StatCard label="Return" value={totals.returned} />
+        <StatCard label="From Returns" value={totals.fromReturns} />
         <StatCard label="Adjustment" value={totals.adjustment} tone={totals.adjustment < 0 ? 'bad' : 'muted'} />
         <StatCard label="Balance" value={totals.balance} tone={totals.balance < 0 ? 'bad' : undefined} />
       </div>
@@ -409,7 +416,7 @@ export function ProductionStockPage() {
               title={isToday ? 'Nothing in the pool yet' : `No stock on ${formatDate(date)}`}
               description={
                 isToday
-                  ? 'Products appear here once they carry an opening balance or are prepared, returned, sent out or sold.'
+                  ? 'Products appear here once they carry an opening balance or are prepared, sent out or sold.'
                   : 'No product carried a balance or moved on this day.'
               }
               action={
@@ -423,6 +430,9 @@ export function ProductionStockPage() {
           ) : undefined
         }
       />
+
+      {/* A different inventory, kept visibly apart from the pool above. */}
+      <BranchReturnStockPanel date={date} isToday={isToday} />
 
       {/* The ledger sits under the sheet: the table answers "where does each
           product stand", this answers "how did it get there". */}

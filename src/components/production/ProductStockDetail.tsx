@@ -99,7 +99,7 @@ export function ProductStockDetail({ open, onOpenChange, row, date }: ProductSto
                     <Figure label="Opening Stock" value={figures.opening} />
                     <Figure label="Prepared Stock" value={figures.preparedToday} />
                     <Figure label="Total Stock" value={figures.totalStock} strong />
-                    <Figure label="Return Stock" value={figures.returned} />
+                    <Figure label="Transferred from Return Stock" value={(figures.returnTransferIn ?? 0) + figures.returned} />
                   </div>
                   <div className="divide-y">
                     <Figure label="Branch Demand (outstanding)" value={figures.branchDemand} />

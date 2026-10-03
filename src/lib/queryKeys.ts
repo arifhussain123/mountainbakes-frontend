@@ -150,6 +150,9 @@ export const qk = {
   // after a prepare or an adjustment refreshes the table, the ledger and any open
   // product detail together — they are three views of one thing and must never
   // repaint out of step.
+  // Branch Return Stock is a separate inventory, but it changes on the same
+  // events (a return reviewed, a transfer), so it shares the invalidation prefix.
+  returnStock: (date?: string | null) => ['productionStock', 'returnStock', date ?? 'today'] as const,
   productionStockLedger: (params: Record<string, unknown>) =>
     ['productionStock', 'ledger', params] as const,
   productionStockDetail: (productId: string, date: string) =>

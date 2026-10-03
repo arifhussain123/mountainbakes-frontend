@@ -46,6 +46,9 @@ export function ProductionDashboard() {
       icon: Boxes,
       color: (c?.availableProductionStock ?? 0) < 0 ? 'red' : 'green',
     },
+    // A separate inventory from the card above — returned goods are not
+    // production stock and are not counted in it.
+    { title: 'Branch Return Stock', value: c?.branchReturnStock ?? 0, icon: Undo2, color: 'brown' },
   ];
 
   const weekly = useMemo(() => {
