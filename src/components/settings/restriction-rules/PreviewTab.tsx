@@ -91,11 +91,13 @@ const SCENARIOS: Scenario[] = [
   {
     key: 'production', popup: 'Production Demand', label: 'Stock shortage', endpoint: '/api/production-orders/:id/review', submit: 'Submit for Verification',
     fields: () => [['Branch', 'Gulberg'], ['Demand', 'DMD-002226']],
-    build: () =>
-      evalProductionShortage([
-        { productName: 'Cream Puff', requested: 100, available: 75, shortage: 25 },
-        { productName: 'Lotus Pastry', requested: 50, available: 40, shortage: 10 },
-      ]),
+    build: (s) =>
+      s.rules.production.stockShortage.enabled
+        ? evalProductionShortage([
+            { productName: 'Cream Puff', requested: 100, available: 70, shortage: 30 },
+            { productName: 'Chocolate Balls', requested: 40, available: 25, shortage: 15 },
+          ])
+        : null,
   },
   {
     key: 'cash', popup: 'Cash Deposit', label: 'Daily limit reached', endpoint: '/api/cash-transfers', submit: 'Save',

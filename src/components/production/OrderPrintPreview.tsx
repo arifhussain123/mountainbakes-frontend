@@ -22,6 +22,7 @@ import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } f
 import { toast } from 'sonner';
 import { RestrictionNotice } from '@/components/shared/RestrictionNotice';
 import { restrictionFromError } from '@/lib/restrictions';
+import { ApiError } from '@/utils/api';
 import type { Restriction } from '@mb/shared';
 import { COMPANY_NAME } from '@/utils/constants';
 import { formatDate, formatTime } from '@/utils/date';
@@ -153,6 +154,12 @@ function PreviewBody({
    * popup, rather than as a toast that names nothing.
    */
   const [shortage, setShortage] = useState<Restriction | null>(null);
+  /**
+   * Submit for Verification got no answer from the server (offline, or the
+   * request never arrived). The stock check is the server's, so nothing was
+   * submitted and nothing is claimed — the popup says so and waits.
+   */
+  const [unverified, setUnverified] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState(order.changeReason ?? '');
@@ -317,6 +324,7 @@ function PreviewBody({
   // branch checks what physically arrived and verifies it (BranchOrderDetail).
   async function submitForVerification() {
     setShortage(null);
+    setUnverified(false);
     try {
       await review({ id: order.id, status: 'awaiting_verification', approvedItems, approvedPackingItems, reason: changed ? reason : undefined });
       toast.success('Sent to branch for verification — stock transferred');
@@ -324,7 +332,10 @@ function PreviewBody({
     } catch (err) {
       const restriction = restrictionFromError(err);
       if (restriction) setShortage(restriction);
-      else toast.error(err instanceof Error ? err.message : 'Failed to submit order');
+      // status 0 is apiCall's own "offline"; anything that is not an ApiError
+      // is the request failing before the server answered.
+      else if (!(err instanceof ApiError) || err.status === 0) setUnverified(true);
+      else toast.error(err.message || 'Failed to submit order');
     }
   }
 
@@ -991,6 +1002,19 @@ function PreviewBody({
       {shortage && (
         <div className="no-print max-h-[40vh] shrink-0 overflow-y-auto border-t bg-card px-4 pt-3">
           <RestrictionNotice restriction={shortage} />
+        </div>
+      )}
+      {unverified && (
+        <div className="no-print shrink-0 border-t bg-card px-4 pt-3">
+          <RestrictionNotice
+            restriction={{
+              code: 'PRODUCTION_STOCK_SHORTAGE',
+              severity: 'info',
+              title: 'Verification Required',
+              messages: ['Stock verification requires a current stock check.', 'Please reconnect to the internet and try again.'],
+              requiresAdminApproval: false,
+            }}
+          />
         </div>
       )}
 
