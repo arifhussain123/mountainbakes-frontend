@@ -295,13 +295,13 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
         <WideRule
           name="Pending verification limit"
           code="DEMAND_PENDING_LIMIT"
-          description="Counts demands forwarded by a branch that are still waiting for Admin/Production verification. Pending demand numbers are listed in the popup when blocked."
+          description="Counts a branch's demands in the Awaiting Verification status: sent by Production, not yet verified as received by the branch. Their demand numbers are listed in the popup when blocked."
           enabled={dp.enabled}
           onEnabled={(v) => patch('demand', 'pendingLimit', { enabled: v })}
         >
           <div className={cn('flex flex-wrap items-end gap-5', !dp.enabled && 'opacity-45')}>
-            <NumberField label="Warning threshold" unit="pending" min={0} value={dp.warnAt} onChange={(v) => patch('demand', 'pendingLimit', { warnAt: v })} />
-            <NumberField label="Blocking threshold" unit="pending" min={1} value={dp.blockAt} onChange={(v) => patch('demand', 'pendingLimit', { blockAt: v })} />
+            <NumberField label="Warning threshold" unit="awaiting" min={0} value={dp.warnAt} onChange={(v) => patch('demand', 'pendingLimit', { warnAt: v })} />
+            <NumberField label="Blocking threshold" unit="awaiting" min={1} value={dp.blockAt} onChange={(v) => patch('demand', 'pendingLimit', { blockAt: v })} />
             <Ladder
               steps={[
                 { range: range(0, n(dp.warnAt) - 1), text: 'Allowed', tone: 'ok' },
@@ -311,7 +311,7 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
             />
           </div>
           {dpErr && <FieldError>Warning threshold must be lower than the blocking threshold.</FieldError>}
-          <Summary>{dp.enabled ? `Warn at ${n(dp.warnAt)} pending · block new demands at ${n(dp.blockAt)}+ pending` : OFF}</Summary>
+          <Summary>{dp.enabled ? `Warn at ${n(dp.warnAt)} awaiting verification · block new demands at ${n(dp.blockAt)}+` : OFF}</Summary>
         </WideRule>
 
         <WideRule
