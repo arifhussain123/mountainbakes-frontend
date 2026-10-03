@@ -22,7 +22,7 @@ import { time12 } from './format';
 /**
  * Admin Settings → Restriction Rules → Rules.
  *
- * Five groups, each saved on its own — the screen never sends a group the admin
+ * Six groups, each saved on its own — the screen never sends a group the admin
  * did not touch. The draft lives here; the server's copy is the source for
  * "Saved …" and for what is actually enforced. Validation is the same Zod
  * schema the API applies, so a Save button that is lit will not be refused.
@@ -271,6 +271,7 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
 
   const { pendingLimit: dp, backdated: bd, lowSales: cs } = draft.demand;
   const hs = draft.sales.hourly;
+  const ps = draft.production.stockShortage;
   const cd = draft.cash.dailyLimit;
   const lg = draft.ledger.backdate;
   const co = draft.company.shareIncome;
@@ -375,6 +376,39 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
           </div>
           <Summary>
             {hs.enabled ? `Warn while a branch has fewer than ${n(hs.threshold)} sales in the current hour · sales are never blocked` : OFF}
+          </Summary>
+        </WideRule>
+      </Section>
+
+      <Section
+        title="Production Restrictions"
+        shownIn="Production Demand popup"
+        status={status('production')}
+        dirty={dirty('production')}
+        footer={saveButton('production', 'Save production rules')}
+      >
+        <WideRule
+          name="Production stock less than demand"
+          code="PRODUCTION_STOCK_SHORTAGE"
+          description="On Submit for Verification, every product on the demand is compared with the available production stock. If any product is short, the demand is not submitted and the popup lists each short product with its Less Qty (demand − available stock). Adding stock clears the shortage; it never approves the demand. Uses the existing stock calculation."
+          enabled={ps.enabled}
+          onEnabled={(v) => patch('production', 'stockShortage', { enabled: v })}
+        >
+          <div className={cn('flex flex-wrap items-center gap-5', !ps.enabled && 'opacity-45')}>
+            <OptionSwitch checked={ps.allowAdminOverride} onChange={(v) => patch('production', 'stockShortage', { allowAdminOverride: v })}>
+              Admin may approve a short demand
+            </OptionSwitch>
+            <Ladder
+              steps={[
+                { range: 'Stock ≥ Demand', text: 'Allowed', tone: 'ok' },
+                { range: 'Stock < Demand', text: 'Blocked', tone: 'block' },
+              ]}
+            />
+          </div>
+          <Summary>
+            {ps.enabled
+              ? `Block Submit for Verification while any product is short · ${ps.allowAdminOverride ? 'Admin can override' : 'no override, stock must be added'}`
+              : OFF}
           </Summary>
         </WideRule>
       </Section>
