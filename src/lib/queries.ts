@@ -9,7 +9,7 @@
 
 import { normalizeCashTransferList } from '@/lib/cashTransferCompat';
 import { printTrace } from '@/lib/print/diagnostics';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
 // businessDayBounds is a VALUE, not a type — Branch Closing turns a business
@@ -906,6 +906,39 @@ export interface ProductionOverview {
   demandByMonth: { month: string; qty: number }[];
   branchDemand: { branchId: string; branchName: string; qty: number }[];
   topProducts: { productId: string; productName: string; qty: number }[];
+  /** Active branches, for the dashboard's branch filter. */
+  branches: { branchId: string; branchName: string }[];
+  week: ProductionWeek;
+}
+
+/** A week-to-date figure beside the same weekdays of last week. */
+export interface WeekPair { cur: number; prev: number }
+
+/**
+ * Monday-to-today block of the Production Dashboard (migration 140). Everything
+ * order-based follows the branch filter; `produced` and `stock` describe the
+ * central pool, which has no branch, and `branchCompare` always lists them all.
+ */
+export interface ProductionWeek {
+  from: string;
+  to: string;
+  prevFrom: string;
+  prevTo: string;
+  branchId: string | null;
+  kpis: Record<'demand' | 'produced' | 'delivered' | 'openOrders' | 'deliveredOrders' | 'returns', WeekPair>;
+  trend: { date: string; demand: number; produced: number }[];
+  /** `changed` overlaps the other counts — never add it to them. */
+  orderStatus: Record<'pending' | 'awaitingVerification' | 'verified' | 'approved' | 'rejected' | 'changed', number>;
+  branchCompare: { branchId: string; branchName: string; demand: number; delivered: number }[];
+  plan: { productId: string | null; productName: string; demand: number; produced: number; stock: number }[];
+  heat: {
+    products: { productId: string | null; productName: string }[];
+    rows: { branchId: string; branchName: string; values: number[] }[];
+  };
+  recent: {
+    id: string; submittedAt: string; branchName: string;
+    products: number; units: number; status: string; wasChanged: boolean;
+  }[];
 }
 
 export interface BranchStockMatrix {
@@ -915,12 +948,17 @@ export interface BranchStockMatrix {
 
 
 /** Dashboard cards + chart series. Always revalidates (live demand). */
-export function useProductionOverview(token: string) {
+export function useProductionOverview(token: string, branchId?: string | null) {
   return useQuery({
-    queryKey: qk.productionOverview(),
-    queryFn: () => apiCall<ProductionOverview>('/api/production/overview', {}, token),
+    queryKey: qk.productionOverview(branchId),
+    queryFn: () => apiCall<ProductionOverview>(
+      `/api/production/overview${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`, {}, token,
+    ),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
+    // Switching the branch filter keeps the last figures on screen until the
+    // new ones land, instead of dropping the whole dashboard back to skeletons.
+    placeholderData: keepPreviousData,
   });
 }
 

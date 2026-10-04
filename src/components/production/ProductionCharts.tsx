@@ -6,8 +6,11 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  LineChart,
+  ComposedChart,
+  Area,
   Line,
+  PieChart,
+  Pie,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -22,13 +25,47 @@ const TOOLTIP_STYLE = {
   fontSize: '12px',
 } as const;
 
-const PALETTE = ['#F97316', '#6B3B1E', '#0EA5E9', '#22C55E', '#A855F7', '#EAB308', '#EF4444', '#14B8A6', '#F472B6', '#64748B'];
+const AXIS_TICK = { fontSize: 11, fill: 'var(--muted-foreground)' } as const;
 
-function ChartShell({ title, loading, empty, height = 260, children }: { title: string; loading?: boolean; empty?: boolean; height?: number; children: React.ReactElement }) {
+const fmt = (n: number) => n.toLocaleString('en-US');
+
+export interface LegendItem { label: string; color: string }
+
+/** Colour key shown in a chart's header, top right. */
+export function ChartLegend({ items }: { items: LegendItem[] }) {
   return (
-    <Card>
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      {items.map((it) => (
+        <span key={it.label} className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-[2px]" style={{ backgroundColor: it.color }} aria-hidden />
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ChartShell({
+  title, subtitle, legend, loading, empty, height = 260, children,
+}: {
+  title: string;
+  subtitle?: string;
+  legend?: LegendItem[];
+  loading?: boolean;
+  empty?: boolean;
+  height?: number;
+  children: React.ReactElement;
+}) {
+  return (
+    <Card className="h-full">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">{title}</CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="text-base">{title}</CardTitle>
+            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          </div>
+          {legend && <ChartLegend items={legend} />}
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -47,72 +84,162 @@ function ChartShell({ title, loading, empty, height = 260, children }: { title: 
   );
 }
 
-/** Demand-over-time bar chart (used for Daily / Weekly / Monthly demand). */
+/** Demand-over-time bar chart (Monthly demand). */
 export function DemandBarChart({ title, data, loading }: { title: string; data: { label: string; qty: number }[]; loading?: boolean }) {
   return (
     <ChartShell title={title} loading={loading} empty={data.length === 0}>
       <BarChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Qty']} />
+        <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [fmt(v), 'Qty']} />
         <Bar dataKey="qty" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ChartShell>
   );
 }
 
-/** Demand-over-time line chart (smoother daily trend). */
-export function DemandLineChart({ title, data, loading }: { title: string; data: { label: string; qty: number }[]; loading?: boolean }) {
+/** Units demanded against units prepared, one point per day of the week so far. */
+export function DemandProductionTrend({
+  data, subtitle, loading,
+}: {
+  data: { label: string; demand: number; produced: number }[];
+  subtitle: string;
+  loading?: boolean;
+}) {
   return (
-    <ChartShell title={title} loading={loading} empty={data.length === 0}>
-      <LineChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Qty']} />
+    <ChartShell
+      title="Demand vs production"
+      subtitle={subtitle}
+      legend={[{ label: 'Demand', color: 'var(--chart-1)' }, { label: 'Produced', color: 'var(--chart-2)' }]}
+      loading={loading}
+      empty={data.length === 0}
+      height={220}
+    >
+      <ComposedChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number, name: string) => [fmt(v), name]} />
         {/* See SalesChart: the mount animation bakes a stroke-dasharray from the
             width ResponsiveContainer reports before layout, and never recomputes it. */}
-        <Line type="monotone" dataKey="qty" stroke="var(--chart-1)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
-      </LineChart>
+        <Area type="monotone" dataKey="demand" name="Demand" stroke="var(--chart-1)" strokeWidth={2} fill="var(--chart-1)" fillOpacity={0.15} dot={{ r: 2.5 }} isAnimationActive={false} />
+        <Line type="monotone" dataKey="produced" name="Produced" stroke="var(--chart-2)" strokeWidth={1.75} strokeDasharray="4 3" dot={{ r: 2.5 }} isAnimationActive={false} />
+      </ComposedChart>
     </ChartShell>
   );
 }
 
-/** Branch demand comparison. */
-export function BranchDemandChart({ data, loading }: { data: { branchName: string; qty: number }[]; loading?: boolean }) {
-  const chartData = data.map((b) => ({ name: b.branchName.replace('Mountain Bakes ', ''), qty: b.qty }));
+/** Orders by status. The ring is sized by `slices`; `extra` is listed beside it without a share. */
+export function OrderStatusDonut({
+  slices, extra, subtitle, loading,
+}: {
+  slices: { label: string; value: number; color: string }[];
+  extra?: { label: string; value: number };
+  subtitle: string;
+  loading?: boolean;
+}) {
+  const total = slices.reduce((s, d) => s + d.value, 0);
   return (
-    <ChartShell title="Branch Demand Comparison" loading={loading} empty={chartData.length === 0}>
-      <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+    <Card className="h-full">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Order status</CardTitle>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-[180px] w-full" />
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="relative size-[150px] shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    // An empty week still draws a ring, in the track colour, so the
+                    // card does not collapse to a number floating in white space.
+                    data={total > 0 ? slices : [{ label: 'No orders', value: 1, color: 'var(--muted)' }]}
+                    dataKey="value"
+                    nameKey="label"
+                    innerRadius={48}
+                    outerRadius={70}
+                    startAngle={90}
+                    endAngle={-270}
+                    stroke="var(--card)"
+                    strokeWidth={total > 0 ? 2 : 0}
+                    isAnimationActive={false}
+                  >
+                    {(total > 0 ? slices : [{ color: 'var(--muted)' }]).map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
+                  </Pie>
+                  {total > 0 && <Tooltip contentStyle={TOOLTIP_STYLE} />}
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold leading-none">{fmt(total)}</span>
+                <span className="text-[11px] text-muted-foreground">orders</span>
+              </div>
+            </div>
+            <ul className="grid min-w-[10rem] flex-1 gap-1.5 text-sm">
+              {slices.map((d) => (
+                <li key={d.label} className="flex items-center justify-between gap-3">
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} aria-hidden />
+                    <span className="truncate">{d.label}</span>
+                  </span>
+                  <b className="tabular-nums">{fmt(d.value)}</b>
+                </li>
+              ))}
+              {extra && (
+                <li className="mt-1 flex items-center justify-between gap-3 border-t pt-1.5 text-muted-foreground">
+                  <span>{extra.label}</span>
+                  <b className="tabular-nums text-foreground">{fmt(extra.value)}</b>
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Demand beside delivered, per branch. Clicking a branch's bars filters the dashboard to it. */
+export function BranchCompareBars({
+  data, selectedId, onSelect, loading,
+}: {
+  data: { branchId: string; branchName: string; demand: number; delivered: number }[];
+  selectedId: string | null;
+  onSelect: (branchId: string) => void;
+  loading?: boolean;
+}) {
+  const chartData = data.map((b) => ({ ...b, name: b.branchName.replace('Mountain Bakes ', '') }));
+  // recharts hands the clicked datum back either flat or under `payload`,
+  // depending on which element caught the click.
+  const pick = (d: { branchId?: string; payload?: { branchId?: string } }) => {
+    const id = d?.payload?.branchId ?? d?.branchId;
+    if (id) onSelect(id);
+  };
+  const dim = (id: string) => (selectedId && selectedId !== id ? 0.35 : 1);
+  return (
+    <ChartShell
+      title="Branch demand comparison"
+      subtitle="Click a branch to filter the dashboard"
+      legend={[{ label: 'Demand', color: 'var(--chart-1)' }, { label: 'Delivered', color: 'var(--chart-4)' }]}
+      loading={loading}
+      empty={chartData.length === 0}
+      height={240}
+    >
+      <BarChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }} barGap={2}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Demand']} />
-        <Bar dataKey="qty" radius={[4, 4, 0, 0]}>
-          {chartData.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-          ))}
+        <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={false} interval={0} angle={chartData.length > 5 ? -25 : 0} textAnchor={chartData.length > 5 ? 'end' : 'middle'} height={chartData.length > 5 ? 56 : 30} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--muted)', opacity: 0.5 }} formatter={(v: number, name: string) => [fmt(v), name]} />
+        <Bar dataKey="demand" name="Demand" radius={[3, 3, 0, 0]} cursor="pointer" onClick={pick} isAnimationActive={false}>
+          {chartData.map((b) => <Cell key={b.branchId} fill="var(--chart-1)" fillOpacity={dim(b.branchId)} />)}
         </Bar>
-      </BarChart>
-    </ChartShell>
-  );
-}
-
-/** Top 10 requested products (horizontal bars). */
-export function TopRequestedChart({ data, loading }: { data: { productName: string; qty: number }[]; loading?: boolean }) {
-  const chartData = data.slice(0, 10).map((p) => ({ name: p.productName.length > 18 ? p.productName.slice(0, 18) + '…' : p.productName, qty: p.qty }));
-  return (
-    <ChartShell title="Top 10 Requested Products" loading={loading} empty={chartData.length === 0} height={300}>
-      <BarChart layout="vertical" data={chartData} margin={{ top: 5, right: 16, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-        <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-        <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickLine={false} axisLine={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, 'Requested']} />
-        <Bar dataKey="qty" radius={[0, 4, 4, 0]}>
-          {chartData.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-          ))}
+        <Bar dataKey="delivered" name="Delivered" radius={[3, 3, 0, 0]} cursor="pointer" onClick={pick} isAnimationActive={false}>
+          {chartData.map((b) => <Cell key={b.branchId} fill="var(--chart-4)" fillOpacity={dim(b.branchId)} />)}
         </Bar>
       </BarChart>
     </ChartShell>

@@ -129,6 +129,10 @@ function mergeBranchIncomePairs(entries: LedgerEntry[]): DisplayEntry[] {
 export function DailyLedgerPage() {
   const { token } = useAuth();
   const abilities = useFinanceAbilities();
+  // The row Edit and Delete buttons are hidden for everyone on this page. The
+  // dialogs and the server endpoints are untouched; flip this to bring the
+  // buttons back for roles that hold the `adjust` ability.
+  const canAdjust = SHOW_ROW_EDIT_DELETE && abilities.adjust;
   const today = businessDateStr();
 
   const list = useListQueryState({
@@ -252,7 +256,7 @@ export function DailyLedgerPage() {
     <div className="space-y-6">
       <FinancePageHeader
         title="Daily Ledger"
-        description="Every posted voucher, in posting order. Balances run down the page as a cash book does. Editing an entry changes that entry and keeps its number."
+        description="Every posted voucher, in posting order. Balances run down the page as a cash book does."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => void refetch()}>
@@ -333,7 +337,7 @@ export function DailyLedgerPage() {
                     </TableHead>
                   ))}
                   <TableHead className="w-px" />
-                  {abilities.adjust && <TableHead className="w-px" />}
+                  {canAdjust && <TableHead className="w-px" />}
                 </TableRow>
               </TableHeader>
 
@@ -349,13 +353,13 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right font-semibold">
                     <Money value={data?.openingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 3 : 2} />
+                  <TableCell colSpan={canAdjust ? 3 : 2} />
                 </TableRow>
 
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: abilities.adjust ? 12 : 11 }).map((__, j) => (
+                      {Array.from({ length: canAdjust ? 12 : 11 }).map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-4 w-full" />
                         </TableCell>
@@ -364,7 +368,7 @@ export function DailyLedgerPage() {
                   ))
                 ) : entries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={abilities.adjust ? 12 : 11} className="p-0">
+                    <TableCell colSpan={canAdjust ? 12 : 11} className="p-0">
                       <EmptyState
                         icon={BookOpen}
                         title="No vouchers for this selection"
@@ -374,7 +378,7 @@ export function DailyLedgerPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  entries.map((e) => <LedgerRow key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={onAct} onViewSource={setViewingTransfer} />)
+                  entries.map((e) => <LedgerRow key={e.id} entry={e} canAdjust={canAdjust} onAdjust={onAct} onViewSource={setViewingTransfer} />)
                 )}
               </TableBody>
 
@@ -397,7 +401,7 @@ export function DailyLedgerPage() {
                   <TableCell className="text-right">
                     <Money value={data?.closingBalance} />
                   </TableCell>
-                  <TableCell colSpan={abilities.adjust ? 3 : 2} className="text-xs font-normal text-muted-foreground">
+                  <TableCell colSpan={canAdjust ? 3 : 2} className="text-xs font-normal text-muted-foreground">
                     Carried forward
                   </TableCell>
                 </TableRow>
@@ -421,7 +425,7 @@ export function DailyLedgerPage() {
             ) : entries.length === 0 ? (
               <EmptyState icon={BookOpen} title="No vouchers for this selection" />
             ) : (
-              entries.map((e) => <LedgerCard key={e.id} entry={e} canAdjust={abilities.adjust} onAdjust={onAct} onViewSource={setViewingTransfer} />)
+              entries.map((e) => <LedgerCard key={e.id} entry={e} canAdjust={canAdjust} onAdjust={onAct} onViewSource={setViewingTransfer} />)
             )}
 
             <div className="space-y-1 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm font-medium">
@@ -457,6 +461,9 @@ export function DailyLedgerPage() {
     </div>
   );
 }
+
+/** Whether ledger rows offer Edit and Delete at all. */
+const SHOW_ROW_EDIT_DELETE = false;
 
 /** The one source a voucher can be opened FROM: a branch cash transfer (118). */
 function sourceTransferId(entry: LedgerEntry): string | null {

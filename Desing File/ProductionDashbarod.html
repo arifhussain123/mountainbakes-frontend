@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Branch Demand Dashboard</title>
+<style>
+  :root {
+    --bg: #fdf6ec;
+    --card: #ffffff;
+    --border: #f0e4d2;
+    --ink: #2b1d12;
+    --muted: #8a7a6a;
+    --orange: #ee6c2d;
+    --tan: #e8c9a8;
+    --brown: #7a3b1a;
+    --green: #2e9e6b;
+    --amber: #d99a1e;
+    --red: #d9534f;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .card h3 { margin: 0 0 2px; font-size: 12px; }
+  .sub { color: var(--muted); font-size: 10px; margin-bottom: 8px; }
+
+  /* branch filter */
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .filters .label { font-size: 10px; letter-spacing: .08em; color: var(--muted); margin-right: 4px; }
+  .chip { border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 10px; cursor: pointer; color: var(--ink); }
+  .chip.active { background: var(--brown); color: #fff; border-color: var(--brown); }
+
+  /* KPI */
+  .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .kpi { position: relative; }
+  .kpi .name { font-size: 10px; color: var(--muted); }
+  .kpi .value { font-size: 22px; font-weight: 700; margin: 2px 0; }
+  .kpi .note { font-size: 9px; color: var(--muted); }
+  .delta { position: absolute; top: 10px; right: 10px; font-size: 9px; padding: 1px 6px; border-radius: 6px; }
+  .delta.up { background: #e3f5ec; color: var(--green); }
+  .delta.down { background: #fde7e5; color: var(--red); }
+
+  .strip { display: grid; grid-template-columns: repeat(5, 1fr); }
+  .strip div { padding: 2px 12px; border-right: 1px solid var(--border); }
+  .strip div:last-child { border-right: 0; }
+  .strip .name { font-size: 10px; color: var(--muted); }
+  .strip .value { font-size: 15px; font-weight: 700; }
+
+  .row-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+  .row-3 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; }
+  .row-4 { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; }
+
+  .legend { display: flex; gap: 12px; font-size: 10px; color: var(--muted); }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; }
+
+  svg text { font-family: inherit; }
+
+  /* donut */
+  .donut-wrap { display: flex; align-items: center; gap: 18px; }
+  .donut-legend { flex: 1; display: grid; gap: 6px; font-size: 11px; }
+  .donut-legend div { display: flex; align-items: center; justify-content: space-between; }
+  .donut-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+  /* top products */
+  .tp { display: grid; grid-template-columns: 18px 100px 1fr 40px; gap: 8px; align-items: center; margin: 6px 0; font-size: 11px; }
+  .tp .rank { color: var(--muted); font-size: 10px; }
+  .tp .bar { height: 7px; border-radius: 4px; }
+  .tp .num { text-align: right; font-weight: 600; }
+
+  /* table */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: right; font-size: 9px; letter-spacing: .06em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { text-align: right; padding: 7px 8px; border-bottom: 1px solid #f7efe3; font-size: 11px; }
+  th:first-child, td:first-child { text-align: left; }
+  td.pos { color: var(--green); font-weight: 600; }
+  td.neg { color: var(--red); font-weight: 600; }
+  .cov { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+  .cov .track { flex: 1; height: 4px; background: #f2e8da; border-radius: 3px; position: relative; }
+  .cov .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+  .badge { font-size: 9px; padding: 2px 8px; border-radius: 6px; }
+  .badge.covered { background: #e3f5ec; color: var(--green); }
+  .badge.prod { background: #fdf0d6; color: var(--amber); }
+  .badge.short { background: #fde7e5; color: var(--red); }
+  .badge.waiting { background: #fdf0d6; color: var(--amber); }
+  .badge.approved { background: #e3f5ec; color: var(--green); }
+  .badge.production { background: #fde8dc; color: var(--orange); }
+  .pills { display: flex; gap: 6px; }
+
+  /* heatmap */
+  .heat td { text-align: center; padding: 0; border: 2px solid #fff; }
+  .heat td.cell { height: 24px; font-size: 9px; font-weight: 600; }
+  .heat td:first-child { text-align: left; font-weight: 600; padding: 0 6px; border-color: #fff; font-size: 10px; }
+  .heat th { text-align: center; padding: 4px 2px; font-size: 8px; }
+
+  /* recent */
+  .recent { display: grid; gap: 0; }
+  .recent .item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f7efe3; }
+  .recent .t { color: var(--muted); font-size: 10px; width: 44px; }
+  .recent .mid { flex: 1; }
+  .recent .mid b { display: block; font-size: 11px; }
+  .recent .mid span { font-size: 10px; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .strip { grid-template-columns: repeat(2, 1fr); row-gap: 10px; }
+    .row-2, .row-3, .row-4 { grid-template-columns: 1fr; }
+    .heat-scroll, .plan-scroll { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+/* ============================================================
+   DATA MODEL
+   Replace this object with a fetch() to your API when ready.
+   ============================================================ */
+const DATA = {
+  branches: ["Lasica Desert Co", "Alabad", "Committee Chowk", "Bangala Stall", "Dhok Sayedan", "Dhok Khaka", "Commercial Mkt", "G10 Markaz"],
+  kpis: [
+    { name: "Total demand", value: "6,757", note: "units requested this week", delta: "+3.9%", dir: "up" },
+    { name: "Produced", value: "6,602", note: "98% of demand fulfilled", delta: "+11.8%", dir: "up" },
+    { name: "Fulfilment rate", value: "100.0%", note: "incl. available stock", delta: "-0.3%", dir: "down" },
+    { name: "Open orders", value: "45", note: "awaiting approval", delta: "-2.8%", dir: "down" },
+    { name: "Delivered orders", value: "63", note: "to 8 branches", delta: "-2.7%", dir: "down" },
+    { name: "Returns/waste", value: "115", note: "1.7% of demand", delta: "-4.2%", dir: "down" }
+  ],
+  strip: [
+    { name: "Active branches", value: "8" },
+    { name: "Products", value: "49" },
+    { name: "Available prod. stock", value: "8,457" },
+    { name: "Branch returns/wk", value: "484" },
+    { name: "Today's batches", value: "14" }
+  ],
+  trend: {
+    labels: ["Sep 28", "Sep 29", "Sep 30", "Oct 1", "Oct 2", "Oct 3", "Oct 4"],
+    demand: [1100, 1060, 1010, 970, 1060, 1120, 1080],
+    produced: [1040, 1000, 960, 920, 1000, 1070, 1040]
+  },
+  orderStatus: [
+    { label: "Waiting approval", value: 6, color: "#e9c46a" },
+    { label: "Approved", value: 22, color: "#ee6c2d" },
+    { label: "In production", value: 17, color: "#c85a1f" },
+    { label: "Delivered", value: 63, color: "#7a3b1a" },
+    { label: "Changed / returned", value: 7, color: "#d8b08c" }
+  ],
+  branchCompare: [
+    { name: "Lasica Desert Co", demand: 1500, delivered: 1280 },
+    { name: "Alabad", demand: 1400, delivered: 1270 },
+    { name: "Committee Chowk", demand: 1300, delivered: 1040 },
+    { name: "Bangala Stall", demand: 429, delivered: 390 },
+    { name: "Dhok Sayedan", demand: 381, delivered: 350 },
+    { name: "Dhok Khaka", demand: 314, delivered: 280 },
+    { name: "Commercial Mkt", demand: 249, delivered: 220 },
+    { name: "G10 Markaz", demand: 220, delivered: 190 }
+  ],
+  topProducts: [
+    ["Cream Puff", 2860], ["Chocolate Balls", 906], ["Fudge Pastry", 657], ["Red Velvet Pastry", 508],
+    ["Lotus Pastry", 460], ["Filled Donuts", 426], ["Chocolate Sandwich", 296], ["Nutella Brownie", 249],
+    ["Nutella Pastry", 227], ["Banana Bread", 168]
+  ],
+  plan: [
+    { product: "Cream Puff", demand: 2860, produced: 2894, stock: 423 },
+    { product: "Chocolate Balls", demand: 906, produced: 763, stock: 176 },
+    { product: "Fudge Pastry", demand: 657, produced: 583, stock: 112 },
+    { product: "Red Velvet Pastry", demand: 508, produced: 520, stock: 127 },
+    { product: "Lotus Pastry", demand: 460, produced: 502, stock: 178 },
+    { product: "Filled Donuts", demand: 426, produced: 451, stock: 144 },
+    { product: "Chocolate Sandwich", demand: 296, produced: 283, stock: 87 },
+    { product: "Nutella Brownie", demand: 249, produced: 245, stock: 27 },
+    { product: "Nutella Pastry", demand: 227, produced: 240, stock: 75 },
+    { product: "Banana Bread", demand: 168, produced: 163, stock: 15 }
+  ],
+  heatProducts: ["Cream Puff", "Choc. Balls", "Fudge", "Red Velvet", "Filled Donuts", "Choc. Sandwich", "Nutella Brownie", "Banana Bread"],
+  heat: {
+    "Lasica Desert Co": [837, 244, 166, 109, 150, 121, 85, 43],
+    "Alabad": [684, 242, 166, 121, 112, 91, 62, 49],
+    "Committee Chowk": [630, 139, 127, 114, 119, 92, 52, 46],
+    "Bangala Stall": [186, 64, 56, 38, 31, 28, 17, 14],
+    "Dhok Sayedan": [135, 63, 40, 34, 21, 22, 15, 12],
+    "Dhok Khaka": [107, 37, 41, 19, 22, 23, 12, 10],
+    "Commercial Mkt": [128, 49, 34, 30, 29, 17, 12, 9],
+    "G10 Markaz": [92, 38, 33, 23, 18, 12, 9, 6]
+  },
+  recent: [
+    { time: "13:24", branch: "Committee Chowk Branch", meta: "7 products - 332 units", status: "Waiting" },
+    { time: "12:17", branch: "Dhok Sayedan Branch", meta: "8 products - 98 units", status: "Waiting" },
+    { time: "11:09", branch: "G10 Markaz Mkt", meta: "5 products - 258 units", status: "Approved" },
+    { time: "10:47", branch: "Bangala Stall", meta: "6 products - 214 units", status: "Approved" },
+    { time: "10:14", branch: "Commercial Market Branch", meta: "9 products - 224 units", status: "Approved" },
+    { time: "09:12", branch: "Dhok Sayedan Branch", meta: "5 products - 296 units", status: "Production" },
+    { time: "08:55", branch: "Dhok Sayedan Branch", meta: "5 products - 209 units", status: "Production" }
+  ]
+};
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const $ = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+const fmt = (n) => n.toLocaleString("en-US");
+
+function coverage(row) {
+  const pct = Math.round(((row.produced + row.stock) / row.demand) * 100);
+  const balance = row.produced + row.stock - row.demand;
+  let cls = "covered", label = "Covered", color = "var(--green)";
+  if (pct < 100) { cls = "short"; label = "Short"; color = "var(--red)"; }
+  else if (pct < 120) { cls = "prod"; label = "Prod. needed"; color = "var(--amber)"; }
+  return { pct, balance, cls, label, color };
+}
+
+/* ============================================================
+   COMPONENTS
+   ============================================================ */
+function Filters(state) {
+  const el = $(`<div class="filters"><span class="label">BRANCH</span></div>`);
+  ["All branches", ...DATA.branches].forEach((b) => {
+    const chip = $(`<button class="chip ${state.branch === b ? "active" : ""}">${b}</button>`);
+    chip.onclick = () => { state.branch = b; render(); };
+    el.appendChild(chip);
+  });
+  return el;
+}
+
+function Kpis() {
+  const el = $(`<div class="kpis"></div>`);
+  DATA.kpis.forEach((k) => {
+    el.appendChild($(`
+      <div class="card kpi">
+        <span class="delta ${k.dir}">${k.delta}</span>
+        <div class="name">${k.name}</div>
+        <div class="value">${k.value}</div>
+        <div class="note">${k.note}</div>
+      </div>`));
+  });
+  return el;
+}
+
+function Strip() {
+  const cells = DATA.strip.map((s) => `<div><div class="name">${s.name}</div><div class="value">${s.value}</div></div>`).join("");
+  return $(`<div class="card strip">${cells}</div>`);
+}
+
+function TrendChart() {
+  const { labels, demand, produced } = DATA.trend;
+  const W = 640, H = 170, pl = 34, pr = 8, pt = 10, pb = 22;
+  const max = 1500, min = 0;
+  const x = (i) => pl + (i * (W - pl - pr)) / (labels.length - 1);
+  const y = (v) => pt + (1 - (v - min) / (max - min)) * (H - pt - pb);
+  const path = (arr) => arr.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const area = `${path(demand)} L${x(labels.length - 1)},${y(0)} L${x(0)},${y(0)} Z`;
+  const grid = [0, 500, 1000, 1500].map((v) =>
+    `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="#f0e4d2" stroke-dasharray="3 3"/>
+     <text x="${pl - 6}" y="${y(v) + 3}" text-anchor="end" font-size="8" fill="#8a7a6a">${v}</text>`).join("");
+  const xl = labels.map((l, i) => `<text x="${x(i)}" y="${H - 6}" text-anchor="${i === labels.length - 1 ? "end" : "middle"}" font-size="8" fill="#8a7a6a">${l}</text>`).join("");
+  return $(`
+    <div class="card">
+      <div class="head">
+        <div><h3>Demand vs production</h3><div class="sub">All branches, units per day</div></div>
+        <div class="legend"><span><i style="background:var(--orange)"></i>Demand</span><span><i style="background:var(--brown)"></i>Produced</span></div>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%">
+        ${grid}${xl}
+        <path d="${area}" fill="#fbe3d3" opacity=".7"/>
+        <path d="${path(demand)}" fill="none" stroke="#ee6c2d" stroke-width="1.6"/>
+        <path d="${path(produced)}" fill="none" stroke="#7a3b1a" stroke-width="1.2" stroke-dasharray="3 2"/>
+      </svg>
+    </div>`);
+}
+
+function Donut() {
+  const total = DATA.orderStatus.reduce((s, d) => s + d.value, 0);
+  const r = 52, c = 2 * Math.PI * r;
+  let offset = 0;
+  const arcs = DATA.orderStatus.map((d) => {
+    const len = (d.value / total) * c;
+    const seg = `<circle r="${r}" cx="70" cy="70" fill="none" stroke="${d.color}" stroke-width="18"
+      stroke-dasharray="${len} ${c - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 70 70)"/>`;
+    offset += len;
+    return seg;
+  }).join("");
+  const legend = DATA.orderStatus.map((d) => `<div><span><i style="background:${d.color}"></i>${d.label}</span><b>${d.value}</b></div>`).join("");
+  return $(`
+    <div class="card">
+      <h3>Order status</h3><div class="sub">Branch demand orders, this week</div>
+      <div class="donut-wrap">
+        <svg viewBox="0 0 140 140" width="130">
+          ${arcs}
+          <text x="70" y="68" text-anchor="middle" font-size="20" font-weight="700" fill="#2b1d12">${total}</text>
+          <text x="70" y="82" text-anchor="middle" font-size="8" fill="#8a7a6a">orders</text>
+        </svg>
+        <div class="donut-legend">${legend}</div>
+      </div>
+    </div>`);
+}
+
+function BranchBars() {
+  const W = 520, H = 190, pl = 8, pb = 34, pt = 14;
+  const max = Math.max(...DATA.branchCompare.map((b) => b.demand));
+  const bw = (W - pl) / DATA.branchCompare.length;
+  const bars = DATA.branchCompare.map((b, i) => {
+    const x0 = pl + i * bw + bw * 0.15;
+    const w = bw * 0.33;
+    const h1 = (b.demand / max) * (H - pb - pt);
+    const h2 = (b.delivered / max) * (H - pb - pt);
+    const name = b.name.split(" ").reduce((acc, wd) => { const l = acc[acc.length - 1]; if (l && (l + " " + wd).length < 11) acc[acc.length - 1] = l + " " + wd; else acc.push(wd); return acc; }, [""]).map((ln, k) =>
+      `<text x="${x0 + w}" y="${H - pb + 12 + k * 9}" text-anchor="middle" font-size="7" fill="#8a7a6a">${ln.trim()}</text>`).join("");
+    return `
+      <rect x="${x0}" y="${H - pb - h1}" width="${w}" height="${h1}" rx="2" fill="#ee6c2d"/>
+      <rect x="${x0 + w + 2}" y="${H - pb - h2}" width="${w}" height="${h2}" rx="2" fill="#e8c9a8"/>
+      <text x="${x0 + w / 2}" y="${H - pb - h1 - 4}" text-anchor="middle" font-size="7" font-weight="600" fill="#2b1d12">${fmt(b.demand)}</text>
+      ${name}`;
+  }).join("");
+  return $(`
+    <div class="card">
+      <div class="head">
+        <div><h3>Branch demand comparison</h3><div class="sub">Click a branch to filter the dashboard</div></div>
+        <div class="legend"><span><i style="background:var(--orange)"></i>Demand</span><span><i style="background:var(--tan)"></i>Delivered</span></div>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%">${bars}</svg>
+    </div>`);
+}
+
+function TopProducts() {
+  const max = DATA.topProducts[0][1];
+  const shades = ["#ee6c2d", "#f08a52", "#d9743c", "#c0693a", "#b0724c", "#a07a5e", "#9a8070", "#9a8a7e", "#a3978c", "#a89c92"];
+  const rows = DATA.topProducts.map(([n, v], i) => `
+    <div class="tp">
+      <span class="rank">${String(i + 1).padStart(2, "0")}</span>
+      <span>${n}</span>
+      <div><div class="bar" style="width:${(v / max) * 100}%;background:${shades[i]}"></div></div>
+      <span class="num">${fmt(v)}</span>
+    </div>`).join("");
+  return $(`<div class="card"><h3>Top 10 requested products</h3><div class="sub">All branches, units demanded</div>${rows}</div>`);
+}
+
+function ProductionPlan() {
+  const rows = DATA.plan.map((r) => {
+    const c = coverage(r);
+    return `<tr>
+      <td><b>${r.product}</b></td>
+      <td>${fmt(r.demand)}</td>
+      <td>${fmt(r.produced)}</td>
+      <td>${fmt(r.stock)}</td>
+      <td class="${c.balance >= 0 ? "pos" : "neg"}">${c.balance >= 0 ? "+" : ""}${c.balance}</td>
+      <td><div class="cov"><div class="track"><div class="fill" style="width:${Math.min(c.pct, 100)}%;background:${c.color}"></div></div><span>${c.pct}%</span></div></td>
+      <td><span class="badge ${c.cls}">${c.label}</span></td>
+    </tr>`;
+  }).join("");
+  const covered = DATA.plan.filter((r) => coverage(r).cls === "covered").length;
+  const prod = DATA.plan.filter((r) => coverage(r).cls === "prod").length;
+  const short = DATA.plan.filter((r) => coverage(r).cls === "short").length;
+  return $(`
+    <div class="card plan-scroll">
+      <div class="head">
+        <div><h3>Production plan</h3><div class="sub">Demand against output and available stock, this week</div></div>
+        <div class="pills">
+          <span class="badge covered">${covered} covered</span>
+          <span class="badge prod">${prod} from stock</span>
+          <span class="badge short">${short} short</span>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>PRODUCT</th><th>DEMAND</th><th>PRODUCED</th><th>IN STOCK</th><th>BALANCE</th><th style="text-align:left">COVERAGE</th><th>STATUS</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`);
+}
+
+function Heatmap() {
+  const all = Object.values(DATA.heat).flat();
+  const max = Math.max(...all);
+  const head = DATA.heatProducts.map((p) => `<th>${p}</th>`).join("");
+  const body = Object.entries(DATA.heat).map(([b, vals]) => {
+    const cells = vals.map((v) => {
+      const a = 0.12 + (v / max) * 0.88;
+      const color = a > 0.55 ? "#fff" : "#2b1d12";
+      return `<td class="cell" style="background:rgba(238,108,45,${a.toFixed(2)});color:${color}">${v}</td>`;
+    }).join("");
+    return `<tr><td>${b}</td>${cells}</tr>`;
+  }).join("");
+  return $(`
+    <div class="card heat-scroll">
+      <h3>Branch x product demand</h3><div class="sub">Units requested per branch, this week. Darker cells are larger orders.</div>
+      <table class="heat"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table>
+    </div>`);
+}
+
+function Recent() {
+  const items = DATA.recent.map((r) => `
+    <div class="item">
+      <span class="t">${r.time}</span>
+      <div class="mid"><b>${r.branch}</b><span>${r.meta}</span></div>
+      <span class="badge ${r.status.toLowerCase()}">${r.status}</span>
+    </div>`).join("");
+  return $(`<div class="card"><h3>Recent branch demands</h3><div class="sub">Latest submissions from all branches</div><div class="recent">${items}</div></div>`);
+}
+
+/* ============================================================
+   APP
+   ============================================================ */
+const state = { branch: "All branches" };
+
+function render() {
+  const app = document.getElementById("app");
+  app.replaceChildren();
+  app.appendChild(Filters(state));
+  app.appendChild(Kpis());
+  app.appendChild(Strip());
+
+  const r2 = $(`<div class="row-2"></div>`); r2.append(TrendChart(), Donut()); app.appendChild(r2);
+  const r3 = $(`<div class="row-3"></div>`); r3.append(BranchBars(), TopProducts()); app.appendChild(r3);
+  app.appendChild(ProductionPlan());
+  const r4 = $(`<div class="row-4"></div>`); r4.append(Heatmap(), Recent()); app.appendChild(r4);
+}
+render();
+</script>
+</body>
+</html>
