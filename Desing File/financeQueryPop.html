@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#e9e3d9;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#221d17;-webkit-font-smoothing:antialiased}
+a{color:#7a3b12}a:hover{color:#5a2a0b}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <div style="height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;background:#221d17;color:#f3ece2;font-size:14px">
+    <span style="font-weight:700;letter-spacing:.02em">Mountain Bakes</span>
+    <span style="color:#b8ad9f">Admin / Finance / Queries</span>
+  </div>
+  <div style="flex:1;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;background:rgba(34,29,23,.35)">
+    <div style="position:relative;width:100%;max-width:760px;max-height:calc(100vh - 100px);display:flex;flex-direction:column;background:#fffdfa;border-radius:10px;box-shadow:0 20px 60px rgba(34,29,23,.28);overflow:hidden">
+
+      <div style="flex:none;display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid #e6dfd4">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <sc-if value="{{ isQuery }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:18px;font-weight:600">Finance Query</div>
+          </sc-if>
+          <sc-if value="{{ isCorrect }}">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button onClick="{{ cancel }}" style="border:none;background:none;padding:0;font:inherit;font-size:13px;color:#7a3b12;cursor:pointer">← Query</button>
+              <div style="font-size:18px;font-weight:600">Correct finance record — <span style="font-family:'IBM Plex Mono',monospace;font-weight:500">PV-000470</span></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isSuccess }}">
+            <div style="font-size:18px;font-weight:600">Correction applied</div>
+          </sc-if>
+          <sc-if value="{{ isHistory }}">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button onClick="{{ toQuery }}" style="border:none;background:none;padding:0;font:inherit;font-size:13px;color:#7a3b12;cursor:pointer">← Query</button>
+              <div style="font-size:18px;font-weight:600">Finance Query history</div>
+            </div>
+          </sc-if>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:#6d645a">
+            <span style="font-family:'IBM Plex Mono',monospace">FIN-QRY-2026-000124</span>
+            <sc-if value="{{ isPending }}" hint-placeholder-val="{{ true }}">
+              <span style="padding:2px 8px;border-radius:99px;background:#fbf1dc;color:#7a5200;font-weight:600;font-size:12px">Pending</span>
+            </sc-if>
+            <sc-if value="{{ isResolved }}">
+              <span style="padding:2px 8px;border-radius:99px;background:#e4efe2;color:#2b5f34;font-weight:600;font-size:12px">Resolved</span>
+            </sc-if>
+            <span>Priority: Normal</span>
+          </div>
+        </div>
+        <button onClick="{{ close }}" aria-label="Close" style="flex:none;width:36px;height:36px;border:none;border-radius:6px;background:transparent;font-size:20px;color:#6d645a;cursor:pointer" style-hover="background:#f1ebe2">×</button>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:20px">
+
+        <sc-if value="{{ isQuery }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6d645a">Query</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px">
+                <label style="display:flex;flex-direction:column;gap:6px;grid-column:1/-1"><span style="font-size:12px;font-weight:600;color:#6d645a">Subject</span><input value="Wrong amount entered" readonly="" style="width:100%;height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17"></label>
+                <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600;color:#6d645a">Query type</span><input value="Amount correction" readonly="" style="width:100%;height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17"></label>
+                <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600;color:#6d645a">Reference ID</span><input value="PV-000470" readonly="" style="width:100%;height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#221d17"></label>
+                <label style="display:flex;flex-direction:column;gap:6px;grid-column:1/-1"><span style="font-size:12px;font-weight:600;color:#6d645a">Description</span><textarea readonly="" rows="2" style="width:100%;padding:10px 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17;resize:vertical">The amount of PV-000470 is incorrect. Should be 3,000.</textarea></label>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #e3dbcf;border-radius:8px;background:#faf6f0">
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px">
+                  <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6d645a">Linked record</div>
+                  <div style="font-size:15px;font-weight:600">Ledger Voucher · <span style="font-family:'IBM Plex Mono',monospace;font-weight:500">PV-000470</span></div>
+                </div>
+                <sc-if value="{{ notDeleted }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ openCorrect }}" style="height:40px;padding:0 16px;border:none;border-radius:6px;background:#7a3b12;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer" style-hover="background:#5f2c0c">Correct record</button>
+                </sc-if>
+                <sc-if value="{{ deleted }}">
+                  <span style="padding:4px 10px;border-radius:99px;background:#fbe9e6;color:#9a2418;font-size:12px;font-weight:600">Record deleted</span>
+                </sc-if>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px 16px">
+                <sc-for list="{{ recordRows }}" as="r" hint-placeholder-count="8">
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                    <span style="font-size:12px;color:#6d645a">{{ r.label }}</span>
+                    <span style="font-size:14px;font-weight:500;overflow-wrap:anywhere">{{ r.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font-size:12px;color:#6d645a">Created by {{ record.createdBy }} · Last updated {{ record.updatedAt }}</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isCorrect }}">
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <div style="font-size:14px;color:#4a4239">Ledger Voucher <span style="font-family:'IBM Plex Mono',monospace">PV-000470</span> — {{ record.branch }} — {{ origAmount }}. Edits here update the voucher itself, not the query.</div>
+
+            <sc-if value="{{ conflict }}">
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:8px;background:#fbf1dc;color:#5c3d00;font-size:14px">
+                <span style="flex:1;min-width:200px">This record was changed by another user. Please reload the latest version before applying your correction.</span>
+                <button onClick="{{ reloadLatest }}" style="height:36px;padding:0 14px;border:1px solid #c89a3c;border-radius:6px;background:#fff;font:inherit;font-size:13px;font-weight:600;color:#5c3d00;cursor:pointer">Reload latest</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ hasError }}">
+              <div style="padding:12px 14px;border-radius:8px;background:#fbe9e6;color:#8a2116;font-size:14px">{{ error }}</div>
+            </sc-if>
+            <sc-if value="{{ reloaded }}">
+              <div style="padding:12px 14px;border-radius:8px;background:#eef3f6;color:#27465a;font-size:14px">Loaded the latest version (amount is now Rs.2,700). Your earlier edits were cleared; make your correction again.</div>
+            </sc-if>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px 16px">
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Amount</span>
+                <div style="display:flex;align-items:center;height:40px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;overflow:hidden">
+                  <span style="padding:0 10px;height:100%;display:flex;align-items:center;background:#f4efe7;color:#6d645a;font-size:14px;border-right:1px solid #d9d0c3">Rs.</span>
+                  <input inputMode="numeric" value="{{ draft.amount }}" onChange="{{ onAmount }}" style="flex:1;min-width:0;height:100%;padding:0 12px;border:none;outline:none;font-family:'IBM Plex Mono',monospace;font-size:15px;color:#221d17;background:transparent">
+                </div>
+                <sc-if value="{{ errors.amount }}"><span style="font-size:12px;color:#9a2418">{{ errors.amount }}</span></sc-if>
+                <sc-if value="{{ changed.amount }}"><span style="font-size:12px;color:#6d645a">was {{ was.amount }} · <span style="font-weight:600;color:#221d17">{{ deltaText }}</span></span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Entry date</span>
+                <input type="date" value="{{ draft.date }}" onChange="{{ onDate }}" style="width:100%;height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                <sc-if value="{{ errors.date }}"><span style="font-size:12px;color:#9a2418">{{ errors.date }}</span></sc-if>
+                <sc-if value="{{ changed.date }}"><span style="font-size:12px;color:#6d645a">was {{ was.date }}</span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Title</span>
+                <input value="{{ draft.title }}" onChange="{{ onTitle }}" style="width:100%;height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                <sc-if value="{{ errors.title }}"><span style="font-size:12px;color:#9a2418">{{ errors.title }}</span></sc-if>
+                <sc-if value="{{ changed.title }}"><span style="font-size:12px;color:#6d645a">was “{{ was.title }}”</span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Branch</span>
+                <select data-f="branch" value="{{ draft.branch }}" onChange="{{ onBranch }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                  <sc-for list="{{ branches }}" as="o"><option value="{{ o }}">{{ o }}</option></sc-for>
+                </select>
+                <sc-if value="{{ changed.branch }}"><span style="font-size:12px;color:#6d645a">was {{ was.branch }}</span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Income / Expense</span>
+                <select data-f="type" value="{{ draft.type }}" onChange="{{ onType }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                  <option value="Expense">Expense</option>
+                  <option value="Income">Income</option>
+                </select>
+                <sc-if value="{{ changed.type }}"><span style="font-size:12px;color:#6d645a">was {{ was.type }}</span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Category</span>
+                <select data-f="category" value="{{ draft.category }}" onChange="{{ onCategory }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                  <sc-for list="{{ categories }}" as="o"><option value="{{ o }}">{{ o }}</option></sc-for>
+                </select>
+                <sc-if value="{{ changed.category }}"><span style="font-size:12px;color:#6d645a">was {{ was.category }}</span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Payment method</span>
+                <select data-f="method" value="{{ draft.method }}" onChange="{{ onMethod }}" style="width:100%;height:40px;padding:0 10px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                  <sc-for list="{{ methods }}" as="o"><option value="{{ o }}">{{ o }}</option></sc-for>
+                </select>
+                <sc-if value="{{ changed.method }}"><span style="font-size:12px;color:#6d645a">was {{ was.method }}</span></sc-if>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px;grid-column:1/-1">
+                <span style="font-size:12px;font-weight:600;color:#6d645a">Description</span>
+                <input value="{{ draft.description }}" onChange="{{ onDescription }}" style="width:100%;height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17">
+                <sc-if value="{{ changed.description }}"><span style="font-size:12px;color:#6d645a">was “{{ was.description }}”</span></sc-if>
+              </label>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:8px;background:#f6f1e9">
+              <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6d645a">Changes</div>
+              <sc-if value="{{ noChanges }}" hint-placeholder-val="{{ true }}">
+                <div style="font-size:14px;color:#6d645a">No changes detected.</div>
+              </sc-if>
+              <sc-for list="{{ changes }}" as="c">
+                <div style="display:grid;grid-template-columns:minmax(90px,140px) minmax(0,1fr);gap:4px 12px;align-items:baseline;font-size:14px">
+                  <span style="color:#6d645a">{{ c.label }}</span>
+                  <span style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;overflow-wrap:anywhere"><span style="color:#8a8076;text-decoration:line-through">{{ c.from }}</span><span style="color:#6d645a">→</span><span style="font-weight:600">{{ c.to }}</span><sc-if value="{{ c.delta }}"><span style="font-size:12px;padding:1px 6px;border-radius:4px;background:#fff;color:#221d17;font-family:'IBM Plex Mono',monospace">{{ c.delta }}</span></sc-if></span>
+                </div>
+              </sc-for>
+            </div>
+
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:12px;font-weight:600;color:#6d645a">Note (optional)</span>
+              <textarea rows="2" value="{{ note }}" onChange="{{ onNote }}" placeholder="Reason for the correction" style="width:100%;padding:10px 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;font:inherit;font-size:14px;color:#221d17;resize:vertical"></textarea>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;min-height:44px">
+              <input type="checkbox" checked="{{ resolve }}" onChange="{{ toggleResolve }}" style="width:18px;height:18px;accent-color:#7a3b12;margin:0">
+              <span>Resolve FIN-QRY-2026-000124 when applied</span>
+            </label>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSuccess }}">
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="width:40px;height:40px;flex:none;border-radius:50%;background:#e4efe2;color:#2b5f34;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700">✓</span>
+              <div style="font-size:18px;font-weight:600">Finance record corrected</div>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(80px,120px) minmax(0,1fr);gap:12px 16px;font-size:14px">
+              <span style="color:#6d645a">Record</span><span style="font-family:'IBM Plex Mono',monospace">PV-000470</span>
+              <span style="color:#6d645a">Changes</span>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <sc-for list="{{ lastChanges }}" as="c"><span>{{ c.label }} {{ c.from }} → <strong>{{ c.to }}</strong></span></sc-for>
+              </div>
+              <span style="color:#6d645a">Query</span><span style="font-family:'IBM Plex Mono',monospace">FIN-QRY-2026-000124</span>
+              <span style="color:#6d645a">Status</span><span style="font-weight:600">{{ status }}</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isHistory }}">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ history }}" as="h" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:8px;padding:14px 0;border-bottom:1px solid #ece5da">
+                <div style="display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline">
+                  <span style="font-size:15px;font-weight:600">{{ h.action }}</span>
+                  <span style="font-size:13px;color:#6d645a">{{ h.user }} · {{ h.time }}</span>
+                </div>
+                <sc-for list="{{ h.lines }}" as="l">
+                  <div style="display:grid;grid-template-columns:minmax(90px,130px) minmax(0,1fr);gap:12px;font-size:14px"><span style="color:#6d645a">{{ l.label }}</span><span style="overflow-wrap:anywhere">{{ l.from }} → <strong>{{ l.to }}</strong></span></div>
+                </sc-for>
+                <sc-if value="{{ h.reason }}">
+                  <div style="display:grid;grid-template-columns:minmax(90px,130px) minmax(0,1fr);gap:12px;font-size:14px"><span style="color:#6d645a">{{ h.reasonLabel }}</span><span>{{ h.reason }}</span></div>
+                </sc-if>
+                <div style="display:grid;grid-template-columns:minmax(90px,130px) minmax(0,1fr);gap:12px;font-size:14px"><span style="color:#6d645a">Status</span><span>{{ h.statusText }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #e6dfd4;background:#fffdfa">
+        <sc-if value="{{ isQuery }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;width:100%">
+            <sc-if value="{{ notDeleted }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ askDelete }}" style="height:40px;padding:0 14px;border:1px solid #e0b3ac;border-radius:6px;background:#fff;color:#9a2418;font:inherit;font-size:14px;font-weight:500;cursor:pointer">Delete record</button>
+            </sc-if>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-left:auto">
+              <sc-for list="{{ queryActions }}" as="a">
+                <button onClick="{{ a.fn }}" style="height:40px;padding:0 12px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;color:#221d17;font:inherit;font-size:14px;cursor:pointer" style-hover="background:#f4efe7">{{ a.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isCorrect }}">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;width:100%;align-items:center">
+            <button onClick="{{ askDelete }}" style="height:44px;padding:0 14px;border:1px solid #e0b3ac;border-radius:6px;background:#fff;color:#9a2418;font:inherit;font-size:14px;font-weight:500;cursor:pointer;margin-right:auto">Delete record</button>
+            <button onClick="{{ cancel }}" style="height:44px;padding:0 16px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;color:#221d17;font:inherit;font-size:14px;cursor:pointer">Cancel</button>
+            <button onClick="{{ apply }}" disabled="{{ applyDisabled }}" style="height:44px;flex:1 1 180px;max-width:240px;padding:0 18px;border:none;border-radius:6px;background:#7a3b12;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer;opacity:{{ applyOpacity }}">{{ applyLabel }}</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isSuccess }}">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;width:100%;justify-content:flex-end">
+            <button onClick="{{ toHistory }}" style="height:44px;padding:0 16px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;color:#221d17;font:inherit;font-size:14px;cursor:pointer">View history</button>
+            <button onClick="{{ toQuery }}" style="height:44px;padding:0 18px;border:none;border-radius:6px;background:#7a3b12;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer">Back to query</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isHistory }}">
+          <div style="display:flex;width:100%;justify-content:flex-end">
+            <button onClick="{{ toQuery }}" style="height:44px;padding:0 16px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;color:#221d17;font:inherit;font-size:14px;cursor:pointer">Back to query</button>
+          </div>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ confirm }}">
+        <div style="position:absolute;inset:0;background:rgba(34,29,23,.4);display:flex;align-items:center;justify-content:center;padding:16px">
+          <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:10px;background:#fffdfa;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+            <div style="font-size:17px;font-weight:600">{{ confirmTitle }}</div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:14px">
+              <sc-for list="{{ changes }}" as="c"><span><span style="color:#6d645a">{{ c.label }}</span> {{ c.from }} → <strong>{{ c.to }}</strong></span></sc-for>
+            </div>
+            <sc-if value="{{ note }}"><div style="font-size:13px;color:#6d645a">Reason: {{ note }}</div></sc-if>
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+              <button onClick="{{ closeConfirm }}" disabled="{{ busy }}" style="height:44px;padding:0 16px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;color:#221d17;font:inherit;font-size:14px;cursor:pointer">Cancel</button>
+              <button onClick="{{ confirmApply }}" disabled="{{ busy }}" style="height:44px;padding:0 18px;border:none;border-radius:6px;background:#7a3b12;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer">{{ confirmLabel }}</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ deleteAsk }}">
+        <div style="position:absolute;inset:0;background:rgba(34,29,23,.4);display:flex;align-items:center;justify-content:center;padding:16px">
+          <div style="width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px;padding:20px;border-radius:10px;background:#fffdfa;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+            <div style="font-size:17px;font-weight:600;color:#9a2418">Delete PV-000470?</div>
+            <div style="font-size:14px;color:#4a4239;text-wrap:pretty">The ledger voucher is removed using the existing delete flow. Query FIN-QRY-2026-000124 is kept and stays open.</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+              <button onClick="{{ cancelDelete }}" style="height:44px;padding:0 16px;border:1px solid #d9d0c3;border-radius:6px;background:#fff;color:#221d17;font:inherit;font-size:14px;cursor:pointer">Cancel</button>
+              <button onClick="{{ doDelete }}" style="height:44px;padding:0 18px;border:none;border-radius:6px;background:#9a2418;color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer">Delete record</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ toast }}">
+        <div style="position:absolute;left:50%;bottom:80px;transform:translateX(-50%);max-width:calc(100% - 32px);padding:10px 14px;border-radius:8px;background:#221d17;color:#f3ece2;font-size:13px">{{ toast }}</div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;simulate&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;conflict&quot;,&quot;server&quot;,&quot;network&quot;,&quot;permission&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;resolveDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDate=d=>{if(!d)return '—';const [y,m,dd]=d.split('-');return `${dd}-${MONTHS[+m-1]}-${y}`;};
+const rs=v=>'Rs.'+Number(v||0).toLocaleString('en-US');
+const FIELDS=[['amount','Amount',rs],['date','Entry date',fmtDate],['title','Title'],['branch','Branch'],['type','Type'],['category','Category'],['method','Payment method'],['description','Description']];
+const CATS={Expense:['Fuel','Utilities','Raw Material','Salaries','Maintenance','Other'],Income:['Sales','Catering','Other income']};
+const BASE={id:'PV-000470',date:'2026-09-30',title:'Fuel',type:'Expense',category:'Other',branch:'Committee Chowk Branch',amount:'2500',method:'Cash',description:'Fuel',createdBy:'Hamza (Branch Manager)',updatedAt:'30-Sep-2026 6:12 PM'};
+const HIST=[{time:'30-Sep-2026 7:05 PM',user:'Hamza (Branch Manager)',action:'Query raised',lines:[],reason:'The amount of PV-000470 is incorrect. Should be 3,000.',reasonLabel:'Description',statusText:'Pending'}];
+
+class Component extends DCLogic {
+  state={view:'query',record:{...BASE},draft:{...BASE},note:'',resolve:this.props.resolveDefault??true,confirm:false,busy:false,error:null,conflict:false,reloaded:false,deleteAsk:false,deleted:false,status:'Pending',history:HIST,lastChanges:[],toast:null,conflictUsed:false};
+  syncSelects(){const d=this.state.draft;document.querySelectorAll('select[data-f]').forEach(el=>{const v=d[el.dataset.f];if(v!=null&&el.value!==v)el.value=v;});}
+  componentDidMount(){this.syncSelects();}
+  componentDidUpdate(){this.syncSelects();requestAnimationFrame(()=>this.syncSelects());}
+  flash(t){this.setState({toast:t});clearTimeout(this._t);this._t=setTimeout(()=>this.setState({toast:null}),2200);}
+  setField(k,v){this.setState(s=>{const d={...s.draft,[k]:v};if(k==='type'&&!CATS[v].includes(d.category))d.category=CATS[v][0];return {draft:d,error:null};});}
+  diff(a,b){return FIELDS.filter(([k])=>String(a[k]).trim()!==String(b[k]).trim()).map(([k,label,f])=>{const fm=f||(x=>x);let delta=null;if(k==='amount'){const n=Number(b.amount)-Number(a.amount);delta=(n>=0?'+':'−')+rs(Math.abs(n));}return {key:k,label,from:fm(a[k])||'—',to:fm(b[k])||'—',delta};});}
+  validate(d){const e={};if(!/^\d+$/.test(String(d.amount).trim())||Number(d.amount)<=0)e.amount='Enter a whole amount greater than 0.';if(!d.title.trim())e.title='Title is required.';if(!d.date)e.date='Date is required.';return e;}
+  confirmApply=()=>{this.setState({busy:true});setTimeout(()=>{const sim=this.props.simulate??'none';const s=this.state;
+    if(sim==='conflict'&&!s.conflictUsed)return this.setState({busy:false,confirm:false,conflict:true,conflictUsed:true});
+    const msg={server:'Couldn’t save the correction. Nothing was changed. Try again, or contact support if it keeps happening.',network:'Couldn’t reach the server. Check your connection; nothing was saved.',permission:'You don’t have permission to correct finance records. Ask an owner to grant Finance: Correct.'}[sim];
+    if(msg)return this.setState({busy:false,confirm:false,error:msg});
+    const ch=this.diff(s.record,s.draft);const newStatus=s.resolve?'Resolved':s.status;
+    const entry={time:'30-Sep-2026 9:40 PM',user:'Admin User',action:'Corrected finance record PV-000470',lines:ch.map(c=>({label:c.label,from:c.from,to:c.to})),reason:s.note.trim()||null,reasonLabel:'Reason',statusText:s.status===newStatus?newStatus:`${s.status} → ${newStatus}`};
+    this.setState({busy:false,confirm:false,record:{...s.draft,updatedAt:'30-Sep-2026 9:40 PM'},status:newStatus,history:[entry,...s.history],lastChanges:ch,view:'success',note:''});},800);};
+  renderVals(){
+    const s=this.state,{record:r,draft:d}=s;const changes=this.diff(r,d);const errors=this.validate(d);const hasErr=Object.keys(errors).length>0;
+    const changed={},was={};FIELDS.forEach(([k,,f])=>{changed[k]=changes.some(c=>c.key===k);was[k]=(f||(x=>x))(r[k]);});
+    const amt=changes.find(c=>c.key==='amount');const dis=!changes.length||hasErr||s.busy;const on=k=>e=>this.setField(k,e.target.value);
+    const go=v=>()=>this.setState({view:v});
+    return {
+      ...s,isQuery:s.view==='query',isCorrect:s.view==='correct',isSuccess:s.view==='success',isHistory:s.view==='history',
+      isPending:s.status!=='Resolved',isResolved:s.status==='Resolved',notDeleted:!s.deleted,hasError:!!s.error,
+      recordRows:FIELDS.map(([k,label,f])=>({label,value:(f||(x=>x))(r[k])||'—'})),origAmount:rs(r.amount),
+      branches:['Committee Chowk Branch','DHA Branch','Saddar Branch','Bahria Town Branch'],categories:CATS[d.type],methods:['Cash','Easypaisa','Bank'],
+      changes,noChanges:!changes.length,changed,was,errors,deltaText:amt?amt.delta:'',
+      applyDisabled:dis,applyOpacity:dis?0.45:1,applyLabel:s.resolve?'Apply & Resolve':'Apply changes',
+      confirmTitle:s.resolve?'Apply changes to PV-000470 and resolve the query?':'Apply these changes to PV-000470?',
+      confirmLabel:s.busy?'Applying…':(s.resolve?'Apply & Resolve':'Apply changes'),
+      onAmount:on('amount'),onDate:on('date'),onTitle:on('title'),onBranch:on('branch'),onType:on('type'),onCategory:on('category'),onMethod:on('method'),onDescription:on('description'),
+      onNote:e=>this.setState({note:e.target.value}),toggleResolve:()=>this.setState({resolve:!s.resolve}),
+      openCorrect:()=>this.setState({view:'correct',draft:{...r},error:null,conflict:false,reloaded:false}),
+      cancel:()=>this.setState({view:'query',draft:{...r},note:'',error:null,conflict:false,reloaded:false}),
+      apply:()=>{if(!dis)this.setState({confirm:true,error:null});},closeConfirm:()=>this.setState({confirm:false}),confirmApply:this.confirmApply,
+      reloadLatest:()=>{const nr={...r,amount:'2700',updatedAt:'30-Sep-2026 9:38 PM'};this.setState({record:nr,draft:{...nr},conflict:false,reloaded:true});},
+      toQuery:go('query'),toHistory:go('history'),close:()=>s.view==='correct'?this.renderVals().cancel():this.flash('Closes the query popup'),
+      askDelete:()=>this.setState({deleteAsk:true}),cancelDelete:()=>this.setState({deleteAsk:false}),
+      doDelete:()=>this.setState({deleteAsk:false,deleted:true,view:'query'},()=>this.flash('PV-000470 deleted. Query kept open.')),
+      queryActions:[['Save changes'],['Amend'],['Recreate'],['Assign'],['View history',go('history')],['In review'],['Resolve'],['Reject']].map(([label,fn])=>({label,fn:fn||(()=>this.flash(`${label}: existing behavior, unchanged`))}))
+    };
+  }
+}
+</script>
+</body>
+</html>

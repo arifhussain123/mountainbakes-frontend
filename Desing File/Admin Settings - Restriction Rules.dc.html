@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#fbf6ec;font-family:'Geist',system-ui,sans-serif;color:#2a1a10;-webkit-font-smoothing:antialiased}
+a{color:#c8364d;text-decoration:none}a:hover{color:#9e2639;text-decoration:underline}
+input,textarea,button{font-family:inherit}
+input[type=number]::-webkit-inner-spin-button{opacity:1}
+</style>
+</helmet>
+<div style="display:flex;min-height:100vh;font-size:13px">
+  <aside style="width:232px;flex:none;background:#3d1d0c;color:#f5e6cc;display:flex;flex-direction:column;position:sticky;top:0;height:100vh">
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 14px;border-bottom:1px solid rgba(245,230,204,.12)">
+      <div style="width:40px;height:40px;border-radius:50%;background:#d93a3a;border:2px solid #f5e6cc;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff">MB</div>
+      <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:700;font-size:13px">Mountain Bakes</span><span style="font-size:11px;color:#c9b39a">Super Admin</span></div>
+    </div>
+    <nav style="flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(245,230,204,.25) transparent;padding:12px 8px;display:flex;flex-direction:column;gap:2px">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="20">
+        <div style="padding:8px 12px;border-radius:8px;font-weight:600;font-size:12.5px;background:{{ n.bg }};color:{{ n.color }};cursor:pointer">{{ n.label }}</div>
+      </sc-for>
+    </nav>
+    <div style="padding:12px 14px;border-top:1px solid rgba(245,230,204,.12);display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:600;font-size:12px">admin@mountainbakes.com</span><span style="font-size:11px;color:#c9b39a">Admin</span></div>
+      <span style="font-size:12px;font-weight:600;color:#c9b39a">Sign Out</span>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <header style="height:48px;background:#fff;border-bottom:1px solid #eee3d1;display:flex;align-items:center;padding:0 24px;gap:8px;font-size:14px;position:sticky;top:0;z-index:5">
+      <span style="color:#7a6a5c">Settings</span><span style="color:#c9b9a6">/</span><span style="font-weight:700">Restriction Rules</span>
+    </header>
+
+    <div style="padding:24px;max-width:1120px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px">
+        <div style="display:flex;flex-direction:column;gap:6px;max-width:620px">
+          <h1 style="margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em">Restriction Rules</h1>
+          <p style="margin:0;color:#7a6a5c;line-height:1.5;text-wrap:pretty">Control branch demand, sales, cash-deposit, ledger and company-share operations. Rules are enforced by the server; branch users see the result inside the popup where they attempt the action.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div style="background:#fff;border:1px solid #eee3d1;border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:2px"><span style="font-size:11px;color:#7a6a5c">Business date</span><span style="font-weight:600;font-family:'Geist Mono',monospace">03-10-2026</span></div>
+          <div style="background:#fff;border:1px solid #eee3d1;border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:2px"><span style="font-size:11px;color:#7a6a5c">Timezone</span><span style="font-weight:600">Asia/Karachi</span></div>
+          <div style="background:#fff;border:1px solid #eee3d1;border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:2px"><span style="font-size:11px;color:#7a6a5c">Day closes</span><span style="font-weight:600">06:00 AM</span></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:4px;border-bottom:1px solid #eee3d1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+          <button onClick="{{ t.click }}" style="background:none;border:none;border-bottom:2px solid {{ t.border }};margin-bottom:-1px;padding:10px 14px;font-size:13px;font-weight:600;color:{{ t.color }};cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap">{{ t.label }}<sc-if value="{{ t.hasCount }}" hint-placeholder-val="{{ false }}"><span style="background:#e8455e;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px">{{ t.count }}</span></sc-if></button>
+        </sc-for>
+      </div>
+
+      <!-- RULES -->
+      <sc-if value="{{ isRules }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+
+          <section style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden">
+            <div style="padding:16px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+              <div style="display:flex;flex-direction:column;gap:3px"><h2 style="margin:0;font-size:15px;font-weight:700">Demand Restrictions</h2><span style="font-size:12px;color:#7a6a5c">Shown in: New Demand popup</span></div>
+              <span style="font-size:12px;color:{{ grp.demand.statusColor }};font-weight:500">{{ grp.demand.status }}</span>
+            </div>
+
+            <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-size:13.5px">Pending verification limit</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px">DEMAND_PENDING_LIMIT</span></div>
+                  <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">Counts demands forwarded by a branch that are still waiting for Admin/Production verification. Pending demand numbers are listed in the popup when blocked.</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;opacity:{{ op.dp }}">
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Warning threshold</span><div style="display:flex;align-items:center;gap:8px"><input type="number" min="0" value="{{ r.dpWarn }}" onChange="{{ ch.dpWarn }}" style="width:72px;height:32px;box-sizing:border-box;border:1px solid #d9cfc0;border-radius:6px;padding:0 10px;font-size:13px"><span style="font-size:12px;color:#7a6a5c">pending</span></div></label>
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Blocking threshold</span><div style="display:flex;align-items:center;gap:8px"><input type="number" min="1" value="{{ r.dpBlock }}" onChange="{{ ch.dpBlock }}" style="width:72px;height:32px;box-sizing:border-box;border:1px solid #d9cfc0;border-radius:6px;padding:0 10px;font-size:13px"><span style="font-size:12px;color:#7a6a5c">pending</span></div></label>
+                  <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid #eee3d1">
+                    <sc-for list="{{ dpLadder }}" as="l" hint-placeholder-count="3">
+                      <div style="padding:6px 12px;background:{{ l.bg }};color:{{ l.color }};display:flex;flex-direction:column;gap:1px;min-width:72px"><span style="font-family:'Geist Mono',monospace;font-size:11px">{{ l.range }}</span><span style="font-size:11.5px;font-weight:600">{{ l.text }}</span></div>
+                    </sc-for>
+                  </div>
+                </div>
+                <sc-if value="{{ dpErr }}" hint-placeholder-val="{{ false }}"><span style="color:#b4232f;font-size:12px;font-weight:500">Warning threshold must be lower than the blocking threshold.</span></sc-if>
+                <span style="font-size:12px;color:#5b4a3c"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.dp }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.dpOn.label }}</span><button onClick="{{ tg.dpOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.dpOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.dpOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+            </div>
+
+            <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-size:13.5px">Backdated demand</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px">BACKDATED_DEMAND</span></div>
+                  <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">A demand dated before the current business date is held until Admin approves it. Approval is one-time and tied to that demand.</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;opacity:{{ op.bd }}">
+                  <button onClick="{{ tg.bdApproval.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.bdApproval.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.bdApproval.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button>
+                  <span style="font-size:12.5px;font-weight:600">Requires Admin approval</span>
+                </div>
+                <span style="font-size:12px;color:#5b4a3c"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.bd }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.bdOn.label }}</span><button onClick="{{ tg.bdOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.bdOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.bdOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+            </div>
+
+            <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-size:13.5px">Low sales after closing</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px">LOW_SALES_AFTER_CLOSING</span></div>
+                  <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">After the branch closing time, a new demand is blocked if the sold share of applicable opening/available stock is below the minimum. Uses the existing stock calculation.</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;opacity:{{ op.cs }}">
+                  <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Closing time</span><div style="height:32px;box-sizing:border-box;border:1px dashed #d9cfc0;border-radius:6px;padding:0 10px;display:flex;align-items:center;gap:8px;background:#fbf6ec"><span style="font-weight:600">06:00 AM</span><span style="font-size:11.5px;color:#7a6a5c">from Business Hours</span></div></div>
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Minimum sold percentage</span><div style="display:flex;align-items:center;gap:8px"><input type="number" min="1" max="100" value="{{ r.csPct }}" onChange="{{ ch.csPct }}" style="width:72px;height:32px;box-sizing:border-box;border:1px solid #d9cfc0;border-radius:6px;padding:0 10px;font-size:13px"><span style="font-size:12px;color:#7a6a5c">%</span></div></label>
+                </div>
+                <sc-if value="{{ csErr }}" hint-placeholder-val="{{ false }}"><span style="color:#b4232f;font-size:12px;font-weight:500">Enter a percentage between 1 and 100.</span></sc-if>
+                <span style="font-size:12px;color:#5b4a3c"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.cs }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.csOn.label }}</span><button onClick="{{ tg.csOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.csOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.csOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+            </div>
+
+            <div style="padding:12px 20px;border-top:1px solid #f3ebde;background:#fdfaf4;display:flex;justify-content:flex-end">
+              <button onClick="{{ grp.demand.save }}" style="height:34px;padding:0 18px;border:none;border-radius:8px;background:{{ grp.demand.bg }};color:{{ grp.demand.color }};font-weight:600;font-size:13px;cursor:{{ grp.demand.cursor }}">Save demand rules</button>
+            </div>
+          </section>
+
+          <section style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden">
+            <div style="padding:16px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+              <div style="display:flex;flex-direction:column;gap:3px"><h2 style="margin:0;font-size:15px;font-weight:700">Sales Restrictions</h2><span style="font-size:12px;color:#7a6a5c">Shown in: New Sale popup</span></div>
+              <span style="font-size:12px;color:{{ grp.sales.statusColor }};font-weight:500">{{ grp.sales.status }}</span>
+            </div>
+            <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-size:13.5px">Hourly sales activity</span><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px">HOURLY_SALES_LIMIT</span></div>
+                  <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">Counts sales entered by a branch in the current business hour, determined by the server in Asia/Karachi time. Device clocks are ignored. The counter resets each hour.</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;opacity:{{ op.hs }}">
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Hourly threshold</span><div style="display:flex;align-items:center;gap:8px"><input type="number" min="1" value="{{ r.hsThr }}" onChange="{{ ch.hsThr }}" style="width:72px;height:32px;box-sizing:border-box;border:1px solid #d9cfc0;border-radius:6px;padding:0 10px;font-size:13px"><span style="font-size:12px;color:#7a6a5c">entries / hour</span></div></label>
+                  <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">After threshold</span>
+                    <div style="display:flex;background:#f6efe3;border-radius:8px;padding:3px;gap:3px">
+                      <button onClick="{{ hsSeg.warn.click }}" style="height:26px;padding:0 12px;border:none;border-radius:6px;background:{{ hsSeg.warn.bg }};color:{{ hsSeg.warn.color }};box-shadow:{{ hsSeg.warn.shadow }};font-weight:600;font-size:12px;cursor:pointer">Warn &amp; record audit</button>
+                      <button onClick="{{ hsSeg.block.click }}" style="height:26px;padding:0 12px;border:none;border-radius:6px;background:{{ hsSeg.block.bg }};color:{{ hsSeg.block.color }};box-shadow:{{ hsSeg.block.shadow }};font-weight:600;font-size:12px;cursor:pointer">Block sale</button>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;height:32px">
+                    <button onClick="{{ tg.hsWarn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.hsWarn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.hsWarn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button>
+                    <span style="font-size:12.5px;font-weight:600">Warning at threshold</span>
+                  </div>
+                </div>
+                <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid #eee3d1;align-self:flex-start;opacity:{{ op.hs }}">
+                  <sc-for list="{{ hsLadder }}" as="l" hint-placeholder-count="3">
+                    <div style="padding:6px 12px;background:{{ l.bg }};color:{{ l.color }};display:flex;flex-direction:column;gap:1px;min-width:80px"><span style="font-family:'Geist Mono',monospace;font-size:11px">{{ l.range }}</span><span style="font-size:11.5px;font-weight:600">{{ l.text }}</span></div>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;color:#5b4a3c"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.hs }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.hsOn.label }}</span><button onClick="{{ tg.hsOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.hsOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.hsOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+            </div>
+            <div style="padding:12px 20px;border-top:1px solid #f3ebde;background:#fdfaf4;display:flex;justify-content:flex-end">
+              <button onClick="{{ grp.sales.save }}" style="height:34px;padding:0 18px;border:none;border-radius:8px;background:{{ grp.sales.bg }};color:{{ grp.sales.color }};font-weight:600;font-size:13px;cursor:{{ grp.sales.cursor }}">Save sales rules</button>
+            </div>
+          </section>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px">
+            <section style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+              <div style="padding:16px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+                <div style="display:flex;flex-direction:column;gap:3px"><h2 style="margin:0;font-size:15px;font-weight:700">Cash Deposit Restrictions</h2><span style="font-size:12px;color:#7a6a5c">Shown in: Cash Deposit popup</span></div>
+                <span style="font-size:12px;color:{{ grp.cash.statusColor }};font-weight:500">{{ grp.cash.status }}</span>
+              </div>
+              <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:flex;flex-direction:column;gap:12px;flex:1">
+                <div style="display:flex;justify-content:space-between;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-weight:700;font-size:13.5px">Daily forward limit</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px;align-self:flex-start">CASH_DEPOSIT_LIMIT</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.cdOn.label }}</span><button onClick="{{ tg.cdOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.cdOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.cdOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+                </div>
+                <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">Counts cash-deposit transactions forwarded per branch per business date. Each uses the existing server-generated CT number.</span>
+                <div style="display:flex;flex-direction:column;gap:12px;opacity:{{ op.cd }}">
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Maximum per business day</span><div style="display:flex;align-items:center;gap:8px"><input type="number" min="1" value="{{ r.cdLimit }}" onChange="{{ ch.cdLimit }}" style="width:72px;height:32px;box-sizing:border-box;border:1px solid #d9cfc0;border-radius:6px;padding:0 10px;font-size:13px"><span style="font-size:12px;color:#7a6a5c">transactions</span></div></label>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <button onClick="{{ tg.cdExc.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.cdExc.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.cdExc.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button>
+                    <span style="font-size:12.5px;font-weight:600">Allow one-time Admin exceptions</span>
+                  </div>
+                </div>
+                <span style="font-size:12px;color:#5b4a3c;margin-top:auto"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.cd }}</span>
+              </div>
+              <div style="padding:12px 20px;border-top:1px solid #f3ebde;background:#fdfaf4;display:flex;justify-content:flex-end">
+                <button onClick="{{ grp.cash.save }}" style="height:34px;padding:0 18px;border:none;border-radius:8px;background:{{ grp.cash.bg }};color:{{ grp.cash.color }};font-weight:600;font-size:13px;cursor:{{ grp.cash.cursor }}">Save</button>
+              </div>
+            </section>
+
+            <section style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+              <div style="padding:16px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+                <div style="display:flex;flex-direction:column;gap:3px"><h2 style="margin:0;font-size:15px;font-weight:700">Ledger Restrictions</h2><span style="font-size:12px;color:#7a6a5c">Shown in: Ledger Entry popup</span></div>
+                <span style="font-size:12px;color:{{ grp.ledger.statusColor }};font-weight:500">{{ grp.ledger.status }}</span>
+              </div>
+              <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:flex;flex-direction:column;gap:12px;flex:1">
+                <div style="display:flex;justify-content:space-between;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-weight:700;font-size:13.5px">Back-entry period</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px;align-self:flex-start">LEDGER_BACKDATE</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.lgOn.label }}</span><button onClick="{{ tg.lgOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.lgOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.lgOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+                </div>
+                <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">Entries within the period are saved directly. Older entries are held until Admin approves; the ledger entry is not created before then.</span>
+                <div style="display:flex;flex-direction:column;gap:12px;opacity:{{ op.lg }}">
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Allowed back entry</span><div style="display:flex;align-items:center;gap:8px"><input type="number" min="0" value="{{ r.lgDays }}" onChange="{{ ch.lgDays }}" style="width:72px;height:32px;box-sizing:border-box;border:1px solid #d9cfc0;border-radius:6px;padding:0 10px;font-size:13px"><span style="font-size:12px;color:#7a6a5c">days</span></div></label>
+                  <div style="background:#fbf6ec;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;font-size:12px">
+                    <span style="color:#7a6a5c">With business date 03-10-2026</span>
+                    <span><span style="font-weight:600">Direct:</span> <span style="font-family:'Geist Mono',monospace">{{ lgRange }}</span></span>
+                    <span><span style="font-weight:600">Needs approval:</span> <span style="font-family:'Geist Mono',monospace">before {{ lgFrom }}</span></span>
+                  </div>
+                </div>
+                <span style="font-size:12px;color:#5b4a3c;margin-top:auto"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.lg }}</span>
+              </div>
+              <div style="padding:12px 20px;border-top:1px solid #f3ebde;background:#fdfaf4;display:flex;justify-content:flex-end">
+                <button onClick="{{ grp.ledger.save }}" style="height:34px;padding:0 18px;border:none;border-radius:8px;background:{{ grp.ledger.bg }};color:{{ grp.ledger.color }};font-weight:600;font-size:13px;cursor:{{ grp.ledger.cursor }}">Save</button>
+              </div>
+            </section>
+
+            <section style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+              <div style="padding:16px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+                <div style="display:flex;flex-direction:column;gap:3px"><h2 style="margin:0;font-size:15px;font-weight:700">Company Share Restrictions</h2><span style="font-size:12px;color:#7a6a5c">Shown in: Income popup</span></div>
+                <span style="font-size:12px;color:{{ grp.company.statusColor }};font-weight:500">{{ grp.company.status }}</span>
+              </div>
+              <div style="padding:18px 20px;border-top:1px solid #f3ebde;display:flex;flex-direction:column;gap:12px;flex:1">
+                <div style="display:flex;justify-content:space-between;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-weight:700;font-size:13.5px">Company Share as income</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px;align-self:flex-start">COMPANY_SHARE_INCOME</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;align-self:start"><span style="font-size:12px;color:#7a6a5c">{{ tg.coOn.label }}</span><button onClick="{{ tg.coOn.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.coOn.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.coOn.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button></div>
+                </div>
+                <span style="color:#7a6a5c;line-height:1.5;text-wrap:pretty">Company Share is received through Branch Cash Deposit. Selecting it as an Income category is held for Admin approval.</span>
+                <div style="display:flex;flex-direction:column;gap:12px;opacity:{{ op.co }}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fbf6ec;border-radius:8px;padding:10px 12px"><span style="font-size:12.5px;font-weight:600">Direct income entry</span><span style="font-size:11.5px;font-weight:700;color:#b4232f;background:#fdebec;padding:3px 8px;border-radius:999px">Blocked</span></div>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <button onClick="{{ tg.coApproval.click }}" style="width:36px;height:20px;border-radius:999px;border:none;background:{{ tg.coApproval.bg }};position:relative;cursor:pointer;flex:none;padding:0"><span style="position:absolute;top:2px;left:{{ tg.coApproval.left }};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></button>
+                    <span style="font-size:12.5px;font-weight:600">Allow via Admin approval</span>
+                  </div>
+                </div>
+                <span style="font-size:12px;color:#5b4a3c;margin-top:auto"><span style="color:#7a6a5c">Current configuration:</span> {{ sum.co }}</span>
+              </div>
+              <div style="padding:12px 20px;border-top:1px solid #f3ebde;background:#fdfaf4;display:flex;justify-content:flex-end">
+                <button onClick="{{ grp.company.save }}" style="height:34px;padding:0 18px;border:none;border-radius:8px;background:{{ grp.company.bg }};color:{{ grp.company.color }};font-weight:600;font-size:13px;cursor:{{ grp.company.cursor }}">Save</button>
+              </div>
+            </section>
+          </div>
+
+          <section style="border:1px solid #eee3d1;border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;background:#fdfaf4">
+            <div style="display:flex;flex-direction:column;gap:4px"><span style="font-weight:700">Server enforced</span><span style="color:#7a6a5c;line-height:1.5">Every rule is re-evaluated by the API. Client-sent branch, user, date or approval values are ignored.</span></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><span style="font-weight:700">Offline</span><span style="color:#7a6a5c;line-height:1.5">Restricted actions show “Connection Required” in the popup. Cached results are never authoritative.</span></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><span style="font-weight:700">Admin only</span><span style="color:#7a6a5c;line-height:1.5">Branch users cannot view or change these settings. All changes are written to the audit log.</span></div>
+          </section>
+        </div>
+      </sc-if>
+
+      <!-- APPROVALS -->
+      <sc-if value="{{ isApprovals }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{ reqFilters }}" as="f" hint-placeholder-count="4">
+              <button onClick="{{ f.click }}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};font-size:12px;font-weight:600;cursor:pointer">{{ f.label }}</button>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start">
+            <div style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden">
+              <sc-for list="{{ reqList }}" as="q" hint-placeholder-count="5">
+                <div onClick="{{ q.click }}" style="padding:14px 16px;border-bottom:1px solid #f3ebde;background:{{ q.bg }};box-shadow:{{ q.bar }};cursor:pointer;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span style="font-family:'Geist Mono',monospace;font-size:12px;font-weight:500">{{ q.id }}</span><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:{{ q.pillBg }};color:{{ q.pillColor }}">{{ q.status }}</span></div>
+                  <span style="font-weight:700">{{ q.type }} · {{ q.branch }}</span>
+                  <span style="color:#7a6a5c;font-size:12px">{{ q.summary }}</span>
+                  <span style="color:#a08f80;font-size:11.5px">{{ q.by }} · {{ q.at }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ reqEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:24px;color:#7a6a5c;text-align:center">No requests in this category.</div></sc-if>
+            </div>
+
+            <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+              <div style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow:hidden">
+                <div style="padding:16px 20px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#7a6a5c">{{ sel.id }}</span><h3 style="margin:0;font-size:16px;font-weight:700">{{ sel.type }}</h3></div>
+                  <span style="font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;background:{{ sel.pillBg }};color:{{ sel.pillColor }}">{{ sel.status }}</span>
+                </div>
+                <div style="padding:0 20px 16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px">
+                  <sc-for list="{{ sel.fields }}" as="fd" hint-placeholder-count="8">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:11px;color:#7a6a5c">{{ fd.k }}</span><span style="font-weight:600;overflow-wrap:anywhere">{{ fd.v }}</span></div>
+                  </sc-for>
+                </div>
+                <div style="margin:0 20px 16px;padding:10px 12px;background:#fbf6ec;border-radius:8px;display:flex;flex-direction:column;gap:3px">
+                  <span style="font-size:11px;color:#7a6a5c">Branch reason</span><span style="line-height:1.5">{{ sel.reason }}</span>
+                </div>
+                <div style="margin:0 20px 16px;font-size:12px;color:#5b4a3c;display:flex;gap:6px;flex-wrap:wrap"><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#7a6a5c;background:#f6efe3;padding:2px 6px;border-radius:4px">{{ sel.code }}</span><span>{{ sel.context }}</span></div>
+
+                <sc-if value="{{ selPending }}" hint-placeholder-val="{{ true }}">
+                  <div style="border-top:1px solid #f3ebde;padding:16px 20px;display:flex;flex-direction:column;gap:10px;background:#fdfaf4">
+                    <label style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600">Admin reason <span style="font-weight:400;color:#7a6a5c">(required to reject, shown to branch)</span></span>
+                      <textarea value="{{ reason }}" onChange="{{ onReason }}" rows="3" placeholder="e.g. Utility bill verified against receipt" style="border:1px solid #d9cfc0;border-radius:6px;padding:8px 10px;font-size:13px;resize:vertical;background:#fff"></textarea>
+                    </label>
+                    <sc-if value="{{ reasonErr }}" hint-placeholder-val="{{ false }}"><span style="color:#b4232f;font-size:12px;font-weight:500">Enter a reason before rejecting.</span></sc-if>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+                      <button onClick="{{ reject }}" style="height:34px;padding:0 16px;border:1px solid #e3b8be;border-radius:8px;background:#fff;color:#b4232f;font-weight:600;font-size:13px;cursor:pointer">Reject</button>
+                      <button onClick="{{ approve }}" style="height:34px;padding:0 18px;border:none;border-radius:8px;background:#e8455e;color:#fff;font-weight:600;font-size:13px;cursor:pointer">Approve</button>
+                    </div>
+                    <span style="font-size:11.5px;color:#7a6a5c">Approval is one-time and tied to this request. It cannot be reused for another transaction.</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ selDecided }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid #f3ebde;padding:16px 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;background:#fdfaf4">
+                    <sc-for list="{{ sel.decision }}" as="d" hint-placeholder-count="5">
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:11px;color:#7a6a5c">{{ d.k }}</span><span style="font-weight:600;overflow-wrap:anywhere">{{ d.v }}</span></div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- MONITOR -->
+      <sc-if value="{{ isMonitor }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <span style="color:#7a6a5c">Live restriction state per branch, evaluated with the current rule configuration.</span>
+          <div style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;min-width:860px">
+              <thead><tr style="text-align:left;color:#7a6a5c;font-size:11.5px">
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Branch</th>
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Pending</th>
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Pending demand numbers</th>
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Oldest pending</th>
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Sales this hour</th>
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Deposits today</th>
+                <th style="padding:12px 16px;font-weight:600;border-bottom:1px solid #eee3d1">Demand status</th>
+              </tr></thead>
+              <tbody>
+                <sc-for list="{{ monitor }}" as="m" hint-placeholder-count="6">
+                  <tr>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde;font-weight:600">{{ m.branch }}</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde;font-weight:700">{{ m.pending }}</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde;font-family:'Geist Mono',monospace;font-size:12px">{{ m.nums }}</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde;color:#5b4a3c">{{ m.oldest }}</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde">{{ m.sales }}</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde">{{ m.deposits }}</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid #f3ebde"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:{{ m.pillBg }};color:{{ m.pillColor }}">{{ m.status }}</span></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- AUDIT -->
+      <sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{ auditFilters }}" as="f" hint-placeholder-count="8">
+              <button onClick="{{ f.click }}" style="height:28px;padding:0 10px;border-radius:999px;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};font-size:11px;font-weight:600;cursor:pointer;font-family:'Geist Mono',monospace">{{ f.label }}</button>
+            </sc-for>
+          </div>
+          <div style="background:#fff;border:1px solid #eee3d1;border-radius:12px;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;min-width:1040px;font-size:12px">
+              <thead><tr style="text-align:left;color:#7a6a5c;font-size:11px">
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Event</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Rule</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Branch / User</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Transaction / Request</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Date &amp; time</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Value / Threshold</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Action</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Result</th>
+                <th style="padding:11px 14px;font-weight:600;border-bottom:1px solid #eee3d1">Approval</th>
+              </tr></thead>
+              <tbody>
+                <sc-for list="{{ audit }}" as="a" hint-placeholder-count="10">
+                  <tr>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde;font-family:'Geist Mono',monospace">{{ a.id }}</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde;font-family:'Geist Mono',monospace;font-size:11px">{{ a.rule }}</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde"><div style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:600">{{ a.branch }}</span><span style="color:#7a6a5c">{{ a.user }}</span></div></td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde;font-family:'Geist Mono',monospace">{{ a.txn }}</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde;color:#5b4a3c">{{ a.when }}</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde">{{ a.val }}</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde">{{ a.action }}</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:{{ a.pillBg }};color:{{ a.pillColor }}">{{ a.result }}</span></td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #f3ebde;font-family:'Geist Mono',monospace">{{ a.apr }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- PREVIEW -->
+      <sc-if value="{{ isPreview }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:minmax(220px,260px) minmax(0,1fr);gap:18px;align-items:start">
+          <div style="background:#fff;border:1px solid #eee3d1;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ scenarios }}" as="sc" hint-placeholder-count="14">
+              <button onClick="{{ sc.click }}" style="text-align:left;border:none;background:{{ sc.bg }};border-radius:8px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:10.5px;color:#7a6a5c;font-weight:600">{{ sc.popup }}</span>
+                <span style="font-size:12.5px;font-weight:600;color:#2a1a10">{{ sc.label }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+            <div style="background:#e9dfcf;border-radius:14px;padding:32px 20px;display:flex;justify-content:center">
+              <div style="width:100%;max-width:440px;background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(61,29,12,.22);overflow:hidden">
+                <div style="padding:14px 18px;border-bottom:1px solid #f3ebde;display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;font-size:15px">{{ pv.popup }}</span><span style="color:#a08f80;font-size:18px;line-height:1">×</span></div>
+                <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+                    <sc-for list="{{ pv.fields }}" as="pf" hint-placeholder-count="2">
+                      <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:11px;font-weight:600;color:#5b4a3c">{{ pf.k }}</span><div style="height:32px;border:1px solid #e3dacb;border-radius:6px;padding:0 10px;display:flex;align-items:center;font-size:12.5px;background:#fdfbf7">{{ pf.v }}</div></div>
+                    </sc-for>
+                  </div>
+                  <div style="border:1px solid {{ pv.border }};background:{{ pv.bg }};border-radius:10px;padding:14px;display:flex;gap:12px">
+                    <div style="width:28px;height:28px;border-radius:50%;background:{{ pv.accent }};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none">{{ pv.glyph }}</div>
+                    <div style="display:flex;flex-direction:column;gap:8px;min-width:0;flex:1">
+                      <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:{{ pv.accent }}">{{ pv.level }}</span><span style="font-weight:700;font-size:14.5px;color:#2a1a10">{{ pv.title }}</span></div>
+                      <sc-for list="{{ pv.msgs }}" as="mg" hint-placeholder-count="2"><span style="line-height:1.5;color:#3d2a1c">{{ mg }}</span></sc-for>
+                      <sc-if value="{{ pv.hasList }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ pv.list }}" as="li"><span style="font-family:'Geist Mono',monospace;font-size:12px;font-weight:500;background:#fff;border:1px solid {{ pv.border }};padding:3px 8px;border-radius:6px">{{ li }}</span></sc-for></div>
+                      </sc-if>
+                      <sc-for list="{{ pv.after }}" as="mg"><span style="line-height:1.5;color:#3d2a1c">{{ mg }}</span></sc-for>
+                      <sc-if value="{{ pv.hasMeter }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:relative;height:8px;background:#fff;border-radius:999px;border:1px solid {{ pv.border }}">
+                          <div style="position:absolute;left:0;top:0;bottom:0;width:{{ pv.meterW }};background:{{ pv.accent }};border-radius:999px"></div>
+                          <div style="position:absolute;top:-4px;bottom:-4px;left:{{ pv.meterReq }};width:2px;background:#2a1a10"></div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ pv.hasStats }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;background:#fff;border-radius:8px;padding:10px 12px;font-size:12px">
+                          <sc-for list="{{ pv.stats }}" as="st"><div style="display:flex;justify-content:space-between;gap:8px"><span style="color:#7a6a5c">{{ st.k }}</span><span style="font-weight:700">{{ st.v }}</span></div></sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ pv.hasReason }}" hint-placeholder-val="{{ false }}">
+                        <div style="background:#fff;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px"><span style="font-size:11px;color:#7a6a5c">Reason</span><span style="line-height:1.5">{{ pv.reason }}</span></div>
+                      </sc-if>
+                      <sc-if value="{{ pv.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#7a6a5c">{{ pv.note }}</span></sc-if>
+                    </div>
+                  </div>
+                </div>
+                <div style="padding:12px 18px;border-top:1px solid #f3ebde;display:flex;justify-content:flex-end;gap:8px">
+                  <sc-for list="{{ pv.buttons }}" as="b" hint-placeholder-count="2">
+                    <button style="height:36px;padding:0 16px;border-radius:8px;border:1px solid {{ b.border }};background:{{ b.bg }};color:{{ b.color }};font-weight:600;font-size:13px;cursor:{{ b.cursor }}">{{ b.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="background:#2a1a10;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+              <span style="color:#c9b39a;font-size:11px;font-weight:600">Server response · POST {{ pv.endpoint }}</span>
+              <pre style="margin:0;color:#f5e6cc;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere">{{ pv.json }}</pre>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;rules&quot;,&quot;approvals&quot;,&quot;monitor&quot;,&quot;audit&quot;,&quot;preview&quot;],&quot;default&quot;:&quot;rules&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const SEV = {
+  warning:{bg:'#fdf4e1',border:'#f1d9a6',accent:'#a5650b',level:'WARNING',glyph:'!'},
+  blocking:{bg:'#fdebec',border:'#f4c3c8',accent:'#b4232f',level:'BLOCKING',glyph:'!'},
+  approval:{bg:'#eef2fb',border:'#c9d5f0',accent:'#2f4f9e',level:'ADMIN APPROVAL REQUIRED',glyph:'?'},
+  approved:{bg:'#e9f5ee',border:'#bfe0cc',accent:'#23744a',level:'APPROVED',glyph:'✓'},
+  info:{bg:'#f3efe8',border:'#e2d8c8',accent:'#5b4a3c',level:'INFO',glyph:'i'}
+};
+const PILL = {
+  'Pending Admin Approval':['#fdf4e1','#a5650b'],'Approved':['#e9f5ee','#23744a'],'Rejected':['#fdebec','#b4232f'],
+  'Blocked':['#fdebec','#b4232f'],'Warning':['#fdf4e1','#a5650b'],'Normal':['#e9f5ee','#23744a'],'Allowed':['#e9f5ee','#23744a'],
+  'Approval requested':['#eef2fb','#2f4f9e'],'Warned':['#fdf4e1','#a5650b']
+};
+const G = {dpOn:'demand',dpWarn:'demand',dpBlock:'demand',bdOn:'demand',bdApproval:'demand',csOn:'demand',csPct:'demand',hsOn:'sales',hsThr:'sales',hsWarn:'sales',hsMode:'sales',cdOn:'cash',cdLimit:'cash',cdExc:'cash',lgOn:'ledger',lgDays:'ledger',coOn:'company',coApproval:'company'};
+const NAV = ['Dashboard','Orders','Products','Categories','Price List','Price History','Customers','Branches','Branch Locations','Branch Stock','Production','Special Events','Reports','Daily Sale Records','Support Center','Recipients','Finance Ledger','Users','Security','Database Backup','Settings'];
+const BRANCHES = [
+  {branch:'Gulberg',nums:['DEM-2208','DEM-2211','DEM-2214'],oldest:'DEM-2208 · 01-10-2026, 07:40 PM',sales:'3 / hr',deposits:2},
+  {branch:'DHA Phase 5',nums:['DEM-2219','DEM-2221'],oldest:'DEM-2219 · 02-10-2026, 06:15 PM',sales:'1 / hr',deposits:3},
+  {branch:'Johar Town',nums:['DEM-2224'],oldest:'DEM-2224 · 03-10-2026, 08:05 AM',sales:'2 / hr',deposits:1},
+  {branch:'Model Town',nums:[],oldest:'—',sales:'0 / hr',deposits:0},
+  {branch:'Bahria Town',nums:['DEM-2201','DEM-2205','DEM-2210','DEM-2216'],oldest:'DEM-2201 · 30-09-2026, 09:20 PM',sales:'1 / hr',deposits:2},
+  {branch:'Cantt',nums:['DEM-2223'],oldest:'DEM-2223 · 03-10-2026, 07:50 AM',sales:'2 / hr',deposits:3}
+];
+const fmt = d => [d.getDate(),d.getMonth()+1].map(n=>String(n).padStart(2,'0')).join('-')+'-'+d.getFullYear();
+
+class Component extends DCLogic {
+  state = {
+    tab: this.props.defaultTab ?? 'rules',
+    rules: {dpOn:true,dpWarn:2,dpBlock:3,bdOn:true,bdApproval:true,csOn:true,csPct:30,hsOn:true,hsThr:2,hsWarn:true,hsMode:'warn',cdOn:true,cdLimit:3,cdExc:true,lgOn:true,lgDays:3,coOn:true,coApproval:true},
+    dirty: {},
+    saved: {demand:'02-10-2026, 11:40 PM',sales:'28-09-2026, 04:12 PM',cash:'28-09-2026, 04:12 PM',ledger:'25-09-2026, 10:03 AM',company:'25-09-2026, 10:03 AM'},
+    reqFilter: 'All', selId: 'REQ-2026-0141', reason: '', reasonErr: false,
+    auditFilter: 'All', scenario: 'demandBlock', aprSeq: 420,
+    requests: [
+      {id:'REQ-2026-0141',type:'Backdated Demand',code:'BACKDATED_DEMAND',branch:'Gulberg',summary:'DEM-2226 for 01-10-2026',by:'Ahsan Raza',at:'03-10-2026, 09:12 AM',status:'Pending Admin Approval',
+        reason:'Demand for Oct 1 could not be sent because the branch tablet was offline during the order window.',context:'Requested date is 2 business days before the current business date.',
+        fields:[['Demand ID','DEM-2226'],['Branch','Gulberg'],['Requested business date','01-10-2026'],['Current business date','03-10-2026'],['Requested by','Ahsan Raza'],['Requested at','03-10-2026, 09:12 AM']]},
+      {id:'REQ-2026-0140',type:'Ledger Back-entry',code:'LEDGER_BACKDATE',branch:'DHA Phase 5',summary:'Expense · Rs. 18,450 · 26-09-2026',by:'Sana Iqbal',at:'03-10-2026, 08:47 AM',status:'Pending Admin Approval',
+        reason:'Electricity bill received late from landlord; payment was made on 26-09.',context:'7 days back. Allowed back-entry period is 3 days.',
+        fields:[['Branch','DHA Phase 5'],['Ledger entry type','Expense · Utilities'],['Requested date','26-09-2026'],['Current business date','03-10-2026'],['Amount','Rs. 18,450'],['Description','LESCO bill Sep 2026'],['Requested by','Sana Iqbal'],['Requested at','03-10-2026, 08:47 AM']]},
+      {id:'REQ-2026-0139',type:'Company Share Income',code:'COMPANY_SHARE_INCOME',branch:'Johar Town',summary:'Rs. 125,000 · 02-10-2026',by:'Bilal Ahmed',at:'02-10-2026, 09:30 PM',status:'Pending Admin Approval',
+        reason:'Owner share handed over in person; no cash deposit was made.',context:'Company Share is normally received through Branch Cash Deposit.',
+        fields:[['Branch','Johar Town'],['Draft ID','INC-D-5531'],['Amount','Rs. 125,000'],['Date','02-10-2026'],['Category','Company Share'],['Description','Owner share — September'],['Requested by','Bilal Ahmed'],['Created at','02-10-2026, 09:30 PM']]},
+      {id:'REQ-2026-0138',type:'Ledger Back-entry',code:'LEDGER_BACKDATE',branch:'Model Town',summary:'Expense · Rs. 6,200 · 24-09-2026',by:'Hira Khan',at:'01-10-2026, 11:05 AM',status:'Approved',
+        reason:'Gas cylinder refill receipt found after audit.',context:'7 days back. Allowed back-entry period is 3 days.',
+        fields:[['Branch','Model Town'],['Ledger entry type','Expense · Fuel'],['Requested date','24-09-2026'],['Current business date','01-10-2026'],['Amount','Rs. 6,200'],['Description','LPG refill'],['Requested by','Hira Khan'],['Requested at','01-10-2026, 11:05 AM']],
+        decision:[['Approval ID','APR-0417'],['Approver','admin@mountainbakes.com'],['Approval time','01-10-2026, 12:20 PM'],['Decision','Approved'],['Reason','Receipt verified.']]},
+      {id:'REQ-2026-0137',type:'Backdated Demand',code:'BACKDATED_DEMAND',branch:'Bahria Town',summary:'DEM-2209 for 29-09-2026',by:'Usman Tariq',at:'30-09-2026, 10:15 AM',status:'Rejected',
+        reason:'Missed demand for Sep 29.',context:'Requested date is 1 business day before the current business date.',
+        fields:[['Demand ID','DEM-2209'],['Branch','Bahria Town'],['Requested business date','29-09-2026'],['Current business date','30-09-2026'],['Requested by','Usman Tariq'],['Requested at','30-09-2026, 10:15 AM']],
+        decision:[['Approval ID','APR-0414'],['Approver','admin@mountainbakes.com'],['Approval time','30-09-2026, 11:02 AM'],['Decision','Rejected'],['Reason','Sep 29 was already fulfilled from DEM-2198.']]}
+    ],
+    audit: [
+      ['RE-90231','DEMAND_PENDING_LIMIT','Gulberg','Ahsan Raza','DEM-2227','03-10-2026, 10:21 AM','3 / 3','Forward demand','Blocked','—'],
+      ['RE-90230','HOURLY_SALES_LIMIT','Gulberg','Ahsan Raza','SAL-77810','03-10-2026, 10:14 AM','3 / 2','New sale','Warned','—'],
+      ['RE-90229','BACKDATED_DEMAND','Gulberg','Ahsan Raza','REQ-2026-0141','03-10-2026, 09:12 AM','01-10 / 03-10','Request approval','Approval requested','—'],
+      ['RE-90228','LEDGER_BACKDATE','DHA Phase 5','Sana Iqbal','REQ-2026-0140','03-10-2026, 08:47 AM','7 d / 3 d','Ledger entry','Approval requested','—'],
+      ['RE-90227','CASH_DEPOSIT_LIMIT','DHA Phase 5','Sana Iqbal','CT-20261003-0192','03-10-2026, 08:30 AM','4 / 3','Forward deposit','Blocked','—'],
+      ['RE-90226','LOW_SALES_AFTER_CLOSING','Bahria Town','Usman Tariq','DEM-2228','03-10-2026, 06:40 AM','22% / 30%','Forward demand','Blocked','—'],
+      ['RE-90225','COMPANY_SHARE_INCOME','Johar Town','Bilal Ahmed','REQ-2026-0139','02-10-2026, 09:30 PM','—','Income entry','Approval requested','—'],
+      ['RE-90224','DEMAND_PENDING_LIMIT','DHA Phase 5','Sana Iqbal','DEM-2221','02-10-2026, 08:10 PM','2 / 2','Forward demand','Warned','—'],
+      ['RE-90223','LEDGER_BACKDATE','Model Town','Hira Khan','REQ-2026-0138','01-10-2026, 12:20 PM','7 d / 3 d','Admin decision','Approved','APR-0417'],
+      ['RE-90222','BACKDATED_DEMAND','Bahria Town','admin','REQ-2026-0137','30-09-2026, 11:02 AM','29-09 / 30-09','Admin decision','Rejected','APR-0414']
+    ]
+  };
+
+  set(k, v) { this.setState(s => ({ rules: { ...s.rules, [k]: v }, dirty: { ...s.dirty, [G[k]]: true } })); }
+
+  now() { const d = new Date(); return fmt(d) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }); }
+
+  decide(kind) {
+    const s = this.state;
+    if (kind === 'Rejected' && !s.reason.trim()) return this.setState({ reasonErr: true });
+    const seq = s.aprSeq + 1, aid = 'APR-0' + seq, t = this.now();
+    const req = s.requests.find(q => q.id === s.selId);
+    this.setState({
+      aprSeq: seq, reason: '', reasonErr: false,
+      requests: s.requests.map(q => q.id !== s.selId ? q : { ...q, status: kind, decision: [['Approval ID', aid], ['Approver', 'admin@mountainbakes.com'], ['Approval time', t], ['Decision', kind], ['Reason', s.reason.trim() || '—']] }),
+      audit: [['RE-' + (90232 + seq - 421), req.code, req.branch, 'admin', req.id, t, '—', 'Admin decision', kind, aid], ...s.audit]
+    });
+  }
+
+  renderVals() {
+    const s = this.state, r = s.rules, n = v => Number(v) || 0;
+    const tabsDef = [['rules', 'Rules'], ['approvals', 'Approvals'], ['monitor', 'Branch Monitor'], ['audit', 'Audit Log'], ['preview', 'Popup Preview']];
+    const pendingCount = s.requests.filter(q => q.status === 'Pending Admin Approval').length;
+    const tabs = tabsDef.map(([k, label]) => ({ label, count: pendingCount, hasCount: k === 'approvals' && pendingCount > 0, border: s.tab === k ? '#e8455e' : 'transparent', color: s.tab === k ? '#2a1a10' : '#7a6a5c', click: () => this.setState({ tab: k }) }));
+    const nav = NAV.map(l => ({ label: l, bg: l === 'Settings' ? '#e8455e' : 'transparent', color: l === 'Settings' ? '#fff' : '#f5e6cc' }));
+
+    const tg = {};
+    ['dpOn', 'bdOn', 'bdApproval', 'csOn', 'hsOn', 'hsWarn', 'cdOn', 'cdExc', 'lgOn', 'coOn', 'coApproval'].forEach(k => { const on = !!r[k]; tg[k] = { bg: on ? '#e8455e' : '#d9cfc0', left: on ? '18px' : '2px', label: on ? 'Enabled' : 'Disabled', click: () => this.set(k, !on) }; });
+    const ch = {};
+    ['dpWarn', 'dpBlock', 'csPct', 'hsThr', 'cdLimit', 'lgDays'].forEach(k => ch[k] = e => { const v = e.target.value; this.set(k, v === '' ? '' : Math.max(0, parseInt(v, 10) || 0)); });
+    const op = {}; ['dp', 'bd', 'cs', 'hs', 'cd', 'lg', 'co'].forEach(p => op[p] = r[p + 'On'] ? 1 : 0.45);
+
+    const w = n(r.dpWarn), b = n(r.dpBlock), dpErr = !(w < b), csErr = n(r.csPct) < 1 || n(r.csPct) > 100;
+    const rng = (a, z) => a === z ? String(a) : a > z ? '—' : a + '–' + z;
+    const lad = (c) => c === 'ok' ? ['#e9f5ee', '#23744a'] : c === 'warn' ? ['#fdf4e1', '#a5650b'] : ['#fdebec', '#b4232f'];
+    const L = (range, text, c) => ({ range, text, bg: lad(c)[0], color: lad(c)[1] });
+    const dpLadder = [L(rng(0, w - 1), 'Allowed', 'ok'), L(rng(w, b - 1), 'Warning', 'warn'), L(b + '+', 'Blocked', 'block')];
+    const h = n(r.hsThr), hsBlock = r.hsMode === 'block';
+    const hsLadder = [L(rng(0, h - 1), 'Normal', 'ok'), L(String(h), r.hsWarn ? 'Warning' : 'Normal', r.hsWarn ? 'warn' : 'ok'), L((h + 1) + '+', hsBlock ? 'Blocked' : 'Warn + audit', hsBlock ? 'block' : 'warn')];
+    const seg = on => ({ bg: on ? '#fff' : 'transparent', color: on ? '#2a1a10' : '#7a6a5c', shadow: on ? '0 1px 2px rgba(61,29,12,.15)' : 'none' });
+    const hsSeg = { warn: { ...seg(!hsBlock), click: () => this.set('hsMode', 'warn') }, block: { ...seg(hsBlock), click: () => this.set('hsMode', 'block') } };
+
+    const bd = new Date(2026, 9, 3), from = new Date(bd); from.setDate(bd.getDate() - n(r.lgDays));
+    const lgFrom = fmt(from), lgRange = lgFrom + ' → 03-10-2026';
+    const off = 'Disabled — no restriction applied';
+    const sum = {
+      dp: r.dpOn ? `Warn at ${w} pending · block new demands at ${b}+ pending` : off,
+      bd: r.bdOn ? (r.bdApproval ? 'Backdated demands held for Admin approval' : 'Backdated demands blocked') : off,
+      cs: r.csOn ? `After 06:00 AM, block new demand if less than ${n(r.csPct)}% of stock sold` : off,
+      hs: r.hsOn ? `${h} entries/hour${r.hsWarn ? ' shows warning' : ''} · above that: ${hsBlock ? 'sale blocked' : 'sale allowed, warning recorded to audit'}` : off,
+      cd: r.cdOn ? `${n(r.cdLimit)} deposits per business day${r.cdExc ? ' · Admin exceptions allowed' : ' · no exceptions'}` : off,
+      lg: r.lgOn ? `${n(r.lgDays)} days direct · older requires Admin approval` : off,
+      co: r.coOn ? (r.coApproval ? 'Direct entry blocked · Admin approval required' : 'Direct entry always blocked') : off
+    };
+    const errs = { demand: dpErr || csErr };
+    const grp = {};
+    ['demand', 'sales', 'cash', 'ledger', 'company'].forEach(g => {
+      const d = !!s.dirty[g], can = d && !errs[g];
+      grp[g] = { status: d ? 'Unsaved changes' : 'Saved ' + s.saved[g], statusColor: d ? '#a5650b' : '#7a6a5c', bg: can ? '#e8455e' : '#f0e6e7', color: can ? '#fff' : '#b9a3a6', cursor: can ? 'pointer' : 'not-allowed',
+        save: () => { if (!can) return; this.setState(st => ({ dirty: { ...st.dirty, [g]: false }, saved: { ...st.saved, [g]: 'just now' } })); } };
+    });
+
+    // approvals
+    const fl = ['All', 'Backdated Demand', 'Ledger Back-entry', 'Company Share Income'];
+    const chip = (on, click, label) => ({ label, click, bg: on ? '#3d1d0c' : '#fff', color: on ? '#f5e6cc' : '#5b4a3c', border: on ? '#3d1d0c' : '#e3dacb' });
+    const reqFilters = fl.map(f => chip(s.reqFilter === f, () => this.setState({ reqFilter: f }), f));
+    const shown = s.requests.filter(q => s.reqFilter === 'All' || q.type === s.reqFilter);
+    const reqList = shown.map(q => ({ ...q, pillBg: PILL[q.status][0], pillColor: PILL[q.status][1], bg: q.id === s.selId ? '#fdf6ea' : '#fff', bar: q.id === s.selId ? 'inset 3px 0 0 #e8455e' : 'none', click: () => this.setState({ selId: q.id, reason: '', reasonErr: false }) }));
+    const raw = s.requests.find(q => q.id === s.selId);
+    const sel = raw ? { ...raw, pillBg: PILL[raw.status][0], pillColor: PILL[raw.status][1], fields: raw.fields.map(([k, v]) => ({ k, v })), decision: (raw.decision || []).map(([k, v]) => ({ k, v })) } : null;
+
+    const monitor = BRANCHES.map(x => {
+      const p = x.nums.length, st = !r.dpOn ? 'Normal' : p >= b ? 'Blocked' : p >= w ? 'Warning' : 'Normal';
+      return { ...x, pending: p, nums: p ? x.nums.join(', ') : '—', deposits: x.deposits + ' / ' + n(r.cdLimit), status: st, pillBg: PILL[st][0], pillColor: PILL[st][1] };
+    });
+
+    const codes = ['All', 'DEMAND_PENDING_LIMIT', 'BACKDATED_DEMAND', 'HOURLY_SALES_LIMIT', 'LOW_SALES_AFTER_CLOSING', 'CASH_DEPOSIT_LIMIT', 'LEDGER_BACKDATE', 'COMPANY_SHARE_INCOME'];
+    const auditFilters = codes.map(c => chip(s.auditFilter === c, () => this.setState({ auditFilter: c }), c));
+    const audit = s.audit.filter(a => s.auditFilter === 'All' || a[1] === s.auditFilter).map(([id, rule, branch, user, txn, when, val, action, result, apr]) => ({ id, rule, branch, user, txn, when, val, action, result, apr, pillBg: (PILL[result] || PILL.Normal)[0], pillColor: (PILL[result] || PILL.Normal)[1] }));
+
+    const pv = this.preview(r, w, b, h, hsBlock, lgFrom);
+    const scenarios = this.scenarioList.map(([key, popup, label]) => ({ popup, label, bg: s.scenario === key ? '#fdf0e6' : 'transparent', click: () => this.setState({ scenario: key }) }));
+
+    return {
+      nav, tabs, tg, ch, op, r, dpErr, csErr, dpLadder, hsLadder, hsSeg, lgFrom, lgRange, sum, grp,
+      isRules: s.tab === 'rules', isApprovals: s.tab === 'approvals', isMonitor: s.tab === 'monitor', isAudit: s.tab === 'audit', isPreview: s.tab === 'preview',
+      reqFilters, reqList, reqEmpty: reqList.length === 0, sel, hasSel: !!sel,
+      selPending: !!sel && sel.status === 'Pending Admin Approval', selDecided: !!sel && sel.status !== 'Pending Admin Approval',
+      reason: s.reason, reasonErr: s.reasonErr, onReason: e => this.setState({ reason: e.target.value, reasonErr: false }),
+      approve: () => this.decide('Approved'), reject: () => this.decide('Rejected'),
+      monitor, auditFilters, audit, scenarios, pv
+    };
+  }
+
+  scenarioList = [
+    ['demandWarn', 'New Demand', 'Pending demands · warning'], ['demandBlock', 'New Demand', 'Pending demands · blocked'],
+    ['bdReq', 'New Demand', 'Backdated · approval required'], ['bdRej', 'New Demand', 'Backdated · rejected'], ['bdOk', 'New Demand', 'Backdated · approved'],
+    ['lowStock', 'New Demand', 'Low sales after closing'], ['salesWarn', 'New Sale', 'Hourly sales · warning'], ['salesMax', 'New Sale', 'Hourly sales · threshold exceeded'],
+    ['cash', 'Cash Deposit', 'Daily limit reached'], ['ledger', 'Ledger Entry', 'Backdated · approval required'], ['ledgerRej', 'Ledger Entry', 'Backdated · rejected'],
+    ['co', 'Income', 'Company Share · approval required'], ['coOk', 'Income', 'Company Share · approved'], ['offline', 'New Demand', 'Offline · connection required']
+  ];
+
+  preview(r, w, b, h, hsBlock, lgFrom) {
+    const P = (l) => ({ label: l, bg: '#e8455e', color: '#fff', border: '#e8455e', cursor: 'pointer' });
+    const D = (l) => ({ label: l, bg: '#f0e6e7', color: '#b9a3a6', border: '#f0e6e7', cursor: 'not-allowed' });
+    const S = (l) => ({ label: l, bg: '#fff', color: '#5b4a3c', border: '#e3dacb', cursor: 'pointer' });
+    const dF = [['Branch', 'Gulberg'], ['Business date', '03-10-2026']];
+    const sF = [['Product', 'Chicken Patties ×6'], ['Total', 'Rs. 1,080']];
+    const pct = 22, cdl = Number(r.cdLimit) || 0, lgd = Number(r.lgDays) || 0;
+    const X = {
+      demandWarn: { popup: 'New Demand', sev: 'warning', code: 'DEMAND_PENDING_LIMIT', endpoint: '/demands/forward', allowed: true, fields: dF, title: 'Warning', msgs: [`You currently have ${w} demands waiting for verification.`, 'Please wait for the pending demands to be verified before submitting additional demands.'], buttons: [S('Cancel'), P('Forward Demand')], extra: { pendingDemandNumbers: ['DEM-2219', 'DEM-2221'], threshold: b, currentValue: w } },
+      demandBlock: { popup: 'New Demand', sev: 'blocking', code: 'DEMAND_PENDING_LIMIT', endpoint: '/demands/forward', fields: dF, title: 'Demand Forwarding Restricted', msgs: ['Your demand numbers:'], list: ['#DEM-2208', '#DEM-2211', '#DEM-2214'], after: ['are still not verified.', 'Your new demand is not authorized.', 'Please contact the Admin to resolve this problem.'], buttons: [S('Close'), D('Forward Demand')], extra: { pendingDemandNumbers: ['DEM-2208', 'DEM-2211', 'DEM-2214'], threshold: b, currentValue: 3 } },
+      bdReq: { popup: 'New Demand', sev: 'approval', code: 'BACKDATED_DEMAND', endpoint: '/demands/forward', fields: [['Branch', 'Gulberg'], ['Business date', '01-10-2026']], title: 'Backdated Demand', msgs: ['This demand uses a previous business date.', 'Admin approval is required before this demand can be forwarded.'], stats: [['Requested', '01-10-2026'], ['Current', '03-10-2026']], buttons: [S('Cancel'), P('Request Admin Approval')], extra: { requestedBusinessDate: '2026-10-01', currentBusinessDate: '2026-10-03' } },
+      bdRej: { popup: 'New Demand', sev: 'blocking', code: 'BACKDATED_DEMAND', endpoint: '/demands/forward', fields: [['Branch', 'Bahria Town'], ['Business date', '29-09-2026']], title: 'Backdated Demand Rejected', msgs: ['This demand was not approved by Admin.'], reason: 'Sep 29 was already fulfilled from DEM-2198.', buttons: [S('Close')], extra: { requestId: 'REQ-2026-0137', approvalId: 'APR-0414', decision: 'rejected' } },
+      bdOk: { popup: 'New Demand', sev: 'approved', code: 'BACKDATED_DEMAND', endpoint: '/demands/forward', allowed: true, fields: [['Branch', 'Gulberg'], ['Business date', '01-10-2026']], title: 'Admin Approved ✓', msgs: ['Backdated demand is authorized.'], stats: [['Approval', 'APR-0421'], ['Request', 'REQ-0141']], buttons: [S('Cancel'), P('Forward Demand')], extra: { requestId: 'REQ-2026-0141', approvalId: 'APR-0421', singleUse: true } },
+      lowStock: { popup: 'New Demand', sev: 'blocking', code: 'LOW_SALES_AFTER_CLOSING', endpoint: '/demands/forward', fields: [['Branch', 'Bahria Town'], ['Business date', '03-10-2026']], title: 'Demand Forwarding Restricted', msgs: ['Your current stock is still standing.', `Only ${pct}% of the applicable stock has been sold.`, `Minimum required sold percentage: ${r.csPct}%`, 'Please sell the available stock before forwarding a new demand.'], meter: true, stats: [['Applicable stock', '420'], ['Sold', '92'], ['Remaining', '328'], ['Sold %', pct + '%'], ['Required', r.csPct + '%']], buttons: [S('Close'), D('Forward Demand')], extra: { applicableStock: 420, sold: 92, soldPercentage: pct, threshold: Number(r.csPct) } },
+      salesWarn: { popup: 'New Sale', sev: 'warning', code: 'HOURLY_SALES_LIMIT', endpoint: '/sales', allowed: true, fields: sF, title: 'Sales Activity Warning', msgs: [`${h} sales entries have already been recorded during this hour.`, 'Please ensure sales are being entered regularly and accurately.'], stats: [['Business hour', '10:00–11:00'], ['Entries', h + ' / ' + h]], buttons: [S('Cancel'), P('Record Sale')], extra: { businessHour: '10:00', timezone: 'Asia/Karachi', threshold: h, currentValue: h } },
+      salesMax: { popup: 'New Sale', sev: hsBlock ? 'blocking' : 'warning', code: 'HOURLY_SALES_LIMIT', endpoint: '/sales', allowed: !hsBlock, fields: sF, title: 'Sales Activity Warning', msgs: ['The maximum hourly sales-entry threshold has been reached.', 'Please verify that sales are being entered correctly and that stock is being sold.', 'Contact Admin if this restriction needs review.'], stats: [['Business hour', '10:00–11:00'], ['Entries', (h + 1) + ' / ' + h]], note: hsBlock ? 'Configured to block. Change in Rules → Sales Restrictions.' : 'Configured to warn. This sale will be saved and recorded in the audit log.', buttons: [S('Cancel'), hsBlock ? D('Record Sale') : P('Record Sale')], extra: { threshold: h, currentValue: h + 1, auditEventId: 'RE-90230' } },
+      cash: { popup: 'Cash Deposit', sev: 'blocking', code: 'CASH_DEPOSIT_LIMIT', endpoint: '/cash-deposits/forward', fields: [['Branch', 'DHA Phase 5'], ['Amount', 'Rs. 42,000']], title: 'Cash Deposit Limit Reached', msgs: [`Your ${cdl} allowed cash-deposit transactions for today have already been forwarded.`, 'Your CT-Number:'], list: ['CT-20261003-0188'], after: ['has been forwarded.', 'For additional cash-deposit transactions, please contact Admin.'], buttons: [S('Close'), D('Forward Cash Deposit')], extra: { ctNumbers: ['CT-20261003-0171', 'CT-20261003-0179', 'CT-20261003-0188'], threshold: cdl, currentValue: cdl } },
+      ledger: { popup: 'Ledger Entry', sev: 'approval', code: 'LEDGER_BACKDATE', endpoint: '/ledger/entries', fields: [['Type', 'Expense · Utilities'], ['Entry date', '26-09-2026']], title: 'Backdated Ledger Entry', msgs: [`This entry is older than the allowed ${lgd}-day back-entry period.`, 'Admin approval is required.'], stats: [['Entry date', '26-09-2026'], ['Business date', '03-10-2026'], ['Allowed from', lgFrom], ['Days back', '7']], buttons: [S('Cancel'), P('Request Admin Approval')], extra: { daysBack: 7, threshold: lgd } },
+      ledgerRej: { popup: 'Ledger Entry', sev: 'blocking', code: 'LEDGER_BACKDATE', endpoint: '/ledger/entries', fields: [['Type', 'Expense · Repairs'], ['Entry date', '22-09-2026']], title: 'Ledger Entry Rejected', msgs: ['Admin did not approve this backdated entry.'], reason: 'No receipt attached. Resubmit with the vendor invoice.', buttons: [S('Close')], extra: { requestId: 'REQ-2026-0133', decision: 'rejected' } },
+      co: { popup: 'Income', sev: 'approval', code: 'COMPANY_SHARE_INCOME', endpoint: '/income', fields: [['Category', 'Company Share'], ['Amount', 'Rs. 125,000']], title: 'Company Share Requires Admin Approval', msgs: ['Company Share cannot be entered directly as normal income.', 'Company Share is received through Branch Cash Deposit.', 'Admin approval is required for this Income entry.'], buttons: [S('Cancel'), P('Request Admin Approval')], extra: { category: 'COMPANY_SHARE' } },
+      coOk: { popup: 'Income', sev: 'approved', code: 'COMPANY_SHARE_INCOME', endpoint: '/income', allowed: true, fields: [['Category', 'Company Share'], ['Amount', 'Rs. 125,000']], title: 'Admin Approved ✓', msgs: ['Company Share income entry is authorized.'], stats: [['Approval ref', 'APR-0422'], ['Draft', 'INC-D-5531']], buttons: [S('Cancel'), P('Save Income')], extra: { approvalId: 'APR-0422', singleUse: true } },
+      offline: { popup: 'New Demand', sev: 'info', code: 'CONNECTION_REQUIRED', endpoint: '/demands/forward', fields: dF, title: 'Connection Required', msgs: ['This action requires current server verification.', 'Please reconnect to the internet and try again.'], buttons: [S('Close'), P('Try Again')], extra: {} }
+    };
+    const x = X[this.state.scenario], t = SEV[x.sev];
+    const sevName = { warning: 'warning', blocking: 'blocking', approval: 'admin_approval_required', approved: 'approved', info: 'info' }[x.sev];
+    const json = x.code === 'CONNECTION_REQUIRED' ? '// No response — request not sent.\n// Device offline; cached restriction data is not used.' :
+      JSON.stringify({ allowed: !!x.allowed, restriction: { code: x.code, severity: sevName, title: x.title, requiresAdminApproval: x.sev === 'approval', ...x.extra } }, null, 2);
+    return {
+      ...t, popup: x.popup, title: x.title, endpoint: x.endpoint, json,
+      fields: x.fields.map(([k, v]) => ({ k, v })), msgs: x.msgs, after: x.after || [], list: x.list || [], hasList: !!x.list,
+      stats: (x.stats || []).map(([k, v]) => ({ k, v })), hasStats: !!x.stats, reason: x.reason || '', hasReason: !!x.reason,
+      note: x.note || '', hasNote: !!x.note, hasMeter: !!x.meter, meterW: pct + '%', meterReq: (Number(r.csPct) || 0) + '%', buttons: x.buttons
+    };
+  }
+}
+</script>
+</body>
+</html>
