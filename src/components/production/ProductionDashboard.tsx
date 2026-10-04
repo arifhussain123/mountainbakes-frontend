@@ -1,65 +1,274 @@
 'use client';
 
-import { useMemo } from 'react';
-import { parseISO, startOfWeek, format } from 'date-fns';
-import { useAuth } from '@/hooks/useAuth';
-import { useProductionOverview } from '@/lib/queries';import { StatCard } from '@/components/shared/StatCard';
+import { useMemo, useState } from 'react';
+import { parseISO, format } from 'date-fns';
 import dynamic from 'next/dynamic';
-import {
-  Clock, CheckCircle2, Truck, Undo2, RefreshCw, CalendarDays,
-  CalendarRange, TrendingUp, Store, Package, BarChart3, Boxes,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useProductionOverview } from '@/lib/queries';
+import type { ProductionWeek, WeekPair } from '@/lib/queries';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { LoginHistoryCard } from '@/components/dashboard/LoginHistoryCard';
-
-type CardColor = 'orange' | 'brown' | 'green' | 'blue' | 'red';
 
 // Charts pull in recharts; load lazily on the client to keep the initial bundle lean.
 const DemandBarChart = dynamic(() => import('./ProductionCharts').then((m) => m.DemandBarChart), { ssr: false });
-const BranchDemandChart = dynamic(() => import('./ProductionCharts').then((m) => m.BranchDemandChart), { ssr: false });
-const TopRequestedChart = dynamic(() => import('./ProductionCharts').then((m) => m.TopRequestedChart), { ssr: false });
+const DemandProductionTrend = dynamic(() => import('./ProductionCharts').then((m) => m.DemandProductionTrend), { ssr: false });
+const OrderStatusDonut = dynamic(() => import('./ProductionCharts').then((m) => m.OrderStatusDonut), { ssr: false });
+const BranchCompareBars = dynamic(() => import('./ProductionCharts').then((m) => m.BranchCompareBars), { ssr: false });
+
+const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 1 });
+const shortBranch = (name: string) => name.replace('Mountain Bakes ', '');
+
+const TONE = {
+  good: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  warn: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  bad: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  accent: 'bg-primary/10 text-primary',
+} as const;
+
+function Badge({ tone, children }: { tone: keyof typeof TONE; children: React.ReactNode }) {
+  return (
+    <span className={cn('inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-medium', TONE[tone])}>
+      {children}
+    </span>
+  );
+}
+
+/** Change against the same weekdays of last week, or null when there is nothing to compare with. */
+function pctChange(p: WeekPair | undefined): number | null {
+  if (!p || !p.prev) return null;
+  return ((p.cur - p.prev) / p.prev) * 100;
+}
+
+function Delta({ value, suffix = '%' }: { value: number | null; suffix?: string }) {
+  if (value === null || !Number.isFinite(value)) return null;
+  const up = value >= 0;
+  return (
+    <span
+      className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums', up ? TONE.good : TONE.bad)}
+      title="Against the same days of last week"
+    >
+      {up ? '+' : ''}{value.toFixed(1)}{suffix}
+    </span>
+  );
+}
+
+function Kpi({ name, value, note, delta, loading }: { name: string; value: string; note: string; delta?: React.ReactNode; loading?: boolean }) {
+  return (
+    <Card size="sm">
+      <CardContent className="space-y-0.5">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs text-muted-foreground">{name}</p>
+          {!loading && delta}
+        </div>
+        {loading ? <Skeleton className="h-8 w-20" /> : <p className="text-2xl font-bold tabular-nums">{value}</p>}
+        <p className="text-[11px] text-muted-foreground">{note}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Panel({ title, subtitle, action, className, children }: { title: string; subtitle?: string; action?: React.ReactNode; className?: string; children: React.ReactNode }) {
+  return (
+    <Card className={cn('h-full', className)}>
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="text-base">{title}</CardTitle>
+            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          </div>
+          {action}
+        </div>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function Empty({ children = 'No data yet' }: { children?: React.ReactNode }) {
+  return <p className="py-8 text-center text-sm text-muted-foreground">{children}</p>;
+}
+
+function TopProducts({ rows }: { rows: ProductionWeek['plan'] }) {
+  if (rows.length === 0) return <Empty />;
+  const max = Math.max(...rows.map((r) => r.demand), 1);
+  return (
+    <ol className="space-y-2">
+      {rows.map((r, i) => (
+        <li key={r.productId ?? r.productName} className="grid grid-cols-[1.25rem_minmax(0,7.5rem)_1fr_auto] items-center gap-2 text-sm">
+          <span className="text-xs tabular-nums text-muted-foreground">{String(i + 1).padStart(2, '0')}</span>
+          <span className="truncate" title={r.productName}>{r.productName}</span>
+          <span className="block">
+            <span
+              className="block h-2 rounded-full"
+              style={{
+                width: `${Math.max((r.demand / max) * 100, 2)}%`,
+                // Fades from the accent toward grey down the ranking, as in the design.
+                backgroundColor: `color-mix(in oklab, var(--chart-1) ${100 - i * 8}%, var(--muted-foreground))`,
+              }}
+            />
+          </span>
+          <span className="text-right font-semibold tabular-nums">{fmt(r.demand)}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Output plus what is on the shelf, against demand. Thresholds are the design's. */
+function coverage(r: { demand: number; produced: number; stock: number }) {
+  const balance = r.produced + r.stock - r.demand;
+  const pct = r.demand > 0 ? Math.round(((r.produced + r.stock) / r.demand) * 100) : 100;
+  if (pct < 100) return { pct, balance, tone: 'bad' as const, label: 'Short', bar: 'bg-red-500' };
+  if (pct < 120) return { pct, balance, tone: 'warn' as const, label: 'Prod. needed', bar: 'bg-amber-500' };
+  return { pct, balance, tone: 'good' as const, label: 'Covered', bar: 'bg-emerald-500' };
+}
+
+function PlanTable({ rows }: { rows: ProductionWeek['plan'] }) {
+  if (rows.length === 0) return <Empty />;
+  const th = 'px-2 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
+  const td = 'px-2 py-2 text-right tabular-nums';
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b">
+            <th className={cn(th, 'text-left')}>Product</th>
+            <th className={th}>Demand</th>
+            <th className={th}>Produced</th>
+            <th className={th}>In stock</th>
+            <th className={th}>Balance</th>
+            <th className={cn(th, 'text-left')}>Coverage</th>
+            <th className={th}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const c = coverage(r);
+            return (
+              <tr key={r.productId ?? r.productName} className="border-b border-border/60 last:border-0">
+                <td className="px-2 py-2 text-left font-semibold">{r.productName}</td>
+                <td className={td}>{fmt(r.demand)}</td>
+                <td className={td}>{fmt(r.produced)}</td>
+                <td className={td}>{fmt(r.stock)}</td>
+                <td className={cn(td, 'font-semibold', c.balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                  {c.balance >= 0 ? '+' : ''}{fmt(c.balance)}
+                </td>
+                <td className="px-2 py-2">
+                  <div className="flex min-w-[150px] items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className={cn('h-full rounded-full', c.bar)} style={{ width: `${Math.min(c.pct, 100)}%` }} />
+                    </div>
+                    <span className="w-10 text-right text-xs tabular-nums">{c.pct}%</span>
+                  </div>
+                </td>
+                <td className={td}><Badge tone={c.tone}>{c.label}</Badge></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Heatmap({ heat }: { heat: ProductionWeek['heat'] }) {
+  if (heat.rows.length === 0 || heat.products.length === 0) return <Empty />;
+  const max = Math.max(...heat.rows.flatMap((r) => r.values), 1);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px] table-fixed border-separate border-spacing-0.5 text-xs">
+        <thead>
+          <tr>
+            <th className="w-28" />
+            {heat.products.map((p) => (
+              <th key={p.productId ?? p.productName} className="truncate px-1 pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" title={p.productName}>
+                {p.productName}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {heat.rows.map((r) => (
+            <tr key={r.branchId}>
+              <th scope="row" className="truncate pr-2 text-left font-semibold" title={shortBranch(r.branchName)}>{shortBranch(r.branchName)}</th>
+              {r.values.map((v, i) => {
+                const a = v > 0 ? 0.12 + (v / max) * 0.88 : 0;
+                return (
+                  <td
+                    key={i}
+                    className={cn('h-7 rounded-[3px] text-center font-semibold tabular-nums', v === 0 && 'bg-muted/50 text-muted-foreground', a > 0.55 && 'text-white')}
+                    style={v > 0 ? { backgroundColor: `color-mix(in oklab, var(--chart-1) ${Math.round(a * 100)}%, transparent)` } : undefined}
+                  >
+                    {v > 0 ? fmt(v) : '–'}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const ORDER_STATUS: Record<string, { label: string; tone: keyof typeof TONE }> = {
+  pending: { label: 'Waiting', tone: 'warn' },
+  awaiting_verification: { label: 'Sent', tone: 'accent' },
+  verified: { label: 'Verified', tone: 'good' },
+  approved: { label: 'Delivered', tone: 'good' },
+  rejected: { label: 'Rejected', tone: 'bad' },
+};
+
+function Recent({ rows }: { rows: ProductionWeek['recent'] }) {
+  if (rows.length === 0) return <Empty>No demands yet</Empty>;
+  return (
+    <ul className="divide-y divide-border/60">
+      {rows.map((r) => {
+        const s = ORDER_STATUS[r.status] ?? { label: r.status, tone: 'accent' as const };
+        let day = '', time = '';
+        try { const d = parseISO(r.submittedAt); day = format(d, 'MMM d'); time = format(d, 'HH:mm'); } catch { /* keep blank */ }
+        return (
+          <li key={r.id} className="flex items-center gap-3 py-2">
+            <span className="w-12 shrink-0 text-xs leading-tight text-muted-foreground">
+              <span className="block tabular-nums">{time}</span>
+              <span className="block text-[10px]">{day}</span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <b className="block truncate text-sm">{shortBranch(r.branchName ?? '')}</b>
+              <span className="text-xs text-muted-foreground">
+                {r.products} {r.products === 1 ? 'product' : 'products'} · {fmt(r.units)} units{r.wasChanged ? ' · changed' : ''}
+              </span>
+            </span>
+            <Badge tone={s.tone}>{s.label}</Badge>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function ProductionDashboard() {
-  const { token } = useAuth();  const { data, isLoading } = useProductionOverview(token);
+  const { token } = useAuth();
+  const [branchId, setBranchId] = useState<string | null>(null);
+  const { data, isLoading, isPlaceholderData } = useProductionOverview(token, branchId);
 
   const c = data?.cards;
+  const w = data?.week;
+  const k = w?.kpis;
+  const branches = data?.branches ?? [];
+  const branchName = branchId ? shortBranch(branches.find((b) => b.branchId === branchId)?.branchName ?? 'Branch') : null;
+  const scope = branchName ?? 'All branches';
 
-  const cards: { title: string; value: number; icon: LucideIcon; color: CardColor }[] = [
-    { title: 'Waiting Orders', value: c?.waitingOrders ?? 0, icon: Clock, color: 'orange' },
-    { title: 'Approved Orders', value: c?.approvedOrders ?? 0, icon: CheckCircle2, color: 'green' },
-    { title: 'Delivered Orders', value: c?.deliveredOrders ?? 0, icon: Truck, color: 'blue' },
-    { title: 'Returned Products', value: c?.returnedProducts ?? 0, icon: Undo2, color: 'red' },
-    { title: 'Changed Orders', value: c?.changedOrders ?? 0, icon: RefreshCw, color: 'brown' },
-    { title: "Today's Production", value: c?.todayProduction ?? 0, icon: CalendarDays, color: 'orange' },
-    { title: 'Weekly Production', value: c?.weeklyProduction ?? 0, icon: CalendarRange, color: 'blue' },
-    { title: 'Monthly Production', value: c?.monthlyProduction ?? 0, icon: TrendingUp, color: 'green' },
-    { title: 'Total Branches', value: c?.totalBranches ?? 0, icon: Store, color: 'brown' },
-    { title: 'Total Products', value: c?.totalProducts ?? 0, icon: Package, color: 'orange' },
-    { title: 'Total Demand Qty', value: c?.totalDemandQty ?? 0, icon: BarChart3, color: 'blue' },
-    // The pool is day-scoped and carries nothing forward, so this can go NEGATIVE
-    // — more left the pool today than entered it, and the difference is production
-    // still to do. Red when it does: a green card reading -40 would state a
-    // shortfall in the colour of a healthy shelf.
-    {
-      title: 'Available Prod. Stock',
-      value: c?.availableProductionStock ?? 0,
-      icon: Boxes,
-      color: (c?.availableProductionStock ?? 0) < 0 ? 'red' : 'green',
-    },
-    // A separate inventory from the card above — returned goods are not
-    // production stock and are not counted in it.
-    { title: 'Branch Return Stock', value: c?.branchReturnStock ?? 0, icon: Undo2, color: 'brown' },
-  ];
-
-  const weekly = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const d of data?.demandByDay ?? []) {
-      let key: string;
-      try { key = format(startOfWeek(parseISO(d.date), { weekStartsOn: 1 }), 'MMM d'); } catch { key = d.date; }
-      map.set(key, (map.get(key) ?? 0) + d.qty);
-    }
-    return [...map.entries()].map(([label, qty]) => ({ label, qty })).slice(-8);
-  }, [data]);
+  const trend = useMemo(
+    () => (w?.trend ?? []).map((d) => {
+      let label = d.date;
+      try { label = format(parseISO(d.date), 'EEE d'); } catch { /* keep raw */ }
+      return { label, demand: d.demand, produced: d.produced };
+    }),
+    [w],
+  );
 
   const monthly = useMemo(
     () => (data?.demandByMonth ?? []).map((m) => {
@@ -70,33 +279,180 @@ export function ProductionDashboard() {
     [data],
   );
 
+  const weekLabel = useMemo(() => {
+    if (!w) return 'this week';
+    try { return `${format(parseISO(w.from), 'MMM d')} – ${format(parseISO(w.to), 'MMM d')}`; } catch { return 'this week'; }
+  }, [w]);
+
+  const demand = k?.demand.cur ?? 0;
+  const produced = k?.produced.cur ?? 0;
+  // The pool can be negative (more promised than held); a shortfall is not
+  // stock, so it adds nothing to what is available to meet demand.
+  const poolStock = Math.max(c?.availableProductionStock ?? 0, 0);
+  const rate = (num: number, den: number) => (den > 0 ? Math.min((num / den) * 100, 100) : null);
+  // One branch: what it actually received. All branches: what Production can
+  // supply — the week's output plus what is still on the shelf.
+  const fulfilment = branchId ? rate(k?.delivered.cur ?? 0, demand) : rate(produced + poolStock, demand);
+  const prevFulfilment = branchId && k ? rate(k.delivered.prev, k.demand.prev) : null;
+  const deliveredTo = (w?.branchCompare ?? []).filter((b) => b.delivered > 0).length;
+
+  const os = w?.orderStatus;
+  const statusSlices = [
+    { label: 'Waiting approval', value: os?.pending ?? 0, color: 'var(--chart-4)' },
+    { label: 'Awaiting branch verification', value: os?.awaitingVerification ?? 0, color: 'var(--chart-1)' },
+    { label: 'Verified by branch', value: os?.verified ?? 0, color: 'var(--chart-3)' },
+    { label: 'Delivered', value: os?.approved ?? 0, color: 'var(--chart-2)' },
+    { label: 'Rejected', value: os?.rejected ?? 0, color: 'var(--destructive)' },
+  ];
+
+  const plan = w?.plan ?? [];
+  const planCounts = plan.reduce(
+    (acc, r) => { acc[coverage(r).tone] += 1; return acc; },
+    { good: 0, warn: 0, bad: 0 },
+  );
+
+  const strip: { name: string; value: number; negative?: boolean }[] = [
+    { name: 'Active branches', value: c?.totalBranches ?? 0 },
+    { name: 'Products', value: c?.totalProducts ?? 0 },
+    // Day-scoped and can go NEGATIVE — more left the pool than entered it, and
+    // the difference is production still to do. Red when it does.
+    { name: 'Available prod. stock', value: c?.availableProductionStock ?? 0, negative: (c?.availableProductionStock ?? 0) < 0 },
+    // A separate inventory from the figure above — returned goods are not
+    // production stock and are not counted in it.
+    { name: 'Branch return stock', value: c?.branchReturnStock ?? 0 },
+    { name: "Today's production", value: c?.todayProduction ?? 0 },
+    { name: 'Weekly production', value: c?.weeklyProduction ?? 0 },
+    { name: 'Monthly production', value: c?.monthlyProduction ?? 0 },
+  ];
+
+  const chip = (active: boolean) => cn(
+    'rounded-full border px-3 py-1 text-xs transition-colors',
+    active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-muted',
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Live indicator */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
         Live — updates in real time as branches submit demands
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {cards.map((card) => (
-          <StatCard key={card.title} title={card.title} value={card.value} icon={card.icon} color={card.color} loading={isLoading} />
+      {/* Branch filter */}
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by branch">
+        <span className="mr-1 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Branch</span>
+        <button type="button" className={chip(branchId === null)} aria-pressed={branchId === null} onClick={() => setBranchId(null)}>
+          All branches
+        </button>
+        {branches.map((b) => (
+          <button key={b.branchId} type="button" className={chip(branchId === b.branchId)} aria-pressed={branchId === b.branchId} onClick={() => setBranchId(b.branchId)}>
+            {shortBranch(b.branchName)}
+          </button>
         ))}
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DemandBarChart title="Monthly Demand" data={monthly} loading={isLoading} />
-        <DemandBarChart title="Weekly Demand" data={weekly} loading={isLoading} />
-        {/* Spans the row the Daily Demand chart used to share, so removing it
-            does not leave the grid ending on a half-empty row. */}
-        <div className="lg:col-span-2">
-          <BranchDemandChart data={data?.branchDemand ?? []} loading={isLoading} />
+      <div className={cn('space-y-4 transition-opacity', isPlaceholderData && 'opacity-60')}>
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <Kpi name="Total demand" value={fmt(demand)} note="units requested this week" delta={<Delta value={pctChange(k?.demand)} />} loading={isLoading} />
+          <Kpi
+            name="Produced"
+            value={fmt(produced)}
+            note={branchId ? 'all branches — central pool' : demand > 0 ? `${Math.round((produced / demand) * 100)}% of demand` : 'units prepared this week'}
+            delta={<Delta value={pctChange(k?.produced)} />}
+            loading={isLoading}
+          />
+          <Kpi
+            name="Fulfilment rate"
+            value={fulfilment === null ? '—' : `${fulfilment.toFixed(1)}%`}
+            note={branchId ? 'delivered ÷ demand' : 'incl. available stock'}
+            delta={<Delta value={fulfilment !== null && prevFulfilment !== null ? fulfilment - prevFulfilment : null} suffix=" pts" />}
+            loading={isLoading}
+          />
+          <Kpi name="Open orders" value={fmt(k?.openOrders.cur ?? 0)} note="awaiting approval" delta={<Delta value={pctChange(k?.openOrders)} />} loading={isLoading} />
+          <Kpi
+            name="Delivered orders"
+            value={fmt(k?.deliveredOrders.cur ?? 0)}
+            note={branchId ? 'received by this branch' : `to ${deliveredTo} ${deliveredTo === 1 ? 'branch' : 'branches'}`}
+            delta={<Delta value={pctChange(k?.deliveredOrders)} />}
+            loading={isLoading}
+          />
+          <Kpi
+            name="Returns / waste"
+            value={fmt(k?.returns.cur ?? 0)}
+            note={demand > 0 ? `${(((k?.returns.cur ?? 0) / demand) * 100).toFixed(1)}% of demand` : 'units accepted back'}
+            delta={<Delta value={pctChange(k?.returns)} />}
+            loading={isLoading}
+          />
         </div>
-      </div>
 
-      <TopRequestedChart data={data?.topProducts ?? []} loading={isLoading} />
+        {/* Strip */}
+        <Card size="sm">
+          <CardContent className="grid grid-cols-2 gap-y-3 sm:grid-cols-4 xl:grid-cols-7">
+            {strip.map((s) => (
+              <div key={s.name} className="border-border px-3 xl:border-r xl:last:border-r-0">
+                <p className="text-xs text-muted-foreground">{s.name}</p>
+                {isLoading
+                  ? <Skeleton className="mt-1 h-5 w-14" />
+                  : <p className={cn('text-lg font-bold tabular-nums', s.negative && 'text-red-600 dark:text-red-400')}>{fmt(s.value)}</p>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <DemandProductionTrend
+              data={trend}
+              subtitle={`${scope}, units per day · ${weekLabel}${branchId ? ' · produced is all branches' : ''}`}
+              loading={isLoading}
+            />
+          </div>
+          <OrderStatusDonut
+            slices={statusSlices}
+            extra={{ label: 'Changed by production', value: os?.changed ?? 0 }}
+            subtitle={`${scope}, this week`}
+            loading={isLoading}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <BranchCompareBars
+            data={w?.branchCompare ?? []}
+            selectedId={branchId}
+            onSelect={(id) => setBranchId((cur) => (cur === id ? null : id))}
+            loading={isLoading}
+          />
+          <Panel title="Top 10 requested products" subtitle={`${scope}, units demanded this week`}>
+            {isLoading ? <Skeleton className="h-60 w-full" /> : <TopProducts rows={plan} />}
+          </Panel>
+        </div>
+
+        <Panel
+          title="Production plan"
+          subtitle={`Demand against output and stock on hand, this week${branchId ? ` · demand is ${branchName} only, output and stock are the central pool` : ''}`}
+          action={(
+            <div className="flex flex-wrap gap-1.5">
+              <Badge tone="good">{planCounts.good} covered</Badge>
+              <Badge tone="warn">{planCounts.warn} prod. needed</Badge>
+              <Badge tone="bad">{planCounts.bad} short</Badge>
+            </div>
+          )}
+        >
+          {isLoading ? <Skeleton className="h-72 w-full" /> : <PlanTable rows={plan} />}
+        </Panel>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <Panel className="lg:col-span-3" title="Branch × product demand" subtitle="Units requested per branch, this week. Darker cells are larger orders.">
+            {isLoading ? <Skeleton className="h-60 w-full" /> : <Heatmap heat={w?.heat ?? { products: [], rows: [] }} />}
+          </Panel>
+          <Panel className="lg:col-span-2" title="Recent branch demands" subtitle={`Latest submissions from ${branchName ?? 'all branches'}`}>
+            {isLoading ? <Skeleton className="h-60 w-full" /> : <Recent rows={w?.recent ?? []} />}
+          </Panel>
+        </div>
+
+        <DemandBarChart title="Monthly Demand" data={monthly} loading={isLoading} />
+      </div>
 
       {/* Login History. On every dashboard, but not showing the same thing on
           each: the API gives a super admin every account's sessions and pins
