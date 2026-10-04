@@ -144,8 +144,9 @@ export const qk = {
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   // Invalidated by the bare ['productionOverview'] prefix everywhere, which
-  // covers every branch filter at once.
-  productionOverview: (branchId?: string | null) => ['productionOverview', branchId ?? 'all'] as const,
+  // covers every branch filter and period at once.
+  productionOverview: (branchId?: string | null, period: string = 'week') =>
+    ['productionOverview', branchId ?? 'all', period] as const,
   productionQueue: () => ['productionQueue'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })

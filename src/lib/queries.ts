@@ -914,12 +914,21 @@ export interface ProductionOverview {
 /** A week-to-date figure beside the same weekdays of last week. */
 export interface WeekPair { cur: number; prev: number }
 
+export type ProductionPeriod = 'today' | 'week' | 'month';
+
 /**
- * Monday-to-today block of the Production Dashboard (migration 140). Everything
+ * Period block of the Production Dashboard (migrations 140/141) — today, Monday
+ * to today, or the 1st to today, each beside the same stretch of the one before. Everything
  * order-based follows the branch filter; `produced` and `stock` describe the
  * central pool, which has no branch, and `branchCompare` always lists them all.
  */
 export interface ProductionWeek {
+  /** Absent on an API older than the period switch, which only ever served the week. */
+  period?: ProductionPeriod;
+  /** Last 12 months, the current one to date. Demand follows the branch filter; output never does. */
+  monthly?: { month: string; demand: number; produced: number }[];
+  /** Today by Karachi clock hour (`YYYY-MM-DDTHH:00`), first to last hour with activity. */
+  hourly?: { hour: string; demand: number; produced: number }[];
   from: string;
   to: string;
   prevFrom: string;
@@ -948,15 +957,15 @@ export interface BranchStockMatrix {
 
 
 /** Dashboard cards + chart series. Always revalidates (live demand). */
-export function useProductionOverview(token: string, branchId?: string | null) {
+export function useProductionOverview(token: string, branchId?: string | null, period: ProductionPeriod = 'week') {
   return useQuery({
-    queryKey: qk.productionOverview(branchId),
+    queryKey: qk.productionOverview(branchId, period),
     queryFn: () => apiCall<ProductionOverview>(
-      `/api/production/overview${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`, {}, token,
+      `/api/production/overview?period=${period}${branchId ? `&branchId=${encodeURIComponent(branchId)}` : ''}`, {}, token,
     ),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
-    // Switching the branch filter keeps the last figures on screen until the
+    // Switching the branch filter or period keeps the last figures on screen until the
     // new ones land, instead of dropping the whole dashboard back to skeletons.
     placeholderData: keepPreviousData,
   });

@@ -6,6 +6,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  LabelList,
   ComposedChart,
   Area,
   Line,
@@ -28,6 +29,8 @@ const TOOLTIP_STYLE = {
 const AXIS_TICK = { fontSize: 11, fill: 'var(--muted-foreground)' } as const;
 
 const fmt = (n: number) => n.toLocaleString('en-US');
+/** 12,345 → 12.3k, for labels drawn on the chart itself. */
+const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 
 export interface LegendItem { label: string; color: string }
 
@@ -84,17 +87,51 @@ function ChartShell({
   );
 }
 
-/** Demand-over-time bar chart (Monthly demand). */
-export function DemandBarChart({ title, data, loading }: { title: string; data: { label: string; qty: number }[]; loading?: boolean }) {
+/** Demand beside output, one point per month, each point labelled with its value. */
+export function MonthlyDemandProduction({
+  data, subtitle, loading,
+}: {
+  data: { label: string; demand: number; produced: number }[];
+  subtitle: string;
+  loading?: boolean;
+}) {
+  const total = (k: 'demand' | 'produced') => fmt(Math.round(data.reduce((s, d) => s + d[k], 0)));
+  // Each label sits on the outer side of its own line, so the two never land
+  // on top of each other where the lines run close.
+  const label = (key: 'demand' | 'produced', color: string) => function PointLabel(props: { x?: number | string; y?: number | string; index?: number }) {
+    const d = data[props.index ?? 0];
+    if (!d) return null;
+    const above = key === 'demand' ? d.demand >= d.produced : d.produced > d.demand;
+    return (
+      <text x={Number(props.x)} y={Number(props.y) + (above ? -10 : 18)} textAnchor="middle" fontSize={11} fontWeight={600} fill={color}>
+        {compact(d[key])}
+      </text>
+    );
+  };
   return (
-    <ChartShell title={title} loading={loading} empty={data.length === 0}>
-      <BarChart data={data} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} />
-        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [fmt(v), 'Qty']} />
-        <Bar dataKey="qty" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-      </BarChart>
+    <ChartShell
+      title="Monthly demand vs production"
+      subtitle={subtitle}
+      legend={[
+        { label: `Demand ${total('demand')}`, color: 'var(--chart-1)' },
+        { label: `Produced ${total('produced')}`, color: 'var(--chart-4)' },
+      ]}
+      loading={loading}
+      empty={data.length === 0}
+      height={300}
+    >
+      <ComposedChart data={data} margin={{ top: 24, right: 24, left: 0, bottom: 5 }}>
+        <CartesianGrid stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={false} padding={{ left: 20, right: 20 }} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} tickFormatter={compact} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number, name: string) => [fmt(v), name]} />
+        <Area type="monotone" dataKey="demand" name="Demand" stroke="var(--chart-1)" strokeWidth={2.5} fill="var(--chart-1)" fillOpacity={0.08} dot={{ r: 4, fill: 'var(--card)', strokeWidth: 2 }} isAnimationActive={false}>
+          <LabelList content={label('demand', 'var(--chart-1)')} />
+        </Area>
+        <Line type="monotone" dataKey="produced" name="Produced" stroke="var(--chart-4)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--card)', strokeWidth: 2 }} isAnimationActive={false}>
+          <LabelList content={label('produced', 'var(--muted-foreground)')} />
+        </Line>
+      </ComposedChart>
     </ChartShell>
   );
 }
@@ -230,12 +267,13 @@ export function BranchCompareBars({
       empty={chartData.length === 0}
       height={240}
     >
-      <BarChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }} barGap={2}>
+      <BarChart data={chartData} margin={{ top: 16, right: 8, left: 0, bottom: 5 }} barGap={2}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={false} interval={0} angle={chartData.length > 5 ? -25 : 0} textAnchor={chartData.length > 5 ? 'end' : 'middle'} height={chartData.length > 5 ? 56 : 30} />
         <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
         <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--muted)', opacity: 0.5 }} formatter={(v: number, name: string) => [fmt(v), name]} />
         <Bar dataKey="demand" name="Demand" radius={[3, 3, 0, 0]} cursor="pointer" onClick={pick} isAnimationActive={false}>
+          <LabelList dataKey="demand" position="top" formatter={compact} fontSize={10} fontWeight={600} fill="var(--muted-foreground)" />
           {chartData.map((b) => <Cell key={b.branchId} fill="var(--chart-1)" fillOpacity={dim(b.branchId)} />)}
         </Bar>
         <Bar dataKey="delivered" name="Delivered" radius={[3, 3, 0, 0]} cursor="pointer" onClick={pick} isAnimationActive={false}>
