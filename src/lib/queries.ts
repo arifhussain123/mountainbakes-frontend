@@ -811,8 +811,9 @@ export function useMarkPrinted(token: string) {
 //
 // A branch's one-off, sent straight to Production. Its own endpoint and its own
 // query key: it is not a demand and is never listed, counted or invalidated as
-// one. The only stock it ever touches is Production Stock, once, on approval —
-// which is why `useApproveSpecialOrder` alone invalidates ['productionStock'].
+// one. Stock moves once, on approval — into Production Stock and out to the
+// ordering branch — which is why `useApproveSpecialOrder` alone invalidates the
+// stock keys.
 // ---------------------------------------------------------------------------
 
 /** Open Special Orders plus the last week's finished ones. Branch users get their own branch only. */
@@ -869,7 +870,7 @@ export function useVerifySpecialOrder(token: string) {
   });
 }
 
-/** Approve a branch-verified Special Order — the step that adds its quantity to Production Stock. */
+/** Approve a branch-verified Special Order — the step that books its quantity into Production Stock and on to the branch's stock. */
 export function useApproveSpecialOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -877,6 +878,8 @@ export function useApproveSpecialOrder(token: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['specialOrders'] });
       qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+      qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
     },
   });

@@ -31,9 +31,10 @@ import { cn } from '@/lib/utils';
  * summary or a demand total.
  *
  * There is no "add to stock" control anywhere here, and there must not be:
- * approving IS the stock addition. The server adds the ordered quantity to
- * Production Stock exactly once as part of that approval, and a second, manual
- * way to add the same units is the thing this workflow exists to rule out.
+ * approving IS the stock movement. As part of that approval the server adds the
+ * ordered quantity to Production Stock and delivers it to the ordering branch's
+ * stock, exactly once — and a second, manual way to add the same units is the
+ * thing this workflow exists to rule out.
  */
 
 const STATUS_STYLES: Record<SpecialOrderStatus, string> = {
@@ -125,7 +126,8 @@ function SpecialOrderCard({ order, mode, token }: { order: SpecialOrder; mode: '
             {item.stockTransactionNo && (
               <p className="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                +{item.qty} added to Production Stock · {item.stockTransactionNo}
+                +{item.qty} prepared in Production Stock and delivered to {order.branchName || 'the branch'}&apos;s stock ·{' '}
+                {item.stockTransactionNo}
               </p>
             )}
           </li>
@@ -206,13 +208,14 @@ function SpecialOrderCard({ order, mode, token }: { order: SpecialOrder; mode: '
       {mode === 'production' && order.status === 'verified' && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            Approving adds the Demand Qty to Production Stock, once. No separate stock entry is needed.
+            Approving adds the Demand Qty to Production Stock and delivers it to the branch&apos;s stock, once. No
+            separate stock entry is needed.
           </p>
           <Button
             size="sm"
             disabled={approveMut.isPending}
             onClick={() =>
-              run(() => approveMut.mutateAsync(order.id), 'Approved — added to Production Stock', 'Could not approve this Special Order')
+              run(() => approveMut.mutateAsync(order.id), 'Approved — delivered to branch stock', 'Could not approve this Special Order')
             }
           >
             {approveMut.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
@@ -225,13 +228,15 @@ function SpecialOrderCard({ order, mode, token }: { order: SpecialOrder; mode: '
         <p className="text-xs text-muted-foreground">With Production — you will be asked to verify it once it is prepared.</p>
       )}
       {mode === 'branch' && order.status === 'verified' && (
-        <p className="text-xs text-muted-foreground">Verified — waiting for Production to approve.</p>
+        <p className="text-xs text-muted-foreground">
+          Verified — it is added to your stock when Production approves it.
+        </p>
       )}
       {mode === 'production' && order.status === 'awaiting_verification' && (
         <p className="text-xs text-muted-foreground">Prepared — waiting for the branch to verify it with a photo.</p>
       )}
       {stockAdded && !order.items.some((i) => i.stockTransactionNo) && (
-        <p className="text-xs text-muted-foreground">Approved — added to Production Stock.</p>
+        <p className="text-xs text-muted-foreground">Approved — delivered to branch stock.</p>
       )}
     </div>
   );
