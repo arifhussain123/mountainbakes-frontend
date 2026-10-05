@@ -169,7 +169,9 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
   // isActive:true → qk.products(true). Must NOT be the unfiltered key, or inactive
   // products would appear in the POS picker. `?? []` preserves the previous
   // behaviour of rendering an empty combobox rather than crashing on a load failure.
-  const productsQ = useProducts(token, { isActive: true });
+  // `sellable`: the catalogue plus any Special Order items this branch holds in
+  // stock — the only screen that lists them.
+  const productsQ = useProducts(token, { isActive: true, sellable: true });
   const products = productsQ.data ?? [];
 
   // Only the branch flavour has a branch. Production sales carry no branch the user

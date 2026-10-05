@@ -13,7 +13,13 @@
  */
 export const qk = {
   settings: () => ['settings'] as const,
-  products: (isActive?: boolean) => ['products', { isActive: isActive ?? null }] as const,
+  // `sellable` is the till's variant (catalogue + the Special Order items this
+  // branch holds in stock). Its own cache entry, under the same 'products'
+  // prefix so every existing invalidation still reaches it.
+  products: (isActive?: boolean, sellable?: boolean) =>
+    (sellable
+      ? ['products', { isActive: isActive ?? null, sellable: true }]
+      : ['products', { isActive: isActive ?? null }]) as readonly unknown[],
   packingMaterials: (includeInactive?: boolean) =>
     ['packingMaterials', { includeInactive: includeInactive ?? false }] as const,
   packingUsage: (filters: {
