@@ -29,6 +29,7 @@ import type {
   StockReconciliation,
   BranchStockSummaryResult,
   BranchProductionOrder,
+  SpecialOrder,
   Expense,
   Order,
   Category,
@@ -94,13 +95,6 @@ type ProductionOrderItem = { productId: string; qty: number };
 
 /** Optional packing-material line submitted with the same demand. */
 type ProductionOrderPackingItem = { packingMaterialId: string; qty: number };
-/** Mirrors SpecialOrderItemSchema in @mb/shared — name and qty required, the rest optional. */
-type SpecialOrderItemInput = {
-  name: string;
-  qty: number;
-  description: string;
-  attachmentIds: string[];
-};
 
 // Live/intraday queries: kept fresh by notification-driven invalidation
 // (useProductionRealtime / usePriceRealtime) rather than by constant refetching.
@@ -812,20 +806,92 @@ export function useMarkPrinted(token: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Special Orders
+//
+// A branch's one-off, sent straight to Production. Its own endpoint and its own
+// query key: it is not a demand and is never listed, counted or invalidated as
+// one. The only stock it ever touches is Production Stock, once, on approval —
+// which is why `useApproveSpecialOrder` alone invalidates ['productionStock'].
+// ---------------------------------------------------------------------------
+
+/** Open Special Orders plus the last week's finished ones. Branch users get their own branch only. */
+export function useSpecialOrders(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.specialOrders(),
+    queryFn: () => apiCall<{ orders: SpecialOrder[] }>('/api/special-orders', {}, token),
+    select: (r) => r.orders ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+/**
+ * Raise a Special Order. `clientOperationId` travels as the Idempotency-Key, so
+ * re-sending the same rows after a lost response replays the first answer
+ * instead of raising the order twice.
+ */
+export function useSubmitSpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      clientOperationId,
+      ...body
+    }: {
+      items: { name: string; qty: number; amount: number; description: string; attachmentIds: string[] }[];
+      requiredDate?: string;
+      clientOperationId: string;
+    }) =>
+      apiCall<{ id: string; orderNumber: string }>(
+        '/api/special-orders',
+        { method: 'POST', headers: { 'Idempotency-Key': clientOperationId }, body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['specialOrders'] }),
+  });
+}
+
+/** Production marks a Special Order prepared — it then waits for the branch to verify. */
+export function usePrepareSpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall(`/api/special-orders/${id}/prepare`, { method: 'PUT' }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['specialOrders'] }),
+  });
+}
+
+/** The branch verifies a prepared Special Order. At least one photo — the API refuses without. */
+export function useVerifySpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, attachmentIds }: { id: string; attachmentIds: string[] }) =>
+      apiCall(`/api/special-orders/${id}/verify`, { method: 'PUT', body: JSON.stringify({ attachmentIds }) }, token),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['specialOrders'] }),
+  });
+}
+
+/** Approve a branch-verified Special Order — the step that adds its quantity to Production Stock. */
+export function useApproveSpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall(`/api/special-orders/${id}/approve`, { method: 'PUT' }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['specialOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
 /** Submit a branch production order; refreshes history + stock on success. */
 export function useSubmitProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    // Packing and special items are both optional; an omitted/empty array posts
-    // exactly the payload this endpoint accepted before either module existed.
+    // Packing items are optional; an omitted/empty array posts exactly the payload
+    // this endpoint accepted before that module existed. Special Order rows are
+    // NOT sent here — see useSubmitSpecialOrder.
     mutationFn: (v: {
       items: ProductionOrderItem[];
       packingItems?: ProductionOrderPackingItem[];
-      /**
-       * One-off items typed by hand. Each becomes a hidden `is_special` product
-       * server-side so it can carry production and branch stock like any line.
-       */
-      specialItems?: SpecialOrderItemInput[];
       /**
        * 'YYYY-MM-DD' the branch needs this delivered by. REQUIRED, unlike the
        * two above — the API rejects a demand without one.
@@ -839,7 +905,6 @@ export function useSubmitProductionOrder(token: string) {
           body: JSON.stringify({
             items: v.items,
             packingItems: v.packingItems ?? [],
-            specialItems: v.specialItems ?? [],
             requiredDate: v.requiredDate,
           }),
         },

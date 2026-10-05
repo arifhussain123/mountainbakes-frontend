@@ -141,6 +141,9 @@ export const qk = {
   loginAttempts: (params: Record<string, unknown>) =>
     ['loginHistory', 'attempts', params] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
+  // Special Orders are their own document, not demand — hence their own key
+  // rather than a sub-key of 'productionOrders'.
+  specialOrders: () => ['specialOrders'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   // Invalidated by the bare ['productionOverview'] prefix everywhere, which

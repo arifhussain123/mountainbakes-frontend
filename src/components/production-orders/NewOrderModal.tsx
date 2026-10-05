@@ -67,13 +67,22 @@ export interface NewOrderModalProps {
   submit: (payload: {
     items: { productId: string; qty: number }[];
     packingItems: { packingMaterialId: string; qty: number }[];
-    /**
-     * One-off items typed by hand. The server turns each into a hidden product
-     * so it can carry production and branch stock like any other line.
-     */
-    specialItems: { name: string; qty: number; description: string; attachmentIds: string[] }[];
     /** 'YYYY-MM-DD' the branch needs this delivered by. Never empty — see `canSubmit`. */
     requiredDate: string;
+  }) => Promise<unknown>;
+  /**
+   * Sends the Special Order rows — as their OWN document, to their own
+   * endpoint. A Special Order is not a demand: it goes straight to Production
+   * and is never part of the `submit` payload above.
+   *
+   * `clientOperationId` is the Idempotency-Key. It is the same on every retry
+   * of the same rows, so a request that reached the server but whose answer was
+   * lost cannot raise the order twice.
+   */
+  submitSpecial: (payload: {
+    items: { name: string; qty: number; amount: number; description: string; attachmentIds: string[] }[];
+    requiredDate: string;
+    clientOperationId: string;
   }) => Promise<unknown>;
   submitting: boolean;
   /**
@@ -106,22 +115,70 @@ interface PackingRow {
 }
 
 /**
- * One in-progress special-order row — something the branch needs that is not in
- * the catalogue. Name and quantity make it a request; description and photo are
- * optional extras.
+ * One in-progress Special Order row — something the branch needs that is not in
+ * the catalogue. Name, quantity and amount make it an order; description and
+ * photo are optional extras.
+ *
+ * `amount` is the agreed amount for the WHOLE ROW, typed here by the branch. It
+ * is not a unit rate (nothing multiplies it by the quantity), it does not come
+ * from the price list, and it has nothing to do with stock.
  *
  * `photos` is deliberately NOT part of the saved draft (see `saveDraft`): an
  * attachment id points at an uploaded file, and a draft restored days later
- * would carry ids whose photos no longer describe today's demand.
+ * would carry ids whose photos no longer describe today's order.
  */
 interface SpecialRow {
   name: string;
   qty: string;
+  amount: string;
   description: string;
   photos: Attachment[];
 }
 
-const EMPTY_SPECIAL_ROW: SpecialRow = { name: '', qty: '', description: '', photos: [] };
+const EMPTY_SPECIAL_ROW: SpecialRow = { name: '', qty: '', amount: '', description: '', photos: [] };
+
+const SPECIAL_NAME_MESSAGE = 'Please enter the item name.';
+const SPECIAL_QTY_MESSAGE = 'Please enter quantity.';
+const SPECIAL_AMOUNT_MESSAGE = 'Please enter the Special Order amount.';
+
+/** Digits and one decimal point, two decimals at most — an amount, as typed. */
+function sanitizeAmount(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, '');
+  const [whole = '', ...rest] = cleaned.split('.');
+  const digits = whole.replace(/^0+(?=\d)/, '');
+  return rest.length === 0 ? digits : `${digits || '0'}.${rest.join('').slice(0, 2)}`;
+}
+
+/**
+ * The amount as a number, or null when nothing usable was typed. 0 is a real
+ * amount (an item made free of charge) — which is why this returns null rather
+ * than 0 for "blank", and why callers must not test it for truthiness.
+ */
+function parseAmount(raw: string): number | null {
+  if (raw.trim() === '' || raw === '.') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** A row somebody has started on. An untouched row is ignored, not an error. */
+function isSpecialRowStarted(r: SpecialRow): boolean {
+  return r.name.trim() !== '' || r.qty !== '' || r.amount !== '' || r.description.trim() !== '' || r.photos.length > 0;
+}
+
+/** What is still missing from a started row, in the order the fields appear. */
+function specialRowProblems(r: SpecialRow): { name?: string; qty?: string; amount?: string } {
+  if (!isSpecialRowStarted(r)) return {};
+  return {
+    ...(r.name.trim() === '' ? { name: SPECIAL_NAME_MESSAGE } : {}),
+    ...(parseQty(r.qty) === 0 ? { qty: SPECIAL_QTY_MESSAGE } : {}),
+    ...(parseAmount(r.amount) === null ? { amount: SPECIAL_AMOUNT_MESSAGE } : {}),
+  };
+}
+
+function newOperationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `so-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
 
 /** Parse a raw qty string into a positive whole number (0 = blank / not ordered). */
 function parseQty(raw: string | undefined): number {
@@ -166,11 +223,14 @@ function ConfirmLine({
   qty,
   note,
   badge,
+  amount,
 }: {
   name: string;
   qty: number;
   note?: string;
   badge?: string;
+  /** Shown under the quantity. Special Order rows only. */
+  amount?: string;
 }) {
   return (
     <li className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
@@ -179,7 +239,10 @@ function ConfirmLine({
         {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
         {badge && <p className="mt-0.5 text-[11px] text-muted-foreground">{badge}</p>}
       </div>
-      <span className="shrink-0 font-semibold tabular-nums">{qty}</span>
+      <div className="shrink-0 text-right">
+        <p className="font-semibold tabular-nums">{qty}</p>
+        {amount && <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{amount}</p>}
+      </div>
     </li>
   );
 }
@@ -208,6 +271,7 @@ export function NewOrderModal({
   branchCode,
   userName,
   submit,
+  submitSpecial,
   submitting,
   onOpenReturn,
   onOpenDiscount,
@@ -221,11 +285,18 @@ export function NewOrderModal({
   // start empty — a demand with none must behave exactly as it did before.
   const [packingOpen, setPackingOpen] = useState(false);
   const [packingRows, setPackingRows] = useState<PackingRow[]>([]);
-  // Special order items — one-offs typed by hand. Same posture as packing
-  // materials: optional, collapsed until asked for, and a demand with none
-  // behaves exactly as it did before.
+  // Special Order rows — one-offs typed by hand. Optional and collapsed until
+  // asked for, like packing materials, but NOT part of the demand: they are sent
+  // as a Special Order of their own (see `confirmSubmit`).
   const [specialOpen, setSpecialOpen] = useState(false);
   const [specialRows, setSpecialRows] = useState<SpecialRow[]>([]);
+  // Missing-field messages stay hidden until the first submit attempt, so a row
+  // being filled in is not shouted at before the branch has finished typing.
+  const [specialChecked, setSpecialChecked] = useState(false);
+  // The Idempotency-Key for the Special Order about to be sent. Kept across a
+  // failed attempt so the retry is recognised as the same request, and dropped
+  // the moment the rows change — a different order must not reuse it.
+  const specialOpId = useRef<string | null>(null);
   /**
    * The day the branch needs this delivered by. Mandatory — unlike every other
    * field on this form, an empty value blocks the submit rather than simply
@@ -389,32 +460,33 @@ export function NewOrderModal({
     [packingRows, packingMaterials],
   );
 
-  // ── Special order items ────────────────────────────────────────────────────
-  // A row counts as a request once it has BOTH a name and a quantity. A row with
-  // only a name typed is still being filled in, exactly like a packing row with
-  // no quantity yet.
-  const selectedSpecial = useMemo(
-    () => specialRows.filter((r) => r.name.trim() !== '' && parseQty(r.qty) > 0),
-    [specialRows],
-  );
-  const specialCount = selectedSpecial.length;
-
-  /**
-   * Two special rows with the same name would resolve to one auto-created
-   * product on the server and be rejected there. Caught here so it reads as a
-   * field error rather than a failed submit.
-   */
-  const duplicateSpecialNames = useMemo(() => {
-    const seen = new Set<string>();
-    const dupes = new Set<string>();
-    for (const r of specialRows) {
-      const key = r.name.trim().toLowerCase();
-      if (!key) continue;
-      if (seen.has(key)) dupes.add(key);
-      seen.add(key);
+  // ── Special Order rows ─────────────────────────────────────────────────────
+  // A row that has been started must be COMPLETE — name, quantity and amount —
+  // before anything can be submitted. It used to be dropped silently when half
+  // filled; an order the branch believes it placed must never vanish like that.
+  const startedSpecial = useMemo(() => specialRows.filter(isSpecialRowStarted), [specialRows]);
+  const specialProblems = useMemo(() => specialRows.map(specialRowProblems), [specialRows]);
+  const firstSpecialProblem = useMemo(() => {
+    for (const p of specialProblems) {
+      const message = p.name ?? p.qty ?? p.amount;
+      if (message) return message;
     }
-    return dupes;
-  }, [specialRows]);
+    return null;
+  }, [specialProblems]);
+  const selectedSpecial = firstSpecialProblem ? [] : startedSpecial;
+  const specialCount = startedSpecial.length;
+  /**
+   * Σ of the rows' amounts. Each amount is the agreed figure for its whole row,
+   * so this is a plain sum — never amount × quantity.
+   */
+  const specialTotal = useMemo(
+    () => startedSpecial.reduce((sum, r) => sum + (parseAmount(r.amount) ?? 0), 0),
+    [startedSpecial],
+  );
+
+  useEffect(() => {
+    specialOpId.current = null;
+  }, [specialRows, requiredDate]);
 
   const addSpecialRow = useCallback(() => {
     setSpecialOpen(true);
@@ -447,11 +519,15 @@ export function NewOrderModal({
   const backdatedHandled = preflight.isLoading || preflight.unverified || preflight.restriction?.code === 'BACKDATED_DEMAND';
   const pastDateRefused = requiredDateInPast && !backdatedHandled;
 
-  // Declared after the packing and special tallies because it now depends on
-  // them: a demand of packing materials or special items alone is a real demand.
+  // A demand is products and/or packing materials. Special Order rows are not
+  // part of it, so the demand restriction rules do not decide whether THEY can
+  // be sent — only whether the demand half of this form can.
+  const hasDemand = totalProducts > 0 || packingCount > 0;
   const canSubmit =
-    (totalProducts > 0 || specialCount > 0 || packingCount > 0) &&
-    duplicateSpecialNames.size === 0 &&
+    (hasDemand || specialCount > 0) &&
+    // An incomplete Special Order row deliberately does NOT disable the button:
+    // `handleSubmitClick` refuses it and says which field is missing. A dead
+    // button would leave the branch with no reason for it.
     // The whole point of the field: no date, no demand. `min` on the input is
     // advisory only — a typed date bypasses the picker — so the value is
     // re-checked here rather than trusted to the browser.
@@ -459,7 +535,7 @@ export function NewOrderModal({
     !pastDateRefused &&
     // The server's say on the restriction rules. False while it is still being
     // asked and when it cannot be reached, so the button never outruns it.
-    preflight.allowed &&
+    (preflight.allowed || !hasDemand) &&
     withinWindow &&
     !submitting;
 
@@ -484,6 +560,7 @@ export function NewOrderModal({
     setPackingOpen(false);
     setSpecialRows([]);
     setSpecialOpen(false);
+    setSpecialChecked(false);
     setRequiredDate('');
     try {
       localStorage.removeItem(draftKey);
@@ -497,7 +574,7 @@ export function NewOrderModal({
     try {
       // Special rows are saved WITHOUT their photos — an attachment id in a
       // days-old draft points at a photo of a different day's request.
-      const specialDraft = specialRows.map(({ name, qty, description }) => ({ name, qty, description }));
+      const specialDraft = specialRows.map(({ name, qty, amount, description }) => ({ name, qty, amount, description }));
       localStorage.setItem(
         draftKey,
         JSON.stringify({ qtyById, packingRows, specialRows: specialDraft, requiredDate }),
@@ -510,14 +587,18 @@ export function NewOrderModal({
 
   function handleSubmitClick() {
     if (!withinWindow) return;
-    // A demand of special items only is valid — the branch may need one named
-    // cake and nothing else. What is refused is a demand asking for nothing.
-    if (totalProducts === 0 && specialCount === 0 && packingCount === 0) {
+    // Special Order rows alone are a valid submission — the branch may need one
+    // named cake and nothing else. What is refused is a form asking for nothing.
+    if (!hasDemand && specialCount === 0) {
       toast.error(EMPTY_PRODUCT_MESSAGE);
       return;
     }
-    if (duplicateSpecialNames.size > 0) {
-      toast.error('Two special items have the same name. Rename one or remove it.');
+    if (firstSpecialProblem) {
+      // Open the section and switch the inline messages on, so the toast points
+      // at a field the branch can actually see.
+      setSpecialChecked(true);
+      setSpecialOpen(true);
+      toast.error(firstSpecialProblem);
       return;
     }
     // Reached only if the Submit button was somehow activated with the field
@@ -531,12 +612,16 @@ export function NewOrderModal({
       toast.error('The required date cannot be in the past.');
       return;
     }
-    if (!preflight.allowed) return;
+    if (hasDemand && !preflight.allowed) return;
     setRefused(null);
     setConfirmOpen(true);
   }
 
   async function confirmSubmit() {
+    // Unreachable through the UI — the confirm dialog cannot open on an
+    // incomplete row — but it must never be possible to send the demand while
+    // silently leaving a half-filled Special Order row behind.
+    if (firstSpecialProblem) return;
     try {
       const items = selectedItems.map(({ product, qty }) => ({ productId: product.id, qty }));
       const packingItems = selectedPacking.map((r) => ({
@@ -546,16 +631,37 @@ export function NewOrderModal({
       const specialItems = selectedSpecial.map((r) => ({
         name: r.name.trim(),
         qty: parseQty(r.qty),
+        // Sent exactly as entered. `?? 0` is unreachable — a row with no amount
+        // never gets past `firstSpecialProblem` — and is here for the compiler.
+        amount: parseAmount(r.amount) ?? 0,
         description: r.description.trim(),
         attachmentIds: r.photos.map((p) => p.id),
       }));
-      await submit({ items, packingItems, specialItems, requiredDate });
-      toast.success('Production Order Submitted Successfully');
+
+      // TWO documents, sent separately, because they are two different things:
+      // the Special Order goes straight to Production and never becomes demand.
+      //
+      // The Special Order goes first, and its rows are cleared the moment the
+      // server confirms it. If the demand then fails, the form is left holding
+      // only what was NOT sent — so pressing Submit again cannot raise the
+      // Special Order a second time.
+      if (specialItems.length > 0) {
+        specialOpId.current ??= newOperationId();
+        await submitSpecial({ items: specialItems, requiredDate, clientOperationId: specialOpId.current });
+        setSpecialRows([]);
+        setSpecialOpen(false);
+        setSpecialChecked(false);
+        toast.success('Special Order sent to Production');
+      }
+
+      if (items.length > 0 || packingItems.length > 0) {
+        await submit({ items, packingItems, requiredDate });
+        toast.success('Production Order Submitted Successfully');
+      }
+
       setQtyById({});
       setPackingRows([]);
       setPackingOpen(false);
-      setSpecialRows([]);
-      setSpecialOpen(false);
       setRequiredDate('');
       try {
         localStorage.removeItem(draftKey);
@@ -925,27 +1031,30 @@ export function NewOrderModal({
                   {specialRows.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       Anything you need that isn&apos;t in the product list — a named cake, a one-off box. Add a row to
-                      request one.
+                      order one.
                     </p>
                   ) : (
                     specialRows.map((row, i) => {
-                      const isDuplicate =
-                        row.name.trim() !== '' && duplicateSpecialNames.has(row.name.trim().toLowerCase());
+                      const problems = specialChecked ? (specialProblems[i] ?? {}) : {};
                       return (
                         <div key={i} className="space-y-2 rounded-lg border bg-background p-3">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                            <div className="min-w-0 flex-1 space-y-1">
+                          {/* Item Name · Qty · Amount · Delete. One line from `sm`
+                              up; below it the name takes the full width and
+                              Qty, Amount and Delete share the line beneath —
+                              wrapping, never clipping. */}
+                          <div className="flex flex-wrap items-end gap-2">
+                            <div className="min-w-0 basis-full space-y-1 sm:flex-1 sm:basis-0">
                               <label className="text-xs text-muted-foreground">Item name</label>
                               <Input
                                 value={row.name}
                                 onChange={(e) => setSpecialField(i, { name: e.target.value })}
                                 placeholder="e.g. Name cake — blue writing"
                                 aria-label="Special item name"
-                                aria-invalid={isDuplicate}
-                                className={cn('h-11 text-base sm:h-10 sm:text-sm', isDuplicate && 'border-destructive')}
+                                aria-invalid={!!problems.name}
+                                className={cn('h-11 text-base sm:h-10 sm:text-sm', problems.name && 'border-destructive')}
                               />
                             </div>
-                            <div className="flex items-center justify-between gap-3 sm:block sm:space-y-1">
+                            <div className="w-20 space-y-1 sm:w-24">
                               <label className="text-xs text-muted-foreground">Qty</label>
                               <Input
                                 type="text"
@@ -954,10 +1063,34 @@ export function NewOrderModal({
                                 autoComplete="off"
                                 placeholder="0"
                                 aria-label="Special item quantity"
+                                aria-invalid={!!problems.qty}
                                 value={row.qty}
                                 onChange={(e) => setSpecialField(i, { qty: sanitizeQty(e.target.value) })}
                                 onFocus={(e) => e.currentTarget.select()}
-                                className="h-11 w-28 text-center text-base tabular-nums sm:h-10"
+                                className={cn(
+                                  'h-11 w-full text-center text-base tabular-nums sm:h-10',
+                                  problems.qty && 'border-destructive',
+                                )}
+                              />
+                            </div>
+                            {/* Between Qty and Delete, and wider than Qty: an
+                                amount runs to more digits than a quantity. */}
+                            <div className="min-w-0 flex-1 space-y-1 sm:w-32 sm:flex-none">
+                              <label className="text-xs text-muted-foreground">Amount</label>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                placeholder="0"
+                                aria-label="Special Order amount"
+                                aria-invalid={!!problems.amount}
+                                value={row.amount}
+                                onChange={(e) => setSpecialField(i, { amount: sanitizeAmount(e.target.value) })}
+                                onFocus={(e) => e.currentTarget.select()}
+                                className={cn(
+                                  'h-11 w-full text-center text-base tabular-nums sm:h-10',
+                                  problems.amount && 'border-destructive',
+                                )}
                               />
                             </div>
                             <Button
@@ -966,16 +1099,18 @@ export function NewOrderModal({
                               size="icon"
                               aria-label="Remove special item row"
                               onClick={() => removeSpecialRow(i)}
-                              className="h-11 w-11 shrink-0 self-end text-muted-foreground hover:text-destructive sm:h-10 sm:w-10"
+                              className="h-11 w-11 shrink-0 text-muted-foreground hover:text-destructive sm:h-10 sm:w-10"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
 
-                          {isDuplicate && (
-                            <p className="text-xs text-destructive">
-                              Another row already asks for this item. Rename one or remove it.
-                            </p>
+                          {(problems.name || problems.qty || problems.amount) && (
+                            <ul className="space-y-0.5 text-xs text-destructive">
+                              {[problems.name, problems.qty, problems.amount].filter(Boolean).map((m) => (
+                                <li key={m}>{m}</li>
+                              ))}
+                            </ul>
                           )}
 
                           <div className="space-y-1">
@@ -1004,9 +1139,21 @@ export function NewOrderModal({
                     })
                   )}
 
-                  <Button type="button" variant="outline" size="sm" onClick={addSpecialRow}>
-                    <Plus className="mr-1 h-4 w-4" /> Add Row
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={addSpecialRow}>
+                      <Plus className="mr-1 h-4 w-4" /> Add Row
+                    </Button>
+                    {specialCount > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Special Order total{' '}
+                        <span className="font-semibold tabular-nums text-foreground">{money(specialTotal)}</span>
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Sent to Production as a Special Order, separate from this demand. Amount is the agreed amount for
+                    the whole row.
+                  </p>
                 </div>
               )}
 
@@ -1157,7 +1304,7 @@ export function NewOrderModal({
             )}
 
             {specialCount > 0 && (
-              <ConfirmSection title="Special Order Items" count={specialCount}>
+              <ConfirmSection title="Special Order — sent to Production" count={specialCount}>
                 {selectedSpecial.map((r, i) => (
                   <ConfirmLine
                     key={`${r.name}-${i}`}
@@ -1165,6 +1312,7 @@ export function NewOrderModal({
                     qty={parseQty(r.qty)}
                     note={r.description.trim() || undefined}
                     badge={r.photos.length > 0 ? `${r.photos.length} photo` : undefined}
+                    amount={money(parseAmount(r.amount) ?? 0)}
                   />
                 ))}
               </ConfirmSection>
@@ -1194,6 +1342,14 @@ export function NewOrderModal({
               <dt className="font-medium">Total amount</dt>
               <dd className="text-base font-bold tabular-nums">{money(totalAmount)}</dd>
             </div>
+            {/* Its own line, never added into the demand total above: it is a
+                different document with a different meaning of "amount". */}
+            {specialCount > 0 && (
+              <div className="flex items-baseline justify-between px-3 py-2.5">
+                <dt className="font-medium">Special Order amount</dt>
+                <dd className="text-base font-bold tabular-nums">{money(specialTotal)}</dd>
+              </div>
+            )}
           </dl>
 
           <DialogFooter className="shrink-0">

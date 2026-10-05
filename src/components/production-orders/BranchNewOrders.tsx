@@ -12,6 +12,7 @@ import {
   useStock,
   useStockRows,
   useSubmitProductionOrder,
+  useSubmitSpecialOrder,
 } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -31,6 +32,7 @@ import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react
 import { cn } from '@/lib/utils';
 import { Fab } from '@/components/shared/Fab';
 import { NewOrderModal } from './NewOrderModal';
+import { SpecialOrdersPanel } from '@/components/special-orders/SpecialOrdersPanel';
 import { BranchOrderDetail } from './BranchOrderDetail';
 import { DiscountModal } from './DiscountModal';
 import { CashDepositModal } from '@/components/cash-transfers/CashDepositModal';
@@ -136,6 +138,7 @@ export function BranchNewOrders() {
   // picker had to be guarded from. There is no date to pick here at all.
   const stockRowsQ = useStockRows(token, { enabled: returnOpenedOnce });
   const submitMut = useSubmitProductionOrder(token);
+  const submitSpecialMut = useSubmitSpecialOrder(token);
   const cancelMut = useCancelProductionOrder(token);
 
   function openModal() {
@@ -438,6 +441,10 @@ export function BranchNewOrders() {
         </div>
       </div>
 
+      {/* Special Orders — their own list, above the demand table and never in
+          it. This is where the branch verifies a prepared one with a photo. */}
+      <SpecialOrdersPanel mode="branch" token={token} />
+
       {/* Active vs History (§20). A completed demand is still one click away, it
           just stops competing for attention with the ones that need acting on. */}
       <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
@@ -512,7 +519,8 @@ export function BranchNewOrders() {
         branchCode={branchCode}
         userName={userName}
         submit={(payload) => submitMut.mutateAsync(payload)}
-        submitting={submitMut.isPending}
+        submitSpecial={(payload) => submitSpecialMut.mutateAsync(payload)}
+        submitting={submitMut.isPending || submitSpecialMut.isPending}
         onOpenReturn={openReturn}
         onOpenDiscount={openDiscount}
         onOpenCashDeposit={openCashDeposit}

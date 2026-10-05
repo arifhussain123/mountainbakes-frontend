@@ -27,6 +27,7 @@ import {
 } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
 import { CollectionsExportModal } from './CollectionsExportModal';
+import { SpecialOrdersPanel } from '@/components/special-orders/SpecialOrdersPanel';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
@@ -376,6 +377,10 @@ export function ProductionOrdersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Special Orders — first, and on their own: they are work for Production
+          but they are not demand, so they are kept out of the summary below. */}
+      <SpecialOrdersPanel mode="production" token={token} />
+
       {/* Demand summary */}
       <Card>
         <CardHeader className="pb-2">
