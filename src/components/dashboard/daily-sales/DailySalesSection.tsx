@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { toast } from 'sonner';
 import {
   BarChart3,
   CalendarRange,
@@ -23,7 +22,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useBranches, useSalesAnalytics } from '@/lib/queries';
-import { apiCall, ApiError } from '@/utils/api';
+import { ApiError } from '@/utils/api';
 import { formatDate } from '@/utils/date';
 import { logger } from '@/utils/logger';
 import { cn } from '@/lib/utils';
@@ -48,6 +47,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { PaymentMethodSummary } from './PaymentMethodSummary';
 import { TopSellingProducts } from './TopSellingProducts';
 import { RANGE_OPTIONS, describeRange, resolveRange, type RangePreset } from './ranges';
+import { useSalesExport } from './useSalesExport';
 import { businessDateStr, type SalesAnalyticsComparison, type SalesTopProductLimit } from '@mb/shared';
 
 /**
@@ -96,7 +96,6 @@ export function DailySalesSection() {
   const [branch, setBranch] = useState<string>(ALL_BRANCHES);
   const [topLimit, setTopLimit] = useState<SalesTopProductLimit>(5);
   const [compare, setCompare] = useState(true);
-  const [exporting, setExporting] = useState<string | null>(null);
 
   const range = useMemo(
     () => resolveRange(preset, { from: customFrom, to: customTo }),
@@ -153,39 +152,13 @@ export function DailySalesSection() {
     ? analytics?.branchName ?? (branch === ALL_BRANCHES ? 'All Branches' : 'Selected branch')
     : user?.branchName ?? 'Your branch';
 
-  async function handleExport(type: 'excel' | 'pdf') {
-    setExporting(type);
-    try {
-      const query = new URLSearchParams({
-        from: range.from,
-        to: range.to,
-        topLimit: String(topLimit),
-        compare: String(compare),
-        type,
-      });
-      if (branchId) query.set('branchId', branchId);
-
-      // The API re-resolves the branch scope for the export exactly as it does
-      // for the screen, so an export can never contain a branch the caller is
-      // not allowed to read.
-      const blob = await apiCall<Blob>(`/api/sales-analytics/export?${query.toString()}`, {}, token);
-      const scope = range.from === range.to ? range.from : `${range.from}_to_${range.to}`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mountain-bakes-daily-sales-${scope}.${type === 'excel' ? 'xlsx' : 'pdf'}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-      toast.success(`${type === 'excel' ? 'Excel' : 'PDF'} exported`);
-    } catch (err) {
-      logger.error('Daily Sales export failed', err);
-      toast.error(err instanceof Error ? err.message : 'Export failed');
-    } finally {
-      setExporting(null);
-    }
-  }
+  const { exporting, exportReport: handleExport } = useSalesExport(token, {
+    from: range.from,
+    to: range.to,
+    topLimit,
+    compare,
+    branchId,
+  });
 
   return (
     /* `print-area` is what Print prints: globals.css hides every other body

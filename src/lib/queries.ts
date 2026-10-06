@@ -392,6 +392,9 @@ export function useReportSummary(
   // for a caller like the Branch Dashboard that only renders the top-level
   // totals + dailyData. Omit for callers (Reports, Admin Dashboard) that do.
   fields?: 'basic' | 'full',
+  // Opt-in: keep the last answer on screen while a new period loads, instead of
+  // dropping to a skeleton. The caller must mark it as stale (`isPlaceholderData`).
+  opts?: { keepPrevious?: boolean },
 ) {
   const effectivePeriod = range ? 'custom' : period;
   const rangeParams = range
@@ -407,6 +410,7 @@ export function useReportSummary(
         token,
       ),
     enabled: !!token,
+    placeholderData: opts?.keepPrevious ? keepPreviousData : undefined,
   });
 }
 
@@ -435,7 +439,10 @@ export function useSalesAnalytics(
     topLimit?: number;
     compare?: boolean;
   },
-  opts?: { enabled?: boolean },
+  // `keepPrevious` is opt-in for the same reason the key carries the range:
+  // one window's figures under another's heading is a wrong number, so a caller
+  // that asks for it has to mark the result stale while `isPlaceholderData`.
+  opts?: { enabled?: boolean; keepPrevious?: boolean },
 ) {
   const { from, to, branchId, topLimit = 5, compare = false } = params;
   return useQuery({
@@ -452,6 +459,7 @@ export function useSalesAnalytics(
     },
     staleTime: LIVE_STALE_TIME,
     enabled: !!token && (opts?.enabled ?? true),
+    placeholderData: opts?.keepPrevious ? keepPreviousData : undefined,
   });
 }
 

@@ -96,7 +96,7 @@ function linesFor(row: BranchStockHistoryRow): Line[] {
  * Returned and Adjustment are included whether or not their lines were rendered
  * — they are omitted above only when zero, which cannot change this sum.
  */
-function endDifference(row: BranchStockHistoryRow): { qty: number; amount: number; isZero: boolean } {
+export function endDifference(row: BranchStockHistoryRow): { qty: number; amount: number; isZero: boolean } {
   const qty = row.openingQty + row.newQty - row.soldQty - row.returnedQty + row.adjustmentQty - row.balanceQty;
   const amount =
     row.openingAmount + row.newAmount - row.soldAmount - row.returnedAmount + row.adjustmentAmount - row.balanceAmount;
