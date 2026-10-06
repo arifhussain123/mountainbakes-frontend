@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FAF6EF;color:#241E33;font-family:'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#4A3E8E;text-decoration:none}a:hover{color:#2D2640;text-decoration:underline}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#FAF6EF;font-variant-numeric:tabular-nums">
+  <header style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:14px;padding:10px 24px;background:#fff;border-bottom:1px solid #E6DDD0">
+    <div style="font-weight:700;font-size:14px;flex:1">Branch Dashboard</div>
+    <button style="padding:6px 12px;border:1px solid #E6DDD0;border-radius:4px;background:#fff;font:500 12px 'Geist';color:#241E33;cursor:pointer" style-hover="background:#F4F1FB">↻ Refresh</button>
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #E6DDD0;border-radius:4px;color:#857C8F;font-size:12px;min-width:180px"><span>Search…</span><span style="margin-left:auto;font-family:'Geist Mono';font-size:10px">⌘K</span></div>
+    <div style="width:28px;height:28px;border-radius:50%;background:#E8955A;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700">MU</div>
+  </header>
+
+  <main style="max-width:1400px;margin:0 auto;padding:20px 24px 40px;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <h1 style="margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em">Committee Chowk Branch</h1>
+        <div style="font-size:12px;color:#857C8F;margin-top:2px">Today overview · Tue 06 Oct 2026</div>
+      </div>
+      <div style="display:flex;border:1px solid #E6DDD0;border-radius:4px;overflow:hidden;background:#fff">
+        <sc-for list="{{ periods }}" as="p" hint-placeholder-count="3">
+          <button onClick="{{ p.onClick }}" style="padding:6px 14px;border:0;font:600 12px 'Geist';cursor:pointer;background:{{ p.bg }};color:{{ p.color }}">{{ p.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- Summary trio -->
+    <section style="display:flex;flex-wrap:wrap;gap:12px">
+      <div style="flex:1 1 240px;min-width:0;background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:7px 12px;background:#4A3E8E;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em">SALES · TODAY</div>
+        <div style="padding:4px 12px 8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1EBE1"><div><div style="font-size:12px;font-weight:700">Sales</div><div style="font-size:10px;color:#857C8F">22 completed orders</div></div><span style="font-size:15px;font-weight:800">Rs. 16,350</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1EBE1"><div><div style="font-size:12px;font-weight:700">Net Amount</div><div style="font-size:10px;color:#857C8F">Sales − Expenses</div></div><span style="font-size:15px;font-weight:800">Rs. 16,050</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0"><div><div style="font-size:12px;font-weight:700">Orders</div><div style="font-size:10px;color:#857C8F">0 pending · 0 cancelled</div></div><span style="font-size:15px;font-weight:800">22</span></div>
+        </div>
+      </div>
+      <div style="flex:1 1 240px;min-width:0;background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:7px 12px;background:#5B3A1F;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em">DEDUCTIONS · TODAY</div>
+        <div style="padding:4px 12px 8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1EBE1"><div><div style="font-size:12px;font-weight:700">Expenses</div><div style="font-size:10px;color:#857C8F">1.8% of sales</div></div><span style="font-size:15px;font-weight:800">Rs. 300</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1EBE1"><div><div style="font-size:12px;font-weight:700">Discounts</div><div style="font-size:10px;color:#857C8F">0.6% of sales</div></div><span style="font-size:15px;font-weight:800">Rs. 100</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0"><div><div style="font-size:12px;font-weight:700">Budget vs Actual</div><div style="font-size:10px;color:#857C8F">Ask Admin to configure branch budgets</div></div><span style="font-size:13px;font-weight:700;color:#857C8F">Not set</span></div>
+        </div>
+      </div>
+      <div style="flex:1 1 240px;min-width:0;background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:7px 12px;background:#2D2640;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em">LAST 7 DAYS</div>
+        <div style="padding:4px 12px 8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1EBE1"><div><div style="font-size:12px;font-weight:700">Total Sales</div><div style="font-size:10px;color:#857C8F">30 Sep – 06 Oct · 334 transactions</div></div><span style="font-size:15px;font-weight:800">Rs. 269,480</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1EBE1"><div><div style="font-size:12px;font-weight:700">Average Daily</div><div style="font-size:10px;color:#857C8F">Averaged over 7 days</div></div><span style="font-size:15px;font-weight:800">Rs. 38,497</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0"><div><div style="font-size:12px;font-weight:700">vs Previous Period</div><div style="font-size:10px;color:#857C8F">Previous: Rs. 226,100</div></div><span style="font-size:15px;font-weight:800;color:#1F8A5B">+19.2%</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Today bars -->
+    <section style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+      <div style="padding:9px 14px;background:#F4F1FB;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">SALES vs DEDUCTIONS · TUE 06 OCT</div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ todayBars }}" as="b" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:120px 1fr 90px;gap:12px;align-items:center">
+            <div><div style="font-size:12px;font-weight:700">{{ b.label }}</div><div style="font-size:9px;color:#857C8F;letter-spacing:.06em">{{ b.kind }}</div></div>
+            <div style="height:10px;background:#F4F0EA;border-radius:2px"><div style="height:100%;width:{{ b.pct }}%;min-width:4px;background:{{ b.color }};border-radius:2px"></div></div>
+            <span style="font-size:12px;font-weight:800;text-align:right">{{ b.value }}</span>
+          </div>
+        </sc-for>
+        <div style="font-size:10px;color:#857C8F;margin-top:2px">Bars share one scale. Expenses and discounts are small against sales today.</div>
+      </div>
+    </section>
+
+    <!-- SALES banner -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 14px;background:#4A3E8E;color:#fff;border-radius:6px">
+      <span style="font-size:12px;font-weight:800;letter-spacing:.08em">DAILY SALES</span>
+      <div style="display:flex;align-items:center;gap:12px;font-size:11px;color:#DCD6F3">
+        <span>30 Sep – 06 Oct 2026 · Committee Chowk</span>
+        <button style="padding:4px 10px;border:1px solid rgba(255,255,255,.35);border-radius:3px;background:transparent;color:#fff;font:600 11px 'Geist';cursor:pointer">Compare</button>
+        <button style="padding:4px 10px;border:1px solid rgba(255,255,255,.35);border-radius:3px;background:transparent;color:#fff;font:600 11px 'Geist';cursor:pointer">Export</button>
+      </div>
+    </div>
+
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));gap:10px">
+      <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="6">
+        <div style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;padding:10px 12px">
+          <div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.06em;color:#5E566B"><span style="width:7px;height:7px;background:{{ t.color }}"></span>{{ t.label }}</div>
+          <div style="font-size:19px;font-weight:800;margin-top:6px;letter-spacing:-.01em">{{ t.value }}</div>
+          <div style="font-size:10px;color:#857C8F;margin-top:2px">{{ t.note }}</div>
+        </div>
+      </sc-for>
+    </section>
+
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:12px">
+      <div style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:9px 14px;background:#F4F1FB;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">SALES · DAILY</div>
+        <div style="padding:14px">
+          <div style="display:flex;gap:14px;font-size:10px;color:#5E566B;margin-bottom:10px">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;background:#4A3E8E"></span>Sales</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;background:#E8955A"></span>Today</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;border-top:1px dashed #857C8F"></span>Average Rs. 38,497</span>
+          </div>
+          <div style="display:grid;grid-template-columns:34px 1fr;gap:8px">
+            <div style="display:flex;flex-direction:column;justify-content:space-between;height:200px;font-family:'Geist Mono';font-size:9px;color:#A39BAE;text-align:right"><span>60k</span><span>45k</span><span>30k</span><span>15k</span><span>0</span></div>
+            <div style="position:relative;height:200px;display:grid;grid-template-columns:repeat(7,1fr);gap:clamp(6px,2.5vw,28px);align-items:end;padding:0 4px;background:repeating-linear-gradient(to bottom,#EFEAE2 0 1px,transparent 1px 50px);border-bottom:1px solid #D9CFC0">
+              <div style="position:absolute;left:0;right:0;bottom:64.2%;border-top:1px dashed #857C8F"></div>
+              <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+                <div onMouseEnter="{{ d.enter }}" onMouseLeave="{{ leave }}" style="position:relative;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;cursor:pointer">
+                  <span style="font-size:9px;font-weight:700;color:#5E566B;margin-bottom:3px">{{ d.short }}</span>
+                  <div style="width:100%;max-width:44px;height:{{ d.pct }}%;background:{{ d.bg }};border-radius:2px 2px 0 0"></div>
+                </div>
+              </sc-for>
+            </div>
+            <div></div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:clamp(6px,2.5vw,28px);padding:0 4px;font-size:10px;color:#857C8F;text-align:center">
+              <sc-for list="{{ days }}" as="d" hint-placeholder-count="7"><span>{{ d.label }}</span></sc-for>
+            </div>
+          </div>
+          <div style="font-size:10px;color:#857C8F;margin-top:10px;min-height:14px">{{ hoverNote }}</div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:9px 14px;background:#F4F1FB;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">TOP SELLING PRODUCTS</div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:14px;font-size:10px;color:#5E566B">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;background:#4A3E8E"></span>Sales</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;background:#E8955A"></span>Qty sold</span>
+          </div>
+          <sc-for list="{{ products }}" as="p" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:130px 1fr;gap:12px;align-items:center">
+              <div style="font-size:12px;font-weight:700">{{ p.name }}</div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:6px"><div style="height:9px;width:{{ p.pct }}%;background:#4A3E8E;border-radius:1px"></div><span style="font-size:10px;font-weight:700">{{ p.sales }}</span></div>
+                <div style="display:flex;align-items:center;gap:6px"><div style="height:9px;width:{{ p.qpct }}%;background:#E8955A;border-radius:1px"></div><span style="font-size:10px;color:#5E566B">{{ p.qty }}</span></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:12px">
+      <div style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:9px 14px;background:#F4F1FB;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">ORDERS · TODAY</div>
+        <div style="padding:16px 14px;display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+          <div style="width:110px;height:110px;border-radius:50%;background:conic-gradient(#E8955A 0 100%);display:grid;place-items:center;flex:none">
+            <div style="width:80px;height:80px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center">
+              <div><div style="font-size:20px;font-weight:800">100%</div><div style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#857C8F">COMPLETED</div></div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <sc-for list="{{ orders }}" as="o" hint-placeholder-count="4">
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F1EBE1;font-size:12px;font-weight:{{ o.weight }}"><span>{{ o.label }}</span><span style="font-weight:800">{{ o.value }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:9px 14px;background:#F4F1FB;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">PAYMENT METHODS</div>
+        <div style="padding:16px 14px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;height:22px;border-radius:2px;overflow:hidden">
+            <div style="width:85.1%;background:#4A3E8E;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;padding-left:8px">85.1%</div>
+            <div style="width:14.9%;background:#A79BDB;color:#241E33;font-size:10px;font-weight:700;display:flex;align-items:center;padding-left:6px">14.9%</div>
+          </div>
+          <sc-for list="{{ payments }}" as="m" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #F1EBE1">
+              <span style="width:8px;height:8px;background:{{ m.color }}"></span>
+              <div style="flex:1"><div style="font-size:12px;font-weight:700">{{ m.name }}</div><div style="font-size:10px;color:#857C8F">{{ m.note }}</div></div>
+              <span style="font-size:13px;font-weight:800">{{ m.amount }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <!-- STOCK banner -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 14px;background:#5B3A1F;color:#fff;border-radius:6px">
+      <span style="font-size:12px;font-weight:800;letter-spacing:.08em">STOCK</span>
+      <span style="font-size:11px;color:#EBD9C8">Valued at current prices · 06 Oct 2026</span>
+    </div>
+
+    <section style="display:flex;flex-wrap:wrap;gap:12px">
+      <div style="flex:1 1 300px;min-width:0;background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:9px 14px;background:#F7EFE6;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">STOCK DETAIL</div>
+        <div style="padding:4px 14px 10px">
+          <div style="display:grid;grid-template-columns:1fr 50px 90px;gap:8px;padding:7px 0;border-bottom:1px solid #E6DDD0;font-size:9px;font-weight:700;letter-spacing:.06em;color:#857C8F"><span>DETAIL</span><span style="text-align:right">QTY</span><span style="text-align:right">AMOUNT</span></div>
+          <sc-for list="{{ ledger }}" as="l" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:1fr 50px 90px;gap:8px;padding:7px 0;border-bottom:1px solid #F1EBE1;align-items:center;font-size:12px">
+              <div><div style="font-weight:{{ l.weight }}">{{ l.label }}</div><div style="font-size:9px;color:#857C8F">{{ l.date }}</div></div>
+              <span style="text-align:right;font-weight:700;color:{{ l.color }}">{{ l.qty }}</span>
+              <span style="text-align:right;font-weight:700;color:{{ l.color }}">{{ l.amount }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:8px;font-size:10px;color:#1F8A5B;font-weight:600">✓ Stock page check agrees with the Stock page</div>
+        </div>
+      </div>
+
+      <div style="flex:1 1 300px;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start">
+        <sc-for list="{{ stockTiles }}" as="t" hint-placeholder-count="4">
+          <div style="background:{{ t.bg }};border:1px solid #E6DDD0;border-radius:6px;padding:10px 12px;color:{{ t.ink }}">
+            <div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.06em"><span style="width:7px;height:7px;background:{{ t.color }}"></span>{{ t.label }}</div>
+            <div style="font-size:19px;font-weight:800;margin-top:6px">{{ t.value }}</div>
+            <div style="font-size:10px;margin-top:2px;opacity:.75">{{ t.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex:1 1 300px;min-width:0;background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+        <div style="padding:9px 14px;background:#F7EFE6;border-bottom:1px solid #E6DDD0;font-size:11px;font-weight:800;letter-spacing:.06em">STOCK FLOW · QTY</div>
+        <div style="padding:14px;height:230px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end">
+          <sc-for list="{{ flow }}" as="f" hint-placeholder-count="4">
+            <div style="height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px">
+              <span style="font-size:11px;font-weight:800">{{ f.qty }}</span>
+              <div style="width:100%;max-width:48px;height:{{ f.pct }}%;background:{{ f.color }};border-radius:2px 2px 0 0"></div>
+              <span style="font-size:10px;color:#5E566B;text-align:center;line-height:1.2">{{ f.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section style="background:#fff;border:1px solid #E6DDD0;border-radius:6px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 14px;background:#F7EFE6;border-bottom:1px solid #E6DDD0">
+        <span style="font-size:11px;font-weight:800;letter-spacing:.06em">BRANCH STOCK HISTORY · 7 DAYS</span>
+        <span style="font-size:10px;color:#857C8F">Sold is valued at current prices, not the till total</span>
+      </div>
+      <div style="overflow-x:auto">
+        <div style="min-width:640px">
+          <div style="display:grid;grid-template-columns:1.1fr repeat(5,1fr);gap:8px;padding:8px 14px;border-bottom:1px solid #E6DDD0;font-size:9px;font-weight:700;letter-spacing:.06em;color:#857C8F">
+            <span>DATE</span><span style="text-align:right">PREVIOUS</span><span style="text-align:right">NEW</span><span style="text-align:right">SOLD</span><span style="text-align:right">RET / ADJ</span><span style="text-align:right">REMAINING</span>
+          </div>
+          <sc-for list="{{ stock }}" as="r" hint-placeholder-count="7">
+            <div style="display:grid;grid-template-columns:1.1fr repeat(5,1fr);gap:8px;padding:8px 14px;border-bottom:1px solid #F1EBE1;align-items:center" style-hover="background:#FBF8F3">
+              <span style="font-size:12px;font-weight:700">{{ r.date }}</span>
+              <sc-for list="{{ r.cells }}" as="c">
+                <div style="text-align:right"><div style="font-size:12px;font-weight:800;color:{{ c.color }}">{{ c.q }}</div><div style="font-size:9px;color:#A39BAE">{{ c.v }}</div></div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { period: 'Daily', hover: null };
+  renderVals() {
+    const IND = '#4A3E8E', LAV = '#A79BDB', ORG = '#E8955A', BRN = '#5B3A1F', G = '#1F8A5B', R = '#C8402F', I = '#241E33';
+    const rs = v => 'Rs. ' + v.toLocaleString('en-US');
+    const periods = ['Daily', 'Weekly', 'Monthly'].map(label => {
+      const on = this.state.period === label;
+      return { label, onClick: () => this.setState({ period: label }), bg: on ? IND : '#fff', color: on ? '#fff' : '#5E566B' };
+    });
+    const todayBars = [
+      { label: 'Sales', kind: 'INCOME', v: 16350, color: IND },
+      { label: 'Net Amount', kind: 'INCOME', v: 16050, color: LAV },
+      { label: 'Expenses', kind: 'DEDUCTION', v: 300, color: BRN },
+      { label: 'Discounts', kind: 'DEDUCTION', v: 100, color: ORG },
+    ].map(b => ({ ...b, value: rs(b.v), pct: (b.v / 16350 * 100).toFixed(1) }));
+    const tiles = [
+      { label: "TODAY'S SALES", value: 'Rs. 16,350', note: 'Tue 06 Oct', color: ORG },
+      { label: 'TOTAL SALES', value: 'Rs. 269,480', note: '+19.2% vs previous', color: IND },
+      { label: 'AVERAGE DAILY', value: 'Rs. 38,497', note: 'Over 7 days', color: LAV },
+      { label: 'HIGHEST DAY', value: 'Rs. 51,650', note: 'Sat 03 Oct · 63 txns', color: G },
+      { label: 'LOWEST DAY', value: 'Rs. 16,350', note: 'Tue 06 Oct', color: R },
+      { label: 'TRANSACTIONS', value: '334', note: '30 Sep – 06 Oct', color: BRN },
+    ];
+    const raw = [['Wed', 'Wed 30 Sep', 32800], ['Thu', 'Thu 01 Oct', 39400], ['Fri', 'Fri 02 Oct', 50500], ['Sat', 'Sat 03 Oct', 51650], ['Sun', 'Sun 04 Oct', 40300], ['Mon', 'Mon 05 Oct', 38480], ['Tue', 'Tue 06 Oct', 16350]];
+    const h = this.state.hover;
+    const days = raw.map(([label, full, v], i) => ({
+      label, short: (v / 1000).toFixed(1) + 'k', pct: (v / 60000 * 100).toFixed(1),
+      bg: h === i ? '#2D2640' : (i === 6 ? ORG : IND),
+      enter: () => this.setState({ hover: i }),
+    }));
+    const hoverNote = h === null ? 'Hover a bar for the exact amount.' : `${raw[h][1]} · ${rs(raw[h][2])} · ${((raw[h][2] - 38497) / 38497 * 100).toFixed(1)}% vs average`;
+    const prod = [['Cream Puff', 345, 17000], ['Chicken Patty', 210, 14700], ['Chocolate Pastry', 160, 12800], ['Plain Cake Rusk', 140, 9800], ['Bread Large', 120, 8400]];
+    const products = prod.map(([name, qty, s]) => ({ name, qty: qty + ' pcs', sales: rs(s), pct: (s / 17000 * 82).toFixed(0), qpct: (qty / 345 * 82).toFixed(0) }));
+    const orders = [
+      { label: 'Total', value: 22, weight: 700 },
+      { label: 'Completed', value: 22, weight: 500 },
+      { label: 'Pending', value: 0, weight: 500 },
+      { label: 'Cancelled', value: 0, weight: 500 },
+      { label: 'Avg. order value', value: 'Rs. 743', weight: 500 },
+    ];
+    const payments = [
+      { name: 'Cash', note: '275 sales', amount: 'Rs. 229,380', color: IND },
+      { name: 'Easypaisa', note: '59 sales', amount: 'Rs. 40,100', color: LAV },
+    ];
+    const ledger = [
+      { label: 'Previous balance', date: '05 Oct 2026', qty: 56, amount: 'Rs. 15,450', color: I },
+      { label: 'New stock items', date: '06 Oct 2026', qty: '+154', amount: 'Rs. 39,700', color: G },
+      { label: 'Sale stock items', date: '06 Oct 2026', qty: '−60', amount: 'Rs. 16,450', color: R },
+      { label: 'Remaining stock items', date: '06 Oct 2026', qty: 150, amount: 'Rs. 38,700', color: I, weight: 800 },
+      { label: 'End difference', date: '06 Oct 2026', qty: 0, amount: 'Rs. 0', color: I },
+    ].map(l => ({ weight: 500, ...l }));
+    const stockTiles = [
+      { label: 'PREVIOUS', value: 'Rs. 15,450', note: '56 items carried in', color: LAV, bg: '#fff', ink: I },
+      { label: 'NEW STOCK', value: 'Rs. 39,700', note: '154 items', color: G, bg: '#fff', ink: I },
+      { label: 'SOLD', value: 'Rs. 16,450', note: '60 items', color: ORG, bg: '#fff', ink: I },
+      { label: 'REMAINING', value: 'Rs. 38,700', note: '150 items · 0 difference', color: ORG, bg: '#2D2640', ink: '#fff' },
+    ];
+    const flow = [['Previous', 56, LAV], ['New stock', 154, IND], ['Sold', 60, ORG], ['Remaining', 150, BRN]].map(([label, qty, color]) => ({ label, qty, color, pct: (qty / 154 * 78).toFixed(0) }));
+    const S = [
+      ['Tue 06 Oct', [56, '16,450'], [154, '39,700'], [60, '16,450'], null, [150, '38,700']],
+      ['Mon 05 Oct', [74, '13,600'], [143, '56,900'], [142, '39,350'], [-19, '-15,700'], [56, '15,450']],
+      ['Sun 04 Oct', [152, '18,600'], [64, '35,750'], [142, '40,950'], null, [74, '13,600']],
+      ['Sat 03 Oct', [24, '7,350'], [209, '52,800'], [199, '52,750'], [118, '11,400'], [152, '18,600']],
+      ['Fri 02 Oct', [43, '14,200'], [191, '43,800'], [210, '51,650'], null, [24, '7,350']],
+      ['Thu 01 Oct', [53, '20,650'], [154, '33,900'], [164, '40,350'], null, [43, '14,200']],
+      ['Wed 30 Sep', [57, '24,500'], [146, '31,450'], [146, '33,650'], [-4, '-1,450'], [53, '20,650']],
+    ];
+    const cols = [I, G, R, IND, I];
+    const stock = S.map(([date, ...c]) => ({ date, cells: c.map((x, j) => x ? { q: x[0], v: 'Rs. ' + x[1], color: cols[j] } : { q: '—', v: '', color: '#C9C1D2' }) }));
+    return { periods, todayBars, tiles, days, hoverNote, leave: () => this.setState({ hover: null }), products, orders, payments, ledger, stockTiles, flow, stock };
+  }
+}
+</script>
+</body>
+</html>

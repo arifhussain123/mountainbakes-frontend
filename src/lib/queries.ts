@@ -29,6 +29,7 @@ import type {
   StockReconciliation,
   BranchStockSummaryResult,
   BranchProductionOrder,
+  SpecialOrder,
   Expense,
   Order,
   Category,
@@ -94,13 +95,6 @@ type ProductionOrderItem = { productId: string; qty: number };
 
 /** Optional packing-material line submitted with the same demand. */
 type ProductionOrderPackingItem = { packingMaterialId: string; qty: number };
-/** Mirrors SpecialOrderItemSchema in @mb/shared — name and qty required, the rest optional. */
-type SpecialOrderItemInput = {
-  name: string;
-  qty: number;
-  description: string;
-  attachmentIds: string[];
-};
 
 // Live/intraday queries: kept fresh by notification-driven invalidation
 // (useProductionRealtime / usePriceRealtime) rather than by constant refetching.
@@ -109,16 +103,29 @@ type SpecialOrderItemInput = {
 // globally in QueryProvider, so this is now the only refetch trigger on remount.
 const LIVE_STALE_TIME = 15_000;
 
-export function useProducts(token: string, opts?: { isActive?: boolean; enabled?: boolean }) {
+export function useProducts(
+  token: string,
+  opts?: {
+    isActive?: boolean;
+    enabled?: boolean;
+    /**
+     * The till's list: the catalogue PLUS the Special Order items the caller's
+     * own branch currently holds in stock. Only the Sales screen asks for it —
+     * a one-off item must not turn up in an order form or a price list.
+     */
+    sellable?: boolean;
+  },
+) {
   const isActive = opts?.isActive;
+  const sellable = opts?.sellable ?? false;
+  const params = [
+    ...(isActive !== undefined ? [`isActive=${isActive}`] : []),
+    ...(sellable ? ['sellable=true'] : []),
+  ].join('&');
   return useQuery({
-    queryKey: qk.products(isActive),
+    queryKey: qk.products(isActive, sellable),
     queryFn: () =>
-      apiCall<{ products: Product[] }>(
-        `/api/products${isActive !== undefined ? `?isActive=${isActive}` : ''}`,
-        {},
-        token,
-      ),
+      apiCall<{ products: Product[] }>(`/api/products${params ? `?${params}` : ''}`, {}, token),
     select: (r) => r.products ?? [],
     enabled: !!token && (opts?.enabled ?? true),
   });
@@ -385,6 +392,9 @@ export function useReportSummary(
   // for a caller like the Branch Dashboard that only renders the top-level
   // totals + dailyData. Omit for callers (Reports, Admin Dashboard) that do.
   fields?: 'basic' | 'full',
+  // Opt-in: keep the last answer on screen while a new period loads, instead of
+  // dropping to a skeleton. The caller must mark it as stale (`isPlaceholderData`).
+  opts?: { keepPrevious?: boolean },
 ) {
   const effectivePeriod = range ? 'custom' : period;
   const rangeParams = range
@@ -400,6 +410,7 @@ export function useReportSummary(
         token,
       ),
     enabled: !!token,
+    placeholderData: opts?.keepPrevious ? keepPreviousData : undefined,
   });
 }
 
@@ -428,7 +439,10 @@ export function useSalesAnalytics(
     topLimit?: number;
     compare?: boolean;
   },
-  opts?: { enabled?: boolean },
+  // `keepPrevious` is opt-in for the same reason the key carries the range:
+  // one window's figures under another's heading is a wrong number, so a caller
+  // that asks for it has to mark the result stale while `isPlaceholderData`.
+  opts?: { enabled?: boolean; keepPrevious?: boolean },
 ) {
   const { from, to, branchId, topLimit = 5, compare = false } = params;
   return useQuery({
@@ -445,6 +459,7 @@ export function useSalesAnalytics(
     },
     staleTime: LIVE_STALE_TIME,
     enabled: !!token && (opts?.enabled ?? true),
+    placeholderData: opts?.keepPrevious ? keepPreviousData : undefined,
   });
 }
 
@@ -812,20 +827,120 @@ export function useMarkPrinted(token: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Special Orders
+//
+// A branch's one-off, sent straight to Production. Its own endpoint and its own
+// query key: it is not a demand and is never listed, counted or invalidated as
+// one. Stock moves at two steps, written by the server: into Production Stock
+// when Production prepares it, and on to the branch's stock when the branch
+// verifies it — which is why those two hooks invalidate the stock keys.
+// ---------------------------------------------------------------------------
+
+/** Open Special Orders plus the last week's finished ones. Branch users get their own branch only. */
+export function useSpecialOrders(token: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: qk.specialOrders(),
+    queryFn: () => apiCall<{ orders: SpecialOrder[] }>('/api/special-orders', {}, token),
+    select: (r) => r.orders ?? [],
+    enabled: !!token && (opts?.enabled ?? true),
+  });
+}
+
+/**
+ * Raise a Special Order. `clientOperationId` travels as the Idempotency-Key, so
+ * re-sending the same rows after a lost response replays the first answer
+ * instead of raising the order twice.
+ */
+export function useSubmitSpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      clientOperationId,
+      ...body
+    }: {
+      items: { name: string; qty: number; amount: number; description: string; attachmentIds: string[] }[];
+      requiredDate?: string;
+      clientOperationId: string;
+    }) =>
+      apiCall<{ id: string; orderNumber: string }>(
+        '/api/special-orders',
+        { method: 'POST', headers: { 'Idempotency-Key': clientOperationId }, body: JSON.stringify(body) },
+        token,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['specialOrders'] }),
+  });
+}
+
+/**
+ * Production marks a Special Order prepared. The prepared quantities go into
+ * Production Stock as part of the same request — there is no separate stock
+ * entry to make. An item left out of `items` is prepared in full.
+ */
+export function usePrepareSpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, items }: { id: string; items: { itemId: string; preparedQty: number }[] }) =>
+      apiCall(`/api/special-orders/${id}/prepare`, { method: 'PUT', body: JSON.stringify({ items }) }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['specialOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
+/**
+ * The branch's Verify & Approve. At least one photo — the API refuses without.
+ * The received quantities go into the branch's stock as part of the same
+ * request, and the item becomes sellable at the till.
+ */
+export function useVerifySpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      attachmentIds: string[];
+      items: { itemId: string; receivedQty: number }[];
+    }) => apiCall(`/api/special-orders/${id}/verify`, { method: 'PUT', body: JSON.stringify(body) }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['specialOrders'] });
+      qc.invalidateQueries({ queryKey: ['stock'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+    },
+  });
+}
+
+/** LEGACY: finish an order the branch verified before the workflow changed. New orders never need it. */
+export function useApproveSpecialOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiCall(`/api/special-orders/${id}/approve`, { method: 'PUT' }, token),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['specialOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionStock'] });
+      qc.invalidateQueries({ queryKey: ['productionBranchStock'] });
+      qc.invalidateQueries({ queryKey: ['stock'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
 /** Submit a branch production order; refreshes history + stock on success. */
 export function useSubmitProductionOrder(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    // Packing and special items are both optional; an omitted/empty array posts
-    // exactly the payload this endpoint accepted before either module existed.
+    // Packing items are optional; an omitted/empty array posts exactly the payload
+    // this endpoint accepted before that module existed. Special Order rows are
+    // NOT sent here — see useSubmitSpecialOrder.
     mutationFn: (v: {
       items: ProductionOrderItem[];
       packingItems?: ProductionOrderPackingItem[];
-      /**
-       * One-off items typed by hand. Each becomes a hidden `is_special` product
-       * server-side so it can carry production and branch stock like any line.
-       */
-      specialItems?: SpecialOrderItemInput[];
       /**
        * 'YYYY-MM-DD' the branch needs this delivered by. REQUIRED, unlike the
        * two above — the API rejects a demand without one.
@@ -839,7 +954,6 @@ export function useSubmitProductionOrder(token: string) {
           body: JSON.stringify({
             items: v.items,
             packingItems: v.packingItems ?? [],
-            specialItems: v.specialItems ?? [],
             requiredDate: v.requiredDate,
           }),
         },
@@ -914,12 +1028,21 @@ export interface ProductionOverview {
 /** A week-to-date figure beside the same weekdays of last week. */
 export interface WeekPair { cur: number; prev: number }
 
+export type ProductionPeriod = 'today' | 'week' | 'month';
+
 /**
- * Monday-to-today block of the Production Dashboard (migration 140). Everything
+ * Period block of the Production Dashboard (migrations 140/141) — today, Monday
+ * to today, or the 1st to today, each beside the same stretch of the one before. Everything
  * order-based follows the branch filter; `produced` and `stock` describe the
  * central pool, which has no branch, and `branchCompare` always lists them all.
  */
 export interface ProductionWeek {
+  /** Absent on an API older than the period switch, which only ever served the week. */
+  period?: ProductionPeriod;
+  /** Last 12 months, the current one to date. Demand follows the branch filter; output never does. */
+  monthly?: { month: string; demand: number; produced: number }[];
+  /** Today by Karachi clock hour (`YYYY-MM-DDTHH:00`), first to last hour with activity. */
+  hourly?: { hour: string; demand: number; produced: number }[];
   from: string;
   to: string;
   prevFrom: string;
@@ -948,15 +1071,15 @@ export interface BranchStockMatrix {
 
 
 /** Dashboard cards + chart series. Always revalidates (live demand). */
-export function useProductionOverview(token: string, branchId?: string | null) {
+export function useProductionOverview(token: string, branchId?: string | null, period: ProductionPeriod = 'week') {
   return useQuery({
-    queryKey: qk.productionOverview(branchId),
+    queryKey: qk.productionOverview(branchId, period),
     queryFn: () => apiCall<ProductionOverview>(
-      `/api/production/overview${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`, {}, token,
+      `/api/production/overview?period=${period}${branchId ? `&branchId=${encodeURIComponent(branchId)}` : ''}`, {}, token,
     ),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
-    // Switching the branch filter keeps the last figures on screen until the
+    // Switching the branch filter or period keeps the last figures on screen until the
     // new ones land, instead of dropping the whole dashboard back to skeletons.
     placeholderData: keepPreviousData,
   });

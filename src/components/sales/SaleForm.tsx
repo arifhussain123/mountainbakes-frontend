@@ -85,7 +85,9 @@ function productMatchesQuery(p: Product | null, query: string): boolean {
   if (p == null) return false;
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+  // `sku` is absent on a Special Order item — a temporary product with no code.
+  // Reading it unguarded threw on the first keystroke and took the page down.
+  return (p.sku ?? '').toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
 }
 
 function resolveDiscount(raw: string, lineGross: number): number {
@@ -463,7 +465,7 @@ export function SaleForm({
                                   <div className="flex flex-1 flex-col">
                                     <span className="font-medium">{p.name}</span>
                                     <span className="text-xs text-muted-foreground">
-                                      {p.categoryName} · {cur} {p.price.toLocaleString()}{pOut ? ' · Out of Stock' : ''}
+                                      {p.categoryName || 'Special Order'} · {cur} {p.price.toLocaleString()}{pOut ? ' · Out of Stock' : ''}
                                     </span>
                                   </div>
                                 </ComboboxItem>

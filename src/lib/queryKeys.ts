@@ -13,7 +13,13 @@
  */
 export const qk = {
   settings: () => ['settings'] as const,
-  products: (isActive?: boolean) => ['products', { isActive: isActive ?? null }] as const,
+  // `sellable` is the till's variant (catalogue + the Special Order items this
+  // branch holds in stock). Its own cache entry, under the same 'products'
+  // prefix so every existing invalidation still reaches it.
+  products: (isActive?: boolean, sellable?: boolean) =>
+    (sellable
+      ? ['products', { isActive: isActive ?? null, sellable: true }]
+      : ['products', { isActive: isActive ?? null }]) as readonly unknown[],
   packingMaterials: (includeInactive?: boolean) =>
     ['packingMaterials', { includeInactive: includeInactive ?? false }] as const,
   packingUsage: (filters: {
@@ -141,11 +147,15 @@ export const qk = {
   loginAttempts: (params: Record<string, unknown>) =>
     ['loginHistory', 'attempts', params] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
+  // Special Orders are their own document, not demand — hence their own key
+  // rather than a sub-key of 'productionOrders'.
+  specialOrders: () => ['specialOrders'] as const,
   productionBalances: (branchId?: string | null) => ['productionBalances', branchId ?? 'me'] as const,
   previousOrderBalance: (orderId: string) => ['previousOrderBalance', orderId] as const,
   // Invalidated by the bare ['productionOverview'] prefix everywhere, which
-  // covers every branch filter at once.
-  productionOverview: (branchId?: string | null) => ['productionOverview', branchId ?? 'all'] as const,
+  // covers every branch filter and period at once.
+  productionOverview: (branchId?: string | null, period: string = 'week') =>
+    ['productionOverview', branchId ?? 'all', period] as const,
   productionQueue: () => ['productionQueue'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })

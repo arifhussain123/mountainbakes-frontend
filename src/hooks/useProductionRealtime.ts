@@ -85,6 +85,10 @@ export function useProductionRealtime() {
 
     if (refreshOrders) {
       qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      // Special Orders announce themselves with the same notification types —
+      // and an approved one has just landed in the branch's stock.
+      qc.invalidateQueries({ queryKey: ['specialOrders'] });
+      qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['productionOverview'] });
     }
     if (refreshStock) {
