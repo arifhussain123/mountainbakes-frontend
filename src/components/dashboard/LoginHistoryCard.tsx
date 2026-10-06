@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { createColumnHelper } from '@tanstack/react-table';
-import type { LoginSession } from '@mb/shared';
+import { useEffect, useState } from 'react';
+import { createColumnHelper, type SortingState } from '@tanstack/react-table';
+import { businessDateStr, type LoginSession, type PageSize } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useLoginHistory } from '@/lib/queries';
+import { useLoginHistoryPage, type LoginSessionSortKey } from '@/lib/queries';
+import { useDebounce } from '@/hooks/useDebounce';
+import { logger } from '@/utils/logger';
 import { DataTable } from '@/components/shared/DataTable';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { formatDate, formatTime } from '@/utils/date';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, Eye, MapPin, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Eye, History, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { ROUTES } from '@/utils/routes';
 import { StaffAvatar } from '@/components/security/StaffAvatar';
@@ -38,12 +41,17 @@ import { GoogleAccountLink } from '@/components/security/GoogleAccountLink';
  * the API's decision, not this component's — the endpoint pins a non-admin to
  * its own uid whatever it asks for.
  *
- * A GLANCE, NOT THE SECURITY SCREEN. It shows one page of recent sign-ins with
- * no filters and no pager; Admin → Security has both, plus the live session
- * roster and the ability to end a session. The link in the header is for the
- * admin who came here and needed that instead. Before the endpoint was paged
- * this card fetched a capped 500 rows and filtered them in the browser, which
- * meant the cap silently truncated it once the table outgrew the cap.
+ * COLLAPSED BY DEFAULT, AND SILENT WHILE COLLAPSED. A dashboard opens showing
+ * one row — the title and a chevron — and makes NO login-history request. The
+ * query is enabled by opening the card, so the audit table is only read by
+ * someone who asked to see it. Collapsing keeps the cache: reopening shows the
+ * rows already fetched and refreshes them in the background.
+ *
+ * PAGED, SEARCHED AND SORTED BY THE API. One page is fetched at a time and the
+ * search box, the header sorts and the two filters are all sent as parameters —
+ * filtering one page in the browser would hide rows that exist on the others.
+ * Admin → Security remains the fuller screen (live session roster, ending a
+ * session, more filters); the link in the header is for the admin who needs it.
  *
  * THE BROWSER EMAIL AND THE STAFF CODE, AS TWO COLUMNS — and NOT the Mountain
  * Bakes account address. `MBU-000125` is the handle the account is quoted by;
@@ -71,11 +79,106 @@ import { GoogleAccountLink } from '@/components/security/GoogleAccountLink';
 
 const col = createColumnHelper<LoginSession>();
 
+/**
+ * Column id → the API's `sortBy`. A column missing here cannot be ordered by the
+ * server, so its header is not offered as a sort at all — sorting one page in
+ * memory would only ever be the right order for that page.
+ */
+const SORT_KEYS: Record<string, LoginSessionSortKey> = {
+  browserEmail: 'browserEmail',
+  who: 'userName',
+  date: 'loginAt',
+  location: 'city',
+  browser: 'browser',
+  browserVersion: 'browserVersion',
+  os: 'os',
+  device: 'deviceType',
+  ip: 'ipAddress',
+};
+
+const ALL = 'all';
+
+/** Admin-only filter. The API ignores it for everyone else, who only ever see themselves. */
+const ROLE_OPTIONS = [
+  { value: ALL, label: 'All Users' },
+  { value: 'super_admin', label: 'Admin' },
+  { value: 'branch_manager', label: 'Branch' },
+  { value: 'production_user', label: 'Production' },
+  { value: 'finance_admin', label: 'Finance Admin' },
+  { value: 'finance_manager', label: 'Finance Manager' },
+  { value: 'accountant', label: 'Accountant' },
+  { value: 'finance_auditor', label: 'Finance Auditor' },
+];
+
+type DatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'month';
+const DATE_OPTIONS: { value: DatePreset; label: string }[] = [
+  { value: 'all', label: 'Any Date' },
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last7', label: '7 Days' },
+  { value: 'month', label: 'This Month' },
+];
+
+function shiftDay(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** BUSINESS dates (2 AM Karachi rollover) — the column the API filters on. */
+function dateWindow(preset: DatePreset): { from: string | null; to: string | null } {
+  const today = businessDateStr();
+  switch (preset) {
+    case 'today':
+      return { from: today, to: today };
+    case 'yesterday':
+      return { from: shiftDay(today, -1), to: shiftDay(today, -1) };
+    case 'last7':
+      return { from: shiftDay(today, -6), to: today };
+    case 'month':
+      return { from: `${today.slice(0, 7)}-01`, to: today };
+    default:
+      return { from: null, to: null };
+  }
+}
+
 export function LoginHistoryCard() {
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'super_admin';
-  const historyQ = useLoginHistory(token);
+  const [open, setOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(20);
+  const [search, setSearch] = useState('');
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [role, setRole] = useState(ALL);
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const debouncedSearch = useDebounce(search.trim());
+
+  const sort = sorting[0];
+  const range = dateWindow(datePreset);
+  const historyQ = useLoginHistoryPage(
+    token,
+    {
+      search: debouncedSearch || null,
+      role: isAdmin && role !== ALL ? role : null,
+      from: range.from,
+      to: range.to,
+      page,
+      pageSize,
+      sortBy: sort ? SORT_KEYS[sort.id] : undefined,
+      sortDir: sort ? (sort.desc ? 'desc' : 'asc') : undefined,
+    },
+    // Collapsed → no request. Opening is what asks for the history.
+    { enabled: open },
+  );
+
+  useEffect(() => {
+    if (historyQ.error) logger.error('Login History request failed', historyQ.error);
+  }, [historyQ.error]);
+
+  /** Any change to what is being asked for starts again from the first page. */
+  const resetPage = () => setPage(1);
 
   const columns = [
     // The Google account the session was signed in with. Null — "Not recorded"
@@ -121,6 +224,8 @@ export function LoginHistoryCard() {
     col.accessor('loginAt', {
       id: 'time',
       header: 'Time',
+      // Login Date already orders by the full timestamp.
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
@@ -167,6 +272,7 @@ export function LoginHistoryCard() {
     }),
     col.accessor('durationMs', {
       header: 'Duration',
+      enableSorting: false,
       meta: { align: 'center' },
       cell: (i) => <span className="tabular-nums">{formatDuration(i.getValue())}</span>,
     }),
@@ -175,6 +281,7 @@ export function LoginHistoryCard() {
     // attempt has no session and is on the Failed Logins board instead.
     col.accessor('loginStatus', {
       header: 'Login Status',
+      enableSorting: false,
       // Guarded: the web app and the API deploy separately, and a row from an
       // API that predates `loginStatus` must show a dash, not an empty pill.
       cell: ({ row }) =>
@@ -186,6 +293,7 @@ export function LoginHistoryCard() {
     }),
     col.accessor('state', {
       header: 'Session Status',
+      enableSorting: false,
       meta: { mobile: 'badge' },
       cell: ({ row }) => (
         <div className="flex items-center gap-1.5">
@@ -213,56 +321,148 @@ export function LoginHistoryCard() {
     }),
   ];
 
+  const sessions = historyQ.data?.sessions ?? [];
+  const failed = historyQ.isError && !historyQ.data;
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">Login History</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {isAdmin
-                ? 'Every account · recent sign-ins · location is resolved from the login IP and is approximate'
-                : `Sign-ins for ${user?.displayName || 'this account'} · location is resolved from your IP, or your device when it shares its position`}
-            </p>
-            {/* Renders only when the project has Google sign-in enabled. */}
-            <div className="mt-2">
-              <GoogleAccountLink />
+    // The card's own spacing is zeroed: the header button is the padding.
+    <Card className="[--card-spacing:0px]">
+      {/* The whole header is the control. A real <button> so Enter and Space
+          work and a screen reader announces the expanded state. */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="login-history-panel"
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+      >
+        <History className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="flex-1 text-base font-semibold">Login History</span>
+        <ChevronRight
+          className={cn('h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-90')}
+          aria-hidden
+        />
+      </button>
+
+      {open && (
+        <div id="login-history-panel" className="animate-in border-t duration-200 fade-in slide-in-from-top-1">
+          <div className="flex items-start justify-between gap-3 px-4 pt-3 pb-3">
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {isAdmin
+                  ? 'Every account · location is resolved from the login IP and is approximate'
+                  : `Sign-ins for ${user?.displayName || 'this account'} · location is resolved from your IP, or your device when it shares its position`}
+              </p>
+              {/* Renders only when the project has Google sign-in enabled. */}
+              <div className="mt-2">
+                <GoogleAccountLink />
+              </div>
             </div>
+            {/* Admin only, because the screen it points at is. A link a branch
+                user could see and not open is worse than no link. */}
+            {isAdmin && (
+              // A styled Link, not a Button wrapping one: this Button is Base UI's,
+              // which has no `asChild`, and nesting an anchor inside a <button> is
+              // invalid markup that breaks keyboard activation.
+              <Link
+                href={ROUTES.SECURITY}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'shrink-0')}
+              >
+                <ShieldAlert className="mr-1.5 h-4 w-4" /> Security
+              </Link>
+            )}
           </div>
-          {/* Admin only, because the screen it points at is. A link a branch
-              user could see and not open is worse than no link. */}
-          {isAdmin && (
-            // A styled Link, not a Button wrapping one: this Button is Base UI's,
-            // which has no `asChild`, and nesting an anchor inside a <button> is
-            // invalid markup that breaks keyboard activation.
-            <Link
-              href={ROUTES.SECURITY}
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'shrink-0')}
-            >
-              <ShieldAlert className="mr-1.5 h-4 w-4" /> Security
-            </Link>
+
+          {failed ? (
+            // One sentence and a Retry; the detail went to the logger above.
+            <div role="alert" className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+              <p className="text-sm font-medium">Unable to load login history.</p>
+              <Button variant="outline" onClick={() => historyQ.refetch()} disabled={historyQ.isFetching}>
+                {historyQ.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="sm:px-4 sm:pb-4">
+              <DataTable
+                columns={columns}
+                data={sessions}
+                loading={historyQ.isPending}
+                searchPlaceholder={isAdmin ? 'Search user ID or name…' : 'Search logins…'}
+                sortable
+                leading={
+                  <>
+                    {isAdmin && (
+                      <Select
+                        items={ROLE_OPTIONS}
+                        value={role}
+                        onValueChange={(v) => {
+                          if (!v) return;
+                          setRole(v);
+                          resetPage();
+                        }}
+                      >
+                        <SelectTrigger className="h-9 w-40" aria-label="Role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROLE_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <Select
+                      items={DATE_OPTIONS}
+                      value={datePreset}
+                      onValueChange={(v) => {
+                        if (!v) return;
+                        setDatePreset(v as DatePreset);
+                        resetPage();
+                      }}
+                    >
+                      <SelectTrigger className="h-9 w-36" aria-label="Date">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DATE_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                }
+                manual={{
+                  page,
+                  pageSize,
+                  total: historyQ.data?.total ?? 0,
+                  onPageChange: setPage,
+                  onPageSizeChange: (size) => {
+                    setPageSize(size);
+                    resetPage();
+                  },
+                  search,
+                  onSearchChange: (value) => {
+                    setSearch(value);
+                    resetPage();
+                  },
+                  sorting,
+                  onSortingChange: (next) => {
+                    setSorting(next);
+                    resetPage();
+                  },
+                }}
+                empty={
+                  <div className="flex flex-col items-center gap-2 py-10 text-center">
+                    <History className="h-8 w-8 text-muted-foreground/50" />
+                    <p className="text-sm font-medium">No login history found.</p>
+                  </div>
+                }
+              />
+            </div>
           )}
         </div>
-      </CardHeader>
-      <CardContent className="p-0 sm:px-4 sm:pb-4">
-        <DataTable
-          columns={columns}
-          data={historyQ.data ?? []}
-          loading={historyQ.isLoading}
-          searchPlaceholder="Search logins…"
-          pageSize={20}
-          sortable
-          empty={
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <MapPin className="h-8 w-8 text-muted-foreground/50" />
-              <p className="text-sm font-medium">No sign-ins recorded yet</p>
-              <p className="text-sm text-muted-foreground">
-                History starts from the first sign-in after this feature went live.
-              </p>
-            </div>
-          }
-        />
-      </CardContent>
+      )}
 
       {/* The Security screen's own dialog, not a copy. It re-fetches the session
           by id, which is what lets the API decide whether this reader may see
