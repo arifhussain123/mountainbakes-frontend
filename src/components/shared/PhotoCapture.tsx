@@ -84,25 +84,11 @@ export function PhotoCapture({
 }) {
   const { token } = useAuth();
   const [busy, setBusy] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
   /** The frame waiting in the crop dialog, when `crop` is on. */
   const [pendingCrop, setPendingCrop] = useState<Blob | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
-
-  // `false` during prerender, the real answer once mounted — see
-  // subscribeDeviceCamera for why this is a store subscription rather than
-  // state set in an effect.
-  const useDeviceCamera = useSyncExternalStore(subscribeDeviceCamera, prefersDeviceCamera, () => false);
 
   const atLimit = value.length >= max;
   const canCapture = !disabled && !busy && !atLimit;
-
-  // A phone goes straight to its camera app; a desktop opens the in-app preview.
-  const takePhoto = useCallback(() => {
-    if (useDeviceCamera) cameraInputRef.current?.click();
-    else setCameraOpen(true);
-  }, [useDeviceCamera]);
 
   const upload = useCallback(
     async (source: Blob) => {
@@ -185,12 +171,77 @@ export function PhotoCapture({
         </div>
       )}
 
+      <PhotoSourceButtons disabled={!canCapture} busy={busy} captureLabel={captureLabel} onPicked={store} />
+
+      {atLimit && <p className="text-xs text-muted-foreground">Maximum of {max} photos.</p>}
+      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+
+      <CropDialog
+        source={pendingCrop}
+        busy={busy}
+        onConfirm={(area) => void confirmCrop(area)}
+        onCancel={() => setPendingCrop(null)}
+      />
+    </div>
+  );
+}
+
+/**
+ * The two ways a picture gets INTO a form — the camera and the gallery — and
+ * nothing about what happens to it afterwards.
+ *
+ * Split out of PhotoCapture so a form that must not upload until it is
+ * submitted (LocalPhotoCapture) offers exactly the same capture behaviour as
+ * one that uploads at once: the device-camera-vs-live-preview decision, the two
+ * separate inputs, and the fallback when the live camera cannot open are all
+ * here, once. See PhotoCapture's header for why each exists.
+ */
+export function PhotoSourceButtons({
+  disabled,
+  busy = false,
+  captureLabel = 'Take photo',
+  galleryLabel,
+  onPicked,
+}: {
+  disabled: boolean;
+  busy?: boolean;
+  captureLabel?: string;
+  /** Defaults to "Gallery" on a phone and "Upload" on a desktop. */
+  galleryLabel?: string;
+  onPicked: (source: Blob) => void;
+}) {
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  // `false` during prerender, the real answer once mounted — see
+  // subscribeDeviceCamera for why this is a store subscription rather than
+  // state set in an effect.
+  const useDeviceCamera = useSyncExternalStore(subscribeDeviceCamera, prefersDeviceCamera, () => false);
+
+  // A phone goes straight to its camera app; a desktop opens the in-app preview.
+  const takePhoto = useCallback(() => {
+    if (useDeviceCamera) cameraInputRef.current?.click();
+    else setCameraOpen(true);
+  }, [useDeviceCamera]);
+
+  const onUnavailable = useCallback(() => {
+    setCameraOpen(false);
+    // Not an error worth a toast on its own — the camera input opens the
+    // device's camera app just as well, so send them there instead of
+    // leaving them staring at a dead dialog.
+    cameraInputRef.current?.click();
+  }, []);
+
+  return (
+    <>
       <div className="flex flex-wrap gap-2">
         {/* Present on a phone (device camera) and on a desktop that can open a
             live preview. Absent only where neither exists — an http desktop —
             where the gallery button below is the whole story. */}
         {(useDeviceCamera || canUseLiveCamera()) && (
-          <Button type="button" variant="outline" disabled={!canCapture} onClick={takePhoto}>
+          <Button type="button" variant="outline" disabled={disabled} onClick={takePhoto}>
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Camera className="mr-1.5 h-4 w-4" />}
             {captureLabel}
           </Button>
@@ -198,11 +249,11 @@ export function PhotoCapture({
         <Button
           type="button"
           variant="outline"
-          disabled={!canCapture}
+          disabled={disabled}
           onClick={() => galleryInputRef.current?.click()}
         >
           <ImageUp className="mr-1.5 h-4 w-4" />
-          {useDeviceCamera ? 'Gallery' : 'Upload'}
+          {galleryLabel ?? (useDeviceCamera ? 'Gallery' : 'Upload')}
         </Button>
 
         {/* Camera. `capture` sends a phone straight to its camera app; a desktop
@@ -219,7 +270,7 @@ export function PhotoCapture({
             // otherwise, so a retake of an identical shot would appear to do
             // nothing.
             e.target.value = '';
-            if (file) void store(file);
+            if (file) onPicked(file);
           }}
         />
 
@@ -233,21 +284,10 @@ export function PhotoCapture({
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = '';
-            if (file) void store(file);
+            if (file) onPicked(file);
           }}
         />
       </div>
-
-      {atLimit && <p className="text-xs text-muted-foreground">Maximum of {max} photos.</p>}
-      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-
-      <CropDialog
-        source={pendingCrop}
-        busy={busy}
-        onConfirm={(area) => void confirmCrop(area)}
-        onCancel={() => setPendingCrop(null)}
-      />
 
       <CameraDialog
         open={cameraOpen}
@@ -255,17 +295,11 @@ export function PhotoCapture({
         busy={busy}
         onCapture={(blob) => {
           setCameraOpen(false);
-          void store(blob);
+          onPicked(blob);
         }}
-        onUnavailable={() => {
-          setCameraOpen(false);
-          // Not an error worth a toast on its own — the camera input opens the
-          // device's camera app just as well, so send them there instead of
-          // leaving them staring at a dead dialog.
-          cameraInputRef.current?.click();
-        }}
+        onUnavailable={onUnavailable}
       />
-    </div>
+    </>
   );
 }
 

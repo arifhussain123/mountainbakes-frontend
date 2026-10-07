@@ -2,6 +2,12 @@ import {
   ATTACHMENT_JPEG_QUALITY,
   ATTACHMENT_STORED_DIMENSION,
   ATTACHMENT_TARGET_MAX_BYTES,
+  ATTACHMENT_URL_TTL_SECONDS,
+  RETURN_PHOTO_MAX_BYTES,
+  RETURN_PHOTO_MAX_DIMENSION,
+  RETURN_PHOTO_MAX_ORIGINAL_BYTES,
+  RETURN_PHOTO_QUALITY,
+  RETURN_PHOTO_TARGET_MAX_BYTES,
   type Attachment,
   type AttachmentEntity,
 } from '@mb/shared';
@@ -40,6 +46,36 @@ export interface CompressedImage {
 const QUALITY_LADDER = [ATTACHMENT_JPEG_QUALITY, 0.72, 0.62, 0.5];
 
 /**
+ * What a kind of photo is compressed TO. The pipeline is one; the target is the
+ * only thing that differs between a receipt and a tray of returned pastries.
+ */
+export interface ImageProfile {
+  /** Longest edge, in pixels. A cap — a smaller image is never enlarged to it. */
+  maxDimension: number;
+  /** Encode qualities tried in order until `targetBytes` is met. */
+  qualityLadder: readonly number[];
+  /** The budget the ladder steps down towards. A target, not a hard limit. */
+  targetBytes: number;
+}
+
+/** Receipts, slips, demands — anything somebody will have to READ. The default. */
+export const DOCUMENT_PROFILE: ImageProfile = {
+  maxDimension: ATTACHMENT_STORED_DIMENSION,
+  qualityLadder: QUALITY_LADDER,
+  targetBytes: ATTACHMENT_TARGET_MAX_BYTES,
+};
+
+/**
+ * Return photos — sized for storage, since there is one on every return and
+ * nothing on it needs reading. See RETURN_PHOTO_* in the shared types.
+ */
+export const RETURN_PHOTO_PROFILE: ImageProfile = {
+  maxDimension: RETURN_PHOTO_MAX_DIMENSION,
+  qualityLadder: [RETURN_PHOTO_QUALITY, 0.6, 0.5, 0.4],
+  targetBytes: RETURN_PHOTO_TARGET_MAX_BYTES,
+};
+
+/**
  * WebP encodes photographs roughly a third smaller than JPEG at the same visible
  * quality, which is what buys the jump from 1280px to 2000px inside the same
  * budget. Support in `toBlob` is still uneven across the Android WebViews these
@@ -75,12 +111,15 @@ async function supportsWebp(): Promise<boolean> {
  * decode), but any GPS tag in the original is discarded. The app records
  * position separately via the geofencing header — it does not rely on the photo.
  */
-export async function compressImage(source: Blob): Promise<CompressedImage> {
+export async function compressImage(
+  source: Blob,
+  profile: ImageProfile = DOCUMENT_PROFILE,
+): Promise<CompressedImage> {
   const bitmap = await createImageBitmap(source);
   try {
     // min(1, …) is what makes this a cap rather than a resize: an image already
     // under the stored size keeps its own dimensions.
-    const scale = Math.min(1, ATTACHMENT_STORED_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, profile.maxDimension / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
 
@@ -108,9 +147,9 @@ export async function compressImage(source: Blob): Promise<CompressedImage> {
     const type = (await supportsWebp()) ? 'image/webp' : 'image/jpeg';
 
     let blob: Blob | null = null;
-    for (const quality of QUALITY_LADDER) {
+    for (const quality of profile.qualityLadder) {
       blob = await toBlob(canvas, type, quality);
-      if (blob && blob.size <= ATTACHMENT_TARGET_MAX_BYTES) break;
+      if (blob && blob.size <= profile.targetBytes) break;
     }
     if (!blob) throw new Error('This device could not process the photo');
 
@@ -210,6 +249,127 @@ export async function cropImage(source: Blob, area: CropArea): Promise<Blob> {
   } finally {
     bitmap.close();
   }
+}
+
+/**
+ * A photo that has been chosen and compressed but NOT uploaded.
+ *
+ * For a form whose photo should only reach the server if the form is actually
+ * submitted. `previewUrl` is an object URL over `image.blob` — it costs nothing
+ * to show and never touches the network — and whoever holds a LocalPhoto owns
+ * revoking it (`releaseLocalPhoto`).
+ */
+export interface LocalPhoto {
+  image: CompressedImage;
+  previewUrl: string;
+  /** Size of the file as it came off the camera or out of the gallery. */
+  originalBytes: number;
+}
+
+/** The one message for "that file will not do", whatever the reason underneath. */
+export const PHOTO_UNPROCESSABLE = 'Unable to process this photo. Please try another image.';
+
+/**
+ * Validate and compress a picked file into a LocalPhoto, without uploading it.
+ *
+ * Every refusal is the same sentence on purpose. "Not an image", "too large to
+ * decode" and "the decoder choked on it" all end with the user picking a
+ * different picture, and none of them is something a till operator can act on
+ * more precisely than that.
+ *
+ * There is deliberately NO fallback to the original file. An image this could
+ * not shrink is refused — uploading a 5 MB frame because compression failed is
+ * the storage growth this whole path exists to prevent.
+ */
+export async function prepareLocalPhoto(
+  source: Blob,
+  profile: ImageProfile,
+  limits: { maxOriginalBytes: number; maxBytes: number },
+): Promise<LocalPhoto> {
+  // A live-camera frame arrives as a typed JPEG blob; a File with an empty type
+  // is something the OS could not identify, which is not an image we can trust.
+  if (!source.type.startsWith('image/') || source.size === 0 || source.size > limits.maxOriginalBytes) {
+    throw new Error(PHOTO_UNPROCESSABLE);
+  }
+
+  let image: CompressedImage;
+  try {
+    image = await compressImage(source, profile);
+  } catch {
+    // createImageBitmap rejects on a corrupt or unsupported file (a HEIC on a
+    // browser that cannot decode it, a renamed PDF).
+    throw new Error(PHOTO_UNPROCESSABLE);
+  }
+  if (image.blob.size > limits.maxBytes) throw new Error(PHOTO_UNPROCESSABLE);
+
+  if (process.env.NODE_ENV !== 'production') {
+    const saved = Math.round((1 - image.blob.size / source.size) * 100);
+    console.debug(
+      `[photo] original ${formatBytes(source.size)} → optimized ${formatBytes(image.blob.size)} ` +
+        `(${image.width}×${image.height} ${image.blob.type}), reduction ${saved}%`,
+    );
+  }
+
+  return { image, previewUrl: URL.createObjectURL(image.blob), originalBytes: source.size };
+}
+
+/** `prepareLocalPhoto` with the return-photo profile and limits. */
+export function prepareReturnPhoto(source: Blob): Promise<LocalPhoto> {
+  return prepareLocalPhoto(source, RETURN_PHOTO_PROFILE, {
+    maxOriginalBytes: RETURN_PHOTO_MAX_ORIGINAL_BYTES,
+    maxBytes: RETURN_PHOTO_MAX_BYTES,
+  });
+}
+
+/** Free a LocalPhoto's preview. Safe to call with null. */
+export function releaseLocalPhoto(photo: LocalPhoto | null | undefined): void {
+  if (photo) URL.revokeObjectURL(photo.previewUrl);
+}
+
+/**
+ * Discard a photo this user uploaded and the form then could not use.
+ *
+ * Best-effort and silent: it is cleanup after a failure the user has already
+ * been told about, and the server sweeps whatever this misses. The API only
+ * ever removes the caller's own, still-unused upload, so calling it on a photo
+ * a document did end up citing does nothing.
+ */
+export async function discardAttachment(id: string, token: string): Promise<void> {
+  try {
+    await apiCall(`/api/attachments/${id}`, { method: 'DELETE' }, token);
+  } catch (err) {
+    console.warn('[photo] could not discard an unused upload; the server sweep will take it:', err);
+  }
+}
+
+/**
+ * The URL to actually put in an `<img src>` for a stored attachment.
+ *
+ * The API mints a NEW signed URL every time the parent is fetched, and this app
+ * refetches its lists every 30 seconds. Rendering `attachment.url` directly
+ * therefore changes every thumbnail's `src` twice a minute: the browser treats
+ * each as a different resource, downloads the same picture again, and the table
+ * flickers while it does.
+ *
+ * So the first URL seen for an attachment id is kept and reused until it is
+ * close to expiring. Same bytes, same URL, one download — the browser's own
+ * HTTP cache does the rest. Held in memory only: a signed URL must not outlive
+ * the page (see Attachment.url).
+ */
+const STABLE_URL_LIFETIME_MS = ATTACHMENT_URL_TTL_SECONDS * 1000 * 0.75;
+const stableUrls = new Map<string, { url: string; seenAt: number }>();
+
+export function stableAttachmentUrl(attachment: Pick<Attachment, 'id' | 'url'>): string {
+  const now = Date.now();
+  const held = stableUrls.get(attachment.id);
+  if (held && now - held.seenAt < STABLE_URL_LIFETIME_MS) return held.url;
+  stableUrls.set(attachment.id, { url: attachment.url, seenAt: now });
+  return attachment.url;
+}
+
+/** Drop a held URL that turned out to be dead, so the next render takes the fresh one. */
+export function forgetStableAttachmentUrl(id: string): void {
+  stableUrls.delete(id);
 }
 
 /** Compress and upload in one step — what every capture surface actually calls. */
