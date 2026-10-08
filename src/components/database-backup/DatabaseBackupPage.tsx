@@ -110,11 +110,19 @@ export function DatabaseBackupPage() {
   }
 
   async function onDownload(job: BackupJob, file: 'main' | 'auth') {
+    // The tab is opened NOW, inside the click, and pointed at the file once the
+    // link arrives. Safari only allows a new window during the user's own
+    // gesture; opened after the await below it was silently blocked and the
+    // button appeared to do nothing.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
     try {
       const res = await download.mutateAsync({ id: job.id, file });
-      window.open(res.url, '_blank', 'noopener');
+      if (tab) tab.location.href = res.url;
+      else window.location.assign(res.url);
       toast.info(`Download link for ${res.fileName} is valid for ${Math.round(res.expiresInSeconds / 60)} minutes`);
     } catch (err) {
+      tab?.close();
       toast.error(err instanceof Error ? err.message : 'Could not issue a download link');
     }
   }
@@ -202,9 +210,9 @@ export function DatabaseBackupPage() {
       )}
 
       {statusQ.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-56" />)}</div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-56" />)}</div>
       ) : status ? (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {(['daily', 'weekly', 'monthly'] as const).map((t) => (
             <HealthCard key={t} type={t} health={status.health[t]} job={status.latest[t]} schedule={status.schedule[t]} retentionDays={status.retention[`${t}Days`]} />
           ))}
@@ -212,7 +220,7 @@ export function DatabaseBackupPage() {
       ) : null}
 
       {status && (
-        <div className="grid gap-4 md:grid-cols-3 text-sm">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 text-sm">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <Database className="h-5 w-5 text-muted-foreground" />

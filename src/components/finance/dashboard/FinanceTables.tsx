@@ -49,7 +49,7 @@ function GranToggle({ value, onChange }: { value: Granularity; onChange: (g: Gra
           aria-pressed={value === g}
           onClick={() => onChange(g)}
           className={cn(
-            'rounded px-2.5 py-1 text-xs font-semibold capitalize transition-colors',
+            'rounded px-2.5 py-1 text-xs font-semibold capitalize transition-colors max-md:py-2',
             value === g ? 'bg-card text-foreground' : 'text-fin-ink-muted hover:text-fin-ink-foreground',
           )}
         >
@@ -80,7 +80,7 @@ function SearchBox({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-9 border-0 bg-fin-ink-field pl-8 text-xs text-fin-ink-foreground placeholder:text-fin-ink-muted md:h-8"
+        className="h-9 border-0 bg-fin-ink-field pl-8 text-base text-fin-ink-foreground placeholder:text-fin-ink-muted md:h-8 md:text-xs"
       />
     </div>
   );
@@ -504,7 +504,7 @@ export function ExpenseTable({
             value={head}
             onChange={(e) => setHead(e.target.value)}
             aria-label="Ledger head"
-            className="h-9 max-w-full rounded-md border-0 bg-fin-ink-field px-2 text-xs font-semibold text-fin-ink-foreground md:h-8"
+            className="h-9 max-w-full rounded-md border-0 bg-fin-ink-field px-2 text-base font-semibold text-fin-ink-foreground md:h-8 md:text-xs"
           >
             <option value="">All ledger heads</option>
             {heads.map((h) => (

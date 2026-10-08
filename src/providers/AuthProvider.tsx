@@ -35,6 +35,13 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
+ * How long session restore may take before the app stops waiting on it. Long
+ * enough for a token refresh on a poor branch connection; short enough that a
+ * request that will never answer does not look like a frozen app.
+ */
+const SESSION_RESTORE_TIMEOUT_MS = 10_000;
+
+/**
  * Map a Supabase auth user → the app's AuthUser, reading claims from app_metadata.
  *
  * Returns null when the account carries no recognised `role` claim. This is
@@ -131,6 +138,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Prime from any persisted session…
+    //
+    // …but not for ever. `getSession()` refreshes an expired token before it
+    // answers, and iOS resumes a Home Screen app with its sockets dead: that
+    // request can then neither succeed nor fail, `navigator.onLine` still says
+    // true, and the app sat on its loading spinner until it was force-quit. So
+    // the wait is bounded. Past the bound the last known identity is shown with
+    // no token (exactly the offline path below — nothing goes to the API), and
+    // when the refresh does land, onAuthStateChange applies the real session.
+    const stalled = window.setTimeout(() => {
+      if (!active) return;
+      const held = readIdentity();
+      if (held) {
+        setUser(held);
+        setToken('');
+      }
+      setLoading(false);
+    }, SESSION_RESTORE_TIMEOUT_MS);
+
     supabase.auth
       .getSession()
       .then(({ data }) => {
@@ -144,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (active) applySession(null);
       })
       .finally(() => {
+        window.clearTimeout(stalled);
         if (active) setLoading(false);
       });
 
@@ -155,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       active = false;
+      window.clearTimeout(stalled);
       sub.subscription.unsubscribe();
     };
   }, []);

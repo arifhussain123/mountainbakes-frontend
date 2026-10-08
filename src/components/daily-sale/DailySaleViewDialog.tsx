@@ -71,7 +71,7 @@ export function DailySaleViewDialog({
       <DialogContent
         showCloseButton
         mobile="fullscreen"
-        className="flex flex-col gap-0 overflow-hidden p-0 md:max-h-[92vh] md:w-[92vw] md:max-w-2xl md:rounded-2xl"
+        className="flex flex-col gap-0 overflow-hidden p-0 md:max-h-[92dvh] md:w-[92vw] md:max-w-2xl md:rounded-2xl"
       >
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle>Daily Sale Record</DialogTitle>

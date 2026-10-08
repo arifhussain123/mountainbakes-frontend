@@ -115,7 +115,7 @@ const box = 'rounded-lg border bg-card';
 const fieldLabel = 'text-xs font-semibold text-muted-foreground';
 const sectionLabel = 'text-xs font-semibold uppercase tracking-wider text-muted-foreground';
 const control =
-  'h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50';
+  'h-10 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:text-sm';
 
 function FinanceRecordCorrectionPopup({
   ticket,
@@ -593,7 +593,7 @@ function FinanceRecordCorrectionPopup({
                       value={draft[spec.key] ?? ''}
                       onChange={(e) => set(e.target.value.replace(/[^\d.]/g, ''))}
                       aria-invalid={bad || undefined}
-                      className="h-full min-w-0 flex-1 bg-transparent px-3 font-mono text-[15px] outline-none"
+                      className="h-full min-w-0 flex-1 bg-transparent px-3 font-mono text-base outline-none md:text-[15px]"
                     />
                   </div>
                 ) : spec.kind === 'select' ? (

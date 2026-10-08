@@ -107,7 +107,7 @@ function DrawerBody({ target, dashboardBranchId }: { target: DrillTarget; dashbo
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={`Search ${info.refLabel.toLowerCase()}, ID, branch or detail`}
                 aria-label="Search source records"
-                className="h-9 pl-8 text-sm"
+                className="h-9 pl-8 text-base md:text-sm"
               />
             </div>
           </div>

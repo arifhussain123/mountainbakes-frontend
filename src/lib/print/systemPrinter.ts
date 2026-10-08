@@ -9,6 +9,7 @@ import { buildProductionOrderDocument } from './receipt/productionOrder';
 import { buildSaleReceiptDocument } from './receipt/saleReceipt';
 import type { PaperWidth, ProductionOrderDoc, SaleReceiptDoc } from './receipt/types';
 import { InvalidDocumentError } from './receipt/validate';
+import { isIOS } from '@/utils/pwa';
 
 /**
  * POP Print — the printer this computer has installed, through the driver that
@@ -253,6 +254,23 @@ async function printInFrame(document: PrintDocument, reporter: PrintJobReporter)
       window.addEventListener('afterprint', finish);
       fallback = window.setTimeout(finish, AFTERPRINT_FALLBACK_MS);
       try {
+        if (isIOS()) {
+          // WebKit on iOS prints the TOP document whatever frame `print()` is
+          // called on, so the frame route put the app's own screen on paper.
+          // The frame has still done its job — it is where the receipt was
+          // laid out, measured and verified — and its content is now printed
+          // from the top document instead. No grace timer on this path: iOS
+          // snapshots the page for its print sheet asynchronously, and tearing
+          // the receipt out 1.5s later is how a blank preview happens. It
+          // waits for `afterprint`, or the long fallback.
+          const restore = mountInTopDocument(doc);
+          const done = () => window.setTimeout(restore, CLEANUP_DELAY_MS);
+          window.addEventListener('afterprint', done, { once: true });
+          window.setTimeout(done, AFTERPRINT_FALLBACK_MS);
+          printTrace('top-document print() called (iOS)');
+          window.print();
+          return;
+        }
         view.focus();
         printTrace('frame print() called');
         view.print();
@@ -274,6 +292,64 @@ async function printInFrame(document: PrintDocument, reporter: PrintJobReporter)
   }
 
   cleanup();
+}
+
+const IOS_PRINT_HOST_ID = 'mb-ios-print';
+
+/**
+ * Put the verified receipt into the TOP document for one print, and return the
+ * function that takes it out again. iOS only — see the call site.
+ *
+ * The receipt goes into a shadow root, which is what keeps this from being the
+ * thing `globals.css` warnings are about: the receipt's stylesheet cannot reach
+ * the app, and the app's cannot reach the receipt. Its two root selectors
+ * (`html, body` and `body`) are pointed at the shadow host, since there is no
+ * body inside a shadow tree.
+ *
+ * The gate stylesheet is the only thing that touches the page, and only under
+ * `@media print`: everything except the host is hidden, and the page box is the
+ * one `fitPage` measured (`@page` is ignored inside a shadow tree, so it has to
+ * live out here — appended last, so it wins over the global A4 rule).
+ */
+function mountInTopDocument(frameDoc: Document): () => void {
+  const host = window.document;
+  host.getElementById(IOS_PRINT_HOST_ID)?.remove();
+
+  const holder = host.createElement('div');
+  holder.id = IOS_PRINT_HOST_ID;
+  const shadow = holder.attachShadow({ mode: 'open' });
+
+  for (const style of Array.from(frameDoc.querySelectorAll('style'))) {
+    if (style.id === PAGE_STYLE_ID) continue;
+    const scoped = host.createElement('style');
+    scoped.textContent = (style.textContent ?? '')
+      .replace(/@page\s*\{[^}]*\}/g, '')
+      .replace(/\bhtml\s*,\s*body\b/g, ':host')
+      .replace(/(^|[}\s])body(\s*\{)/g, '$1:host$2');
+    shadow.appendChild(scoped);
+  }
+  const receipt = frameDoc.getElementById('mb-receipt');
+  if (receipt) shadow.appendChild(host.importNode(receipt, true));
+
+  const pageRule = frameDoc.getElementById(PAGE_STYLE_ID)?.textContent ?? '';
+  const gate = host.createElement('style');
+  gate.textContent = `
+    #${IOS_PRINT_HOST_ID} { display: none; }
+    @media print {
+      html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+      body > *:not(#${IOS_PRINT_HOST_ID}) { display: none !important; }
+      #${IOS_PRINT_HOST_ID} { display: block !important; }
+    }
+    ${pageRule}
+  `;
+
+  host.head.appendChild(gate);
+  host.body.appendChild(holder);
+
+  return () => {
+    gate.remove();
+    holder.remove();
+  };
 }
 
 /** Resolve once the frame's fonts and images are ready, or after a short cap. */

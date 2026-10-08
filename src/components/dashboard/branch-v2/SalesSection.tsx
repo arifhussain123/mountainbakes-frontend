@@ -36,7 +36,7 @@ const TOP_LIMIT = 5;
 
 /** Ghost button on a coloured banner. */
 const BANNER_BUTTON =
-  'inline-flex items-center gap-1.5 rounded-[3px] border border-white/35 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none disabled:opacity-60';
+  'inline-flex items-center gap-1.5 rounded-[3px] border border-white/35 px-2.5 py-1 max-md:py-2 text-[11px] font-semibold text-white transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none disabled:opacity-60';
 
 /**
  * Segment fills for the payment mix, in the order the API ranks the tenders.

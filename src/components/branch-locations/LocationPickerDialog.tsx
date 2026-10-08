@@ -261,7 +261,7 @@ export function LocationPickerDialog({
       <DialogContent
         showCloseButton
         mobile="fullscreen"
-        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 md:w-[80vw] md:max-w-[900px]"
+        className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden p-0 md:w-[80vw] md:max-w-[900px]"
       >
         <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
@@ -315,7 +315,7 @@ export function LocationPickerDialog({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label htmlFor="lat" className="text-xs text-muted-foreground">Latitude</label>
               <Input
@@ -351,7 +351,7 @@ export function LocationPickerDialog({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Allowed Radius</label>
               <Select

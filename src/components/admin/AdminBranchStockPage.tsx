@@ -323,10 +323,19 @@ export function AdminBranchStockPage() {
   return (
     <div className="space-y-4">
       {/* ── Controls ───────────────────────────────────────────────────────── */}
-      <div className="grid gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1">
           <Label htmlFor="stock-branch">Branch</Label>
-          <Select value={branchId} onValueChange={(v) => { if (v) { setBranchId(v); resetDrafts(); } }}>
+          {/* `items` is what lets the closed trigger show the branch NAME; without
+              it the trigger prints the raw value, i.e. the branch's UUID. */}
+          <Select
+            items={[
+              { value: ALL_BRANCHES, label: 'All branches' },
+              ...branches.map((br) => ({ value: br.id, label: br.name })),
+            ]}
+            value={branchId}
+            onValueChange={(v) => { if (v) { setBranchId(v); resetDrafts(); } }}
+          >
             <SelectTrigger id="stock-branch" className="w-full">
               <SelectValue placeholder={branchesPending ? 'Loading…' : 'Choose a branch'} />
             </SelectTrigger>

@@ -249,7 +249,7 @@ export function BranchOrderDetail({
               </p>
             </DialogHeader>
 
-            <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+            <div className="max-h-[70dvh] space-y-4 overflow-y-auto">
               {awaitingVerification && (
                 <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
                   Check the physical items received against the quantities below. Correct any shortage or

@@ -435,14 +435,20 @@ function DataTableCards<TData>({
                         'flex gap-2',
                         full
                           ? 'col-span-2 flex-col items-start gap-0.5'
-                          : 'items-baseline justify-between'
+                          // `flex-wrap`: on a 320px phone each of the two columns
+                          // is about 130px, and a label beside a value that cannot
+                          // break ("Rs. 19,387.50", a date) is wider than that. The
+                          // label never shrinks, so the value used to stick out of
+                          // the card and make the page scroll sideways. Now it
+                          // drops to its own line, still right-aligned.
+                          : 'min-w-0 flex-wrap items-baseline justify-between gap-y-0'
                       )}
                     >
                       <dt className="shrink-0 text-muted-foreground">{mobileLabel(c)}</dt>
                       <dd
                         className={cn(
                           'min-w-0 font-medium',
-                          full ? 'w-full text-left' : 'text-right tabular-nums'
+                          full ? 'w-full text-left' : 'ml-auto text-right tabular-nums'
                         )}
                       >
                         <CellContent cell={c} />
@@ -489,11 +495,11 @@ function DataTableCards<TData>({
                   return slot !== 'title' && slot !== 'subtitle';
                 })
                 .map((h) => (
-                  <div key={h.id} className="flex items-baseline justify-between gap-2">
+                  <div key={h.id} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2">
                     <dt className="shrink-0 text-muted-foreground">
                       {flexRender(h.column.columnDef.header, h.getContext())}
                     </dt>
-                    <dd className="min-w-0 text-right font-semibold tabular-nums">
+                    <dd className="ml-auto min-w-0 text-right font-semibold tabular-nums">
                       {flexRender(h.column.columnDef.footer, h.getContext())}
                     </dd>
                   </div>

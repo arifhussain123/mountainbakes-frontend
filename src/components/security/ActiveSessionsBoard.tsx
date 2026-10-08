@@ -75,7 +75,7 @@ export function ActiveSessionsBoard({
   if (q.isLoading) {
     return (
       <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
         </div>
         {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
@@ -127,7 +127,7 @@ export function ActiveSessionsBoard({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard title="Live sessions" value={data?.totalSessions ?? 0} icon={MonitorSmartphone} color="blue" />
         <StatCard title="Accounts signed in" value={data?.totalUsers ?? 0} icon={Users} color="blue" />
         <StatCard

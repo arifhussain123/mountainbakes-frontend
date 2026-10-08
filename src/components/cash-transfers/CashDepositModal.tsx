@@ -253,7 +253,7 @@ export function CashDepositModal({
         onOpenChange(o);
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+      <DialogContent className="overflow-y-auto md:max-w-lg">
         {face === 'clear' ? (
           <>
             <DialogHeader>
@@ -323,7 +323,7 @@ export function CashDepositModal({
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="cash-deposit-popup-date">Date</Label>
                   <Input

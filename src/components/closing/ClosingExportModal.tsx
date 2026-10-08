@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { FileSpreadsheet, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveBlob } from '@/utils/saveBlob';
 
 export interface ClosingExportModalProps {
   open: boolean;
@@ -46,14 +47,7 @@ export function ClosingExportModal({ open, onOpenChange, token, defaultDate }: C
         token,
       );
       const window = from === to ? from : `${from}_to_${to}`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mountain-bakes-closing-${window}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      saveBlob(blob, `mountain-bakes-closing-${window}.xlsx`);
       toast.success('Excel exported');
       onOpenChange(false);
     } catch (err) {

@@ -3,7 +3,7 @@ import { IMAGES } from '@/utils/images';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-dvh flex">
       {/* ── Hero panel (desktop only) ── */}
       <div className="hidden lg:flex w-[52%] xl:w-[55%] flex-col bg-gradient-to-br from-[oklch(0.38_0.10_47)] via-[oklch(0.26_0.08_47)] to-[oklch(0.16_0.05_47)] relative overflow-hidden">
 

@@ -200,7 +200,7 @@ export function DiscountModal({
         onOpenChange(o);
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+      <DialogContent className="overflow-y-auto md:max-w-lg">
         {/* ── Face 3: withdrawal confirmation ────────────────────────────────
             The whole popup turns over rather than stacking a second modal. */}
         {withdrawing ? (

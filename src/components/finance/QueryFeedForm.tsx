@@ -143,7 +143,7 @@ export function feedChangeLabels(diff: Record<string, unknown>): string[] {
 
 const PREFIX_HINT = FINANCE_TICKET_PREFIXES.map((p) => `${p}-…`).join(', ');
 
-const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-sm md:h-9';
+const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-base md:h-9 md:text-sm';
 
 export function QueryFeedForm({
   value,
@@ -245,7 +245,7 @@ export function QueryFeedForm({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1">
           <Label htmlFor={id('amount')}>Amount</Label>
           <Input
@@ -347,7 +347,7 @@ export function QueryFeedForm({
       )}
 
       {handles.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {handles.includes('transactionRef') && (
             <div className="space-y-1">
               <Label htmlFor={id('txn')}>Transaction ID</Label>

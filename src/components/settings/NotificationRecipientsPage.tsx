@@ -164,7 +164,7 @@ export function NotificationRecipientsPage() {
             Who receives the 2:00 AM closing summary. Each branch number gets only that branch’s figures.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setShowLogs(true)}>
             <ScrollText className="h-4 w-4 mr-1" /> Delivery Log
           </Button>
@@ -429,7 +429,7 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
         <FilterBar list={list} filters={filters} searchable={false} />
         <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div className="max-h-[50dvh] overflow-y-auto">
           {loading ? (
             <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
           ) : logs.length === 0 ? (

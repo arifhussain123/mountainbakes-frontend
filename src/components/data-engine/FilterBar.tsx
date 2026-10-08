@@ -83,8 +83,11 @@ export function FilterBar({
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
+      {/* `sm:flex-wrap` + `min-w-0`: on a tablet in portrait the sidebar leaves
+          this row about 510px, less than the filters and the actions need side
+          by side. Without the wrap the actions were pushed past the right edge. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex w-full min-w-0 flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
           {leading}
           {searchable && (
             <GenericSearch value={list.state.search} onChange={list.setSearch} placeholder={searchPlaceholder} />

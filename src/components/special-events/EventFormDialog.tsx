@@ -192,7 +192,7 @@ export function EventFormDialog({
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1 sm:col-span-2">
               <Label>Event Name</Label>
               <Input {...form.register('name')} placeholder="Eid-ul-Fitr" />
@@ -419,7 +419,7 @@ export function EventFormDialog({
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>Confirmed Date (optional)</Label>
               <Input

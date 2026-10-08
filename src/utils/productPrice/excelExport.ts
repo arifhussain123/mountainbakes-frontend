@@ -1,6 +1,7 @@
 import { apiCall } from '@/utils/api';
 import { resolveToken } from './config';
 import type { PriceOpts } from './productPrice';
+import { saveBlob } from '@/utils/saveBlob';
 
 /**
  * Spreadsheet exports. All generation happens server-side via exceljs; the
@@ -16,15 +17,7 @@ export type ExportType = 'excel' | 'csv';
 /** Fetch a blob and save it. One definition of the download dance. */
 async function downloadBlob(endpoint: string, filename: string, token: string): Promise<void> {
   const blob = await apiCall<Blob>(endpoint, {}, token);
-  const url = URL.createObjectURL(blob);
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  saveBlob(blob, filename);
 }
 
 const stamp = () => new Date().toISOString().slice(0, 10);

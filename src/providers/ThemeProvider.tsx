@@ -51,10 +51,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const storedTheme: Theme = localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
-    const savedAccent = localStorage.getItem(ACCENT_KEY) as Accent | null;
-    setTheme(storedTheme);
-    setAccent(savedAccent && ACCENT_VALUES.includes(savedAccent) ? savedAccent : 'orange');
+    // Guarded: storage access THROWS in Safari with site data blocked, and an
+    // exception in this root effect replaces the whole app with the error page.
+    // Without storage the theme simply is not remembered.
+    try {
+      const storedTheme: Theme = localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+      const savedAccent = localStorage.getItem(ACCENT_KEY) as Accent | null;
+      setTheme(storedTheme);
+      setAccent(savedAccent && ACCENT_VALUES.includes(savedAccent) ? savedAccent : 'orange');
+    } catch {
+      /* defaults stand */
+    }
     setMounted(true);
   }, []);
 
@@ -62,13 +69,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (!mounted) return;
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
-    localStorage.setItem(STORAGE_KEY, theme);
+    try {
+      localStorage.setItem(STORAGE_KEY, theme);
+    } catch {
+      /* not remembered */
+    }
   }, [theme, mounted]);
 
   useEffect(() => {
     if (!mounted) return;
     document.documentElement.setAttribute('data-accent', accent);
-    localStorage.setItem(ACCENT_KEY, accent);
+    try {
+      localStorage.setItem(ACCENT_KEY, accent);
+    } catch {
+      /* not remembered */
+    }
   }, [accent, mounted]);
 
   return (

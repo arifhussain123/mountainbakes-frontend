@@ -24,6 +24,7 @@ import type {
   ResourceMeta,
 } from '@mb/shared';
 import { toApiSearchParams } from './listState';
+import { saveBlob } from '@/utils/saveBlob';
 
 /** Matches `LIVE_STALE_TIME` in lib/queries.ts — intraday figures. */
 export const LIVE_STALE_TIME = 15_000;
@@ -134,12 +135,5 @@ export async function exportResource(
   const blob = await apiCall<Blob>(`/api/data/${resource}/export?${params.toString()}`, {}, token);
   const stamp = new Date().toISOString().slice(0, 10);
   const name = `${opts.fileName ?? `mountain-bakes-${resource}`}-${stamp}.${opts.format === 'csv' ? 'csv' : 'xlsx'}`;
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(blob, name);
 }

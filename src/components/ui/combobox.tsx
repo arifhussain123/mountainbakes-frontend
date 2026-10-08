@@ -17,7 +17,7 @@ function ComboboxInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
       <ComboboxPrimitive.Input
         data-slot="combobox-input"
         className={cn(
-          "flex h-10 w-full items-center rounded-lg border border-input bg-transparent py-2 pr-8 pl-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
+          "flex h-10 w-full items-center rounded-lg border border-input bg-transparent py-2 pr-8 pl-2.5 text-base outline-none md:text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
           className
         )}
         {...props}
@@ -103,7 +103,10 @@ function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
   return (
     <ComboboxPrimitive.Empty
       data-slot="combobox-empty"
-      className={cn("py-6 text-center text-sm text-muted-foreground", className)}
+      // Base UI keeps this element mounted (it is a live region) and only empties
+      // it when there are matches — so its padding has to go with its content, or
+      // every list opens with 48px of blank space above the first row.
+      className={cn("py-6 text-center text-sm text-muted-foreground empty:p-0", className)}
       {...props}
     />
   )

@@ -15,6 +15,7 @@ import { ShoppingCart, DollarSign, TrendingDown, TrendingUp, BarChart3, Receipt 
 import type { ReportSummary } from '@mb/shared';
 import { toast } from 'sonner';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { saveBlob } from '@/utils/saveBlob';
 
 const PERIODS = [
   { value: 'daily', label: 'Today' },
@@ -46,12 +47,7 @@ export function ReportsPage() {
     try {
       const blob = await apiCall<Blob>(`/api/reports/export?type=${type}&period=${period}`, {}, token);
       const ext = type === 'excel' ? 'xlsx' : type;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `mountain-bakes-report-${period}.${ext}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveBlob(blob, `mountain-bakes-report-${period}.${ext}`);
       toast.success(`${type.toUpperCase()} exported`);
     } catch {
       toast.error('Export failed');

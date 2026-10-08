@@ -221,7 +221,7 @@ export function EventDemandForm({ event }: { event: SpecialEventView }) {
                     </Button>
                   )}
                 </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-[8rem_1fr]">
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[8rem_1fr]">
                   <div className="space-y-1">
                     <Label htmlFor={`qty-${line.productId}`}>Quantity</Label>
                     <Input
@@ -249,7 +249,7 @@ export function EventDemandForm({ event }: { event: SpecialEventView }) {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="expected-customers">Expected customers</Label>
             <Input

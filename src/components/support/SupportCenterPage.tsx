@@ -649,7 +649,7 @@ function ViewDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClos
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+        <div className="space-y-3 max-h-[60dvh] overflow-y-auto pr-1">
           {reference && <ReferenceDetail reference={reference} />}
           {/* A sale's lines, exactly as the branch's Sale view prints them. */}
           {reference?.saleItems && reference.saleItems.length > 0 && (
@@ -896,7 +896,7 @@ function SaleItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[60dvh] overflow-y-auto pr-1">
           {/* The branch's own sale detail — customer, mobile, date & time, money row,
               tender, status, who sold it — so both sides read one document. */}
           <ReferenceDetail reference={reference} />
@@ -1254,7 +1254,7 @@ function DemandItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
             <span>Product</span><span className="text-center">Requested</span><span className="text-center">Approved</span><span />
           </div>
           {rows.map((r) => (
-            <div key={r.key} className="grid gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_6rem_6rem_2rem] sm:items-end sm:border-0 sm:p-0">
+            <div key={r.key} className="grid grid-cols-1 gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_6rem_6rem_2rem] sm:items-end sm:border-0 sm:p-0">
               <LineField label="Product">
                 <Combobox
                   items={products}
@@ -2038,7 +2038,7 @@ function ProductionStockFiguresDialog({ ticket, onClose, onDone }: { ticket: Sup
         ) : !figures ? (
           <p className="text-sm text-muted-foreground">Current pool figures are unavailable.</p>
         ) : (
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[60dvh] overflow-y-auto pr-1">
             <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
               {/* No Opening row, unlike the branch dialog, and no running pool
                   total. The Production Stock page reads the pool as the day it had

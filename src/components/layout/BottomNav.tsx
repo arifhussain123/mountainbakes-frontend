@@ -78,7 +78,7 @@ export function BottomNav() {
       </nav>
 
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-        <SheetContent side="bottom" className="max-h-[80vh] pb-[env(safe-area-inset-bottom)]">
+        <SheetContent side="bottom" className="max-h-[80dvh] pb-[env(safe-area-inset-bottom)]">
           <SheetHeader>
             <SheetTitle>All screens</SheetTitle>
           </SheetHeader>

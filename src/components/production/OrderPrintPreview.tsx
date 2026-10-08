@@ -98,7 +98,7 @@ export function OrderPrintPreview({ open, onOpenChange, order, settings, token, 
       <DialogContent
         showCloseButton
         mobile="fullscreen"
-        className="flex flex-col gap-0 overflow-hidden p-0 md:max-h-[92vh] md:w-[90vw] md:max-w-[90vw] md:rounded-2xl lg:w-[80vw] lg:max-w-[960px]"
+        className="flex flex-col gap-0 overflow-hidden p-0 md:max-h-[92dvh] md:w-[90vw] md:max-w-[90vw] md:rounded-2xl lg:w-[80vw] lg:max-w-[960px]"
       >
         {order && (
           <PreviewBody
@@ -529,7 +529,7 @@ function PreviewBody({
               stock has already moved on the branch's own count, and this is the
               only independent record of a delivery nobody here can re-inspect. */}
           {((order.demandPhotos?.length ?? 0) > 0 || (order.verificationPhotos?.length ?? 0) > 0) && (
-            <div className="mt-4 grid gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:grid-cols-2">
               {(order.demandPhotos?.length ?? 0) > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -1000,7 +1000,7 @@ function PreviewBody({
       </PrintPortal>
 
       {shortage && (
-        <div className="no-print max-h-[40vh] shrink-0 overflow-y-auto border-t bg-card px-4 pt-3">
+        <div className="no-print max-h-[40dvh] shrink-0 overflow-y-auto border-t bg-card px-4 pt-3">
           <RestrictionNotice restriction={shortage} />
         </div>
       )}
@@ -1019,7 +1019,7 @@ function PreviewBody({
       )}
 
       {/* Action bar — hidden on print */}
-      <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="no-print shrink-0 flex flex-wrap items-center justify-end gap-2 border-t bg-card px-4 py-3">
         <Button variant="outline" onClick={onClose} disabled={reviewing}>Close</Button>
         {/* The branch has counted the goods and stock has already moved; this is
             Production's closing sign-off. No Reject beside it on purpose —
@@ -1370,7 +1370,7 @@ function PrintCopy({
               Amount to Collect above. */}
           {paymentRows.length > 0 && (
             <div className="avoid-break mt-1.5">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Payments Received (Since Last Order)</p>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Payments Received (Since Last Order, Full Days)</p>
               <table className="w-full border-collapse text-[9px] leading-tight">
                 <thead>
                   <tr className="border-y border-neutral-400 text-left">

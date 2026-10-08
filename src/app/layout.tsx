@@ -10,6 +10,7 @@ import { InstallPrompt } from '@/components/pwa/InstallPrompt';
 import { NetworkStatus } from '@/components/pwa/NetworkStatus';
 import { OfflineCache } from '@/components/pwa/OfflineCache';
 import { OrientationLock } from '@/components/pwa/OrientationLock';
+import { KeyboardInset } from '@/components/pwa/KeyboardInset';
 import { appleStartupImages } from '@/utils/pwa-splash';
 import './globals.css';
 
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <OfflineCache />
               <InstallPrompt />
               <OrientationLock />
+              <KeyboardInset />
               <Toaster richColors position="top-right" />
             </AuthProvider>
           </QueryProvider>

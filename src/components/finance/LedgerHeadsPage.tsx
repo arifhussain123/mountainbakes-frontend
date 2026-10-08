@@ -92,7 +92,7 @@ export function LedgerHeadsPage() {
       </Tabs>
 
       <Dialog open={creating !== null} onOpenChange={(open) => !open && setCreating(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>New {creating} head</DialogTitle>
           </DialogHeader>
@@ -101,7 +101,7 @@ export function LedgerHeadsPage() {
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit {editing?.name}</DialogTitle>
           </DialogHeader>

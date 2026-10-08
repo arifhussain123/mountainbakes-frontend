@@ -107,7 +107,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-sm md:h-9';
+const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-base md:h-9 md:text-sm';
 
 // ---------------------------------------------------------------------------
 // Audit History (§5, §7) — the chronological trail
@@ -192,7 +192,7 @@ export function HistoryDialog({ ticket, onClose }: { ticket: FinanceTicket; onCl
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto md:max-w-2xl">
+      <DialogContent className="overflow-y-auto md:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <History className="h-4 w-4" /> Version History
@@ -601,7 +601,7 @@ function CorrectRecordDialog({
     const resolved = result.ticket.status === 'resolved';
     return (
       <Dialog open onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
               <CheckCircle2 className="h-5 w-5" /> Finance record corrected
@@ -661,7 +661,7 @@ function CorrectRecordDialog({
   if (phase === 'confirm') {
     return (
       <Dialog open onOpenChange={(v) => !v && !mutation.isPending && setPhase('edit')}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
+        <DialogContent className="overflow-y-auto md:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{resolveIntent ? 'Apply changes and resolve query?' : `Apply these changes to ${ticket.referenceNo}?`}</DialogTitle>
             <DialogDescription>
@@ -671,7 +671,7 @@ function CorrectRecordDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
             <RecordSide title="Current record" tone="muted">
               {fields.map((spec) => (
                 <SideRow key={spec.key} label={spec.label} value={shown(spec, current[spec.key] ?? '')} />
@@ -732,7 +732,7 @@ function CorrectRecordDialog({
   // ---- Edit ----
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
+      <DialogContent className="overflow-y-auto md:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             Correct record — <span className="font-mono">{ticket.referenceNo}</span>
@@ -779,7 +779,7 @@ function CorrectRecordDialog({
               </p>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {fields.map((spec) => {
                 const id = `cr-${spec.key}`;
                 const change = changes.find((c) => c.spec.key === spec.key);
@@ -1091,7 +1091,7 @@ export function StatusDialog({
 
         <div className="space-y-4">
           {terminal && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="st-resolution-type">Resolution type</Label>
                 <select
@@ -1425,7 +1425,7 @@ function ResponsePanel({ ticket, isAdmin, onSaved }: { ticket: FinanceTicket; is
             <Label htmlFor="rp-response">Admin response</Label>
             <Textarea id="rp-response" value={response} onChange={(e) => setResponse(e.target.value)} rows={3} placeholder="What you found, or what was done. The raiser reads this." />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="rp-resolution">Resolution</Label>
               <Textarea id="rp-resolution" value={resolution} onChange={(e) => setResolution(e.target.value)} rows={2} placeholder="Optional — the closing detail" />
@@ -1560,7 +1560,7 @@ export function QuickFeedDialog({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-2xl">
+      <DialogContent className="overflow-y-auto md:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             {title} <span className="font-mono">{ticket.queryNo}</span>
@@ -2152,7 +2152,7 @@ export function FinanceQueryDetailDialog({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-4xl">
+      <DialogContent className="overflow-y-auto md:max-w-4xl">
         {isLoading || (!ticket && !error) ? (
           <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading query…
