@@ -1370,7 +1370,7 @@ function PrintCopy({
               Amount to Collect above. */}
           {paymentRows.length > 0 && (
             <div className="avoid-break mt-1.5">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Payments Received (Since Last Order)</p>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">Payments Received (Since Last Order, Full Days)</p>
               <table className="w-full border-collapse text-[9px] leading-tight">
                 <thead>
                   <tr className="border-y border-neutral-400 text-left">
