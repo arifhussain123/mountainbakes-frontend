@@ -96,9 +96,17 @@ function DialogContent({
             // own header and footer, and that removed a padding-based inset —
             // leaving their action bar on top of the iPhone home indicator. A
             // border survives `p-0`, and the background still paints under it.
-            : "inset-x-0 top-0 bottom-(--kb,0px) rounded-none border-b-[length:env(safe-area-inset-bottom)] border-transparent",
-          // md and up: the centred modal, positioned exactly as it always was.
-          "md:top-1/2 md:right-auto md:bottom-auto md:left-1/2 md:h-auto md:max-h-[90dvh] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border-b-0 md:pb-4",
+            //
+            // `--vv-top`: Chrome pans the visual viewport to reveal a focused
+            // field, which left a `top-0` page with its header and close button
+            // above the visible area. Following the pan keeps the dialog on
+            // exactly the part of the screen that can be seen.
+            : "inset-x-0 top-(--vv-top,0px) bottom-(--kb,0px) rounded-none border-b-[length:env(safe-area-inset-bottom)] border-transparent",
+          // md and up: the centred modal. Centred in, and capped to, what the
+          // keyboard leaves — on a tablet the keyboard otherwise covered the
+          // lower half of the modal, footer included. With no keyboard `--kb`
+          // is unset and both expressions reduce to the plain 50% / 90dvh.
+          "md:top-[calc(var(--vv-top,0px)+(100dvh-var(--kb,0px))/2)] md:right-auto md:bottom-auto md:left-1/2 md:h-auto md:max-h-[min(90dvh,calc(100dvh-var(--kb,0px)-1rem))] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border-b-0 md:pb-4",
           // Slides up from the bottom on a phone, zooms in place on a desktop.
           "data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-bottom-4 data-closed:animate-out data-closed:fade-out-0 data-closed:slide-out-to-bottom-4",
           "md:data-open:slide-in-from-bottom-0 md:data-open:zoom-in-95 md:data-closed:slide-out-to-bottom-0 md:data-closed:zoom-out-95",

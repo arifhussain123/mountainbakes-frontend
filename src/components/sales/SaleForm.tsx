@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import { Separator } from '@/components/ui/separator';
 import { usePrintCapability } from '@/hooks/usePrintCapability';
+import { useKeepFocusedFieldVisible } from '@/hooks/useKeepFocusedFieldVisible';
 import { Trash2, Plus, Printer, Download, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { RestrictionNotice } from '@/components/shared/RestrictionNotice';
@@ -135,6 +136,11 @@ export function SaleForm({
 }) {
   const { token } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+  // `submitting` only disables the buttons on the NEXT render, and validation is
+  // async — two fast taps both got through to the POST. The ref closes that gap.
+  const submittingRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useKeepFocusedFieldVisible(scrollRef);
   /**
    * Hourly sales activity (Restriction Rules, migration 136) — branch POS sales
    * only; the production counter's endpoint is not subject to it. The server
@@ -279,6 +285,8 @@ export function SaleForm({
   }
 
   async function onSubmit(data: CreateProductionSaleInput) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     const shouldPrint = printRef.current;
     printRef.current = false;
     setSubmitting(true);
@@ -374,25 +382,45 @@ export function SaleForm({
         toast.error(err instanceof Error ? err.message : 'Failed to save sale');
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
+  const cashReturned = receivedNum != null && receivedNum >= grandTotal ? receivedNum - grandTotal : null;
+
+  // The full breakdown. Rendered in ONE of two places — see the footer comment.
+  const totals = (
+    <div className="rounded-lg border bg-muted p-3 space-y-1.5 text-sm">
+      <div className="flex justify-between gap-3"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{cur} {grossSubtotal.toLocaleString()}</span></div>
+      <div className="flex justify-between gap-3"><span className="text-muted-foreground">Discount</span><span className="tabular-nums">-{cur} {discountTotal.toLocaleString()}</span></div>
+      <div className="flex justify-between gap-3"><span className="text-muted-foreground">Government Tax</span><span className="tabular-nums">{cur} {taxAmount.toLocaleString()}</span></div>
+      <Separator />
+      <div className="flex justify-between gap-3 font-bold text-base"><span>Grand Total</span><span className="text-primary tabular-nums">{cur} {grandTotal.toLocaleString()}</span></div>
+      {isCash && (
+        <>
+          <div className="flex justify-between gap-3"><span className="text-muted-foreground">Received Cash</span><span className="tabular-nums">{receivedNum != null ? `${cur} ${receivedNum.toLocaleString()}` : '—'}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-muted-foreground">Cash Returned</span><span className="tabular-nums">{cashReturned != null ? `${cur} ${cashReturned.toLocaleString()}` : '—'}</span></div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex min-h-0 flex-1 flex-col">
       {/* Scrollable body — only this region scrolls; header and footer stay put */}
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
         {/* Customer */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Customer (optional)</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label>Customer Name</Label>
-              <Input placeholder="Walking Customer" {...form.register('customerName')} />
+              <Label htmlFor="sale-customer-name">Customer Name</Label>
+              <Input id="sale-customer-name" placeholder="Walking Customer" autoComplete="off" enterKeyHint="next" {...form.register('customerName')} />
             </div>
             <div className="space-y-1">
-              <Label>Mobile Number</Label>
-              <Input placeholder="Optional" {...form.register('customerPhone')} />
+              <Label htmlFor="sale-customer-phone">Mobile Number</Label>
+              <Input id="sale-customer-phone" type="tel" inputMode="tel" placeholder="Optional" autoComplete="off" enterKeyHint="next" {...form.register('customerPhone')} />
             </div>
           </div>
         </div>
@@ -454,7 +482,7 @@ export function SaleForm({
                         itemToStringValue={(p: Product) => p.id}
                         isItemEqualToValue={(a: Product, b: Product) => a?.id === b?.id}
                       >
-                        <ComboboxInput placeholder="Search product…" />
+                        <ComboboxInput placeholder="Search product…" aria-label={`Product, item ${i + 1}`} />
                         <ComboboxContent>
                           <ComboboxEmpty>No products found.</ComboboxEmpty>
                           <ComboboxList>
@@ -485,6 +513,7 @@ export function SaleForm({
                         step={1}
                         inputMode="numeric"
                         className="h-10 text-center"
+                        aria-label={`Quantity, item ${i + 1}`}
                         disabled={out}
                         onKeyDown={(e) => { if (['e', 'E', '+', '-', '.', ','].includes(e.key)) e.preventDefault(); }}
                         {...form.register(`items.${i}.qty`, { valueAsNumber: true })}
@@ -507,6 +536,7 @@ export function SaleForm({
                         inputMode="decimal"
                         placeholder="0 or 10%"
                         className="h-10"
+                        aria-label={`Discount, item ${i + 1}`}
                         disabled={out}
                         value={discountRaw[field.id] ?? ''}
                         onChange={(e) => {
@@ -526,14 +556,15 @@ export function SaleForm({
                       </div>
                     </div>
 
-                    {/* Remove row */}
-                    <div className="col-span-2 flex justify-end sm:col-span-1 sm:justify-center">
-                      {fields.length > 1 && (
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => remove(i)}>
+                    {/* Remove row. Not rendered for a lone item: on a phone the empty
+                        cell still cost a grid row of height it could not spare. */}
+                    {fields.length > 1 && (
+                      <div className="col-span-2 flex justify-end sm:col-span-1 sm:justify-center">
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive" aria-label={`Remove item ${i + 1}`} onClick={() => remove(i)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Availability + real-time status (renders directly under the affected row,
@@ -583,9 +614,10 @@ export function SaleForm({
               <button
                 key={m}
                 type="button"
+                aria-pressed={paymentMethod === m}
                 onClick={() => form.setValue('paymentMethod', m as PaymentMethod)}
                 className={cn(
-                  'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                  'min-h-11 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
                   paymentMethod === m ? 'border-primary bg-primary/10 text-primary' : 'border-input hover:bg-accent',
                 )}
               >
@@ -602,13 +634,16 @@ export function SaleForm({
             column on the sales table read '—' for nearly every branch row. */}
         {isCash && (
           <div className="space-y-1">
-            <Label>Received Cash</Label>
+            <Label htmlFor="sale-received-cash">Received Cash</Label>
             <Input
+              id="sale-received-cash"
               type="number"
               min={0}
               inputMode="decimal"
+              enterKeyHint="done"
               placeholder="0"
               className="h-11 text-base"
+              onKeyDown={(e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); }}
               {...form.register('receivedCash', {
                 // NOT valueAsNumber: an empty/cleared number input yields NaN, and
                 // z.number().optional() rejects NaN (it's a number, so .optional()
@@ -625,8 +660,9 @@ export function SaleForm({
         )}
 
         <div className="space-y-1">
-          <Label>{isUnpaid ? 'Comment *' : 'Notes (optional)'}</Label>
+          <Label htmlFor="sale-notes">{isUnpaid ? 'Comment *' : 'Notes (optional)'}</Label>
           <Textarea
+            id="sale-notes"
             placeholder={isUnpaid ? 'Who is taking this, and why? (required)' : 'Any notes…'}
             aria-invalid={isUnpaid && !!form.formState.errors.notes}
             {...form.register('notes')}
@@ -637,26 +673,49 @@ export function SaleForm({
             </p>
           )}
         </div>
+
+        {/* Phone / keyboard-open home of the breakdown: the last thing in the
+            scrolling body, so it costs the screen nothing until it is scrolled to. */}
+        <div className="md:hidden kb-open:block">{totals}</div>
       </div>
 
-      {/* Sticky footer — totals + actions stay in view while the item list scrolls */}
-      <div className="shrink-0 space-y-3 border-t bg-background px-4 py-3 sm:px-5">
-        <div className="rounded-lg border bg-muted p-3 space-y-1.5 text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{cur} {grossSubtotal.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span className="tabular-nums">-{cur} {discountTotal.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Government Tax</span><span className="tabular-nums">{cur} {taxAmount.toLocaleString()}</span></div>
-          <Separator />
-          <div className="flex justify-between font-bold text-base"><span>Grand Total</span><span className="text-primary tabular-nums">{cur} {grandTotal.toLocaleString()}</span></div>
+      {/* Sticky footer — total + actions stay in view while the body scrolls.
+
+          The full breakdown lives here only when there is height to spare (md and
+          up, no keyboard). It used to live here always, and on a phone that was
+          the bug: header + six summary rows + buttons are ~340px that never
+          scroll, and with the keyboard up a 720×1600 phone has ~480px in total —
+          leaving the fields a strip too short to show the one being typed into.
+          The phone footer is a single line carrying the two figures a cashier
+          acts on (what to charge, what to hand back) above the Save buttons. */}
+      <div className="shrink-0 space-y-3 border-t bg-background px-4 py-3 kb-open:space-y-2 kb-open:py-2 sm:px-5">
+        <div className="hidden md:block kb-open:hidden">{totals}</div>
+
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 md:hidden kb-open:flex" aria-live="polite">
+          <span className="text-base font-bold">
+            <span className="mr-1.5 text-sm font-medium text-muted-foreground">Grand Total</span>
+            <span className="text-primary tabular-nums">{cur} {grandTotal.toLocaleString()}</span>
+          </span>
           {isCash && (
-            <>
-              <div className="flex justify-between"><span className="text-muted-foreground">Received Cash</span><span className="tabular-nums">{receivedNum != null ? `${cur} ${receivedNum.toLocaleString()}` : '—'}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Cash Returned</span><span className="tabular-nums">{receivedNum != null && receivedNum >= grandTotal ? `${cur} ${(receivedNum - grandTotal).toLocaleString()}` : '—'}</span></div>
-            </>
+            receivedNum == null ? (
+              <span className="text-sm text-muted-foreground">Enter received cash</span>
+            ) : cashReturned != null ? (
+              <span className="text-sm font-semibold tabular-nums">
+                <span className="mr-1.5 font-medium text-muted-foreground">Cash Returned</span>
+                {cur} {cashReturned.toLocaleString()}
+              </span>
+            ) : (
+              <span className="text-sm font-semibold text-red-700 tabular-nums dark:text-red-400">
+                Short by {cur} {(grandTotal - receivedNum).toLocaleString()}
+              </span>
+            )
           )}
         </div>
 
+        {/* The one-line footer already says "Short by …"; a second line here would
+            grow and shrink the footer on every keystroke of the amount. */}
         {isCash && cashShort && receivedNum != null && (
-          <p className="text-center text-sm font-medium text-red-700 dark:text-red-400">
+          <p className="hidden text-center text-sm font-medium text-red-700 md:block kb-open:hidden dark:text-red-400">
             ❌ Received cash is less than the Grand Total.
           </p>
         )}

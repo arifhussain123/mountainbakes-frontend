@@ -3,6 +3,10 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* On-screen keyboard is up (KeyboardInset sets `data-kb` on <html>). Deliberately
+   NOT wrapped in :where() — it has to outrank a breakpoint utility on the same
+   element, e.g. `md:block kb-open:hidden`. */
+@custom-variant kb-open (html[data-kb] &);
 
 /* Fluid type scale.
    Every `text-*` utility interpolates with the viewport instead of sitting at one

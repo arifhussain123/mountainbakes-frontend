@@ -103,7 +103,10 @@ function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
   return (
     <ComboboxPrimitive.Empty
       data-slot="combobox-empty"
-      className={cn("py-6 text-center text-sm text-muted-foreground", className)}
+      // Base UI keeps this element mounted (it is a live region) and only empties
+      // it when there are matches — so its padding has to go with its content, or
+      // every list opens with 48px of blank space above the first row.
+      className={cn("py-6 text-center text-sm text-muted-foreground empty:p-0", className)}
       {...props}
     />
   )
