@@ -8,6 +8,7 @@ import { useBranches, useProducts, useProductionReturns, useReviewReturn } from 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
+import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
@@ -241,6 +242,15 @@ export function ProductionReturnsPage() {
       cell: (i) => <span className="text-muted-foreground text-xs">{i.getValue()}</span>,
     }),
     col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-muted-foreground" /> }),
+    // Not sortable — there is nothing to order a picture by. A small fixed
+    // thumbnail; the full photo opens from it. Rows without one show a dash.
+    col.display({
+      id: 'photo',
+      header: 'Photo',
+      enableSorting: false,
+      meta: { align: 'center', mobileLabel: 'Photo' },
+      cell: ({ row }) => <ReturnPhoto row={row.original} />,
+    }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
@@ -362,6 +372,11 @@ export function ProductionReturnsPage() {
                     basis for choosing Reject over Send Back. */}
                 <dt className="col-span-2 pt-1 text-muted-foreground">Reason</dt>
                 <dd className="col-span-2 rounded-md bg-muted/40 p-2.5">{viewRow.reason || '—'}</dd>
+
+                {/* What the branch photographed, next to what it claimed — the
+                    thing to check before choosing Approve. */}
+                <dt className="col-span-2 pt-1 text-muted-foreground">Photo</dt>
+                <dd className="col-span-2"><ReturnPhoto row={viewRow} size="sm" /></dd>
               </dl>
 
               {viewRow.status === 'pending' && (

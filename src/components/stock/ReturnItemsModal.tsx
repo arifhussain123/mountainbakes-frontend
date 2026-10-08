@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall, ApiError } from '@/utils/api';
 import { type StockRow, businessDateStr, karachiTimeStr } from '@mb/shared';
@@ -18,6 +18,14 @@ import {
 } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
+import { LocalPhotoCapture } from '@/components/shared/LocalPhotoCapture';
+import {
+  discardAttachment,
+  prepareReturnPhoto,
+  releaseLocalPhoto,
+  uploadAttachment,
+  type LocalPhoto,
+} from '@/lib/attachments';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
@@ -77,6 +85,18 @@ export function ReturnItemsModal({
   const [reason, setReason] = useState('');
   const [stamp, setStamp] = useState({ date: '', time: '' });
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * The return photo — chosen and compressed, NOT uploaded. It only goes to the
+   * server from `onSave`, so cancelling this dialog stores nothing anywhere.
+   */
+  const [photo, setPhoto] = useState<LocalPhoto | null>(null);
+  /** Save was pressed without a photo — only then does the field complain. */
+  const [photoMissing, setPhotoMissing] = useState(false);
+
+  // The photo's preview is an object URL, which pins the blob in memory until it
+  // is revoked. This releases whichever photo is being let go of — replaced,
+  // removed, cleared on reopen — and the last one when the dialog unmounts.
+  useEffect(() => () => releaseLocalPhoto(photo), [photo]);
 
   // Only products with stock on hand can be returned.
   const returnable = useMemo(
@@ -98,6 +118,8 @@ export function ReturnItemsModal({
       setStamp({ date: businessDateStr(now), time: karachiTimeStr(now) });
       setReturnRows([{ ...EMPTY_ROW }]);
       setReason('');
+      setPhoto(null);
+      setPhotoMissing(false);
     }
   }
 
@@ -152,10 +174,45 @@ export function ReturnItemsModal({
   const totalUnits = selected.reduce((sum, s) => sum + s.qty, 0);
   const valid = selected.length > 0 && !anyExceeds;
 
+  /**
+   * Upload the photo, THEN submit the return citing it.
+   *
+   * That order is forced: the return request carries the photo's id, so the
+   * photo has to exist first. It leaves one thing to tidy — a photo uploaded for
+   * a return the server then refuses — and the `catch` below does it.
+   */
   async function onSave() {
     if (!valid) return;
+    // A photo is required on every return. Said here, on the button press,
+    // rather than by disabling Save: a greyed-out button does not tell anyone
+    // what is missing, and the field is below the fold on a phone.
+    if (!photo) {
+      setPhotoMissing(true);
+      toast.error('Add a photo of the returned items before saving.');
+      return;
+    }
+    if (!token) {
+      toast.error('Your session has expired. Sign in again.');
+      return;
+    }
+
     setSubmitting(true);
+    let uploadedId: string | null = null;
     try {
+      try {
+        uploadedId = (await uploadAttachment('branch_return', photo.image, token)).id;
+      } catch (err) {
+        // Nothing has been submitted and no stock has moved; the photo is still
+        // in the form, so Save can simply be pressed again.
+        const offline = err instanceof ApiError && err.status === 0 && navigator.onLine === false;
+        toast.error(
+          offline
+            ? "You're offline. Reconnect and save again — the return and its photo are still here."
+            : 'Photo upload failed. The return has not been submitted.',
+        );
+        return;
+      }
+
       await apiCall(
         '/api/stock/return',
         {
@@ -163,6 +220,7 @@ export function ReturnItemsModal({
           body: JSON.stringify({
             items: selected.map((s) => ({ productId: s.row.productId, qty: s.qty })),
             reason: reason.trim(),
+            attachmentIds: [uploadedId],
           }),
         },
         token,
@@ -181,6 +239,15 @@ export function ReturnItemsModal({
       onSaved();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to save return');
+      // The server answered and refused, so the photo just uploaded belongs to
+      // no return — remove it rather than leave it in storage. ONLY on a real
+      // answer (status > 0): with no response the return may be saving right
+      // now, and deleting the photo underneath it is the one way this cleanup
+      // could do harm. That case is left to the server's own sweep. The photo
+      // stays in the form either way, so a corrected return re-uploads it.
+      if (uploadedId && err instanceof ApiError && err.status > 0) {
+        void discardAttachment(uploadedId, token);
+      }
       // A mid-batch failure may have committed earlier rows, so refresh the
       // caller's stock either way rather than leaving stale balances on screen.
       onSaved();
@@ -381,6 +448,22 @@ export function ReturnItemsModal({
             <Label>Return Reason (optional)</Label>
             <Textarea placeholder="Damaged / unsold / expired…" value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
+
+          {/* Inside the scrolling body, after the reason: the summary and the
+              Save button below stay pinned whatever this adds to the height. */}
+          <LocalPhotoCapture
+            label="Return Photo"
+            required
+            value={photo}
+            onChange={(next) => {
+              setPhoto(next);
+              if (next) setPhotoMissing(false);
+            }}
+            prepare={prepareReturnPhoto}
+            disabled={submitting}
+            hint="Capture or upload a photo of the returned items."
+            error={photoMissing && !photo ? 'A photo is required.' : undefined}
+          />
         </div>
 
         {/* Summary + actions stay put while the rows scroll. */}

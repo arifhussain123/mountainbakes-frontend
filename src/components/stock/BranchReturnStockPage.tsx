@@ -18,6 +18,7 @@ import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
+import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -275,6 +276,15 @@ export function BranchReturnStockPage() {
       meta: { align: 'center' },
       cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span>,
     }),
+    // Not sortable — there is nothing to order a picture by. A small fixed
+    // thumbnail; the full photo opens from it. Rows without one show a dash.
+    col.display({
+      id: 'photo',
+      header: 'Photo',
+      enableSorting: false,
+      meta: { align: 'center', mobileLabel: 'Photo' },
+      cell: ({ row }) => <ReturnPhoto row={row.original} />,
+    }),
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
@@ -439,6 +449,9 @@ export function BranchReturnStockPage() {
 
               <dt className="col-span-2 pt-1 text-muted-foreground">Reason</dt>
               <dd className="col-span-2 rounded-md bg-muted/40 p-2.5">{viewRow.reason || '—'}</dd>
+
+              <dt className="col-span-2 pt-1 text-muted-foreground">Photo</dt>
+              <dd className="col-span-2"><ReturnPhoto row={viewRow} size="sm" /></dd>
             </dl>
           )}
           <DialogFooter>

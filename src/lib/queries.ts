@@ -1459,6 +1459,8 @@ export function useLoginHistoryPage(
     sortBy?: LoginSessionSortKey;
     sortDir?: 'asc' | 'desc';
   },
+  // `enabled: false` is how a collapsed Login History card costs no request.
+  opts?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: qk.loginHistoryPage(filters as Record<string, unknown>),
@@ -1485,7 +1487,7 @@ export function useLoginHistoryPage(
       put('sortDir', filters.sortDir);
       return apiCall<LoginHistoryPage>(`/api/login-history?${params.toString()}`, {}, token);
     },
-    enabled: !!token,
+    enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
     // The pager would otherwise blank the table on every page change. Holding
     // the previous page while the next loads keeps the rows in place and greys
