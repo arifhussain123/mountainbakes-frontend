@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { Download, Share, SquarePlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +20,12 @@ export function InstallPrompt() {
   const [visible, setVisible] = useState(false);
   const [ios, setIos] = useState(false);
   const [showIosSteps, setShowIosSteps] = useState(false);
+  // Signed-in screens only. On Android this banner waits for the browser's own
+  // install event, which rarely fires on a first visit; on iOS there is no such
+  // event, so it appeared four seconds into EVERY visit until dismissed — and on
+  // the sign-in page that put it squarely over the Password field and the Sign In
+  // button. Somebody who has not got in yet has nothing to install anyway.
+  const { user } = useAuth();
 
   useEffect(() => {
     // Never prompt an already-installed app, or one snoozed within 7 days.
@@ -76,7 +83,7 @@ export function InstallPrompt() {
   }, [deferred, ios]);
 
   // On iOS we can only guide; on other browsers only show once installable.
-  if (!visible || (!deferred && !ios)) return null;
+  if (!user || user.mustChangePassword || !visible || (!deferred && !ios)) return null;
 
   return (
     <div
@@ -108,7 +115,7 @@ export function InstallPrompt() {
             type="button"
             onClick={dismiss}
             aria-label="Dismiss"
-            className="-mr-1 -mt-1 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="-mr-2.5 -mt-2.5 rounded-md p-3 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="size-4" />
           </button>

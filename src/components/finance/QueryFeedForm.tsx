@@ -245,7 +245,7 @@ export function QueryFeedForm({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1">
           <Label htmlFor={id('amount')}>Amount</Label>
           <Input
@@ -347,7 +347,7 @@ export function QueryFeedForm({
       )}
 
       {handles.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {handles.includes('transactionRef') && (
             <div className="space-y-1">
               <Label htmlFor={id('txn')}>Transaction ID</Label>

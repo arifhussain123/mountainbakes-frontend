@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { FileSpreadsheet, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveBlob } from '@/utils/saveBlob';
 
 export interface ExpenseExportModalProps {
   open: boolean;
@@ -48,14 +49,7 @@ export function ExpenseExportModal({ open, onOpenChange, token }: ExpenseExportM
       // Name the file after the window it covers, so two pulls taken the same day
       // for different ranges don't overwrite each other in the Downloads folder.
       const scope = from === to ? from : `${from}_to_${to}`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mountain-bakes-expenses-${scope}.${type === 'csv' ? 'csv' : 'xlsx'}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      saveBlob(blob, `mountain-bakes-expenses-${scope}.${type === 'csv' ? 'csv' : 'xlsx'}`);
       toast.success(`${type === 'csv' ? 'CSV' : 'Excel'} exported`);
       onOpenChange(false);
     } catch (err) {

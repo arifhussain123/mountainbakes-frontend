@@ -1254,7 +1254,7 @@ function DemandItemsDialog({ ticket, reference: snapshot, onClose, onDone }: {
             <span>Product</span><span className="text-center">Requested</span><span className="text-center">Approved</span><span />
           </div>
           {rows.map((r) => (
-            <div key={r.key} className="grid gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_6rem_6rem_2rem] sm:items-end sm:border-0 sm:p-0">
+            <div key={r.key} className="grid grid-cols-1 gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_6rem_6rem_2rem] sm:items-end sm:border-0 sm:p-0">
               <LineField label="Product">
                 <Combobox
                   items={products}

@@ -10,6 +10,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileSpreadsheet, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveBlob } from '@/utils/saveBlob';
 
 /** Sentinel for "every branch". Empty string is not usable as a Select value. */
 const ALL_BRANCHES = 'all';
@@ -70,14 +71,7 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
       const who = branchId === ALL_BRANCHES
         ? 'all-branches'
         : (branches.find((b) => b.id === branchId)?.name ?? 'branch').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mountain-bakes-collections-${who}-${window}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      saveBlob(blob, `mountain-bakes-collections-${who}-${window}.xlsx`);
       toast.success('Excel exported');
       onOpenChange(false);
     } catch (err) {

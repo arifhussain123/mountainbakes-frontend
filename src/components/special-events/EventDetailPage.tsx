@@ -143,7 +143,7 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="space-y-2 p-4">
             <h3 className="font-heading text-sm font-semibold">Schedule</h3>

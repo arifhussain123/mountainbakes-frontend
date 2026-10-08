@@ -92,7 +92,7 @@ export function ProductionEventsPage() {
           description="Events appear here once Admin schedules them, with reminders 21, 14, 7 and 3 days out."
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
           <div className="space-y-2">
             {upcoming.map((event) => (
               <button
@@ -137,7 +137,7 @@ export function ProductionEventsPage() {
                   <CardContent className="p-4">
                     <h2 className="font-heading text-base font-semibold">{selected.name}</h2>
                     <EventDateLabel event={selected} className="mt-1" />
-                    <dl className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">
+                    <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">
                       <div className="flex justify-between gap-2">
                         <dt>Preparation starts</dt>
                         <dd className="font-medium text-foreground">

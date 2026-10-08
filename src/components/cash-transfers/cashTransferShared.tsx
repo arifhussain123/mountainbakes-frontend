@@ -162,7 +162,7 @@ export function CashDepositFormFields({
     <>
       <fieldset className="space-y-3">
         <legend className="mb-2 text-sm font-medium">Payment Details</legend>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {field('cash', 'Cash')}
           {field('easypaisa', 'Easypaisa')}
           {field('bank', 'Bank')}

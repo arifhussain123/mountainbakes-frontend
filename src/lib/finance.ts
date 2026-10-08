@@ -35,6 +35,7 @@ import type {
   SalaryPayment,
   SalaryRevision,
 } from '@mb/shared';
+import { saveBlob } from '@/utils/saveBlob';
 
 /**
  * Finance Ledger data layer.
@@ -733,12 +734,5 @@ export async function downloadFinanceReport(
   const extension = format === 'excel' ? 'xlsx' : format;
   const filename = `mountain-bakes-${String(query['type'] ?? 'report').replace(/_/g, '-')}.${extension}`;
 
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(blob, filename);
 }

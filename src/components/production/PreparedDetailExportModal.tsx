@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { FileSpreadsheet, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveBlob } from '@/utils/saveBlob';
 
 export interface PreparedDetailExportModalProps {
   open: boolean;
@@ -43,14 +44,7 @@ export function PreparedDetailExportModal({ open, onOpenChange, token, defaultDa
       // Name the file after the window it covers, so two pulls taken the same day
       // for different ranges don't overwrite each other in the Downloads folder.
       const scope = from === to ? from : `${from}_to_${to}`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mountain-bakes-prepared-detail-${scope}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      saveBlob(blob, `mountain-bakes-prepared-detail-${scope}.xlsx`);
       toast.success('Excel exported');
       onOpenChange(false);
     } catch (err) {

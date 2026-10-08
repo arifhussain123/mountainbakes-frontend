@@ -48,9 +48,15 @@ export function DeleteBranchStockDialog({
 
   // Clear the typed confirmation whenever the dialog opens on a different row —
   // otherwise a name typed for one product would still unlock the next.
+  //
+  // Compared as `string | null` on BOTH sides. With no row, `row?.productId` is
+  // `undefined`, and `undefined !== null` is true on every render: the reset
+  // below then ran for ever and React stopped the whole Branch Stock screen with
+  // "Too many re-renders" before it ever drew.
   const [lastId, setLastId] = useState<string | null>(null);
-  if (row?.productId !== lastId) {
-    setLastId(row?.productId ?? null);
+  const rowId = row?.productId ?? null;
+  if (rowId !== lastId) {
+    setLastId(rowId);
     setConfirmText('');
   }
 

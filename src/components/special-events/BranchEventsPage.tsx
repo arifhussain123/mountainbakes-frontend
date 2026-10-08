@@ -105,7 +105,7 @@ export function BranchEventsPage() {
               description="Events assigned to your branch will appear here, along with reminders to submit advance demand."
             />
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
               <div className="space-y-2">
                 {upcoming.map((event) => (
                   <EventPickerCard

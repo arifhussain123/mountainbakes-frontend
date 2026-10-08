@@ -94,7 +94,7 @@ export function ProductStockDetail({ open, onOpenChange, row, date }: ProductSto
 
             <div className="max-h-[70dvh] space-y-4 overflow-y-auto pr-1">
               {figures && (
-                <div className="grid gap-x-6 rounded-lg border bg-muted/40 p-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-6 rounded-lg border bg-muted/40 p-3 sm:grid-cols-2">
                   <div className="divide-y">
                     <Figure label="Opening Stock" value={figures.opening} />
                     <Figure label="Prepared Stock" value={figures.preparedToday} />

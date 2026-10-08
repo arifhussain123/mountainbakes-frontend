@@ -315,7 +315,7 @@ export function LocationPickerDialog({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label htmlFor="lat" className="text-xs text-muted-foreground">Latitude</label>
               <Input
@@ -351,7 +351,7 @@ export function LocationPickerDialog({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Allowed Radius</label>
               <Select

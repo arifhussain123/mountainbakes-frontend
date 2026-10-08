@@ -267,7 +267,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-0.5 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
                   tabIndex={-1}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
@@ -280,7 +280,7 @@ export default function LoginPage() {
             <div className="flex items-center justify-between -mt-2">
               <label
                 htmlFor="remember-me"
-                className="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer select-none"
+                className="-my-2.5 flex items-center gap-2 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none"
               >
                 <input
                   id="remember-me"
@@ -288,14 +288,14 @@ export default function LoginPage() {
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
                   disabled={loading}
-                  className="h-3.5 w-3.5 rounded border-border accent-primary cursor-pointer"
+                  className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
                 />
                 Remember me
               </label>
               <button
                 type="button"
                 onClick={() => setShowForgot(true)}
-                className="text-xs font-medium text-primary hover:underline"
+                className="-my-2.5 py-2.5 text-xs font-medium text-primary hover:underline"
               >
                 Forgot Password?
               </button>

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 
 import { apiCall } from '@/utils/api';
 import { logger } from '@/utils/logger';
+import { saveBlob } from '@/utils/saveBlob';
 
 export type SalesExportType = 'excel' | 'pdf';
 
@@ -35,14 +36,7 @@ export function useSalesExport(
 
       const blob = await apiCall<Blob>(`/api/sales-analytics/export?${query.toString()}`, {}, token);
       const scope = from === to ? from : `${from}_to_${to}`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `mountain-bakes-daily-sales-${scope}.${type === 'excel' ? 'xlsx' : 'pdf'}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      saveBlob(blob, `mountain-bakes-daily-sales-${scope}.${type === 'excel' ? 'xlsx' : 'pdf'}`);
       toast.success(`${type === 'excel' ? 'Excel' : 'PDF'} exported`);
     } catch (err) {
       logger.error('Daily Sales export failed', err);

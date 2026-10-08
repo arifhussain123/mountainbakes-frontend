@@ -308,7 +308,7 @@ export default function FinanceLoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute top-1/2 right-0 flex size-10 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     tabIndex={-1}
                   >
@@ -317,7 +317,7 @@ export default function FinanceLoginPage() {
                 </div>
               </div>
 
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <label className="-my-2 flex cursor-pointer items-center gap-2 py-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={rememberMe}
@@ -383,7 +383,7 @@ export default function FinanceLoginPage() {
           <div className="mt-6 border-t pt-5">
             <Link
               href={ROUTES.LOGIN}
-              className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              className="-my-2.5 flex items-center justify-center gap-1.5 py-2.5 text-sm text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Branch, Production or Admin sign-in

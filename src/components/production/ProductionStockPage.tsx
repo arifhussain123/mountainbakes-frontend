@@ -308,7 +308,7 @@ export function ProductionStockPage() {
             figure is folded out of the stock ledger; nothing here is editable by hand.
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Date</label>
             <Input

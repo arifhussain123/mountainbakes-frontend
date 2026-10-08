@@ -59,7 +59,7 @@ export default function ChangePasswordPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -68,7 +68,7 @@ export default function ChangePasswordPage() {
   const canSubmit = isStrongPassword(newPassword) && newPassword === confirmPassword && !submitting;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-10">
+    <div className="min-h-dvh flex items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-[420px]">
         <div className="bg-card rounded-2xl shadow-xl border border-border/60 overflow-hidden">
           <div className="h-1 w-full bg-gradient-to-r from-primary via-primary/70 to-primary/30" />

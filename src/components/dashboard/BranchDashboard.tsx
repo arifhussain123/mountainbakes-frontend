@@ -148,7 +148,7 @@ export function BranchDashboard() {
               aria-pressed={period === p.value}
               onClick={() => setPeriod(p.value)}
               className={cn(
-                'px-3.5 py-1.5 text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
+                'px-3.5 py-1.5 text-xs font-semibold transition-colors max-md:py-2.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
                 period === p.value ? 'bg-fin-income text-white' : 'text-muted-foreground hover:bg-fin-soft',
               )}
             >

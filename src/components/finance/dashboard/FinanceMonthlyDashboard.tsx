@@ -246,7 +246,12 @@ export function FinanceMonthlyDashboard() {
               </select>
             </div>
           </div>
-          <label className={cn(labelCls, 'min-w-0 flex-1 sm:flex-none')}>
+          {/* `basis-48`: a real starting width. With `flex-1` alone the basis is
+              zero, so the wrapping row counted this field as taking no room and
+              kept it on a line that had 7px left — at 320px the label overran
+              the edge and the select was 22px wide. With a basis it wraps to a
+              line of its own and then grows to fill it. */}
+          <label className={cn(labelCls, 'min-w-0 flex-1 basis-48 sm:flex-none sm:basis-auto')}>
             BRANCH NAME
             <select
               className={cn(selectCls, 'w-full sm:min-w-[12rem]')}
@@ -481,7 +486,7 @@ function DashboardBody({
 
   return (
     <>
-      <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">
         {overview.map((g) => (
           <OverviewCard key={g.title} group={g} format={format} />
         ))}
@@ -598,7 +603,7 @@ function DashboardBody({
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Panel
           title="Company Share vs Received · daily"
           aside={<span className="text-[11px] text-muted-foreground">Tap a day for its demand</span>}
@@ -622,7 +627,7 @@ function DashboardBody({
         </Panel>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
         <Panel title="Balance reconciliation">
           <Reconciliation data={data} format={format} />
         </Panel>
@@ -650,7 +655,7 @@ function DashboardBody({
           <h2 className="text-[13px] font-extrabold tracking-[0.12em]">EXPENSES</h2>
           <span className="text-xs text-fin-ink-muted">{context}</span>
         </header>
-        <div className="grid gap-3.5 bg-fin-row-hover p-3.5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3.5 bg-fin-row-hover p-3.5 lg:grid-cols-2">
           <div className="grid grid-cols-1 content-start gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
             <StatCard
               label="Ledger Head"
@@ -706,7 +711,7 @@ function DashboardBody({
         </div>
       </section>
 
-      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
         <Panel title="Expense trend · daily">
           <ExpenseTrendChart data={daily} />
         </Panel>
@@ -983,13 +988,13 @@ function LoadingSkeleton({ label }: { label: string }) {
   return (
     <div className="flex flex-col gap-4" aria-busy="true">
       <p className="text-sm font-semibold text-muted-foreground">{label}</p>
-      <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-56 rounded-xl" />
         ))}
       </div>
       <Skeleton className="h-44 rounded-xl" />
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Skeleton className="h-72 rounded-xl" />
         <Skeleton className="h-72 rounded-xl" />
       </div>

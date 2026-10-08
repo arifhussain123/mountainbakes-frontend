@@ -51,7 +51,10 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
   return (
     <nav
       aria-label="Pagination"
-      className={cn('flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between', className)}
+      // `sm:flex-wrap`: on a tablet in portrait the sidebar leaves about 500px, less
+      // than the row count and the page buttons need side by side. Wrapped, the
+      // buttons drop to a second line; unwrapped they ran off the right edge.
+      className={cn('flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between', className)}
     >
       <div className="flex items-center justify-between gap-3 sm:justify-start">
         <span className="tabular-nums">
@@ -73,7 +76,7 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
         )}
       </div>
 
-      <div className={cn('flex items-center justify-between gap-1 sm:justify-end', loading && 'opacity-60')}>
+      <div className={cn('flex items-center justify-between gap-1 sm:ml-auto sm:justify-end', loading && 'opacity-60')}>
         <Button
           variant="outline"
           size="sm"

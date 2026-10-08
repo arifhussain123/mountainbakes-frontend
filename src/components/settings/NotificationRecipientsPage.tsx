@@ -164,7 +164,7 @@ export function NotificationRecipientsPage() {
             Who receives the 2:00 AM closing summary. Each branch number gets only that branch’s figures.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setShowLogs(true)}>
             <ScrollText className="h-4 w-4 mr-1" /> Delivery Log
           </Button>

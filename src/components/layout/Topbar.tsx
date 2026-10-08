@@ -47,13 +47,20 @@ export function Topbar({ title }: { title?: string }) {
 
   return (
     <>
-      <header className="no-print h-14 border-b bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center px-4 gap-3">
+      {/* Phone: tighter padding and gaps, and the bar pads itself by the safe-area
+          insets so nothing sits under a notch or a rounded corner. */}
+      <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-1 border-b bg-card/80 pr-[max(0.5rem,env(safe-area-inset-right))] pl-[max(0.5rem,env(safe-area-inset-left))] backdrop-blur-sm md:gap-3 md:px-4">
         {/* Three sections rather than the old "content, spacer, content": both
             outer sections are `flex-1` from a zero basis, so they grow equally
             and leave the Refresh button in the true centre of the bar. The left
             one carries `min-w-0` so a long page title truncates instead of
-            shoving the centre off. */}
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+            shoving the centre off.
+
+            That centring is for md and up only. On a phone equal halves left
+            the title about 60px — "Branch…" at 390px wide, nothing at all at
+            320px — so there the right-hand group takes just what it needs
+            (`max-md:flex-none`) and the title gets the rest. */}
+        <div className="flex min-w-0 flex-1 items-center gap-1 md:gap-3">
           {/* Mobile menu toggle */}
           <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleSidebar}>
             <Menu className="h-5 w-5" />
@@ -70,7 +77,7 @@ export function Topbar({ title }: { title?: string }) {
         {/* Centre: refresh / apply-update */}
         <RefreshButton />
 
-        <div className="flex flex-1 items-center justify-end gap-1">
+        <div className="flex flex-1 items-center justify-end gap-1 max-md:flex-none">
         {/* Search trigger */}
         <Button
           variant="outline"
@@ -91,7 +98,7 @@ export function Topbar({ title }: { title?: string }) {
         {/* Accent color picker */}
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="hidden h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
             title="Accent color"
           >
             <Palette className="h-4 w-4" />
@@ -109,7 +116,7 @@ export function Topbar({ title }: { title?: string }) {
         </DropdownMenu>
 
         {/* Theme toggle */}
-        <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <Button variant="ghost" size="icon" className="hidden sm:inline-flex" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {/* Render the icon only after mount so the resolved theme is known —
               avoids both a hydration mismatch and a wrong-icon flash. */}
           {mounted ? (
@@ -121,7 +128,7 @@ export function Topbar({ title }: { title?: string }) {
 
         {/* Notifications */}
         <DropdownMenu>
-          <DropdownMenuTrigger className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <DropdownMenuTrigger className="relative inline-flex h-9 w-9 items-center justify-center rounded-md max-md:h-10 max-md:w-10 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
               <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-primary">
@@ -129,7 +136,7 @@ export function Topbar({ title }: { title?: string }) {
               </Badge>
             )}
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
+          <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-1rem)]">
             <div className="flex items-center justify-between px-3 py-2 border-b">
               <span className="font-semibold text-sm">Notifications</span>
               {unreadCount > 0 && (
@@ -172,7 +179,7 @@ export function Topbar({ title }: { title?: string }) {
 
         {/* User avatar menu */}
         <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-full max-md:h-10 max-md:w-10 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-primary text-white text-xs font-bold">
                 {user?.displayName?.slice(0, 2).toUpperCase() || 'MB'}
@@ -185,8 +192,37 @@ export function Topbar({ title }: { title?: string }) {
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               <p className="text-xs text-primary capitalize mt-0.5">{user?.role.replace('_', ' ')}</p>
             </div>
+            {/* Phone only. The theme toggle and the accent picker used to sit in
+                the bar itself, where between them they took the room the page
+                title needs; below `sm` they are offered here instead. */}
+            <div className="sm:hidden">
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="min-h-10 gap-2"
+              >
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              </DropdownMenuItem>
+              <div className="flex items-center gap-2 px-1.5 py-1.5">
+                <Palette className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                {ACCENTS.map((a) => (
+                  <button
+                    key={a.value}
+                    type="button"
+                    aria-label={`${a.label} accent`}
+                    aria-pressed={accent === a.value}
+                    onClick={() => setAccent(a.value)}
+                    className="flex size-8 items-center justify-center rounded-full border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    style={{ backgroundColor: a.swatch }}
+                  >
+                    {accent === a.value && <Check className="h-4 w-4 text-white" />}
+                  </button>
+                ))}
+              </div>
+            </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="text-destructive">
+            <DropdownMenuItem onClick={handleLogout} className="min-h-10 text-destructive md:min-h-0">
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>

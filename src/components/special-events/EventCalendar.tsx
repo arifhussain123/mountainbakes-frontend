@@ -114,7 +114,7 @@ export function EventCalendar({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Card>
         <CardContent className="p-3 sm:p-4">
           <div className="mb-3 flex items-center justify-between gap-2">

@@ -68,7 +68,7 @@ export function ProductionReadinessPanel({
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {stages.map((stage) => (
           <StageCard
             // Keyed on the server values, not just the id: a change from another

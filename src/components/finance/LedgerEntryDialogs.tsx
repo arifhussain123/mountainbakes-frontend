@@ -153,7 +153,7 @@ export function EditLedgerEntryDialog({ entry, onClose }: { entry: LedgerEntry; 
           </p>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="le-amount">Amount ({entry.debit > 0 ? 'Debit' : 'Credit'})</Label>
             <Input

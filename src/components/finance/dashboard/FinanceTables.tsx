@@ -49,7 +49,7 @@ function GranToggle({ value, onChange }: { value: Granularity; onChange: (g: Gra
           aria-pressed={value === g}
           onClick={() => onChange(g)}
           className={cn(
-            'rounded px-2.5 py-1 text-xs font-semibold capitalize transition-colors',
+            'rounded px-2.5 py-1 text-xs font-semibold capitalize transition-colors max-md:py-2',
             value === g ? 'bg-card text-foreground' : 'text-fin-ink-muted hover:text-fin-ink-foreground',
           )}
         >

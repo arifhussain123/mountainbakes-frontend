@@ -529,7 +529,7 @@ function PreviewBody({
               stock has already moved on the branch's own count, and this is the
               only independent record of a delivery nobody here can re-inspect. */}
           {((order.demandPhotos?.length ?? 0) > 0 || (order.verificationPhotos?.length ?? 0) > 0) && (
-            <div className="mt-4 grid gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:grid-cols-2">
               {(order.demandPhotos?.length ?? 0) > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">

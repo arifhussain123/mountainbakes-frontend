@@ -121,7 +121,7 @@ export function BranchClosingPage() {
             End-of-day summary. This is a read of the day, not a lock on it.
           </p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs">Business date</Label>
             <Input

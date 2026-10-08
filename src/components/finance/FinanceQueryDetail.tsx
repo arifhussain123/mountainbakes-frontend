@@ -671,7 +671,7 @@ function CorrectRecordDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
             <RecordSide title="Current record" tone="muted">
               {fields.map((spec) => (
                 <SideRow key={spec.key} label={spec.label} value={shown(spec, current[spec.key] ?? '')} />
@@ -779,7 +779,7 @@ function CorrectRecordDialog({
               </p>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {fields.map((spec) => {
                 const id = `cr-${spec.key}`;
                 const change = changes.find((c) => c.spec.key === spec.key);
@@ -1091,7 +1091,7 @@ export function StatusDialog({
 
         <div className="space-y-4">
           {terminal && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="st-resolution-type">Resolution type</Label>
                 <select
@@ -1425,7 +1425,7 @@ function ResponsePanel({ ticket, isAdmin, onSaved }: { ticket: FinanceTicket; is
             <Label htmlFor="rp-response">Admin response</Label>
             <Textarea id="rp-response" value={response} onChange={(e) => setResponse(e.target.value)} rows={3} placeholder="What you found, or what was done. The raiser reads this." />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="rp-resolution">Resolution</Label>
               <Textarea id="rp-resolution" value={resolution} onChange={(e) => setResolution(e.target.value)} rows={2} placeholder="Optional — the closing detail" />

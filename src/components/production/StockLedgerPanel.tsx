@@ -183,7 +183,7 @@ export function StockLedgerPanel({ date }: StockLedgerPanelProps) {
                   type="button"
                   onClick={() => changeRange(key)}
                   className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors max-md:py-2',
                     range === key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted',
                   )}
                 >
