@@ -258,7 +258,7 @@ export function ReturnItemsModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
-      <DialogContent className="flex max-h-[90dvh] flex-col md:max-w-2xl">
+      <DialogContent className="flex flex-col md:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Return Items</DialogTitle>
         </DialogHeader>

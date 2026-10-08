@@ -110,11 +110,19 @@ export function DatabaseBackupPage() {
   }
 
   async function onDownload(job: BackupJob, file: 'main' | 'auth') {
+    // The tab is opened NOW, inside the click, and pointed at the file once the
+    // link arrives. Safari only allows a new window during the user's own
+    // gesture; opened after the await below it was silently blocked and the
+    // button appeared to do nothing.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
     try {
       const res = await download.mutateAsync({ id: job.id, file });
-      window.open(res.url, '_blank', 'noopener');
+      if (tab) tab.location.href = res.url;
+      else window.location.assign(res.url);
       toast.info(`Download link for ${res.fileName} is valid for ${Math.round(res.expiresInSeconds / 60)} minutes`);
     } catch (err) {
+      tab?.close();
       toast.error(err instanceof Error ? err.message : 'Could not issue a download link');
     }
   }

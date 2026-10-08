@@ -92,7 +92,7 @@ export function ProductStockDetail({ open, onOpenChange, row, date }: ProductSto
               </p>
             </DialogHeader>
 
-            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+            <div className="max-h-[70dvh] space-y-4 overflow-y-auto pr-1">
               {figures && (
                 <div className="grid gap-x-6 rounded-lg border bg-muted/40 p-3 sm:grid-cols-2">
                   <div className="divide-y">

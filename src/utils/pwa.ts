@@ -33,9 +33,15 @@ export function isIOS(): boolean {
 
 /** Whether the install banner is currently within its 7-day snooze window. */
 export function isInstallDismissed(): boolean {
-  if (typeof localStorage === 'undefined') return false;
-  const until = Number(localStorage.getItem(DISMISS_KEY) || 0);
-  return Date.now() < until;
+  // Merely touching `localStorage` throws a SecurityError in Safari with "Block
+  // All Cookies" on, and this runs from the root layout — unguarded, it took the
+  // whole app down to the error screen.
+  try {
+    const until = Number(localStorage.getItem(DISMISS_KEY) || 0);
+    return Date.now() < until;
+  } catch {
+    return false;
+  }
 }
 
 /** Snooze the install banner for 7 days. */

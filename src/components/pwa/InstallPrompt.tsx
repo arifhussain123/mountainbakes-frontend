@@ -82,7 +82,11 @@ export function InstallPrompt() {
     <div
       role="dialog"
       aria-label="Install Mountain Bakes ERP"
-      className="fixed inset-x-0 bottom-0 z-[100] px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] sm:inset-x-auto sm:right-4 sm:bottom-4 sm:px-0"
+      // Lifted clear of the BottomNav on a phone. It used to sit at bottom-0 with
+      // a higher z-index, i.e. directly over the navigation — and on iOS, where
+      // there is no install event to wait for, it shows on every visit until
+      // dismissed.
+      className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-[100] px-3 pb-3 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:px-0 sm:pb-0"
     >
       <div className="mx-auto w-full max-w-md rounded-2xl border border-border bg-card p-4 shadow-2xl shadow-black/10 ring-1 ring-black/5 sm:w-96">
         <div className="flex items-start gap-3">

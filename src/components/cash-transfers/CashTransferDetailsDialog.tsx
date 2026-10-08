@@ -43,7 +43,7 @@ export function CashTransferDetailsDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+      <DialogContent className="overflow-y-auto md:max-w-lg">
         <DialogHeader>
           <DialogTitle>Cash Transfer Details</DialogTitle>
           {transfer && (

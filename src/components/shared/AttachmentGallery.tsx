@@ -89,7 +89,7 @@ export const AttachmentGallery = memo(function AttachmentGallery({
             // full width in a scrolling box when someone wants a closer look.
             // The image is the stored one either way — there is no larger
             // original to fetch.
-            <div className={cn('rounded-lg', zoomed && 'max-h-[70vh] overflow-auto')}>
+            <div className={cn('rounded-lg', zoomed && 'max-h-[70dvh] overflow-auto')}>
               {/* eslint-disable-next-line @next/next/no-img-element -- see the note
                   in PhotoCapture: next/image is unavailable in a static export and
                   the src is a signed URL, not an owned asset. */}
@@ -101,7 +101,7 @@ export const AttachmentGallery = memo(function AttachmentGallery({
                   'rounded-lg',
                   zoomed
                     ? 'w-[200%] max-w-none cursor-zoom-out'
-                    : 'max-h-[70vh] w-full cursor-zoom-in object-contain',
+                    : 'max-h-[70dvh] w-full cursor-zoom-in object-contain',
                 )}
               />
             </div>

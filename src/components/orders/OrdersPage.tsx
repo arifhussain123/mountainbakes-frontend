@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { FileSpreadsheet } from 'lucide-react';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { saveBlob } from '@/utils/saveBlob';
 
 const col = createColumnHelper<Order>();
 
@@ -79,12 +80,7 @@ export function OrdersPage({ refreshKey }: { refreshKey?: number }) {
   async function handleReport() {
     try {
       const blob = await apiCall<Blob>('/api/reports/export?type=excel', {}, token);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'orders-report.xlsx';
-      a.click();
-      URL.revokeObjectURL(url);
+      saveBlob(blob, 'orders-report.xlsx');
     } catch {
       toast.error('Export failed');
     }

@@ -261,7 +261,7 @@ export function LocationPickerDialog({
       <DialogContent
         showCloseButton
         mobile="fullscreen"
-        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 md:w-[80vw] md:max-w-[900px]"
+        className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden p-0 md:w-[80vw] md:max-w-[900px]"
       >
         <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">

@@ -2,6 +2,7 @@
 
 import { formatDistanceKm, geofenceMessage } from '@mb/shared';
 import { useGeofence } from '@/providers/GeofenceProvider';
+import { isIOS } from '@/utils/pwa';
 import { Button } from '@/components/ui/button';
 import { Loader2, MapPinOff, RefreshCw, ShieldAlert } from 'lucide-react';
 
@@ -81,19 +82,36 @@ export function GeofenceGate({
         </dl>
       )}
 
-      {denied ? (
-        // A refused permission cannot be re-prompted from script — the browser only
-        // asks once and remembers. Offering a "Try again" button here would do
-        // nothing at all, so say what will actually work instead.
-        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          Location access is blocked for this site. Re-enable it from the padlock icon in
-          the address bar (or your browser’s site settings), then reload this page.
+      {denied && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-left text-xs leading-relaxed text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          {isIOS() ? (
+            // An iPhone has no address-bar padlock, and an app opened from the
+            // Home Screen has no address bar at all — the old instructions sent
+            // people looking for a control that does not exist. Location for a
+            // web app is switched on in the Settings app, in two places.
+            <>
+              Location access is off for this app. On your iPhone open{' '}
+              <strong>Settings → Privacy &amp; Security → Location Services</strong>, make sure it is on,
+              then choose <strong>Safari Websites</strong> and select <strong>While Using the App</strong>{' '}
+              with <strong>Precise Location</strong> on. Come back here and tap the button below. If you
+              are asked to allow location, choose <strong>Allow</strong>.
+            </>
+          ) : (
+            <>
+              Location access is blocked for this site. Re-enable it from the padlock icon in the
+              address bar (or your browser’s site settings), then tap the button below.
+            </>
+          )}
         </p>
-      ) : (
-        <Button variant="outline" onClick={() => void refresh()}>
-          <RefreshCw className="mr-1.5 h-4 w-4" /> Check my location again
-        </Button>
       )}
+
+      {/* Always offered. It used to be withheld after a refusal, on the reasoning
+          that a browser will not prompt twice — true while the setting stands,
+          but once the user has changed it this is the only way back in short of
+          knowing to reload, and on a Home Screen app there is no reload button. */}
+      <Button variant="outline" onClick={() => void refresh()} className="h-11 md:h-8">
+        <RefreshCw className="mr-1.5 h-4 w-4" /> Check my location again
+      </Button>
     </div>
   );
 }

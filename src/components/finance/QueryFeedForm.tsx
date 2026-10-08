@@ -143,7 +143,7 @@ export function feedChangeLabels(diff: Record<string, unknown>): string[] {
 
 const PREFIX_HINT = FINANCE_TICKET_PREFIXES.map((p) => `${p}-…`).join(', ');
 
-const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-sm md:h-9';
+const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-base md:h-9 md:text-sm';
 
 export function QueryFeedForm({
   value,

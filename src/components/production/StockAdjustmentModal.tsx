@@ -145,7 +145,7 @@ export function StockAdjustmentModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+        <div className="max-h-[65dvh] space-y-4 overflow-y-auto pr-1">
           <div className="space-y-1.5">
             <Label>Product</Label>
             <Select value={productId} onValueChange={(v) => setProductId(v ?? '')}>

@@ -165,7 +165,7 @@ export function StockCheckModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90dvh] flex-col md:max-w-3xl">
+      <DialogContent className="flex flex-col md:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Stock Check</DialogTitle>
           <DialogDescription>

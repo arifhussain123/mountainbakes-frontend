@@ -302,7 +302,7 @@ function PartnerLedgerTab({
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>New {label.toLowerCase()}</DialogTitle>
           </DialogHeader>
@@ -311,7 +311,7 @@ function PartnerLedgerTab({
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit {editing?.expenseNo}</DialogTitle>
           </DialogHeader>
@@ -320,7 +320,7 @@ function PartnerLedgerTab({
       </Dialog>
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewing?.expenseNo}</DialogTitle>
           </DialogHeader>
@@ -475,7 +475,7 @@ function PartnerShareDetailTab() {
       </div>
 
       <Dialog open={viewingPartner !== null} onOpenChange={(open) => !open && setViewingPartner(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewingPartner?.name}</DialogTitle>
           </DialogHeader>
@@ -546,7 +546,7 @@ function PartnerDetailTab({ abilities }: { abilities: ReturnType<typeof useFinan
       </div>
 
       <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add detail of Partner</DialogTitle>
           </DialogHeader>
@@ -555,7 +555,7 @@ function PartnerDetailTab({ abilities }: { abilities: ReturnType<typeof useFinan
       </Dialog>
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewing?.name}</DialogTitle>
           </DialogHeader>

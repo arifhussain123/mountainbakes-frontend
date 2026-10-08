@@ -284,7 +284,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>New payslip</DialogTitle>
           </DialogHeader>
@@ -293,7 +293,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit {editing?.salaryNo}</DialogTitle>
           </DialogHeader>
@@ -302,7 +302,7 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
       </Dialog>
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewing?.salaryNo}</DialogTitle>
           </DialogHeader>
@@ -663,7 +663,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>New advance payment</DialogTitle>
           </DialogHeader>
@@ -672,7 +672,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit {editing?.advanceNo}</DialogTitle>
           </DialogHeader>
@@ -681,7 +681,7 @@ function AdvancesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
       </Dialog>
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewing?.advanceNo}</DialogTitle>
           </DialogHeader>
@@ -926,7 +926,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
       <DataTable columns={columns} data={data ?? []} loading={isLoading} searchPlaceholder="Search employees…" sortable />
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add employee</DialogTitle>
           </DialogHeader>
@@ -935,7 +935,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit {editing?.name}</DialogTitle>
           </DialogHeader>
@@ -944,7 +944,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
       </Dialog>
 
       <Dialog open={revising !== null} onOpenChange={(open) => !open && setRevising(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Revise salary — {revising?.name}</DialogTitle>
           </DialogHeader>
@@ -953,7 +953,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
       </Dialog>
 
       <Dialog open={viewingEmployee !== null} onOpenChange={(open) => !open && setViewingEmployee(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewingEmployee?.name}</DialogTitle>
           </DialogHeader>

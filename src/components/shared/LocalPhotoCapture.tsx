@@ -141,7 +141,7 @@ export function LocalPhotoCapture({
           </DialogHeader>
           {value && (
             /* eslint-disable-next-line @next/next/no-img-element -- as above. */
-            <img src={value.previewUrl} alt={label} className="max-h-[70vh] w-full rounded-lg object-contain" />
+            <img src={value.previewUrl} alt={label} className="max-h-[70dvh] w-full rounded-lg object-contain" />
           )}
         </DialogContent>
       </Dialog>

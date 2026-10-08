@@ -14,6 +14,7 @@ import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { PrintButton } from '@/components/shared/PrintButton';
 import { toast } from 'sonner';
 import { businessDateStr, type FilterConfig } from '@mb/shared';
+import { saveBlob } from '@/utils/saveBlob';
 
 // This report is driven by a From/To date window (see PREPARED_REPORT) rather
 // than the period dropdown. It is built server-side off the production-stock
@@ -147,12 +148,7 @@ export function ProductionReportsPage() {
       // Name the file after the window it covers — two exports pulled the same
       // day for different date ranges must not collide in the Downloads folder.
       const scope = isPrepared ? (from === to ? from : `${from}_to_${to}`) : period;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `mountain-bakes-${report}-${scope}.${ext}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveBlob(blob, `mountain-bakes-${report}-${scope}.${ext}`);
       toast.success(`${type.toUpperCase()} exported`);
     } catch {
       toast.error('Export failed');

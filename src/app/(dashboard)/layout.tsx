@@ -34,14 +34,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <RealtimeProvider>
       <GeofenceProvider>
         <AppRefreshProvider>
-          <div className="flex h-screen overflow-hidden bg-background">
+          {/* `dvh`, with `vh` only as the fallback for a browser without it. On
+              iOS Safari 100vh is the height with the toolbar COLLAPSED, so a
+              100vh shell is taller than what is visible and the bottom of every
+              screen sits behind the toolbar. 100dvh is what is actually on show. */}
+          <div className="flex h-screen overflow-hidden bg-background supports-[height:100dvh]:h-dvh">
             <RealtimeBridge />
             <LoginHistoryBridge />
             <PushNotifications />
             <Sidebar />
             <div className="flex flex-1 flex-col overflow-hidden">
               <Topbar />
-              <main className="flex-1 overflow-y-auto pb-20 md:pb-0">{children}</main>
+              {/* Clears the BottomNav INCLUDING its safe-area inset. The nav is
+                  56px + the inset (34px on a Face ID iPhone); a flat pb-20 left the
+                  last 11px of every page underneath it. */}
+              <main className="flex-1 overflow-y-auto overscroll-contain pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
             </div>
             <BottomNav />
           </div>

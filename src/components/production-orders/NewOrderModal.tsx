@@ -1243,10 +1243,10 @@ export function NewOrderModal({
                   preflight={preflight}
                   token={token}
                   request={requiredDateInPast ? { type: 'BACKDATED_DEMAND', date: requiredDate } : null}
-                  className="max-h-[38vh] overflow-y-auto"
+                  className="max-h-[38dvh] overflow-y-auto"
                 />
               ) : (
-                refused && <RestrictionNotice restriction={refused} className="max-h-[38vh] overflow-y-auto" />
+                refused && <RestrictionNotice restriction={refused} className="max-h-[38dvh] overflow-y-auto" />
               ))}
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1272,7 +1272,7 @@ export function NewOrderModal({
           row, on a form of a hundred products) is invisible in a count. The
           list scrolls; the totals stay pinned underneath it. */}
       <Dialog open={confirmOpen} onOpenChange={(o) => !submitting && setConfirmOpen(o)}>
-        <DialogContent className="flex max-h-[85vh] flex-col md:max-w-lg">
+        <DialogContent className="flex flex-col md:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageCheck className="h-5 w-5 text-primary" /> Confirm Submission

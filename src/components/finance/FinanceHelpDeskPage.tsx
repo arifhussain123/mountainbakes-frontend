@@ -277,7 +277,7 @@ function NewQueryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 
   return (
     <Dialog open={open} onOpenChange={(v) => !submitting && onOpenChange(v)}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-lg">
+      <DialogContent className="overflow-y-auto md:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Query</DialogTitle>
           <DialogDescription>

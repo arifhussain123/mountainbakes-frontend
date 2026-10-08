@@ -19,6 +19,7 @@ import { beginPrintTrace, printTrace } from '@/lib/print/diagnostics';
 import { cn } from '@/lib/utils';
 import { AlertTriangle, Check, ChevronDown, Clock, Loader2, Printer } from 'lucide-react';
 import { toast } from 'sonner';
+import { isIOS } from '@/utils/pwa';
 
 /**
  * POP Print — the one button that prints a receipt.
@@ -172,7 +173,11 @@ export function PopPrintButton({
       printTrace('print promise resolved', { ms: result.durationMs });
       if (!mounted.current) return;
       setState('printed');
-      toast.success('Printed successfully', { duration: PRINTED_FEEDBACK_MS });
+      // An iPhone hands the receipt to its own print sheet, which reports
+      // nothing back — cancelled and printed look the same from here. So it is
+      // not called a success there; it says what did happen.
+      if (isIOS()) toast.info('Sent to the print sheet', { duration: PRINTED_FEEDBACK_MS });
+      else toast.success('Printed successfully', { duration: PRINTED_FEEDBACK_MS });
       onPrintedRef.current?.(result);
       scheduleRevert(PRINTED_FEEDBACK_MS);
     } catch (caught) {

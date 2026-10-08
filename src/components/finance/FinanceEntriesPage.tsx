@@ -269,7 +269,7 @@ export function FinanceEntriesPage() {
       />
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>New income or expense entry</DialogTitle>
           </DialogHeader>
@@ -278,7 +278,7 @@ export function FinanceEntriesPage() {
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit {editing?.txnNo}</DialogTitle>
           </DialogHeader>
@@ -287,7 +287,7 @@ export function FinanceEntriesPage() {
       </Dialog>
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+        <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
             <DialogTitle>{viewing?.txnNo}</DialogTitle>
           </DialogHeader>

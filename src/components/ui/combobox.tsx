@@ -17,7 +17,7 @@ function ComboboxInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
       <ComboboxPrimitive.Input
         data-slot="combobox-input"
         className={cn(
-          "flex h-10 w-full items-center rounded-lg border border-input bg-transparent py-2 pr-8 pl-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
+          "flex h-10 w-full items-center rounded-lg border border-input bg-transparent py-2 pr-8 pl-2.5 text-base outline-none md:text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
           className
         )}
         {...props}

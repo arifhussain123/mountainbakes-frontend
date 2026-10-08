@@ -317,6 +317,53 @@
   }
 }
 
+
+/* ── Tints on a browser without color-mix() — iOS 15.4 to 16.1 ────────────────
+   A utility like `bg-destructive/10` compiles to `color-mix(...)`, with the SOLID
+   colour as its fallback. On an older iPhone that fallback is what paints, so
+   every "tint + same-colour text" pair became invisible: a destructive button was
+   red on red, the login error banner was red on red, and the active item in the
+   More sheet was orange on orange.
+
+   These stand in for the tint on those browsers only. They are deliberately
+   outside any @layer, because an unlayered rule beats the layered utility it is
+   replacing; and inside `@supports not`, so a browser that has color-mix() never
+   sees them and nothing about its rendering changes.
+
+   Only the pairs that lose their text are listed. `bg-muted/40` falling back to
+   solid muted is a slightly heavier grey under normal text — cosmetic, and left
+   alone. */
+@supports not (color: color-mix(in lab, red, red)) {
+  .bg-primary\/5,
+  .bg-primary\/10,
+  .bg-secondary\/10,
+  .bg-foreground\/10,
+  .hover\:bg-foreground\/10:hover {
+    background-color: var(--muted);
+  }
+  .bg-destructive\/5,
+  .bg-destructive\/8,
+  .bg-destructive\/10,
+  .bg-destructive\/20,
+  .hover\:bg-destructive\/10:hover,
+  .hover\:bg-destructive\/20:hover {
+    background-color: #fee2e2;
+  }
+  .dark .bg-destructive\/5,
+  .dark .bg-destructive\/8,
+  .dark .bg-destructive\/10,
+  .dark .bg-destructive\/20,
+  .dark .dark\:bg-destructive\/20,
+  .dark .hover\:bg-destructive\/10:hover,
+  .dark .hover\:bg-destructive\/20:hover {
+    background-color: #451a1a;
+  }
+  /* A 10% ring would otherwise be a solid near-black outline on every popup. */
+  .ring-foreground\/10 {
+    --tw-ring-color: var(--border);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

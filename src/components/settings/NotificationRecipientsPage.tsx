@@ -429,7 +429,7 @@ function LogsDialog({ onClose, recipients }: { onClose: () => void; recipients: 
         <FilterBar list={list} filters={filters} searchable={false} />
         <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div className="max-h-[50dvh] overflow-y-auto">
           {loading ? (
             <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
           ) : logs.length === 0 ? (

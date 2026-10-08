@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { isStandalone } from '@/utils/pwa';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -28,6 +29,14 @@ export function setRememberMe(remember: boolean): void {
 }
 
 function wantsPersistence(): boolean {
+  // An INSTALLED app always keeps its session. sessionStorage belongs to the
+  // browsing context, and iOS throws a Home Screen app's context away whenever
+  // it reclaims the app — switching to the camera is enough — so an unticked
+  // "Remember me" there meant signing in again on almost every launch. Android
+  // keeps the context far longer, which is why this only ever showed on iPhone.
+  // "Don't remember me" is a promise about a shared BROWSER; an app someone put
+  // on their own Home Screen is not that, and a tab still honours the choice.
+  if (isStandalone()) return true;
   try {
     return window.localStorage.getItem(REMEMBER_KEY) === '1';
   } catch {

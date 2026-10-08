@@ -164,7 +164,7 @@ export function FinanceMonthlyDashboard() {
   };
 
   const selectCls =
-    'h-10 rounded-md border border-fin-income bg-fin-ink-field px-2.5 text-sm font-semibold text-fin-ink-foreground disabled:opacity-60 md:h-9';
+    'h-10 rounded-md border border-fin-income bg-fin-ink-field px-2.5 text-base font-semibold text-fin-ink-foreground disabled:opacity-60 md:h-9 md:text-sm';
   const labelCls = 'flex flex-col gap-1 text-[10px] font-bold tracking-[0.14em] text-fin-ink-muted';
 
   return (

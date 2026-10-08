@@ -253,7 +253,7 @@ export function CashDepositModal({
         onOpenChange(o);
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-lg">
+      <DialogContent className="overflow-y-auto md:max-w-lg">
         {face === 'clear' ? (
           <>
             <DialogHeader>

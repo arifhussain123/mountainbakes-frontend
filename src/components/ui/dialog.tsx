@@ -78,13 +78,27 @@ function DialogContent({
         data-slot="dialog-content"
         data-mobile={mobile}
         className={cn(
-          "fixed z-50 grid w-full gap-4 overflow-y-auto bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none",
+          // `overscroll-contain`: a drag past the end of the sheet stops here
+          // instead of scrolling the page behind it (iOS chains it otherwise).
+          "fixed z-50 grid w-full gap-4 overflow-y-auto overscroll-contain bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none",
           // Phone form.
+          //
+          // `--kb` is the height of the on-screen keyboard (0 without one), kept
+          // up to date by KeyboardInset. iOS does not shrink the layout viewport
+          // for its keyboard, so a sheet pinned to `bottom-0` kept its Save and
+          // Cancel buttons underneath it; lifting the sheet by `--kb` and
+          // capping its height to what is left puts the whole thing — fields
+          // and buttons — in the visible part of the screen.
           mobile === "sheet"
-            ? "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))]"
-            : "inset-x-0 top-0 bottom-0 rounded-none pb-[calc(1rem+env(safe-area-inset-bottom))]",
+            ? "inset-x-0 bottom-(--kb,0px) max-h-[min(90dvh,calc(100dvh-var(--kb,0px)-0.5rem))] rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))]"
+            // The home-indicator inset is a transparent BORDER here, not
+            // padding. Several full-screen dialogs pass `p-0` to lay out their
+            // own header and footer, and that removed a padding-based inset —
+            // leaving their action bar on top of the iPhone home indicator. A
+            // border survives `p-0`, and the background still paints under it.
+            : "inset-x-0 top-0 bottom-(--kb,0px) rounded-none border-b-[length:env(safe-area-inset-bottom)] border-transparent",
           // md and up: the centred modal, positioned exactly as it always was.
-          "md:top-1/2 md:right-auto md:bottom-auto md:left-1/2 md:h-auto md:max-h-[90dvh] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:pb-4",
+          "md:top-1/2 md:right-auto md:bottom-auto md:left-1/2 md:h-auto md:max-h-[90dvh] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border-b-0 md:pb-4",
           // Slides up from the bottom on a phone, zooms in place on a desktop.
           "data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-bottom-4 data-closed:animate-out data-closed:fade-out-0 data-closed:slide-out-to-bottom-4",
           "md:data-open:slide-in-from-bottom-0 md:data-open:zoom-in-95 md:data-closed:slide-out-to-bottom-0 md:data-closed:zoom-out-95",
@@ -106,7 +120,8 @@ function DialogContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-2 right-2"
+                // 40px on a phone: the 28px desktop size is under a fingertip.
+                className="absolute top-2 right-2 max-md:size-10"
                 size="icon-sm"
               />
             }

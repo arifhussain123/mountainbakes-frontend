@@ -42,7 +42,7 @@ import { Money, useMoney } from './finance-ui';
  * are not sent.
  */
 
-const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-sm md:h-9';
+const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-base md:h-9 md:text-sm';
 const amountOf = (e: LedgerEntry) => (e.debit > 0 ? e.debit : e.credit);
 
 type Draft = {
@@ -136,7 +136,7 @@ export function EditLedgerEntryDialog({ entry, onClose }: { entry: LedgerEntry; 
 
   return (
     <Dialog open onOpenChange={(open) => !open && !mut.isPending && onClose()}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto md:max-w-xl">
+      <DialogContent className="overflow-y-auto md:max-w-xl">
         <DialogHeader>
           <DialogTitle>
             Edit <span className="font-mono">{entry.voucherNo}</span>
