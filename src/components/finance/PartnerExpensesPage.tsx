@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
+  businessDateStr,
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
@@ -14,11 +15,12 @@ import {
   type PartnerTxnKind,
   type SortState,
 } from '@mb/shared';
-import { useFinancePartners, usePartnerExpenses, usePartnerShareSummary } from '@/lib/finance';
+import { useFinancePartners, useLedgerSummary, usePartnerExpenses, usePartnerShareSummary } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/shared/DataTable';
@@ -408,6 +410,12 @@ function PartnerShareDetailTab() {
   const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }], []);
   const summaryQ = usePartnerShareSummary(from, to);
   const summary = summaryQ.data;
+  // Budget is the Daily Ledger's own Balance, read from the same endpoint and
+  // dated the same way that page dates it: the end of the chosen range, or the
+  // current business day when no range is set. One figure, one source — the
+  // two screens cannot disagree.
+  const balanceQ = useLedgerSummary({ date: to ?? businessDateStr() });
+  const budget = balanceQ.data?.balance;
 
   return (
     <div className="space-y-6">
@@ -418,8 +426,14 @@ function PartnerShareDetailTab() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total Expenses (excl. partner advance/draw)</p>
-              <Money value={summary.totalExpense} className="text-xl font-bold text-red-600 dark:text-red-400" />
+              <p className="text-xs text-muted-foreground">Budget</p>
+              {balanceQ.isLoading ? (
+                <Skeleton className="mt-1 h-6 w-32" />
+              ) : budget === undefined ? (
+                <p className="text-xl font-bold text-muted-foreground">—</p>
+              ) : (
+                <Money value={budget} className={cn('text-xl font-bold', budget < 0 && 'text-red-600 dark:text-red-400')} />
+              )}
             </CardContent>
           </Card>
           <Card>
