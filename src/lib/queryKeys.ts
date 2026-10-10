@@ -263,6 +263,16 @@ export const qk = {
   financeEmployees: (includeInactive?: boolean) =>
     ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,
   financeSalaryRevisions: (employeeId: string) => ['finance', 'salaryRevisions', employeeId] as const,
+  // The read-only year ledgers. Under the 'finance' root like everything else,
+  // so approving a payslip on Payroll refreshes the ledger it now belongs to.
+  financeSalaryLedger: (filters: Record<string, unknown>) => ['finance', 'salaryLedger', filters] as const,
+  financeSalaryLedgerPayments: (filters: Record<string, unknown>) =>
+    ['finance', 'salaryLedgerPayments', filters] as const,
+  financeEmployeeProfile: (employeeId: string) => ['finance', 'employeeProfile', employeeId] as const,
+  financeEmployeeSearch: (term: string) => ['finance', 'employeeSearch', term] as const,
+  financePartnerLedger: (filters: Record<string, unknown>) => ['finance', 'partnerLedger', filters] as const,
+  financePartnerLedgerTransactions: (filters: Record<string, unknown>) =>
+    ['finance', 'partnerLedgerTransactions', filters] as const,
   financeAdvances: (filters: Record<string, unknown>) => ['finance', 'advances', filters] as const,
   financeAdvanceSummary: (employeeId: string) => ['finance', 'advanceSummary', employeeId] as const,
   financePartnerExpenses: (filters: Record<string, unknown>) =>

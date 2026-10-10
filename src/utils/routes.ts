@@ -172,8 +172,12 @@ export const ROUTES = {
   FINANCE_LEDGER: '/finance-ledger',
   FINANCE_CASH_TRANSFERS: '/finance-cash-transfers',
   FINANCE_ENTRIES: '/finance-entries',
+  /** Read-only year ledger. Payslips are raised and approved on FINANCE_PAYROLL. */
   FINANCE_SALARIES: '/finance-salaries',
+  FINANCE_PAYROLL: '/finance-payroll',
+  /** Read-only year ledger. Advances and draws are raised on FINANCE_PARTNER_TRANSACTIONS. */
   FINANCE_PARTNER_EXPENSES: '/finance-partner-expenses',
+  FINANCE_PARTNER_TRANSACTIONS: '/finance-partner-transactions',
   FINANCE_HEADS: '/finance-heads',
   FINANCE_CLOSING: '/finance-closing',
   FINANCE_REPORTS: '/finance-reports',

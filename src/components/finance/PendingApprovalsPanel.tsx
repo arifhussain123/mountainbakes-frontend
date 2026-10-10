@@ -26,9 +26,10 @@ import { ROUTES } from '@/utils/routes';
  */
 const REVIEW_ROUTE: Record<FinancePendingApprovalKind, string> = {
   transaction: ROUTES.FINANCE_ENTRIES,
-  partner_expense: ROUTES.FINANCE_PARTNER_EXPENSES,
-  salary: ROUTES.FINANCE_SALARIES,
-  advance: ROUTES.FINANCE_SALARIES,
+  // The working screens, not the read-only ledgers of the same subjects.
+  partner_expense: ROUTES.FINANCE_PARTNER_TRANSACTIONS,
+  salary: ROUTES.FINANCE_PAYROLL,
+  advance: ROUTES.FINANCE_PAYROLL,
 };
 
 export function PendingApprovalsPanel() {

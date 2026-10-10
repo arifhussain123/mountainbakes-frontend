@@ -10,6 +10,11 @@ import type {
   CashTransfer,
   EmployeeAdvance,
   EmployeeAdvanceSummary,
+  EmployeeProfile,
+  PartnerLedger,
+  PartnerLedgerTransactions,
+  SalaryLedger,
+  SalaryLedgerPayments,
   FinanceAuditLog,
   FinanceDashboard,
   FinancePendingApproval,
@@ -355,6 +360,89 @@ export function useFinanceEmployees(includeInactive = false) {
         {},
         token,
       )).employees,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Read-only year ledgers
+//
+// `placeholderData` keeps the previous year's grid on screen while the next one
+// loads, so changing the year or typing in the search box swaps the figures in
+// place instead of flashing a skeleton.
+// ---------------------------------------------------------------------------
+
+export function useSalaryLedger(filters: Record<string, unknown>) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeSalaryLedger(filters),
+    enabled: Boolean(token),
+    placeholderData: (previous) => previous,
+    queryFn: async () =>
+      (await apiCall<{ ledger: SalaryLedger }>(`/api/finance/payroll/ledger${toQuery(filters)}`, {}, token)).ledger,
+  });
+}
+
+/** The payslips behind a cell, an employee or a year. `null` keeps it idle. */
+export function useSalaryLedgerPayments(filters: Record<string, unknown> | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeSalaryLedgerPayments(filters ?? {}),
+    enabled: Boolean(token && filters),
+    queryFn: () =>
+      apiCall<SalaryLedgerPayments>(`/api/finance/payroll/ledger/payments${toQuery(filters ?? {})}`, {}, token),
+  });
+}
+
+/** Biodata, resignation history and last approved salary for one employee. */
+export function useEmployeeProfile(employeeId: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeEmployeeProfile(employeeId ?? ''),
+    enabled: Boolean(token && employeeId),
+    queryFn: async () =>
+      (await apiCall<{ profile: EmployeeProfile }>(`/api/finance/payroll/employees/${employeeId}`, {}, token)).profile,
+  });
+}
+
+/** Employees matching a code or a name, resigned and inactive ones included. */
+export function useEmployeeSearch(term: string, enabled: boolean) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeEmployeeSearch(term),
+    enabled: Boolean(token) && enabled,
+    placeholderData: (previous) => previous,
+    queryFn: async () =>
+      (await apiCall<{ employees: FinanceEmployee[] }>(
+        `/api/finance/payroll/employees${toQuery({ includeInactive: true, search: term || undefined })}`,
+        {},
+        token,
+      )).employees,
+  });
+}
+
+export function usePartnerLedger(filters: Record<string, unknown>) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePartnerLedger(filters),
+    enabled: Boolean(token),
+    placeholderData: (previous) => previous,
+    queryFn: async () =>
+      (await apiCall<{ ledger: PartnerLedger }>(`/api/finance/partner-expenses/ledger${toQuery(filters)}`, {}, token))
+        .ledger,
+  });
+}
+
+export function usePartnerLedgerTransactions(filters: Record<string, unknown> | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financePartnerLedgerTransactions(filters ?? {}),
+    enabled: Boolean(token && filters),
+    queryFn: () =>
+      apiCall<PartnerLedgerTransactions>(
+        `/api/finance/partner-expenses/ledger/transactions${toQuery(filters ?? {})}`,
+        {},
+        token,
+      ),
   });
 }
 

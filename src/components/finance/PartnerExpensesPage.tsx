@@ -34,8 +34,10 @@ import { PartnerDetailForm, PartnerTxnForm } from './CompanyTransactionForms';
 import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
 
 /**
- * Company Transaction Details — four tabs over the same underlying idea:
- * money moving between the company and the people who own it.
+ * Partner Transactions — four tabs over the same underlying idea: money moving
+ * between the company and the people who own it. This is where an advance or a
+ * draw is raised and approved; Company Transaction Details is the read-only
+ * year view of what was approved here.
  *
  * Branch share is deliberately NOT here: the payout document
  * (branch_share_payments, /api/finance/branch-share) and its BranchShareForm
@@ -82,8 +84,8 @@ export function PartnerExpensesPage() {
   return (
     <div className="space-y-6">
       <FinancePageHeader
-        title="Company Transaction Details"
-        description="Partner advances and draws, and the partner profit-share reconciliation."
+        title="Partner Transactions"
+        description="Partner advances and draws, and the partner profit-share reconciliation. Approved ones add up in Company Transaction Details."
       />
 
       <ReadOnlyNotice abilities={abilities} />
