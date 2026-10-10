@@ -22,6 +22,7 @@ import {
   DAILY_SALE_MAX_WINDOW_DAYS,
   DEPOSIT_RECON_STATUS_LABELS,
   businessDateStr,
+  businessDaysAgoStr,
   karachiDateStr,
   karachiTimeStr,
   type FinanceDailySaleRow,
@@ -60,6 +61,9 @@ import {
 import { cn } from '@/lib/utils';
 import { DepositCheckDialog, FinanceDailySaleViewDialog, depositsHref } from './BranchSalesDialogs';
 
+/** The window the tab opens on, in business days. The branch board's own default. */
+const DEFAULT_WINDOW_DAYS = 30;
+
 /**
  * BRANCH SALES — every branch's Daily Sale Record, as Finance audits it.
  *
@@ -83,11 +87,12 @@ import { DepositCheckDialog, FinanceDailySaleViewDialog, depositsHref } from './
  * decision that is Finance's — whether a deposit arrived — is taken on Cash
  * Transfers, beside the slip's photo; every row links there.
  *
- * ─── One day at a time, by default ───────────────────────────────────────────
- * The branch page opens on thirty days because its question is "which days are
- * not signed off". Finance's is "what came in today", so this opens on today's
- * business date, with a step to the day either side. The From/To fields are the
- * same ones and still take a window.
+ * ─── The same window as the branch page ──────────────────────────────────────
+ * Thirty business days ending today, every branch, newest day first — one row
+ * per branch per day, exactly as the branch board lists them. It opened on today
+ * alone at first, and a business day that began at 02:00 has no sales for most of
+ * the morning: the page a finance user met was an empty table. The step buttons
+ * move the window by its own length, and Today narrows it to the one day.
  */
 export function BranchSalesTab() {
   const { token } = useAuth();
@@ -95,7 +100,7 @@ export function BranchSalesTab() {
   const symbol = settings?.currencySymbol || 'Rs.';
 
   const today = businessDateStr();
-  const [from, setFrom] = useState(today);
+  const [from, setFrom] = useState(() => businessDaysAgoStr(DEFAULT_WINDOW_DAYS - 1));
   const [to, setTo] = useState(today);
   const [branchId, setBranchId] = useState<string>(ALL_BRANCHES);
 
@@ -123,12 +128,19 @@ export function BranchSalesTab() {
   const recon = data?.reconciliation;
   const unmatched = data?.unmatchedDeposits ?? [];
 
-  /** Move the whole window by a day, keeping its length. Never past today. */
-  function step(days: number) {
-    const nextTo = addDays(to, days);
-    if (nextTo > today) return;
-    setFrom(addDays(from, days));
-    setTo(nextTo);
+  const windowDays = Math.max(1, daysBetween(from, to));
+  const isDefaultWindow = to === today && from === addDays(today, -(DEFAULT_WINDOW_DAYS - 1));
+
+  /**
+   * Move the window back or forward by its own length — a day at a time when one
+   * day is on show, a month at a time when thirty are. Never past today: the last
+   * step forward stops with the window ending there.
+   */
+  function step(direction: -1 | 1) {
+    const nextTo = addDays(to, direction * windowDays);
+    const end = nextTo > today ? today : nextTo;
+    setFrom(addDays(end, -(windowDays - 1)));
+    setTo(end);
   }
 
   const columns = useMemo<ColumnDef<FinanceDailySaleRow>[]>(() => {
@@ -242,8 +254,8 @@ export function BranchSalesTab() {
         <div>
           <h3 className="text-base font-semibold">Branch Daily Sale Records</h3>
           <p className="text-sm text-muted-foreground">
-            Each branch&apos;s recorded sales for the day, against the deposits Finance has approved.
-            Nothing on this tab changes a sale or a record.
+            Every branch&apos;s recorded sales, day by day, against the deposits Finance has approved.
+            This tab is for checking only: it changes no sale or record and posts nothing to the ledger.
           </p>
         </div>
 
@@ -414,7 +426,8 @@ export function BranchSalesTab() {
                     variant="outline"
                     size="icon"
                     className="h-9 w-9"
-                    aria-label="Previous day"
+                    aria-label={windowDays === 1 ? 'Previous day' : `Previous ${windowDays} days`}
+                    title={windowDays === 1 ? 'Previous day' : `Previous ${windowDays} days`}
                     onClick={() => step(-1)}
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -423,7 +436,8 @@ export function BranchSalesTab() {
                     variant="outline"
                     size="icon"
                     className="h-9 w-9"
-                    aria-label="Next day"
+                    aria-label={windowDays === 1 ? 'Next day' : `Next ${windowDays} days`}
+                    title={windowDays === 1 ? 'Next day' : `Next ${windowDays} days`}
                     disabled={to >= today}
                     onClick={() => step(1)}
                   >
@@ -440,6 +454,18 @@ export function BranchSalesTab() {
                     }}
                   >
                     Today
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    disabled={isDefaultWindow}
+                    onClick={() => {
+                      setFrom(addDays(today, -(DEFAULT_WINDOW_DAYS - 1)));
+                      setTo(today);
+                    }}
+                  >
+                    Last {DEFAULT_WINDOW_DAYS} days
                   </Button>
                 </div>
               </DailySaleFilters>
