@@ -52,7 +52,12 @@ export function useResourceList<T = Record<string, unknown>>(
 
   return useQuery({
     queryKey: qk.data(resource, query),
-    queryFn: ({ signal }) => apiCall<PaginatedResponse<T>>(`/api/data/${resource}?${query}`, { signal }, token),
+    // `no-cache`: the browser must check with the API before reusing a copy.
+    // A static resource is sent with `max-age=60`, and without this a refetch
+    // after a write is answered from the browser's own cache — the list shows
+    // the row as it was for up to a minute after the change was saved. How long
+    // a page may be reused is already decided here, by `staleTime`.
+    queryFn: ({ signal }) => apiCall<PaginatedResponse<T>>(`/api/data/${resource}?${query}`, { signal, cache: 'no-cache' }, token),
     enabled: Boolean(token) && (opts.enabled ?? true),
     // The previous page stays on screen, greyed, while the next one loads —
     // paging never flashes an empty table.
