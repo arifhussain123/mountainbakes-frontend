@@ -59,10 +59,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { DepositCheckDialog, FinanceDailySaleViewDialog, depositsHref } from './BranchSalesDialogs';
+import {
+  DepositCheckDialog,
+  FinanceDailySaleViewDialog,
+  depositWindowHref,
+  depositsHref,
+} from './BranchSalesDialogs';
 
 /** The window the tab opens on, in business days. The branch board's own default. */
 const DEFAULT_WINDOW_DAYS = 30;
+
+/**
+ * The branch board's columns this tab leaves off — the branch's count of its own
+ * drawer, and its sign-off of that count.
+ */
+const BRANCH_ONLY_COLUMNS = new Set(['difference', 'status', 'source']);
+
+/** How many unmatched deposits the notice lists before it says "and N more". */
+const UNMATCHED_SHOWN = 8;
 
 /**
  * BRANCH SALES — every branch's Daily Sale Record, as Finance audits it.
@@ -74,14 +88,21 @@ const DEFAULT_WINDOW_DAYS = 30;
  * them with the function the branch endpoint calls. Nobody re-enters a sale for
  * Finance to see it, and there is no second table for the two to disagree in.
  *
- * ─── What Finance adds ───────────────────────────────────────────────────────
- * Three columns after Source, and nothing before it: what Finance has RECEIVED
- * for the day (its approved cash deposits), the difference, and where the day
- * stands. That difference is recorded less received and sits apart from the
- * branch's own Difference column, which is counted less system — two questions,
- * asked of the same day, and neither answers the other.
+ * ─── What Finance sees of it ─────────────────────────────────────────────────
+ * The sales columns, Date to Discount. The branch's own Difference, Status and
+ * Source are left off: they are about the branch counting its drawer, which is
+ * the branch's sign-off and not what Finance is checking. They are still in the
+ * View popup.
  *
- * ─── What Finance cannot do here ─────────────────────────────────────────────
+ * ─── What Finance adds ───────────────────────────────────────────────────────
+ * Three columns after them. What a branch owes the company for a day is that
+ * day's Company Share, and it hands it over as a cash deposit — usually the day
+ * after, so the deposit carries a later date than the sales it pays for. The API
+ * finds each day's deposit by AMOUNT, among the branch's deposits dated that day
+ * or the two days after it, and each deposit is used once. Received is what was
+ * found and approved; Deposit Difference is Company Share less Received.
+ *
+  * ─── What Finance cannot do here ─────────────────────────────────────────────
  * Generate, feed, verify, lock or amend. Those are the branch's and the admin's,
  * and the API refuses them to a finance role whatever a screen offers. The one
  * decision that is Finance's — whether a deposit arrived — is taken on Cash
@@ -151,23 +172,25 @@ export function BranchSalesTab() {
     }
 
     return [
-      ...dailySaleRecordColumns<FinanceDailySaleRow>({ symbol, showBranch: !effectiveBranchId }),
+      ...dailySaleRecordColumns<FinanceDailySaleRow>({ symbol, showBranch: !effectiveBranchId }).filter(
+        (column) => !BRANCH_ONLY_COLUMNS.has(column.id ?? ''),
+      ),
       {
         id: 'received',
-        accessorFn: (r) => r.reconciliation.received.total,
+        accessorFn: (r) => r.reconciliation.received,
         header: 'Received',
         meta: { align: 'right', mobileLabel: 'Received' },
         cell: ({ row }) => {
           const r = row.original.reconciliation;
           return (
             <div className="tabular-nums">
-              <p className="font-semibold">{paisaMoney(r.received.total, symbol)}</p>
+              <p className="font-semibold">{paisaMoney(r.received, symbol)}</p>
               {/* The figure it is measured against, on the row, so the column can
                   be read without opening anything. */}
-              <p className="text-xs text-muted-foreground">of {paisaMoney(r.expected.total, symbol)}</p>
-              {r.pending.total > 0 && (
+              <p className="text-xs text-muted-foreground">of {paisaMoney(r.expected, symbol)} company share</p>
+              {r.pending > 0 && (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  {paisaMoney(r.pending.total, symbol)} awaiting approval
+                  {paisaMoney(r.pending, symbol)} awaiting approval
                 </p>
               )}
             </div>
@@ -177,9 +200,7 @@ export function BranchSalesTab() {
           <span className="tabular-nums">
             {paisaMoney(
               Math.round(
-                table
-                  .getFilteredRowModel()
-                  .rows.reduce((s, r) => s + r.original.reconciliation.received.total, 0) * 100,
+                table.getFilteredRowModel().rows.reduce((s, r) => s + r.original.reconciliation.received, 0) * 100,
               ) / 100,
               symbol,
             )}
@@ -188,17 +209,24 @@ export function BranchSalesTab() {
       },
       {
         id: 'depositDifference',
-        accessorFn: (r) => r.reconciliation.difference.total,
+        accessorFn: (r) => r.reconciliation.difference,
         header: 'Deposit Difference',
         meta: { align: 'center', mobileLabel: 'Deposit Difference' },
         cell: ({ row }) => {
           const r = row.original.reconciliation;
           // Nothing due and nothing deposited is not a zero worth a badge.
           if (r.status === 'nothing_due') return <span className="text-muted-foreground">—</span>;
+          const dates = [...new Set(r.deposits.map((d) => displayDate(d.businessDate)))].join(', ');
           return (
             <div className="flex flex-col items-center gap-0.5">
-              <DepositDifferenceBadge difference={r.difference.total} symbol={symbol} />
-              {r.totalMatches && <span className="text-xs text-muted-foreground">channels differ</span>}
+              <DepositDifferenceBadge difference={r.difference} symbol={symbol} />
+              {/* Which deposit, and how sure the pairing is: one of the same
+                  amount, or only the nearest one in date. */}
+              {r.match !== 'none' && (
+                <span className="text-xs text-muted-foreground">
+                  {r.match === 'amount' ? 'same amount' : 'nearest deposit'} · {dates}
+                </span>
+              )}
             </div>
           );
         },
@@ -208,7 +236,7 @@ export function BranchSalesTab() {
         // The label, so the search box finds "discrepancy" and "not received".
         accessorFn: (r) => DEPOSIT_RECON_STATUS_LABELS[r.reconciliation.status],
         header: 'Deposit Status',
-        meta: { align: 'center', mobileLabel: 'Deposit Status' },
+        meta: { align: 'center', mobile: 'badge' },
         cell: ({ row }) => {
           const r = row.original.reconciliation;
           return (
@@ -245,7 +273,7 @@ export function BranchSalesTab() {
   // right day's rows and may be minutes or a day old (the cache outlives a
   // session), so they are shown as what they are rather than as current.
   const stale = isError && !!data;
-  const outstanding = recon?.difference.total ?? 0;
+  const outstanding = recon?.difference ?? 0;
 
   return (
     <div className="space-y-6">
@@ -254,7 +282,8 @@ export function BranchSalesTab() {
         <div>
           <h3 className="text-base font-semibold">Branch Daily Sale Records</h3>
           <p className="text-sm text-muted-foreground">
-            Every branch&apos;s recorded sales, day by day, against the deposits Finance has approved.
+            Every branch&apos;s recorded sales, day by day, and its Company Share against the deposit
+            received for it.
             This tab is for checking only: it changes no sale or record and posts nothing to the ledger.
           </p>
         </div>
@@ -305,11 +334,11 @@ export function BranchSalesTab() {
           {/* ── The branch page's own summary cards (§18) ── */}
           <DailySaleSummaryCards summary={summary} isLoading={isLoading} symbol={symbol} />
 
-          {/* ── Recorded against received ── */}
+          {/* ── Company Share against received ── */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard title="To Hand Over" value={isLoading ? '…' : money(recon?.expected.total ?? 0, symbol)} icon={ShoppingCart} color="brown" loading={isLoading} />
-            <StatCard title="Received" value={isLoading ? '…' : money(recon?.received.total ?? 0, symbol)} icon={Wallet} color="green" loading={isLoading} />
-            <StatCard title="Awaiting Approval" value={isLoading ? '…' : money(recon?.pending.total ?? 0, symbol)} icon={Clock} color="orange" loading={isLoading} />
+            <StatCard title="Company Share" value={isLoading ? '…' : money(recon?.expected ?? 0, symbol)} icon={ShoppingCart} color="brown" loading={isLoading} />
+            <StatCard title="Received" value={isLoading ? '…' : money(recon?.received ?? 0, symbol)} icon={Wallet} color="green" loading={isLoading} />
+            <StatCard title="Awaiting Approval" value={isLoading ? '…' : money(recon?.pending ?? 0, symbol)} icon={Clock} color="orange" loading={isLoading} />
             <StatCard
               title={outstanding < 0 ? 'Received Over' : 'Not Yet Received'}
               value={isLoading ? '…' : money(Math.abs(outstanding), symbol)}
@@ -336,9 +365,9 @@ export function BranchSalesTab() {
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                     <span>
                       {recon.counts.discrepancy}{' '}
-                      {recon.counts.discrepancy === 1 ? 'branch day does' : 'branch days do'} not match the
-                      money received. Open its deposit check and review it — nothing is corrected
-                      automatically.
+                      {recon.counts.discrepancy === 1 ? 'branch day has' : 'branch days have'} no deposit of
+                      the same amount as the Company Share; the nearest deposit is shown instead. Open
+                      the deposit check and review it — nothing is corrected automatically.
                     </span>
                   </p>
                 )}
@@ -349,7 +378,7 @@ export function BranchSalesTab() {
                     <span>
                       {recon.counts.pending}{' '}
                       {recon.counts.pending === 1 ? 'branch day has' : 'branch days have'} a deposit awaiting
-                      approval ({money(recon.pending.total, symbol)}). It is not counted as received until
+                      approval ({money(recon.pending, symbol)}). It is not counted as received until
                       it is approved on{' '}
                       <a
                         href={`${ROUTES.FINANCE_CASH_TRANSFERS}/`}
@@ -367,15 +396,15 @@ export function BranchSalesTab() {
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                     <div className="space-y-1">
                       <p>
-                        {unmatched.length === 1 ? 'A deposit is' : `${unmatched.length} deposits are`} dated on a
-                        day with no recorded sales, so {unmatched.length === 1 ? 'it is' : 'they are'} not set
-                        against any row below. A wrong date is corrected through the Help Desk.
+                        {unmatched.length === 1 ? 'A deposit in this window is' : `${unmatched.length} deposits in this window are`}{' '}
+                        not set against any day: no day within two days before {unmatched.length === 1 ? 'it' : 'them'} is
+                        still waiting for a deposit.
                       </p>
                       <ul className="space-y-0.5">
-                        {unmatched.map((d) => (
+                        {unmatched.slice(0, UNMATCHED_SHOWN).map((d) => (
                           <li key={d.id} className="tabular-nums">
                             <a
-                              href={depositsHref(d.branchId, d.businessDate)}
+                              href={depositsHref(d.branchId, d.businessDate, d.businessDate)}
                               className="font-medium text-foreground underline underline-offset-2"
                             >
                               {d.transferNo}
@@ -384,6 +413,9 @@ export function BranchSalesTab() {
                             {d.status === 'pending' ? ' · awaiting approval' : ''}
                           </li>
                         ))}
+                        {unmatched.length > UNMATCHED_SHOWN && (
+                          <li>and {unmatched.length - UNMATCHED_SHOWN} more — see Cash Transfers.</li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -535,7 +567,7 @@ function RowActions({
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => {
-            window.location.assign(depositsHref(row.branchId, row.businessDate));
+            window.location.assign(depositWindowHref(row));
           }}
         >
           <ArrowUpRight className="mr-2 h-4 w-4" /> Open deposits

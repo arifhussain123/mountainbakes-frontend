@@ -1,9 +1,10 @@
 'use client';
 
 import { ArrowUpRight } from 'lucide-react';
-import type { AppSettings, FinanceDailySaleRow } from '@mb/shared';
+import { DEPOSIT_MATCH_DAYS, type AppSettings, type FinanceDailySaleRow } from '@mb/shared';
 import { useFinanceDailySaleDay } from '@/lib/finance';
 import { ROUTES } from '@/utils/routes';
+import { addDays } from '@/components/dashboard/daily-sales/ranges';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -24,8 +25,8 @@ import {
 import { cn } from '@/lib/utils';
 
 /**
- * Where Finance decides a branch day's deposits — Cash Transfers, already
- * narrowed to that branch and date.
+ * Cash Transfers, already narrowed to one branch and a span of dates — where
+ * Finance decides whether a deposit arrived.
  *
  * A link with a query string rather than a client-side push, on purpose: that
  * page takes its filters from the address when it mounts, and a hard navigation
@@ -33,13 +34,18 @@ import { cn } from '@/lib/utils';
  * Naming any filter also replaces its default "pending only", so the approved
  * deposits behind a received figure are on the list rather than filtered out.
  */
-export function depositsHref(branchId: string, businessDate: string): string {
+export function depositsHref(branchId: string, from: string, to: string): string {
   const params = new URLSearchParams({
     branchId,
-    'businessDate.gte': businessDate,
-    'businessDate.lte': businessDate,
+    'businessDate.gte': from,
+    'businessDate.lte': to,
   });
   return `${ROUTES.FINANCE_CASH_TRANSFERS}/?${params}`;
+}
+
+/** The dates a day's deposit is looked for on: the day itself and the days after it. */
+export function depositWindowHref(row: Pick<FinanceDailySaleRow, 'branchId' | 'businessDate'>): string {
+  return depositsHref(row.branchId, row.businessDate, addDays(row.businessDate, DEPOSIT_MATCH_DAYS));
 }
 
 /**
@@ -79,11 +85,13 @@ export function FinanceDailySaleViewDialog({
 }
 
 /**
- * One branch day's recorded money against its deposits, channel by channel.
+ * One branch day's Company Share against the deposit found for it.
  *
- * The table's three finance columns give the total; this is where a reader finds
- * WHICH channel is out, and the deposits behind the received figure. It reads the
- * row it was opened on and fetches nothing.
+ * The table's three finance columns give the answer; this shows how it was
+ * reached — the share and what it is a share of, which deposits were set against
+ * the day and on what date they were handed over, and whether they were found by
+ * amount or are only the nearest in date. It reads the row it was opened on and
+ * fetches nothing.
  *
  * It decides nothing. Whether a deposit arrived is decided on the deposit, on
  * Cash Transfers, where the slip's photo is — the button below goes there.
@@ -116,112 +124,79 @@ function DepositCheckBody({
   onClose: () => void;
 }) {
   const r = row.reconciliation;
-  const showPending = r.pendingCount > 0;
-
-  const lines = [
-    { label: 'Cash', hint: 'Cash on Table', key: 'cash' },
-    { label: 'Easypaisa', hint: null, key: 'easypaisa' },
-    { label: 'Bank', hint: null, key: 'bank' },
-  ] as const;
+  const lastDay = addDays(row.businessDate, DEPOSIT_MATCH_DAYS);
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>Deposit check</DialogTitle>
         <DialogDescription>
-          {row.branchName} · {displayDate(row.businessDate)}. What the day recorded against the
-          deposits Finance has approved for it.
+          {row.branchName} · {displayDate(row.businessDate)}. The day&apos;s Company Share against the
+          deposit received for it.
         </DialogDescription>
       </DialogHeader>
 
       <div className="flex flex-wrap items-center gap-2">
         <DepositStatusBadge status={r.status} />
-        {r.totalMatches && (
+        {r.match !== 'none' && (
           <span className="text-xs text-muted-foreground">
-            The total agrees, but not through the same channels.
+            {r.match === 'amount'
+              ? 'A deposit of the same amount was found.'
+              : 'No deposit of the same amount — the nearest one in date is shown.'}
           </span>
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-muted/40">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2 text-left font-semibold">Channel</th>
-              <th className="px-3 py-2 text-right font-semibold">Recorded</th>
-              <th className="px-3 py-2 text-right font-semibold">Received</th>
-              {showPending && <th className="px-3 py-2 text-right font-semibold">Awaiting</th>}
-              <th className="px-3 py-2 text-right font-semibold">Difference</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line) => (
-              <tr key={line.key} className="border-b last:border-0">
-                <td className="px-3 py-2">
-                  {line.label}
-                  {line.hint && <span className="block text-xs text-muted-foreground">{line.hint}</span>}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{exactMoney(r.expected[line.key], symbol)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{exactMoney(r.received[line.key], symbol)}</td>
-                {showPending && (
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-amber-700 dark:text-amber-400">
-                    {exactMoney(r.pending[line.key], symbol)}
-                  </td>
-                )}
-                <td className="whitespace-nowrap px-3 py-2 text-right">
-                  <DepositDifferenceBadge difference={r.difference[line.key]} symbol={symbol} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t font-semibold">
-              <td className="px-3 py-2">Total</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{exactMoney(r.expected.total, symbol)}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{exactMoney(r.received.total, symbol)}</td>
-              {showPending && (
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-amber-700 dark:text-amber-400">
-                  {exactMoney(r.pending.total, symbol)}
-                </td>
-              )}
-              <td className="whitespace-nowrap px-3 py-2 text-right">
-                <DepositDifferenceBadge difference={r.difference.total} symbol={symbol} />
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+      <div className="space-y-1.5 rounded-lg border bg-muted/40 p-3 text-sm">
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Total Sale</span>
+          <span className="tabular-nums">{exactMoney(row.autoTotalSale, symbol)}</span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Company Share ({row.companySharePct}%)</span>
+          <span className="font-semibold tabular-nums">{exactMoney(r.expected, symbol)}</span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground">Received (approved)</span>
+          <span className="font-semibold tabular-nums">{exactMoney(r.received, symbol)}</span>
+        </div>
+        {r.pending > 0 && (
+          <div className="flex justify-between gap-4 text-amber-700 dark:text-amber-400">
+            <span>Awaiting approval</span>
+            <span className="tabular-nums">{exactMoney(r.pending, symbol)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-4 border-t pt-1.5">
+          <span className="font-medium">Deposit Difference</span>
+          <DepositDifferenceBadge difference={r.difference} symbol={symbol} />
+        </div>
       </div>
 
       <div className="space-y-1.5 text-xs text-muted-foreground">
-        <p>Difference is recorded less received: short is money not yet received, over is more than recorded.</p>
+        <p>
+          Difference is Company Share less Received: short is share not yet received, over is more
+          than the share. A deposit is looked for by amount among this branch&apos;s deposits dated{' '}
+          {displayDate(row.businessDate)} to {displayDate(lastDay)}, and each deposit is set against one
+          day only.
+        </p>
         {r.provisional && (
           <p>
-            This day&apos;s record is still open, so the recorded figures can still move with the
-            day&apos;s sales.
+            This day&apos;s record is still open, so its Total Sale and Company Share can still move with
+            the day&apos;s sales.
           </p>
         )}
-        {row.expectedCashInHand < 0 && (
-          <p>
-            Cash on Table was {exactMoney(row.expectedCashInHand, symbol)} — the day&apos;s cash expenses
-            were more than its cash sales — so no cash is expected.
-          </p>
-        )}
-        {row.autoFoodpanda > 0 && (
-          <p>
-            Foodpanda took {exactMoney(row.autoFoodpanda, symbol)}. It has no deposit channel and is
-            not part of this comparison; if the branch deposited it through Easypaisa, Easypaisa
-            reads over by that amount.
-          </p>
-        )}
-        {showPending && <p>A deposit awaiting approval is never counted as received.</p>}
+        {r.pending > 0 && <p>A deposit awaiting approval is never counted as received.</p>}
       </div>
 
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Deposits ({r.deposits.length})
+          Deposits set against this day ({r.deposits.length})
         </p>
         {r.deposits.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No deposit has been submitted for this day.</p>
+          <p className="text-sm text-muted-foreground">
+            No deposit dated {displayDate(row.businessDate)} to {displayDate(lastDay)} is free to set against
+            this day.
+          </p>
         ) : (
           <ul className="divide-y rounded-lg border">
             {r.deposits.map((d) => (
@@ -232,8 +207,8 @@ function DepositCheckBody({
                     {d.voucherNo && <span className="ml-2 text-xs text-muted-foreground">{d.voucherNo}</span>}
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">
-                    Cash {exactMoney(d.cashAmount, symbol)} · Easypaisa {exactMoney(d.easypaisaAmount, symbol)} · Bank{' '}
-                    {exactMoney(d.bankAmount, symbol)}
+                    Handed over {displayDate(d.businessDate)} · Cash {exactMoney(d.cashAmount, symbol)} ·
+                    Easypaisa {exactMoney(d.easypaisaAmount, symbol)} · Bank {exactMoney(d.bankAmount, symbol)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -259,7 +234,7 @@ function DepositCheckBody({
         <Button variant="outline" onClick={onClose}>
           Close
         </Button>
-        <a href={depositsHref(row.branchId, row.businessDate)} className={buttonVariants()}>
+        <a href={depositWindowHref(row)} className={buttonVariants()}>
           Open in Cash Transfers
           <ArrowUpRight className="h-4 w-4" />
         </a>
