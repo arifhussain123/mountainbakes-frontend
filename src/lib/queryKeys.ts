@@ -288,6 +288,15 @@ export const qk = {
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,
+  // Daily Closing's Branch Sales tab. Under the finance root, so approving or
+  // rejecting a deposit refreshes it with everything else; `financeDailySalesRoot`
+  // is what a Daily Sale Record mutation drops, so a super admin who feeds a day
+  // and then opens Finance does not read the figures from before the feed.
+  financeDailySalesRoot: () => ['finance', 'dailySales'] as const,
+  financeDailySales: (filters: { from: string; to: string; branchId?: string | null }) =>
+    ['finance', 'dailySales', 'list', filters.from, filters.to, filters.branchId ?? 'all'] as const,
+  financeDailySaleDay: (branchId: string, businessDate: string) =>
+    ['finance', 'dailySales', 'day', branchId, businessDate] as const,
   financeSettings: () => ['finance', 'settings'] as const,
   financeAudit: (filters: Record<string, unknown>) => ['finance', 'audit', filters] as const,
   financeReport: (query: Record<string, unknown>) => ['finance', 'report', query] as const,

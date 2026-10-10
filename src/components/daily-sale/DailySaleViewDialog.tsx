@@ -67,6 +67,44 @@ export function DailySaleViewDialog({
   const { data, isLoading } = useDailySaleRecord(token, open ? recordId : null);
 
   return (
+    <DailySaleViewDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      detail={data}
+      isLoading={isLoading}
+      settings={settings}
+      initialTab={initialTab}
+      autoPrint={autoPrint}
+    />
+  );
+}
+
+/**
+ * The dialog without its fetch.
+ *
+ * Split out because the record reaches it two ways: a branch asks for a stored
+ * record by id (above), and Finance asks for a branch day, which may have no
+ * stored record yet (FinanceDailySaleViewDialog). Everything a reader sees is
+ * here, so the two cannot drift apart.
+ */
+export function DailySaleViewDialogShell({
+  open,
+  onOpenChange,
+  detail,
+  isLoading,
+  settings,
+  initialTab = 'summary',
+  autoPrint = false,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  detail: DailySaleRecordDetail | undefined;
+  isLoading: boolean;
+  settings: AppSettings | null;
+  initialTab?: 'summary' | 'history';
+  autoPrint?: boolean;
+}) {
+  return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton
@@ -83,15 +121,17 @@ export function DailySaleViewDialog({
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           )}
-          {!isLoading && !data && (
+          {!isLoading && !detail && (
             <p className="py-12 text-center text-sm text-muted-foreground">
               This record could not be loaded.
             </p>
           )}
-          {data && (
+          {detail && (
             <ViewBody
-              key={data.record.id ?? ''}
-              detail={data}
+              // A day with no stored record has no id to key on; its branch and
+              // date identify it just as well.
+              key={detail.record.id ?? `${detail.record.branchId}|${detail.record.businessDate}`}
+              detail={detail}
               settings={settings}
               initialTab={initialTab}
               autoPrint={autoPrint}

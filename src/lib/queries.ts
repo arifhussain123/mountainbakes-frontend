@@ -9,7 +9,7 @@
 
 import { normalizeCashTransferList } from '@/lib/cashTransferCompat';
 import { printTrace } from '@/lib/print/diagnostics';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiCall } from '@/utils/api';
 import { qk } from './queryKeys';
 // businessDayBounds is a VALUE, not a type — Branch Closing turns a business
@@ -2571,6 +2571,19 @@ export function useDailySaleAudit(
 }
 
 /**
+ * Drop everything a Daily Sale Record write can have changed.
+ *
+ * The record's own keys, and Finance's Daily Closing view of the same records —
+ * a second cache entry over the same rows, which a super admin can have open in
+ * the same session. Without the second line it would go on showing the figures
+ * from before the write until its own timer came round.
+ */
+function invalidateDailySale(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: qk.financeDailySalesRoot() });
+  return qc.invalidateQueries({ queryKey: ['dailySale'] });
+}
+
+/**
  * Create or refresh one day's record.
  *
  * Safe to call repeatedly and safe to double-click: the unique key on
@@ -2588,7 +2601,7 @@ export function useGenerateDailySaleRecord(token: string) {
         { method: 'POST', body: JSON.stringify(body) },
         token,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+    onSuccess: () => invalidateDailySale(qc),
   });
 }
 
@@ -2615,7 +2628,7 @@ export function useFeedDailySale(token: string) {
         { method: 'PUT', body: JSON.stringify(body) },
         token,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+    onSuccess: () => invalidateDailySale(qc),
   });
 }
 
@@ -2636,7 +2649,7 @@ export function useDecideDailySale(token: string) {
         { method: 'PUT', body: JSON.stringify(reason ? { reason } : {}) },
         token,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+    onSuccess: () => invalidateDailySale(qc),
   });
 }
 
@@ -2650,7 +2663,7 @@ export function useAmendDailySale(token: string) {
         { method: 'PUT', body: JSON.stringify({ field, amount, reason }) },
         token,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+    onSuccess: () => invalidateDailySale(qc),
   });
 }
 
@@ -2664,7 +2677,7 @@ export function useSetPaymentMethodLock(token: string) {
         { method: 'PUT', body: JSON.stringify(body) },
         token,
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dailySale'] }),
+    onSuccess: () => invalidateDailySale(qc),
   });
 }
 
