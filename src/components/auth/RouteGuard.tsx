@@ -13,13 +13,13 @@ import { isBranchRole } from '@mb/shared';
  *
  * The app is a static export now (next.config.ts, `output: 'export'`), so there is
  * no server in front of a navigation and no first-party `mb_session` cookie to read
- * — the Supabase session in localStorage is the only identity the app has. This
- * component reproduces the middleware's decisions against that session and runs on
- * every route change.
+ * — the session lib/auth/session.ts keeps in Web Storage is the only identity the
+ * app has. This component reproduces the middleware's decisions against that
+ * session and runs on every route change.
  *
  * SECURITY: this is navigation UX, not an authorisation boundary. Anyone can fetch
  * the static HTML for /dashboard directly; what they cannot do is read any data,
- * because every request goes to the Express API which authorises the Supabase JWT
+ * because every request goes to the Express API which authorises the access token
  * on its own. That was already the case under the middleware — the `mb_session`
  * cookie only ever decided which screen to show. Nothing secret is in the bundle.
  */
@@ -31,9 +31,9 @@ const PUBLIC_PATHS = [
   // Finance User ID rather than an email and refuses any non-finance account —
   // see FinanceLoginPage. It must be public for the same reason /login is.
   '/finance-login',
-  // Supabase password-recovery landing page. Must be public: the recovery token
-  // arrives in the URL hash and the client exchanges it for a short-lived session,
-  // so the visitor is legitimately signed out when they arrive.
+  // Password-reset landing page. Must be public: the reset token arrives in the
+  // link (`?token=…`) and is posted to the API along with the new password — no
+  // session is involved, so the visitor is legitimately signed out when they arrive.
   '/reset-password',
 ];
 

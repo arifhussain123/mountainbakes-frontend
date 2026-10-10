@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+
 import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { ChangePasswordSchema } from '@mb/shared';
@@ -16,7 +16,7 @@ import { Loader2, Lock, ShieldAlert, Eye, EyeOff, AlertCircle } from 'lucide-rea
 
 export default function ChangePasswordPage() {
   const router = useRouter();
-  const { user, token, loading: authLoading, logout } = useAuth();
+  const { user, token, loading: authLoading, logout, refreshToken } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -39,11 +39,11 @@ export default function ChangePasswordPage() {
     setSubmitting(true);
     try {
       await apiCall('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ newPassword }) }, token);
-      // The API clears the mustChangePassword claim in app_metadata; refreshing the
-      // session is what pulls the new claim into the JWT this app reads. RouteGuard
-      // routes off that claim, so without the refresh it would bounce straight back
-      // here — nothing else clears the gate.
-      await supabase.auth.refreshSession();
+      // The API clears the must-change flag on the account; refreshing the session
+      // is what brings the cleared flag back into the session this app reads.
+      // RouteGuard routes off it, so without the refresh it would bounce straight
+      // back here — nothing else clears the gate.
+      await refreshToken();
       toast.success('Password updated. Welcome!');
       // Navigation itself is RouteGuard's job from here — its
       // `pathname === '/change-password' → home` rule fires as soon as the

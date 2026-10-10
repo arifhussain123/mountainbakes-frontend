@@ -187,7 +187,7 @@ export function DatabaseBackupPage() {
         <div>
           <h1 className="text-xl font-semibold">Database Backup</h1>
           <p className="text-sm text-muted-foreground">
-            PostgreSQL dumps of the Supabase database, encrypted in S3
+            PostgreSQL dumps of the production database, encrypted in S3
             {status ? ` at s3://${status.storage.bucket}/${status.storage.prefix}/ (${status.schedule.timezone})` : ''}. Only a verified backup counts.
           </p>
         </div>

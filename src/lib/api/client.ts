@@ -30,7 +30,7 @@ import { getLastPosition } from '@/lib/geo/position';
 
 const EXPLICIT_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
 
-const API_URL =
+export const API_URL =
   EXPLICIT_API_URL ||
   (typeof window === 'undefined' ? `http://127.0.0.1:${process.env.API_PORT || '3001'}` : '');
 
@@ -91,15 +91,15 @@ function assertApiReachable(): void {
 /**
  * Exchange a rejected access token for a current one, or null if there isn't one.
  *
- * A Supabase access token lives an hour. supabase-js refreshes it on a ticker, but
- * the ticker is paused while the tab is hidden — so a tab left in the background
+ * An access token lives a quarter of an hour. lib/auth/session renews it on a
+ * ticker, but the ticker is paused while the tab is hidden — so a tab left in the background
  * (or a sleeping laptop) wakes up holding an expired token, and whatever fires
  * first on focus sends it before the refresh lands. Callers hold the token in
  * React state, which makes that window wider still.
  *
  * getSession() returns the cached session and refreshes it only when expired, so
  * the common case costs no network call. An unchanged token means the server
- * rejected it for some reason other than expiry as supabase-js sees it — clock
+ * rejected it for some reason other than expiry as this browser sees it — clock
  * skew being the plausible one — so force one refresh before giving up. Returning
  * null (no session at all, or the token came back identical twice) tells the
  * caller not to retry: the 401 is real.
@@ -108,24 +108,26 @@ type RefreshResult = { token: string } | { token: null; sessionGone: boolean };
 
 async function refreshedAccessToken(staleToken: string): Promise<RefreshResult> {
   if (typeof window === 'undefined') return { token: null, sessionGone: false };
-  // Imported lazily so this module stays usable on the server, where the browser
-  // Supabase client has no business being constructed.
-  const { supabase } = await import('@/lib/supabase/client');
+  // Imported lazily so this module stays usable on the server, where there is
+  // no browser session to read.
+  const { getSession, hasStoredSession, refreshSession } = await import('@/lib/auth/session');
 
-  const { data } = await supabase.auth.getSession();
-  const current = data.session?.access_token ?? null;
+  const session = await getSession();
+  const current = session?.accessToken ?? null;
   if (current && current !== staleToken) return { token: current };
-  if (!current) return { token: null, sessionGone: true };
+  // No usable token. The session is only GONE if nothing is stored any more —
+  // a refresh the API rejected clears it; one that merely could not reach the
+  // API leaves it in place to be tried again.
+  if (!current) return { token: null, sessionGone: !hasStoredSession() };
 
-  const { data: refreshed, error } = await supabase.auth.refreshSession();
-  const next = refreshed.session?.access_token ?? null;
+  const refreshed = await refreshSession();
+  const next = refreshed.session?.accessToken ?? null;
   if (next && next !== staleToken) return { token: next };
 
-  // `sessionGone` drives endDeadSession(), so only report it when the refresh
-  // genuinely failed — no session at all, or the refresh token was rejected. A
-  // refresh that succeeded but handed back the SAME token is ambiguous (clock
-  // skew is the plausible cause) and must not cost the user their session.
-  return { token: null, sessionGone: Boolean(error) || !next };
+  // `sessionGone` drives endDeadSession(), so only report it when the API
+  // refused the refresh. One that never got an answer must not cost the user
+  // their session.
+  return { token: null, sessionGone: refreshed.rejected };
 }
 
 /** Set once, so concurrent 401s tear the session down a single time. */
@@ -134,15 +136,14 @@ let sessionTeardown: Promise<void> | null = null;
 /**
  * End a session the server will no longer honour.
  *
- * A 401 that survives the refresh above means the Supabase session is gone for
+ * A 401 that survives the refresh above means the session is gone for
  * good. EXPORTED as well as used here, for the one other caller that reaches the
  * same conclusion by a different route: the Login History ping, which is told
- * 403 `session_revoked` when an admin has signed this browser out. That path has
- * a still-valid access token — a Supabase access token cannot be withdrawn once
- * issued — so it never produces a 401 to trigger this, and without the export it
+ * 403 `session_revoked` when an admin has signed this browser out. That path
+ * can hear of it before any ordinary request has been refused, and without the export it
  * would have to duplicate the sign-out, the single-shot guard and the hard
  * navigation, three things that must not drift into two versions. Signing out locally is what makes RouteGuard notice: it reads `user` from
- * AuthProvider, so until the Supabase session is actually cleared the user keeps
+ * AuthProvider, so until the stored session is actually cleared the user keeps
  * sitting on a fully rendered page where every single request 401s and no screen
  * ever loads its data.
  *
@@ -154,7 +155,7 @@ export function endDeadSession(): void {
   if (window.location.pathname.startsWith('/login')) return;
 
   // Not while offline. The 401 above is real, but the refresh that was meant to
-  // answer it never reached Supabase — connectivity dropped between the two —
+  // answer it never reached the API — connectivity dropped between the two —
   // so "the session is gone for good" is a conclusion drawn from a network
   // failure. Acting on it signs the user out and sends them to a login screen
   // that cannot sign anyone in without a connection, which is precisely the
@@ -165,8 +166,8 @@ export function endDeadSession(): void {
 
   sessionTeardown ??= (async () => {
     try {
-      const { supabase } = await import('@/lib/supabase/client');
-      await supabase.auth.signOut();
+      const { signOut } = await import('@/lib/auth/session');
+      await signOut();
     } catch {
       // The session is already unusable; leaving the page is what matters.
     }
@@ -316,7 +317,7 @@ async function request<T>(
     // refresh it and replay the request once. Without this the user sees a raw
     // "Unauthorized: Invalid or expired token" from whatever happened to fire first
     // after the tab regained focus. AuthProvider picks the new token up on its own —
-    // supabase-js emits TOKEN_REFRESHED, which its onAuthStateChange listener maps
+    // lib/auth/session emits TOKEN_REFRESHED, which its onAuthStateChange listener maps
     // into context — so subsequent calls carry it without going through here.
     if (response.status === 401 && token) {
       if (mayRetry) {

@@ -31,15 +31,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
   // Give the product-price facade the same QueryClient the hooks use, so its
   // plain async functions share one cache and one invalidation path with them.
-  // getSession() returns an auto-refreshed access token, unlike the token useAuth
-  // captures once.
+  // getAccessToken() returns an auto-renewed access token, unlike the token
+  // useAuth captures once.
   useEffect(() => {
     configureProductPrice({
       queryClient,
       getToken: async () => {
-        const { supabase } = await import('@/lib/supabase/client');
-        const { data } = await supabase.auth.getSession();
-        return data.session?.access_token ?? '';
+        const { getAccessToken } = await import('@/lib/auth/session');
+        return (await getAccessToken()) ?? '';
       },
     });
   }, [queryClient]);

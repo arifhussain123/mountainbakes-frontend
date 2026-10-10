@@ -12,7 +12,7 @@ import { logger } from '@/utils/logger';
 import { cn } from '@/lib/utils';
 
 import { Panel, PanelEmpty, SectionBanner, SectionError, Tile } from './parts';
-import { barPct, dayLabel, fullDate } from './model';
+import { barPct, compact, fullDate, shortDate, weekday } from './model';
 
 /** The history table always reads a week — this is a dashboard card, not a report. */
 const HISTORY_DAYS = 7;
@@ -284,7 +284,19 @@ function StockFlow({ row }: { row: BranchStockHistoryRow }) {
   );
 }
 
-const HISTORY_GRID = 'grid grid-cols-[1.1fr_repeat(5,1fr)] items-center gap-2 px-3.5 py-2';
+// Phone: six columns that share the screen (`minmax(0,1fr)` lets each shrink) with
+// tighter gaps and padding. From `md` up it is the original roomy grid.
+const HISTORY_GRID =
+  'grid grid-cols-[minmax(0,0.9fr)_repeat(5,minmax(0,1fr))] items-center gap-1 px-2 py-2 md:grid-cols-[1.1fr_repeat(5,1fr)] md:gap-2 md:px-3.5';
+
+/** Column headings: the full word, and what fits a sixth of a phone screen. */
+const HISTORY_HEADS: [full: string, short: string][] = [
+  ['Previous', 'Prev'],
+  ['New', 'New'],
+  ['Sold', 'Sold'],
+  ['Ret / Adj', 'Ret/Adj'],
+  ['Remaining', 'Left'],
+];
 
 /**
  * `Ret / Adj` is what makes a row add up — returns to Production and admin
@@ -292,16 +304,24 @@ const HISTORY_GRID = 'grid grid-cols-[1.1fr_repeat(5,1fr)] items-center gap-2 px
  */
 function StockHistory({ rows, money }: { rows: BranchStockHistoryRow[]; money: (n: number) => string }) {
   return (
-    <div className="overflow-x-auto">
-      <div role="table" aria-label="Branch stock history" className="min-w-[640px]">
+    // On a phone the table FITS the screen instead of scrolling sideways: seven
+    // days of six figures is something to take in at a glance, and half of it
+    // used to sit off-screen behind a scroll nobody knew was there. The old
+    // 640px minimum is gone at every width — it forced the same hidden scroll on
+    // a tablet in portrait, where the sidebar leaves about 450px and the full
+    // figures fit. The scroll from `md` up is only a safety net for an amount
+    // long enough to outgrow its column.
+    <div className="md:overflow-x-auto">
+      <div role="table" aria-label="Branch stock history">
         <div
           role="row"
           className={cn(HISTORY_GRID, 'border-b text-[9px] font-bold tracking-[0.06em] text-muted-foreground uppercase')}
         >
           <span role="columnheader">Date</span>
-          {['Previous', 'New', 'Sold', 'Ret / Adj', 'Remaining'].map((h) => (
-            <span key={h} role="columnheader" className="text-right">
-              {h}
+          {HISTORY_HEADS.map(([full, short]) => (
+            <span key={full} role="columnheader" aria-label={full} className="text-right max-md:tracking-normal">
+              <span className="md:hidden">{short}</span>
+              <span className="max-md:hidden">{full}</span>
             </span>
           ))}
         </div>
@@ -314,18 +334,24 @@ function StockHistory({ rows, money }: { rows: BranchStockHistoryRow[]; money: (
               role="row"
               className={cn(HISTORY_GRID, 'border-b border-border/60 transition-colors last:border-b-0 hover:bg-fin-row-hover')}
             >
-              <span role="cell" className="text-xs font-bold">{dayLabel(r.date)}</span>
-              <Figure q={qty(r.openingQty)} a={money(r.openingAmount)} />
-              <Figure q={qty(r.newQty)} a={money(r.newAmount)} tone={r.newQty ? GAIN : undefined} />
-              <Figure q={qty(r.soldQty)} a={money(r.soldAmount)} tone={r.soldQty ? LOSS : undefined} />
+              {/* "Thu 08 Oct" — stacked as weekday over date on a phone, where
+                  the column is too narrow for it on one line. */}
+              <span role="cell" className="text-xs font-bold max-md:text-[11px] max-md:leading-tight">
+                {weekday(r.date)}
+                <span className="max-md:block max-md:font-medium max-md:text-muted-foreground"> {shortDate(r.date)}</span>
+              </span>
+              <Figure q={qty(r.openingQty)} a={money(r.openingAmount)} short={compact(r.openingAmount)} />
+              <Figure q={qty(r.newQty)} a={money(r.newAmount)} short={compact(r.newAmount)} tone={r.newQty ? GAIN : undefined} />
+              <Figure q={qty(r.soldQty)} a={money(r.soldAmount)} short={compact(r.soldAmount)} tone={r.soldQty ? LOSS : undefined} />
               {otherQty === 0 && otherAmount === 0 ? (
                 <Figure q="—" a="" tone="text-muted-foreground/60" />
               ) : (
-                <Figure q={signedQty(otherQty)} a={money(otherAmount)} tone="text-fin-share" />
+                <Figure q={signedQty(otherQty)} a={money(otherAmount)} short={compact(otherAmount)} tone="text-fin-share" />
               )}
               <Figure
                 q={qty(r.balanceQty)}
                 a={money(r.balanceAmount)}
+                short={compact(r.balanceAmount)}
                 tone={r.balanceQty < 0 ? 'text-destructive' : undefined}
               />
             </div>
@@ -336,12 +362,22 @@ function StockHistory({ rows, money }: { rows: BranchStockHistoryRow[]; money: (
   );
 }
 
-/** Quantity over amount — the shape every history cell takes. */
-function Figure({ q, a, tone }: { q: string; a: string; tone?: string }) {
+/**
+ * Quantity over amount — the shape every history cell takes.
+ *
+ * `short` is the amount as it is shown on a phone: abbreviated ("184.5k") with no
+ * currency prefix, because "Rs. 184,520" is wider than a sixth of the screen. The
+ * exact figure stays one tap away in the day's statement above, and is what a
+ * screen reader is given either way.
+ */
+function Figure({ q, a, short, tone }: { q: string; a: string; short?: string; tone?: string }) {
   return (
-    <div role="cell" className="text-right">
+    <div role="cell" className="min-w-0 text-right">
       <div className={cn('text-xs font-extrabold tabular-nums', tone)}>{q}</div>
-      <div className="text-[10px] text-muted-foreground tabular-nums">{a}</div>
+      <div className="text-[10px] text-muted-foreground tabular-nums" aria-label={a || undefined}>
+        <span className="md:hidden">{short ?? a}</span>
+        <span className="max-md:hidden">{a}</span>
+      </div>
     </div>
   );
 }

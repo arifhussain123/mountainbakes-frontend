@@ -229,7 +229,7 @@ export function SessionDetailDialog({
                   and an admin needs to know that is why the button is missing
                   rather than assuming the screen is broken. */}
               <Row label="Auth session" mono>{s.authSessionId ?? 'not recorded'}</Row>
-              <Row label="Sign-in method">Email and password · Supabase Auth</Row>
+              <Row label="Sign-in method">Email and password</Row>
 
               {s.userAgent && (
                 <>

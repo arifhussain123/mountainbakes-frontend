@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
-import { apiCall, ApiError } from '@/utils/api';
+import { AuthApiError, requestPasswordReset } from '@/lib/auth/session';
 import { resetErrorMessage } from '@/utils/authErrors';
 import {
   Dialog,
@@ -46,19 +45,12 @@ export function ForgotPasswordDialog({
     }
     setLoading(true);
     try {
-      // The server authorises the request — admin accounts only.
-      await apiCall('/api/auth/forgot-password', {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-      });
-      // Authorised → trigger Supabase's built-in password reset email.
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      if (resetError) throw resetError;
+      // The server authorises the request — admin accounts only — and sends
+      // the link itself.
+      await requestPasswordReset(email);
       setSent(true);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
+      if (err instanceof AuthApiError && err.status === 403) {
         setError(
           'Password recovery is only available for Administrator accounts. Please contact your system administrator.'
         );

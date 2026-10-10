@@ -1,25 +1,15 @@
 /**
- * Supabase Auth error codes → messages for the password-recovery flows.
+ * The API's auth error codes → messages for the password-recovery flows.
  *
- * Shared by ForgotPasswordDialog (logged-out self-service) and
- * ResetPasswordDialog (admin resetting someone else), so the two can't drift.
- * The login screen keeps its own map — its wording is about signing in, not
- * about sending mail.
- *
- * `email_address_invalid` is the one that most needs translating. Supabase
- * returns it when the recipient DOMAIN cannot receive mail (no MX record), NOT
- * when the address is malformed. Its raw text reads
- * 'Email address "admin@example.com" is invalid', which sends people hunting for
- * a typo in an address that is perfectly well-formed. Both callers have already
- * validated the format before they get here.
+ * Used by ForgotPasswordDialog (logged-out self-service). The login screens
+ * keep their own maps — their wording is about signing in, not about sending
+ * mail.
  */
 export const RESET_ERROR_MESSAGES: Record<string, string> = {
-  email_address_invalid:
-    'That email address can’t receive mail, so a reset link cannot be sent. Check the address, or ask an administrator to reset the password directly.',
-  over_email_send_rate_limit:
-    'Too many reset emails have been requested. Please wait a few minutes and try again.',
-  over_request_rate_limit: 'Too many attempts. Please wait a moment and try again.',
-  validation_failed: 'Please enter a valid email address.',
+  mail_not_configured:
+    'Email is not set up on the server, so a reset link cannot be sent. Ask an administrator to reset the password directly.',
+  rate_limited: 'Too many attempts. Please wait a few minutes and try again.',
+  auth_not_configured: 'Password recovery is not available right now. Please contact your administrator.',
 };
 
 /**
@@ -31,5 +21,9 @@ export const RESET_ERROR_MESSAGES: Record<string, string> = {
 export function resetErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
   const code = (err as { code?: string } | null)?.code ?? '';
   const message = err instanceof Error ? err.message : ((err as { message?: string } | null)?.message ?? '');
+  // A request that never got an answer carries the browser's wording, not ours.
+  if (err instanceof TypeError || (err as Error | null)?.name === 'AbortError') {
+    return 'Could not reach the server. Check your connection and try again.';
+  }
   return RESET_ERROR_MESSAGES[code] || message || fallback;
 }

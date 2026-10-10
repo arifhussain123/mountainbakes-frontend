@@ -8,14 +8,13 @@ import { useAuth } from '@/hooks/useAuth';
 /**
  * The in-app notification feed, read from the API and kept fresh by polling.
  *
- * It used to be read straight from the `notifications` table over Supabase
- * Realtime, with RLS scoping each user's feed. The API now applies that same
- * scoping (`GET /api/notifications`: addressed to the user personally, or
- * broadcast to their role/branch), so the browser no longer needs a database
- * it can reach — only the API it already talks to for everything else.
+ * The API scopes each user's feed (`GET /api/notifications`: addressed to the
+ * user personally, or broadcast to their role/branch). The browser reaches no
+ * database and holds no realtime channel — only the API it already talks to
+ * for everything else.
  *
- * The price is latency: a notification shows up within one poll interval
- * instead of at once. Everything that hangs off this feed (the bell, and the
+ * The price of polling is latency: a notification shows up within one poll
+ * interval instead of at once. Everything that hangs off this feed (the bell, and the
  * cache-invalidating bridges in hooks/use*Realtime.ts) inherits that.
  */
 

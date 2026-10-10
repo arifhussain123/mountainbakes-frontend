@@ -1,9 +1,15 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase/client';
+import {
+  getSession,
+  onAuthStateChange,
+  refreshSession,
+  signOut,
+  type AuthSession,
+  type SessionUser,
+} from '@/lib/auth/session';
 import { isValidRole } from '@/utils/roleHome';
 import { forgetIdentity, readIdentity, rememberIdentity } from '@/lib/offline/lastSession';
 import { endLoginSession } from '@/lib/loginHistory';
@@ -42,41 +48,33 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const SESSION_RESTORE_TIMEOUT_MS = 10_000;
 
 /**
- * Map a Supabase auth user → the app's AuthUser, reading claims from app_metadata.
+ * Map the user the API signed in → the app's AuthUser.
  *
- * Returns null when the account carries no recognised `role` claim. This is
+ * Returns null when the account carries no recognised role. This is
  * deliberately fail-closed — it previously defaulted to 'branch_manager', which
- * would hand branch-level UI to any account whose claim was missing (e.g. a
- * self-signup, if email sign-ups are ever enabled).
+ * would hand branch-level UI to any account whose role was missing.
  */
-function toAuthUser(u: SupabaseUser): AuthUser | null {
-  const claims = (u.app_metadata ?? {}) as {
-    role?: UserRole;
-    branchId?: string | null;
-    branchName?: string | null;
-    mustChangePassword?: boolean;
-  };
-  if (!isValidRole(claims.role)) return null;
-
-  const displayName = (u.user_metadata as { displayName?: string } | null)?.displayName;
+function toAuthUser(u: SessionUser): AuthUser | null {
+  if (!isValidRole(u.role)) return null;
   return {
     uid: u.id,
     email: u.email ?? '',
-    displayName: displayName || u.email || '',
-    role: claims.role,
-    branchId: claims.branchId ?? null,
-    branchName: claims.branchName ?? null,
-    mustChangePassword: claims.mustChangePassword === true,
+    displayName: u.displayName || u.email || '',
+    role: u.role,
+    branchId: u.branchId ?? null,
+    branchName: u.branchName ?? null,
+    mustChangePassword: u.mustChangePassword === true,
   };
 }
 
 /**
- * Single source of Supabase auth state for the whole app.
+ * Single source of auth state for the whole app.
  *
  * Mounting one provider at the root runs the auth listener exactly once and shares
  * `{ user, token }` with all consumers (previously ~48 call sites each opened their
- * own listener). `token` is the Supabase access-token JWT, sent as the Bearer token
- * on API calls; role/branch come from the user's `app_metadata`.
+ * own listener). `token` is the API's access token, sent as the Bearer token on
+ * API calls; role/branch are what the API returned with it and are re-read by
+ * the API from its own records on every request.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -87,20 +85,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Set for the duration of a deliberate sign-out.
    *
-   * Supabase reports a real sign-out and a refresh it could not complete the
-   * same way: a null session. Offline those mean opposite things, so the one
-   * case the app can be certain about is the one it started itself.
+   * A real sign-out and a refresh that could not be completed both leave this
+   * provider holding a null session. Offline those mean opposite things, so
+   * the one case the app can be certain about is the one it started itself.
    */
   const signingOut = useRef(false);
 
   useEffect(() => {
     let active = true;
 
-    const applySession = (session: Session | null) => {
+    const applySession = (session: AuthSession | null) => {
       const authUser = session?.user ? toAuthUser(session.user) : null;
       if (session?.user && authUser) {
         setUser(authUser);
-        setToken(session.access_token);
+        setToken(session.accessToken);
         // The identity to fall back on when the token later ages out with no
         // network to renew it. Refreshed on every valid session, so a role or
         // branch change is picked up rather than held stale.
@@ -156,11 +154,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }, SESSION_RESTORE_TIMEOUT_MS);
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
+    getSession()
+      .then((session) => {
         if (!active) return;
-        applySession(data.session);
+        applySession(session);
       })
       .catch(() => {
         // Offline cold start: getSession can reject trying to refresh an expired
@@ -174,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
     // …then keep in sync (sign-in, sign-out, token refresh).
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const unsubscribe = onAuthStateChange((_event, session) => {
       applySession(session);
       setLoading(false);
     });
@@ -182,7 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
       window.clearTimeout(stalled);
-      sub.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
@@ -191,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    *
    * Without this the app would sit on the held identity — signed in, but with no
    * token, so every query stays gated and the screens keep showing what was
-   * cached — until Supabase's own refresh ticker happened to come round. Asking
+   * cached — until the background renewal happened to come round. Asking
    * directly on the `online` event makes recovery immediate and predictable.
    *
    * Guarded on `!token`, so this does nothing for the ordinary case of a
@@ -200,15 +197,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const onOnline = () => {
       if (token) return;
-      void supabase.auth.refreshSession(); // onAuthStateChange applies the result
+      void refreshSession(); // onAuthStateChange applies the result
     };
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
   }, [token]);
 
   const logout = useCallback(async () => {
-    // Signing out of Supabase is the whole of it: the app is a static export, so
-    // there is no server session and no `mb_session` cookie left to invalidate.
+    // Ending the API session and dropping the tokens is the whole of it: the app
+    // is a static export, so there is no cookie left to invalidate.
     //
     // The flag is what tells applySession that the null session about to arrive
     // was asked for, so it clears the held identity instead of restoring it —
@@ -220,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // that signOut is about to destroy. It never throws and never blocks —
       // see lib/loginHistory.ts — so sign-out cannot fail on its account.
       await endLoginSession();
-      await supabase.auth.signOut();
+      await signOut();
       // AFTER signOut succeeds, not before or in `finally`: a failed sign-out
       // should leave a still-valid session's cache alone. Without this, the
       // QueryClient (a singleton that outlives the sign-out/sign-in boundary —
@@ -237,8 +234,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
 
   const refreshToken = useCallback(async () => {
-    const { data } = await supabase.auth.refreshSession();
-    const newToken = data.session?.access_token ?? '';
+    const { session } = await refreshSession();
+    const newToken = session?.accessToken ?? '';
     setToken(newToken);
     return newToken;
   }, []);

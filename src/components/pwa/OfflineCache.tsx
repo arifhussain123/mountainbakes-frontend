@@ -58,9 +58,9 @@ export function OfflineCache() {
 
   useEffect(() => {
     // Say nothing until the session has resolved. `user` is null while the
-    // Supabase session is still being read from storage, and treating that as a
-    // sign-out would wipe the snapshot every cold start — exactly when it is
-    // about to be needed.
+    // stored session is still being read (and renewed, if it has expired), and
+    // treating that as a sign-out would wipe the snapshot every cold start —
+    // exactly when it is about to be needed.
     if (loading) return;
 
     if (!userId) {
