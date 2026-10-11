@@ -50,8 +50,9 @@ import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
  *     Share Detail, tracked separately because that table shows them
  *     separately.
  *   Partner Share Detail — the reconciliation: total expenses (excluding
- *     partner advances/draws), total company share, the grand total the four
- *     partners split 25% each, and each partner's advance/draw/balance.
+ *     partner advances/draws), the Daily Ledger's Balance the four partners
+ *     split 25% each, the grand total (company share − expenses), and each
+ *     partner's advance/draw/balance.
  *     Computed on read (finance-documents.service.ts#getPartnerShareSummary),
  *     never stored, so a reversal or adjustment is reflected automatically.
  */
@@ -424,8 +425,14 @@ function PartnerShareDetailTab() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total Company Share</p>
-              <Money value={summary.totalCompanyShare} className="text-xl font-bold text-emerald-600 dark:text-emerald-400" />
+              <p className="text-xs text-muted-foreground">Balance</p>
+              <Money
+                value={summary.ledgerBalance}
+                className={cn(
+                  'text-xl font-bold',
+                  summary.ledgerBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+                )}
+              />
             </CardContent>
           </Card>
           <Card>
