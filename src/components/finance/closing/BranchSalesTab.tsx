@@ -112,7 +112,7 @@ const UNMATCHED_SHOWN = 8;
  * is checking. All of them are still in the View popup.
  *
  * The same figures are set out more tightly than on the branch board: no "Rs."
- * in front of the sales figures, every column left-aligned, and less space between
+ * in front of the sales figures, every column right-aligned, and less space between
  * columns (`dense`), so the three finance columns at the end are on screen
  * without scrolling.
  *
@@ -265,7 +265,7 @@ export function BranchSalesTab() {
           if (r.status === 'nothing_due') return <span className="text-muted-foreground">—</span>;
           const dates = [...new Set(r.deposits.map((d) => displayDate(d.businessDate)))].join(', ');
           return (
-            <div className="flex flex-col items-start gap-0.5">
+            <div className="flex flex-col items-end gap-0.5">
               <DepositDifferenceBadge difference={r.difference} symbol={symbol} />
               {/* Which deposit, and how sure the pairing is: one of the same
                   amount, or only the nearest one in date. */}
@@ -287,7 +287,7 @@ export function BranchSalesTab() {
         cell: ({ row }) => {
           const r = row.original.reconciliation;
           return (
-            <div className="flex flex-col items-start gap-0.5">
+            <div className="flex flex-col items-end gap-0.5">
               <DepositStatusBadge status={r.status} />
               {/* An open record's figures still move with the day's sales, so a
                   comparison against them is not yet the final one. */}
@@ -315,13 +315,11 @@ export function BranchSalesTab() {
       },
     ];
 
-    // Every column left-aligned, heading and cells together — set on the
+    // Every column right-aligned, heading and cells together — set on the
     // column's meta, which is the one place that moves both (see table-meta.ts).
-    // The shared figure columns arrive right-aligned, so this is what overrides
-    // them. The actions column keeps its own side.
-    return columns.map((column) =>
-      column.id === 'actions' ? column : { ...column, meta: { ...column.meta, align: 'left' as const } },
-    );
+    // The shared figure columns arrive that way; this brings Date and the three
+    // finance columns into line with them.
+    return columns.map((column) => ({ ...column, meta: { ...column.meta, align: 'right' as const } }));
   }, [symbol, effectiveBranchId]);
 
   // Rows on screen that the server has just failed to refresh. They are the
