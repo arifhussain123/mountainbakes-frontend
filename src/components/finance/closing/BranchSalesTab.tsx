@@ -231,7 +231,9 @@ export function BranchSalesTab() {
           const r = row.original.reconciliation;
           return (
             <div className="tabular-nums">
-              <p className="font-semibold">{paisaMoney(r.received, symbol)}</p>
+              {/* Green, as Company Share beside it is red: what is owed, and what
+                  has come in. */}
+              <p className="font-bold text-emerald-600 dark:text-emerald-400">{paisaMoney(r.received, symbol)}</p>
               {/* The figure it is measured against, on the row, so the column can
                   be read without opening anything. */}
               <p className="text-xs text-muted-foreground">of {paisaMoney(r.expected, symbol)} share</p>
@@ -244,7 +246,7 @@ export function BranchSalesTab() {
           );
         },
         footer: ({ table }) => (
-          <span className="tabular-nums">
+          <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
             {paisaMoney(
               Math.round(
                 table.getFilteredRowModel().rows.reduce((s, r) => s + r.original.reconciliation.received, 0) * 100,
