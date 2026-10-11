@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
-  businessDateStr,
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
@@ -50,9 +49,9 @@ import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
  *     expense under EXP-PARTNER and both reduce the balance shown in Partner
  *     Share Detail, tracked separately because that table shows them
  *     separately.
- *   Partner Share Detail — the reconciliation: the Daily Ledger's Balance
- *     the four partners split 25% each, total company share, the grand total
- *     (company share − expenses), and each partner's advance/draw/balance.
+ *   Partner Share Detail — the reconciliation: total expenses (excluding
+ *     partner advances/draws), total company share, the grand total the four
+ *     partners split 25% each, and each partner's advance/draw/balance.
  *     Computed on read (finance-documents.service.ts#getPartnerShareSummary),
  *     never stored, so a reversal or adjustment is reflected automatically.
  */
@@ -401,38 +400,26 @@ function PartnerLedgerTab({
 // ---------------------------------------------------------------------------
 
 function PartnerShareDetailTab() {
-  const today = businessDateStr();
-  const list = useListQueryState({
-    syncUrl: true,
-    namespace: 'partner-share',
-    filterKeys: ['businessDate'],
-    defaults: { filters: [{ key: 'businessDate', op: 'eq', value: today }] },
-  });
+  const list = useListQueryState({ syncUrl: true, namespace: 'partner-share', filterKeys: ['businessDate'] });
   const [viewingPartner, setViewingPartner] = useState<PartnerShareRow | null>(null);
 
-  // One specific day, not a range: the Balance is a running book balance, so
-  // the whole tab is the position as of that day — the Balance and each
-  // partner's share of it, and every advance and draw up to and including it.
-  // An emptied field falls back to today rather than to "no date".
-  const asOf = (list.getFilter('businessDate', 'eq')?.value as string | undefined) || today;
-  const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date', placement: 'bar' }], []);
-  const summaryQ = usePartnerShareSummary(undefined, asOf);
+  const from = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+  const to = list.getFilter('businessDate', 'lte')?.value as string | undefined;
+  const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }], []);
+  const summaryQ = usePartnerShareSummary(from, to);
   const summary = summaryQ.data;
 
   return (
     <div className="space-y-6">
-      <FilterBar list={list} filters={filters} searchable={false} maxDate={today} />
+      <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
       {summary && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Balance</p>
-              <Money
-                value={summary.ledgerBalance}
-                className={cn('text-xl font-bold', summary.ledgerBalance < 0 && 'text-red-600 dark:text-red-400')}
-              />
+              <p className="text-xs text-muted-foreground">Total Expenses (excl. partner advance/draw)</p>
+              <Money value={summary.totalExpense} className="text-xl font-bold text-red-600 dark:text-red-400" />
             </CardContent>
           </Card>
           <Card>
