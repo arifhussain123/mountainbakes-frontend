@@ -6,6 +6,7 @@ import {
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
+  round2,
   type FilterConfig,
   type FinancePartner,
   type PageSize,
@@ -409,6 +410,14 @@ function PartnerShareDetailTab() {
   const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }], []);
   const summaryQ = usePartnerShareSummary(from, to);
   const summary = summaryQ.data;
+  const partnerRows = summary?.partners ?? [];
+  const sum = (pick: (p: PartnerShareRow) => number) => round2(partnerRows.reduce((s, p) => s + pick(p), 0));
+  const totals = {
+    sharePctAmount: sum((p) => p.sharePctAmount),
+    advancePaid: sum((p) => p.advancePaid),
+    drawPaid: sum((p) => p.drawPaid),
+    balance: sum((p) => p.balance),
+  };
 
   return (
     <div className="space-y-6">
@@ -457,7 +466,7 @@ function PartnerShareDetailTab() {
             </tr>
           </thead>
           <tbody>
-            {(summary?.partners ?? []).map((p) => (
+            {partnerRows.map((p) => (
               <tr key={p.id} className="border-t">
                 <td className="p-2 font-medium">{p.name}</td>
                 <td className="p-2 text-right tabular-nums">
@@ -480,6 +489,26 @@ function PartnerShareDetailTab() {
               </tr>
             ))}
           </tbody>
+          {partnerRows.length > 0 && (
+            <tfoot data-table-foot>
+              <tr className="border-t-2">
+                <td className="p-2 font-semibold">Total</td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.sharePctAmount} />
+                </td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.advancePaid} blankZero />
+                </td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.drawPaid} blankZero />
+                </td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.balance} className={cn(totals.balance < 0 && 'text-red-600 dark:text-red-400')} />
+                </td>
+                <td className="p-2" />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
