@@ -102,7 +102,8 @@ export function DailySaleNotices({
           <CardContent className="flex items-start gap-2 p-4 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <span>
-              This window is out by <strong>{money(summary.difference, symbol)}</strong>{' '}
+              This window is out by{' '}
+              <strong className="text-red-600 dark:text-red-400">{money(summary.difference, symbol)}</strong>{' '}
               ({differenceStatus(summary.difference) === 'short' ? 'short' : 'over'}). Open each
               day with a difference and check the figure against the counted amount.
             </span>
