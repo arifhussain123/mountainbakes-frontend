@@ -277,7 +277,6 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
         isLoading={isLoading}
         symbol={symbol}
         windowTooWide={windowTooWide}
-        hideDifference
       />
 
       {beforeStart && (

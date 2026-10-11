@@ -74,14 +74,11 @@ export function DailySaleNotices({
   isLoading,
   symbol,
   windowTooWide,
-  hideDifference = false,
 }: {
   summary: DailySaleSummary | undefined;
   isLoading: boolean;
   symbol: string;
   windowTooWide: boolean;
-  /** Leave out the "This window is out by…" notice. The Difference card still shows the figure. */
-  hideDifference?: boolean;
 }) {
   return (
     <>
@@ -100,7 +97,7 @@ export function DailySaleNotices({
         </Card>
       )}
 
-      {!hideDifference && !isLoading && summary && summary.difference !== 0 && (
+      {!isLoading && summary && summary.difference !== 0 && (
         <Card className="border-amber-300 dark:border-amber-900">
           <CardContent className="flex items-start gap-2 p-4 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
