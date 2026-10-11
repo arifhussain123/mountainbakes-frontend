@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Eye,
   History,
+  Info,
   Lock,
   LockOpen,
   MoreHorizontal,
@@ -31,7 +32,9 @@ import {
   useGenerateDailySaleRecord,
 } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
+import { formatDate } from '@/utils/date';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +50,15 @@ import { DailySaleViewDialog } from './DailySaleViewDialog';
 import { ManualFeedDialog } from './ManualFeedDialog';
 import { PaymentLockPanel } from './PaymentLockPanel';
 import { UnlockDialog } from './UnlockDialog';
+
+/**
+ * The first business date this record was kept for. Days before it have no
+ * rows — not because nothing was sold, but because the record did not exist
+ * yet — so a window that reaches back past it says so instead of only showing
+ * an empty table. The date fields still accept an earlier day: the message is
+ * the answer to picking one.
+ */
+const DAILY_SALE_START_DATE = '2026-09-01';
 
 /**
  * DAILY SALE RECORD — the branch's daily financial reconciliation.
@@ -119,6 +131,8 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
   const locks = data?.locks ?? [];
 
   const today = businessDateStr();
+  /** The window reaches back before the record began, so the notice above the table is shown. */
+  const beforeStart = from < DAILY_SALE_START_DATE;
 
   /** The record for today, if the window on show includes it. Drives the top-right button. */
   const todayRow = useMemo(
@@ -256,6 +270,18 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
         symbol={symbol}
         windowTooWide={windowTooWide}
       />
+
+      {beforeStart && (
+        <Card className="border-dashed">
+          <CardContent className="flex items-start gap-2 p-4 text-sm text-muted-foreground">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <span>
+              This record is maintained from <strong>{formatDate(DAILY_SALE_START_DATE)}</strong>.
+              There is no data to show for earlier dates.
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── The board ──
           `mobileLayout` stays on the default 'cards': §26 asks for a card per day
