@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
+  businessDateStr,
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
@@ -400,18 +401,27 @@ function PartnerLedgerTab({
 // ---------------------------------------------------------------------------
 
 function PartnerShareDetailTab() {
-  const list = useListQueryState({ syncUrl: true, namespace: 'partner-share', filterKeys: ['businessDate'] });
+  const today = businessDateStr();
+  const list = useListQueryState({
+    syncUrl: true,
+    namespace: 'partner-share',
+    filterKeys: ['businessDate'],
+    defaults: { filters: [{ key: 'businessDate', op: 'eq', value: today }] },
+  });
   const [viewingPartner, setViewingPartner] = useState<PartnerShareRow | null>(null);
 
-  const from = list.getFilter('businessDate', 'gte')?.value as string | undefined;
-  const to = list.getFilter('businessDate', 'lte')?.value as string | undefined;
-  const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }], []);
-  const summaryQ = usePartnerShareSummary(from, to);
+  // One specific day, not a range: the Balance is a running book balance, so
+  // the whole tab is the position as of that day — the Balance and each
+  // partner's share of it, and every advance and draw up to and including it.
+  // An emptied field falls back to today rather than to "no date".
+  const asOf = (list.getFilter('businessDate', 'eq')?.value as string | undefined) || today;
+  const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date', placement: 'bar' }], []);
+  const summaryQ = usePartnerShareSummary(undefined, asOf);
   const summary = summaryQ.data;
 
   return (
     <div className="space-y-6">
-      <FilterBar list={list} filters={filters} searchable={false} />
+      <FilterBar list={list} filters={filters} searchable={false} maxDate={today} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
 
       {summary && (
