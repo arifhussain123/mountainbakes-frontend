@@ -11,6 +11,7 @@ import {
   Clock,
   Eye,
   History,
+  Info,
   MoreHorizontal,
   Printer,
   RotateCcw,
@@ -27,6 +28,7 @@ import {
   karachiTimeStr,
   type FinanceDailySaleRow,
 } from '@mb/shared';
+import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useFinanceDailySales } from '@/lib/finance';
@@ -70,10 +72,25 @@ import {
 const DEFAULT_WINDOW_DAYS = 30;
 
 /**
- * The branch board's columns this tab leaves off — the branch's count of its own
- * drawer, and its sign-off of that count.
+ * The first business date this tab shows.
+ *
+ * Branches began handing their money over as cash deposits on this date. Every
+ * day before it would read "Not received" — true, and meaningless, because there
+ * was no deposit to receive — so those days are not listed at all, and the tab
+ * says so where the list stops.
  */
-const BRANCH_ONLY_COLUMNS = new Set(['difference', 'status', 'source']);
+const DEPOSITS_START_DATE = '2026-09-30';
+
+/** The later of two 'YYYY-MM-DD' dates. */
+const laterOf = (a: string, b: string) => (a > b ? a : b);
+
+/**
+ * The branch board's columns this tab leaves off: the branch's count of its own
+ * drawer and its sign-off of that count; Cash Expense, which Cash on Table, still
+ * shown, already has taken out of it; and Time, which is when the record was
+ * generated and says nothing about the money.
+ */
+const BRANCH_ONLY_COLUMNS = new Set(['time', 'cashExpense', 'difference', 'status', 'source']);
 
 /** How many unmatched deposits the notice lists before it says "and N more". */
 const UNMATCHED_SHOWN = 8;
@@ -89,10 +106,15 @@ const UNMATCHED_SHOWN = 8;
  * Finance to see it, and there is no second table for the two to disagree in.
  *
  * ─── What Finance sees of it ─────────────────────────────────────────────────
- * The sales columns, Date to Discount. The branch's own Difference, Status and
- * Source are left off: they are about the branch counting its drawer, which is
- * the branch's sign-off and not what Finance is checking. They are still in the
- * View popup.
+ * The sales columns, Date to Discount, without Time and Cash Expense. The
+ * branch's own Difference, Status and Source are left off too: they are about the
+ * branch counting its drawer, which is the branch's sign-off and not what Finance
+ * is checking. All of them are still in the View popup.
+ *
+ * The same figures are set out more tightly than on the branch board: no "Rs."
+ * in front of the sales figures, every column centred, and less space between
+ * columns (`dense`), so the three finance columns at the end are on screen
+ * without scrolling.
  *
  * ─── What Finance adds ───────────────────────────────────────────────────────
  * Three columns after them. What a branch owes the company for a day is that
@@ -108,6 +130,11 @@ const UNMATCHED_SHOWN = 8;
  * decision that is Finance's — whether a deposit arrived — is taken on Cash
  * Transfers, beside the slip's photo; every row links there.
  *
+ * ─── It starts on 30 September 2026 ──────────────────────────────────────────
+ * Cash deposits were not in use before then (DEPOSITS_START_DATE). Days before
+ * it are not listed, the date fields and the step-back button stop there, and a
+ * note under the table says why.
+ *
  * ─── The same window as the branch page ──────────────────────────────────────
  * Thirty business days ending today, every branch, newest day first — one row
  * per branch per day, exactly as the branch board lists them. It opened on today
@@ -121,8 +148,24 @@ export function BranchSalesTab() {
   const symbol = settings?.currencySymbol || 'Rs.';
 
   const today = businessDateStr();
-  const [from, setFrom] = useState(() => businessDaysAgoStr(DEFAULT_WINDOW_DAYS - 1));
-  const [to, setTo] = useState(today);
+  const defaultFrom = laterOf(businessDaysAgoStr(DEFAULT_WINDOW_DAYS - 1), DEPOSITS_START_DATE);
+  const [from, setFromState] = useState(defaultFrom);
+  const [to, setToState] = useState(today);
+
+  /**
+   * Both ends of the window stop at the start date. A date before it — typed, or
+   * reached by stepping back — is moved up to it and the reason is said, rather
+   * than the field silently refusing to change.
+   */
+  function clampToStart(value: string): string {
+    if (value >= DEPOSITS_START_DATE) return value;
+    toast.info(
+      `Cash deposits started on ${displayDate(DEPOSITS_START_DATE)}. Earlier days are not shown here.`,
+    );
+    return DEPOSITS_START_DATE;
+  }
+  const setFrom = (value: string) => setFromState(clampToStart(value));
+  const setTo = (value: string) => setToState(clampToStart(value));
   const [branchId, setBranchId] = useState<string>(ALL_BRANCHES);
 
   const branches = useBranches(token);
@@ -150,7 +193,9 @@ export function BranchSalesTab() {
   const unmatched = data?.unmatchedDeposits ?? [];
 
   const windowDays = Math.max(1, daysBetween(from, to));
-  const isDefaultWindow = to === today && from === addDays(today, -(DEFAULT_WINDOW_DAYS - 1));
+  const isDefaultWindow = to === today && from === defaultFrom;
+  /** The list stops at the start date, so the note under the table is shown. */
+  const atStart = from <= DEPOSITS_START_DATE;
 
   /**
    * Move the window back or forward by its own length — a day at a time when one
@@ -159,9 +204,9 @@ export function BranchSalesTab() {
    */
   function step(direction: -1 | 1) {
     const nextTo = addDays(to, direction * windowDays);
-    const end = nextTo > today ? today : nextTo;
-    setFrom(addDays(end, -(windowDays - 1)));
-    setTo(end);
+    const end = nextTo > today ? today : laterOf(nextTo, DEPOSITS_START_DATE);
+    setFromState(laterOf(addDays(end, -(windowDays - 1)), DEPOSITS_START_DATE));
+    setToState(end);
   }
 
   const columns = useMemo<ColumnDef<FinanceDailySaleRow>[]>(() => {
@@ -171,10 +216,12 @@ export function BranchSalesTab() {
       setViewDay({ branchId: row.branchId, businessDate: row.businessDate });
     }
 
-    return [
-      ...dailySaleRecordColumns<FinanceDailySaleRow>({ symbol, showBranch: !effectiveBranchId }).filter(
-        (column) => !BRANCH_ONLY_COLUMNS.has(column.id ?? ''),
-      ),
+    const columns: ColumnDef<FinanceDailySaleRow>[] = [
+      ...dailySaleRecordColumns<FinanceDailySaleRow>({
+        symbol,
+        showBranch: !effectiveBranchId,
+        showSymbol: false,
+      }).filter((column) => !BRANCH_ONLY_COLUMNS.has(column.id ?? '')),
       {
         id: 'received',
         accessorFn: (r) => r.reconciliation.received,
@@ -187,7 +234,7 @@ export function BranchSalesTab() {
               <p className="font-semibold">{paisaMoney(r.received, symbol)}</p>
               {/* The figure it is measured against, on the row, so the column can
                   be read without opening anything. */}
-              <p className="text-xs text-muted-foreground">of {paisaMoney(r.expected, symbol)} company share</p>
+              <p className="text-xs text-muted-foreground">of {paisaMoney(r.expected, symbol)} share</p>
               {r.pending > 0 && (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
                   {paisaMoney(r.pending, symbol)} awaiting approval
@@ -267,6 +314,13 @@ export function BranchSalesTab() {
         ),
       },
     ];
+
+    // Every column centred, heading and cells together — set on the column's
+    // meta, which is the one place that moves both (see table-meta.ts). The
+    // actions column keeps its own side.
+    return columns.map((column) =>
+      column.id === 'actions' ? column : { ...column, meta: { ...column.meta, align: 'center' as const } },
+    );
   }, [symbol, effectiveBranchId]);
 
   // Rows on screen that the server has just failed to refresh. They are the
@@ -431,6 +485,7 @@ export function BranchSalesTab() {
             loading={isLoading}
             searchPlaceholder="Search by date, branch or status…"
             sortable
+            dense
             pageSize={50}
             empty={
               <EmptyState
@@ -449,6 +504,7 @@ export function BranchSalesTab() {
                 from={from}
                 to={to}
                 today={today}
+                earliest={DEPOSITS_START_DATE}
                 onFromChange={setFrom}
                 onToChange={setTo}
                 branch={{ value: branchId, onChange: setBranchId, branches: branches.data ?? [] }}
@@ -460,6 +516,7 @@ export function BranchSalesTab() {
                     className="h-9 w-9"
                     aria-label={windowDays === 1 ? 'Previous day' : `Previous ${windowDays} days`}
                     title={windowDays === 1 ? 'Previous day' : `Previous ${windowDays} days`}
+                    disabled={atStart}
                     onClick={() => step(-1)}
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -481,8 +538,8 @@ export function BranchSalesTab() {
                     className="h-9"
                     disabled={from === today && to === today}
                     onClick={() => {
-                      setFrom(today);
-                      setTo(today);
+                      setFromState(today);
+                      setToState(today);
                     }}
                   >
                     Today
@@ -493,8 +550,8 @@ export function BranchSalesTab() {
                     className="h-9"
                     disabled={isDefaultWindow}
                     onClick={() => {
-                      setFrom(addDays(today, -(DEFAULT_WINDOW_DAYS - 1)));
-                      setTo(today);
+                      setFromState(defaultFrom);
+                      setToState(today);
                     }}
                   >
                     Last {DEFAULT_WINDOW_DAYS} days
@@ -503,6 +560,25 @@ export function BranchSalesTab() {
               </DailySaleFilters>
             }
           />
+
+          {/* Where the list stops, and why — placed under the table because the
+              table runs newest first, so this is where the day before the start
+              date would have been. */}
+          {atStart && (
+            <Card className="border-dashed">
+              <CardContent className="flex items-start gap-2 p-4 text-sm text-muted-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <strong className="font-medium text-foreground">
+                    {displayDate(addDays(DEPOSITS_START_DATE, -1))} and earlier are not shown.
+                  </strong>{' '}
+                  Cash deposits were not in use before {displayDate(DEPOSITS_START_DATE)}, so there is
+                  no deposit to check those days against. Their sales are still on the Daily Sale
+                  Records page.
+                </span>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

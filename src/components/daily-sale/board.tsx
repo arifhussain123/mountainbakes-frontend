@@ -130,6 +130,7 @@ export function DailySaleFilters({
   from,
   to,
   today,
+  earliest,
   onFromChange,
   onToChange,
   branch,
@@ -138,6 +139,8 @@ export function DailySaleFilters({
   from: string;
   to: string;
   today: string;
+  /** The first date the pickers offer. Omitted where the board has no start. */
+  earliest?: string;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
   /** Omitted for a viewer pinned to one branch. */
@@ -155,6 +158,7 @@ export function DailySaleFilters({
         <Input
           type="date"
           value={from}
+          min={earliest}
           max={to}
           onChange={(e) => e.target.value && onFromChange(e.target.value)}
           className="h-9 w-36"

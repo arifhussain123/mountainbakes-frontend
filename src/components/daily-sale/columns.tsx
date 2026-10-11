@@ -19,11 +19,30 @@ import { DifferenceBadge, StatusBadge, money } from './parts';
 export function dailySaleRecordColumns<T extends DailySaleRecord = DailySaleRecord>({
   symbol,
   showBranch,
+  showSymbol = true,
 }: {
   symbol: string;
   /** More than one branch is on show, so a date alone does not identify a row. */
   showBranch: boolean;
+  /**
+   * Write the currency symbol in front of every figure. Finance turns it off: in
+   * a table of nothing but rupee figures the symbol is the same three characters
+   * in every cell, and the room is better spent on the columns.
+   */
+  showSymbol?: boolean;
 }): ColumnDef<T>[] {
+  // One figure column, in this table's currency style. The rounding is the
+  // formatter's either way; only the symbol in front of it is optional.
+  const figure = (
+    id: string,
+    header: string,
+    pick: (r: T) => number,
+    strong = false,
+    tone = '',
+    format: (n: number, symbol: string) => string = money,
+  ) =>
+    moneyColumn<T>(id, header, pick, symbol, strong, tone, showSymbol ? format : (n) => format(n, '').trim());
+
   return [
     {
       id: 'date',
@@ -53,23 +72,23 @@ export function dailySaleRecordColumns<T extends DailySaleRecord = DailySaleReco
         </span>
       ),
     },
-    moneyColumn<T>('totalSale', 'Total Sale', (r) => r.autoTotalSale, symbol, true),
+    figure('totalSale', 'Total Sale', (r) => r.autoTotalSale, true),
     // Server-computed: Total Sale × the branch's Admin company share (the
     // percentage booked on the day's income approval where there is one).
     // Nothing is multiplied here, so the column cannot disagree with the API.
-    moneyColumn<T>('companyShare', 'Company Share', (r) => r.companyShare, symbol, true, 'text-red-600 dark:text-red-400 font-bold', paisaMoney),
-    moneyColumn<T>('cash', 'Cash', (r) => r.autoCash, symbol),
-    moneyColumn<T>('easypaisa', 'Easypaisa', (r) => r.autoEasypaisa, symbol),
-    moneyColumn<T>('foodpanda', 'Foodpanda', (r) => r.autoFoodpanda, symbol),
-    moneyColumn<T>('bank', 'Bank', (r) => r.autoBank, symbol),
-    moneyColumn<T>('cashExpense', 'Cash Expense', (r) => r.cashExpense, symbol),
+    figure('companyShare', 'Company Share', (r) => r.companyShare, true, 'text-red-600 dark:text-red-400 font-bold', paisaMoney),
+    figure('cash', 'Cash', (r) => r.autoCash),
+    figure('easypaisa', 'Easypaisa', (r) => r.autoEasypaisa),
+    figure('foodpanda', 'Foodpanda', (r) => r.autoFoodpanda),
+    figure('bank', 'Bank', (r) => r.autoBank),
+    figure('cashExpense', 'Cash Expense', (r) => r.cashExpense),
     // Straight after Cash Expense so the subtraction is visible in the row —
     // 45,000 · 5,000 · 40,000 reads as arithmetic rather than as three
     // unrelated figures. This is what the counted cash is checked against, so
     // it sits next to the Difference column's reasoning rather than off in the
     // View popup where the person counting the drawer would not see it.
-    moneyColumn<T>('cashOnTable', 'Cash on Table', (r) => r.expectedCashInHand, symbol, true),
-    moneyColumn<T>('discount', 'Discount', (r) => r.discount, symbol),
+    figure('cashOnTable', 'Cash on Table', (r) => r.expectedCashInHand, true),
+    figure('discount', 'Discount', (r) => r.discount),
     {
       id: 'difference',
       accessorFn: (r) => r.overallDifference,
