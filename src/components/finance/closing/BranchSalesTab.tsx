@@ -112,7 +112,7 @@ const UNMATCHED_SHOWN = 8;
  * is checking. All of them are still in the View popup.
  *
  * The same figures are set out more tightly than on the branch board: no "Rs."
- * in front of the sales figures, every column centred, and less space between
+ * in front of the sales figures, every column left-aligned, and less space between
  * columns (`dense`), so the three finance columns at the end are on screen
  * without scrolling.
  *
@@ -258,14 +258,14 @@ export function BranchSalesTab() {
         id: 'depositDifference',
         accessorFn: (r) => r.reconciliation.difference,
         header: 'Deposit Difference',
-        meta: { align: 'center', mobileLabel: 'Deposit Difference' },
+        meta: { mobileLabel: 'Deposit Difference' },
         cell: ({ row }) => {
           const r = row.original.reconciliation;
           // Nothing due and nothing deposited is not a zero worth a badge.
           if (r.status === 'nothing_due') return <span className="text-muted-foreground">—</span>;
           const dates = [...new Set(r.deposits.map((d) => displayDate(d.businessDate)))].join(', ');
           return (
-            <div className="flex flex-col items-center gap-0.5">
+            <div className="flex flex-col items-start gap-0.5">
               <DepositDifferenceBadge difference={r.difference} symbol={symbol} />
               {/* Which deposit, and how sure the pairing is: one of the same
                   amount, or only the nearest one in date. */}
@@ -283,11 +283,11 @@ export function BranchSalesTab() {
         // The label, so the search box finds "discrepancy" and "not received".
         accessorFn: (r) => DEPOSIT_RECON_STATUS_LABELS[r.reconciliation.status],
         header: 'Deposit Status',
-        meta: { align: 'center', mobile: 'badge' },
+        meta: { mobile: 'badge' },
         cell: ({ row }) => {
           const r = row.original.reconciliation;
           return (
-            <div className="flex flex-col items-center gap-0.5">
+            <div className="flex flex-col items-start gap-0.5">
               <DepositStatusBadge status={r.status} />
               {/* An open record's figures still move with the day's sales, so a
                   comparison against them is not yet the final one. */}
@@ -315,11 +315,12 @@ export function BranchSalesTab() {
       },
     ];
 
-    // Every column centred, heading and cells together — set on the column's
-    // meta, which is the one place that moves both (see table-meta.ts). The
-    // actions column keeps its own side.
+    // Every column left-aligned, heading and cells together — set on the
+    // column's meta, which is the one place that moves both (see table-meta.ts).
+    // The shared figure columns arrive right-aligned, so this is what overrides
+    // them. The actions column keeps its own side.
     return columns.map((column) =>
-      column.id === 'actions' ? column : { ...column, meta: { ...column.meta, align: 'center' as const } },
+      column.id === 'actions' ? column : { ...column, meta: { ...column.meta, align: 'left' as const } },
     );
   }, [symbol, effectiveBranchId]);
 
