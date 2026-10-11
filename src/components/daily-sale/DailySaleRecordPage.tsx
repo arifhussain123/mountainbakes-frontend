@@ -32,6 +32,7 @@ import {
   useGenerateDailySaleRecord,
 } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { formatDate } from '@/utils/date';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -52,13 +53,15 @@ import { PaymentLockPanel } from './PaymentLockPanel';
 import { UnlockDialog } from './UnlockDialog';
 
 /**
- * The first business date this record was kept for. Days before it have no
- * rows — not because nothing was sold, but because the record did not exist
- * yet — so a window that reaches back past it says so instead of only showing
- * an empty table. The date fields still accept an earlier day: the message is
- * the answer to picking one.
+ * The first business date this board lists. The record was not kept before it,
+ * so earlier days are never asked of the API — not listed and not in the
+ * summary cards, even where sales exist for them — and a window that reaches
+ * back past it says so. The date fields still accept an earlier day: the
+ * message is the answer to picking one.
  */
 const DAILY_SALE_START_DATE = '2026-09-01';
+/** The last day NOT shown — the one the message names. */
+const DAILY_SALE_LAST_UNSHOWN_DATE = '2026-08-31';
 
 /**
  * DAILY SALE RECORD — the branch's daily financial reconciliation.
@@ -103,13 +106,20 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
 
   // The API caps the window, so a range wider than the cap is not requested at
   // all — the card below says so, which is more use than a failed request.
-  const windowTooWide = daysBetween(from, to) > DAILY_SALE_MAX_WINDOW_DAYS;
+  /** The window reaches back before the board's start, so the notice above the table is shown. */
+  const beforeStart = from < DAILY_SALE_START_DATE;
+  /** The whole window is before the start: nothing is requested and the table says why. */
+  const allBeforeStart = to < DAILY_SALE_START_DATE;
+  // What is actually asked for never starts before the start date.
+  const queryFrom = beforeStart ? DAILY_SALE_START_DATE : from;
+
+  const windowTooWide = !allBeforeStart && daysBetween(queryFrom, to) > DAILY_SALE_MAX_WINDOW_DAYS;
 
   const { data, isLoading } = useDailySaleRecords(token, {
-    from,
+    from: queryFrom,
     to,
     branchId: effectiveBranchId,
-    enabled: !windowTooWide,
+    enabled: !windowTooWide && !allBeforeStart,
   });
 
   const generate = useGenerateDailySaleRecord(token);
@@ -131,8 +141,6 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
   const locks = data?.locks ?? [];
 
   const today = businessDateStr();
-  /** The window reaches back before the record began, so the notice above the table is shown. */
-  const beforeStart = from < DAILY_SALE_START_DATE;
 
   /** The record for today, if the window on show includes it. Drives the top-right button. */
   const todayRow = useMemo(
@@ -276,8 +284,11 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
           <CardContent className="flex items-start gap-2 p-4 text-sm text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>
-              This record is maintained from <strong>{formatDate(DAILY_SALE_START_DATE)}</strong>.
-              There is no data to show for earlier dates.
+              <strong className="font-medium text-foreground">
+                {formatDate(DAILY_SALE_LAST_UNSHOWN_DATE)} and earlier are not shown.
+              </strong>{' '}
+              This record is maintained from {formatDate(DAILY_SALE_START_DATE)}, so there is no
+              data for those days.
             </span>
           </CardContent>
         </Card>
@@ -297,6 +308,15 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
         // the nearest of the global standard sizes ([20, 50, 100]) that still
         // comfortably covers a month without splitting it across pages.
         pageSize={50}
+        empty={
+          allBeforeStart ? (
+            <EmptyState
+              title={`No record before ${formatDate(DAILY_SALE_START_DATE)}`}
+              description={`This record is maintained from ${formatDate(DAILY_SALE_START_DATE)}. Pick a later date to see data.`}
+              className="border-0"
+            />
+          ) : undefined
+        }
         leading={
           <DailySaleFilters
             from={from}
