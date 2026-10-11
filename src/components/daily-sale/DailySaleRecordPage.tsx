@@ -19,7 +19,6 @@ import { toast } from 'sonner';
 import {
   DAILY_SALE_MAX_WINDOW_DAYS,
   businessDateStr,
-  businessDaysAgoStr,
   isDailySaleRecordOpen,
   type DailySaleRecord,
 } from '@mb/shared';
@@ -92,10 +91,10 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
   const { settings } = useSettings();
   const symbol = settings?.currencySymbol || 'Rs.';
 
-  // Last 30 business days, ending today. A window rather than a single date
-  // because the question is nearly always "which days are still not signed off",
-  // and a one-day view cannot answer it.
-  const [from, setFrom] = useState(() => businessDaysAgoStr(29));
+  // The current month so far: its 1st to today, by business date. A window
+  // rather than a single date because the question is nearly always "which days
+  // are still not signed off", and a one-day view cannot answer it.
+  const [from, setFrom] = useState(() => `${businessDateStr().slice(0, 7)}-01`);
   const [to, setTo] = useState(() => businessDateStr());
   const [branchId, setBranchId] = useState<string>(ALL_BRANCHES);
 
