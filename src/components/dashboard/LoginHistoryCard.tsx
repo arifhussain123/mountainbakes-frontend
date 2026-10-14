@@ -31,7 +31,6 @@ import {
   formatLocation,
   formatOs,
 } from '@/components/security/sessionFormat';
-import { GoogleAccountLink } from '@/components/security/GoogleAccountLink';
 
 /**
  * Login History — who signed in, from where, and for how long.
@@ -353,10 +352,6 @@ export function LoginHistoryCard() {
                   ? 'Every account · location is resolved from the login IP and is approximate'
                   : `Sign-ins for ${user?.displayName || 'this account'} · location is resolved from your IP, or your device when it shares its position`}
               </p>
-              {/* Renders only when the project has Google sign-in enabled. */}
-              <div className="mt-2">
-                <GoogleAccountLink />
-              </div>
             </div>
             {/* Admin only, because the screen it points at is. A link a branch
                 user could see and not open is worse than no link. */}

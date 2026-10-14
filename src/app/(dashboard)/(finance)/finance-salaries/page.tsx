@@ -1,4 +1,4 @@
-import { SalaryLedgerPage } from '@/components/finance/SalaryLedgerPage';
+import { SalaryLedgerPage } from '@/components/finance/ledger/SalaryLedgerPage';
 
 export default function Page() {
   return (

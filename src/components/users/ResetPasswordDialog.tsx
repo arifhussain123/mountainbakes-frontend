@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import { apiCall } from '@/utils/api';
 import { resetErrorMessage } from '@/utils/authErrors';
 import type { User } from '@mb/shared';
@@ -73,27 +72,21 @@ export function ResetPasswordDialog({
     }
     setSubmitting(true);
     try {
-      const res = await apiCall<{ tempPassword: string | null; email: string | null }>(
+      const res = await apiCall<{
+        tempPassword: string | null;
+        email: string | null;
+        emailSent?: boolean;
+        emailError?: string | null;
+      }>(
         `/api/users/${user.id}/reset-password`,
         { method: 'POST', body: JSON.stringify({ generateTemp, sendEmail, forceChange }) },
         token
       );
-      // Admin is authenticated → trigger Supabase's reset email for the target.
-      //
-      // resetPasswordForEmail RETURNS { error }, it does not throw — the old
-      // try/catch here only ever caught a network failure, so a rejected send
-      // (unreachable domain, rate limit) was swallowed and the admin still saw
-      // "Password reset". Check the returned error and say so instead.
-      let emailError: string | null = null;
-      if (res.email) {
-        const { error: sendError } = await supabase.auth.resetPasswordForEmail(res.email, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        });
-        if (sendError) {
-          console.error('Reset email failed', sendError);
-          emailError = resetErrorMessage(sendError, 'The reset email could not be sent.');
-        }
-      }
+      // The API sends the reset link itself and REPORTS a send that failed
+      // (no mail server configured, the address refused) rather than failing
+      // the request — any temporary password has already been set by then.
+      const emailError =
+        sendEmail && !res.emailSent ? (res.emailError ?? 'The reset email could not be sent.') : null;
 
       // The password change itself already succeeded server-side, so this is a
       // warning rather than an error — and it matters most when no temporary

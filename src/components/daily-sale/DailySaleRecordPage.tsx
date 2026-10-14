@@ -3,34 +3,23 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
-  AlertTriangle,
-  Banknote,
-  BadgePercent,
   CheckCircle2,
   Eye,
   History,
+  Info,
   Lock,
   LockOpen,
   MoreHorizontal,
   Pencil,
   Plus,
   Printer,
-  Receipt,
   RefreshCw,
-  Scale,
-  ShoppingCart,
-  Smartphone,
-  Landmark,
-  Bike,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DAILY_SALE_MAX_WINDOW_DAYS,
   businessDateStr,
-  businessDaysAgoStr,
-  differenceStatus,
   isDailySaleRecordOpen,
-  karachiTimeStr,
   type DailySaleRecord,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
@@ -42,11 +31,10 @@ import {
   useGenerateDailySaleRecord,
 } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
-import { StatCard } from '@/components/shared/StatCard';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { formatDate } from '@/utils/date';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,13 +43,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AmendDialog } from './AmendDialog';
+import { ALL_BRANCHES, DailySaleFilters, DailySaleNotices, DailySaleSummaryCards } from './board';
+import { dailySaleRecordColumns, daysBetween } from './columns';
 import { DailySaleViewDialog } from './DailySaleViewDialog';
 import { ManualFeedDialog } from './ManualFeedDialog';
 import { PaymentLockPanel } from './PaymentLockPanel';
 import { UnlockDialog } from './UnlockDialog';
-import { DifferenceBadge, StatusBadge, money } from './parts';
+
+/**
+ * The first business date this board lists. The record was not kept before it,
+ * so earlier days are never asked of the API — not listed and not in the
+ * summary cards, even where sales exist for them — and a window that reaches
+ * back past it says so. The date fields still accept an earlier day: the
+ * message is the answer to picking one.
+ */
+const DAILY_SALE_START_DATE = '2026-09-01';
+/** The last day NOT shown — the one the message names. */
+const DAILY_SALE_LAST_UNSHOWN_DATE = '2026-08-31';
 
 /**
  * DAILY SALE RECORD — the branch's daily financial reconciliation.
@@ -87,18 +86,15 @@ import { DifferenceBadge, StatusBadge, money } from './parts';
  * aggregates in Postgres (migration 101). The only arithmetic in this file is
  * `Math.round` for display.
  */
-/** Sentinel for the admin branch picker. Matches ALL_BRANCHES in AdminBranchStockPage. */
-const ALL_BRANCHES = 'all';
-
 export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
   const { token, user } = useAuth();
   const { settings } = useSettings();
   const symbol = settings?.currencySymbol || 'Rs.';
 
-  // Last 30 business days, ending today. A window rather than a single date
-  // because the question is nearly always "which days are still not signed off",
-  // and a one-day view cannot answer it.
-  const [from, setFrom] = useState(() => businessDaysAgoStr(29));
+  // The current month so far: its 1st to today, by business date. A window
+  // rather than a single date because the question is nearly always "which days
+  // are still not signed off", and a one-day view cannot answer it.
+  const [from, setFrom] = useState(() => `${businessDateStr().slice(0, 7)}-01`);
   const [to, setTo] = useState(() => businessDateStr());
   const [branchId, setBranchId] = useState<string>(ALL_BRANCHES);
 
@@ -109,13 +105,20 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
 
   // The API caps the window, so a range wider than the cap is not requested at
   // all — the card below says so, which is more use than a failed request.
-  const windowTooWide = daysBetween(from, to) > DAILY_SALE_MAX_WINDOW_DAYS;
+  /** The window reaches back before the board's start, so the notice above the table is shown. */
+  const beforeStart = from < DAILY_SALE_START_DATE;
+  /** The whole window is before the start: nothing is requested and the table says why. */
+  const allBeforeStart = to < DAILY_SALE_START_DATE;
+  // What is actually asked for never starts before the start date.
+  const queryFrom = beforeStart ? DAILY_SALE_START_DATE : from;
+
+  const windowTooWide = !allBeforeStart && daysBetween(queryFrom, to) > DAILY_SALE_MAX_WINDOW_DAYS;
 
   const { data, isLoading } = useDailySaleRecords(token, {
-    from,
+    from: queryFrom,
     to,
     branchId: effectiveBranchId,
-    enabled: !windowTooWide,
+    enabled: !windowTooWide && !allBeforeStart,
   });
 
   const generate = useGenerateDailySaleRecord(token);
@@ -184,90 +187,7 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
 
   const columns = useMemo<ColumnDef<DailySaleRecord>[]>(
     () => [
-      {
-        id: 'date',
-        accessorFn: (r) => r.businessDate,
-        header: 'Date',
-        meta: { mobile: 'title' },
-        cell: ({ row }) => (
-          <div>
-            <p className="font-medium tabular-nums">{displayDate(row.original.businessDate)}</p>
-            {/* The branch belongs under the date in the consolidated view, where a
-                date alone does not identify a row. Hidden when one branch is on
-                show, so the column does not repeat the same name forty times. */}
-            {!effectiveBranchId && (
-              <p className="text-xs text-muted-foreground">{row.original.branchName}</p>
-            )}
-          </div>
-        ),
-      },
-      {
-        id: 'time',
-        accessorFn: (r) => r.generatedAt,
-        header: 'Time',
-        meta: { mobile: 'hidden', mobileLabel: 'Generated' },
-        cell: ({ row }) => (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {row.original.generatedAt ? karachiTimeStr(new Date(row.original.generatedAt)) : '—'}
-          </span>
-        ),
-      },
-      moneyColumn('totalSale', 'Total Sale', (r) => r.autoTotalSale, symbol, true),
-      // Server-computed: Total Sale × the branch's Admin company share (the
-      // percentage booked on the day's income approval where there is one).
-      // Nothing is multiplied here, so the column cannot disagree with the API.
-      moneyColumn('companyShare', 'Company Share', (r) => r.companyShare, symbol, true, 'text-red-600 dark:text-red-400 font-bold', paisaMoney),
-      moneyColumn('cash', 'Cash', (r) => r.autoCash, symbol),
-      moneyColumn('easypaisa', 'Easypaisa', (r) => r.autoEasypaisa, symbol),
-      moneyColumn('foodpanda', 'Foodpanda', (r) => r.autoFoodpanda, symbol),
-      moneyColumn('bank', 'Bank', (r) => r.autoBank, symbol),
-      moneyColumn('cashExpense', 'Cash Expense', (r) => r.cashExpense, symbol),
-      // Straight after Cash Expense so the subtraction is visible in the row —
-      // 45,000 · 5,000 · 40,000 reads as arithmetic rather than as three
-      // unrelated figures. This is what the counted cash is checked against, so
-      // it sits next to the Difference column's reasoning rather than off in the
-      // View popup where the person counting the drawer would not see it.
-      moneyColumn('cashOnTable', 'Cash on Table', (r) => r.expectedCashInHand, symbol, true),
-      moneyColumn('discount', 'Discount', (r) => r.discount, symbol),
-      {
-        id: 'difference',
-        accessorFn: (r) => r.overallDifference,
-        header: 'Difference',
-        meta: { align: 'center', mobile: 'badge' },
-        cell: ({ row }) => {
-          const r = row.original;
-          // Nothing counted at all reads as "not counted", never as a matched
-          // zero: `overallDifference` is 0 when no method has been fed, and a
-          // green tick there would say the day balances when nobody has looked.
-          const nothingCounted =
-            r.cashDifference === null && r.easypaisaDifference === null && r.bankDifference === null;
-          return (
-            <DifferenceBadge
-              difference={nothingCounted ? null : r.overallDifference}
-              symbol={symbol}
-            />
-          );
-        },
-      },
-      {
-        id: 'status',
-        accessorFn: (r) => r.status,
-        header: 'Status',
-        meta: { align: 'center', mobile: 'badge' },
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
-      },
-      {
-        id: 'source',
-        accessorFn: (r) => (r.fedAt ? 'System + Counted' : 'System'),
-        header: 'Source',
-        enableSorting: false,
-        meta: { align: 'center', mobileLabel: 'Source' },
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {row.original.fedAt ? 'System + Counted' : 'System'}
-          </span>
-        ),
-      },
+      ...dailySaleRecordColumns({ symbol, showBranch: !effectiveBranchId }),
       {
         id: 'actions',
         header: '',
@@ -349,56 +269,26 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
       </div>
 
       {/* ── Summary cards (§18) ── */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-8">
-        <StatCard title="Total Sale" value={isLoading ? '…' : money(summary?.totalSale ?? 0, symbol)} icon={ShoppingCart} color="green" loading={isLoading} />
-        <StatCard title="Cash" value={isLoading ? '…' : money(summary?.cash ?? 0, symbol)} icon={Banknote} color="brown" loading={isLoading} />
-        <StatCard title="Easypaisa" value={isLoading ? '…' : money(summary?.easypaisa ?? 0, symbol)} icon={Smartphone} color="blue" loading={isLoading} />
-        <StatCard title="Foodpanda" value={isLoading ? '…' : money(summary?.foodpanda ?? 0, symbol)} icon={Bike} color="orange" loading={isLoading} />
-        <StatCard title="Bank" value={isLoading ? '…' : money(summary?.bank ?? 0, symbol)} icon={Landmark} color="blue" loading={isLoading} />
-        <StatCard title="Cash Expense" value={isLoading ? '…' : money(summary?.cashExpense ?? 0, symbol)} icon={Receipt} color="red" loading={isLoading} />
-        <StatCard title="Discount" value={isLoading ? '…' : money(summary?.discount ?? 0, symbol)} icon={BadgePercent} color="orange" loading={isLoading} />
-        <StatCard
-          title="Difference"
-          value={isLoading ? '…' : money(summary?.difference ?? 0, symbol)}
-          icon={summary && summary.difference === 0 ? CheckCircle2 : Scale}
-          color={summary && summary.difference === 0 ? 'green' : 'red'}
-          loading={isLoading}
-        />
-      </div>
+      <DailySaleSummaryCards summary={summary} isLoading={isLoading} symbol={symbol} />
 
-      {/* A difference card reading Rs. 0 over a window where nothing has been
-          counted is the one number on this screen that could mislead, so it is
-          qualified rather than left to be misread (§19 — nothing is hidden). */}
-      {!isLoading && summary && summary.uncounted > 0 && (
+      <DailySaleNotices
+        summary={summary}
+        isLoading={isLoading}
+        symbol={symbol}
+        windowTooWide={windowTooWide}
+      />
+
+      {beforeStart && (
         <Card className="border-dashed">
           <CardContent className="flex items-start gap-2 p-4 text-sm text-muted-foreground">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <span>
-              {summary.uncounted} {summary.uncounted === 1 ? 'day has' : 'days have'} nothing counted
-              yet, so the Difference card covers only the days that do.
+              <strong className="font-medium text-foreground">
+                {formatDate(DAILY_SALE_LAST_UNSHOWN_DATE)} and earlier are not shown.
+              </strong>{' '}
+              This record is maintained from {formatDate(DAILY_SALE_START_DATE)}, so there is no
+              data for those days.
             </span>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isLoading && summary && summary.difference !== 0 && (
-        <Card className="border-amber-300 dark:border-amber-900">
-          <CardContent className="flex items-start gap-2 p-4 text-sm">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <span>
-              This window is out by <strong>{money(summary.difference, symbol)}</strong>{' '}
-              ({differenceStatus(summary.difference) === 'short' ? 'short' : 'over'}). Open each
-              day with a difference and check the figure against the counted amount.
-            </span>
-          </CardContent>
-        </Card>
-      )}
-
-      {windowTooWide && (
-        <Card className="border-dashed">
-          <CardContent className="p-4 text-sm text-muted-foreground">
-            That range is longer than {DAILY_SALE_MAX_WINDOW_DAYS} days. Narrow it to load the
-            records.
           </CardContent>
         </Card>
       )}
@@ -417,54 +307,28 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
         // the nearest of the global standard sizes ([20, 50, 100]) that still
         // comfortably covers a month without splitting it across pages.
         pageSize={50}
+        empty={
+          allBeforeStart ? (
+            <EmptyState
+              title={`No record before ${formatDate(DAILY_SALE_START_DATE)}`}
+              description={`This record is maintained from ${formatDate(DAILY_SALE_START_DATE)}. Pick a later date to see data.`}
+              className="border-0"
+            />
+          ) : undefined
+        }
         leading={
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">From</Label>
-              <Input
-                type="date"
-                value={from}
-                max={to}
-                onChange={(e) => e.target.value && setFrom(e.target.value)}
-                className="h-9 w-36"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">To</Label>
-              <Input
-                type="date"
-                value={to}
-                min={from}
-                max={today}
-                onChange={(e) => e.target.value && setTo(e.target.value)}
-                className="h-9 w-36"
-              />
-            </div>
-            {admin && (
-              <div className="space-y-1">
-                <Label className="text-xs">Branch</Label>
-                <Select value={branchId} onValueChange={(v) => setBranchId((v as string) ?? ALL_BRANCHES)}>
-                  <SelectTrigger className="h-9 w-48">
-                    <SelectValue placeholder="All branches" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {/* A sentinel rather than an empty string, matching
-                        AdminBranchStockPage: Base UI treats an absent value as
-                        "show the placeholder", so '' as a real option is a value
-                        that renders as no value. Under this option the board
-                        lists every branch's rows side by side and never sums
-                        them — these figures reconcile against one drawer. */}
-                    <SelectItem value={ALL_BRANCHES}>All branches</SelectItem>
-                    {(branches.data ?? []).map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
+          <DailySaleFilters
+            from={from}
+            to={to}
+            today={today}
+            onFromChange={setFrom}
+            onToChange={setTo}
+            branch={
+              admin
+                ? { value: branchId, onChange: setBranchId, branches: branches.data ?? [] }
+                : undefined
+            }
+          />
         }
       />
 
@@ -628,73 +492,4 @@ function RowActions({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-/**
- * Money that keeps its paisa when it has any: "Rs. 750", "Rs. 28,312.50".
- *
- * `money` rounds to whole rupees, which is right for takings and wrong for a
- * percentage of them — 75% of 37,750 is 28,312.50, and showing 28,313 would be a
- * figure nobody can reproduce from the row.
- */
-function paisaMoney(n: number, symbol: string): string {
-  if (Number.isInteger(n)) return money(n, symbol);
-  return `${symbol} ${n.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-/**
- * One right-aligned money column.
- *
- * A factory rather than nine near-identical literals, because the alignment,
- * `tabular-nums` and the rounding have to match across all of them — a centred
- * or proportional figures column jitters as the digit count changes row to row,
- * which is the exact failure `table-meta.ts` documents.
- */
-function moneyColumn(
-  id: string,
-  header: string,
-  pick: (r: DailySaleRecord) => number,
-  symbol: string,
-  strong = false,
-  tone = '',
-  format: (n: number, symbol: string) => string = money,
-): ColumnDef<DailySaleRecord> {
-  // A figure the API did not send (an API one release behind this build) reads
-  // as a dash, never as "Rs. NaN", and sorts and totals as 0.
-  const value = (r: DailySaleRecord) => {
-    const v = pick(r);
-    return typeof v === 'number' && Number.isFinite(v) ? v : null;
-  };
-  return {
-    id,
-    accessorFn: (r) => value(r) ?? 0,
-    header,
-    meta: { align: 'right', mobileLabel: header },
-    cell: ({ row }) => {
-      const v = value(row.original);
-      return (
-        <span className={`tabular-nums ${strong ? 'font-semibold' : ''} ${tone}`}>
-          {v === null ? '—' : format(v, symbol)}
-        </span>
-      );
-    },
-    footer: ({ table }) => (
-      <span className={`tabular-nums ${tone}`}>
-        {format(
-          Math.round(table.getFilteredRowModel().rows.reduce((s, r) => s + (value(r.original) ?? 0), 0) * 100) / 100,
-          symbol,
-        )}
-      </span>
-    ),
-  };
-}
-
-/** 'DD-MM-YYYY'. String work — these are already Karachi business dates. */
-function displayDate(iso: string): string {
-  const [y, m, d] = (iso || '').split('-');
-  return y && m && d ? `${d}-${m}-${y}` : iso || '—';
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
 }

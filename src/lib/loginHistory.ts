@@ -1,21 +1,22 @@
 import type { LoginAttemptReason, LoginSession } from '@mb/shared';
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/lib/auth/session';
 import { apiCall } from '@/utils/api';
 import { endDeadSession } from '@/lib/api/client';
 
 /**
  * Client half of Login History.
  *
- * The API cannot see a login. This app is a static export that calls Supabase
- * Auth straight from the browser, so nothing of ours is in that request path —
- * which is why the session is opened, kept alive and closed by explicit calls
- * from here rather than being observed server-side.
+ * Signing in does not write the history. `/api/auth/login` issues the tokens
+ * and nothing more, and a reload or a second tab arrives holding a session with
+ * no sign-in at all — which is why the Login History session is opened, kept
+ * alive and closed by explicit calls from here rather than being observed
+ * server-side.
  *
  * Deliberately NOT a React hook and not TanStack Query. Two of the three callers
  * are outside React's control flow: the ping rides the refresh tick inside
  * `AppRefreshProvider`'s `setInterval`, and the end runs inside `AuthProvider`'s
  * `logout` just before the session it needs is destroyed. A hook could serve
- * neither. Everything here reads its own token from the Supabase client for the
+ * neither. Everything here reads its own token from lib/auth/session.ts for the
  * same reason.
  *
  * EVERY FUNCTION SWALLOWS ITS ERRORS, WITH ONE EXCEPTION. This is bookkeeping
@@ -24,11 +25,11 @@ import { endDeadSession } from '@/lib/api/client';
  * most a slightly short duration on one row.
  *
  * The exception is a `session_revoked` answer, which is not bookkeeping at all.
- * An admin has signed this browser out, and this is the mechanism that carries
- * that out: a Supabase access token cannot be withdrawn once issued, so the
- * GoTrue session behind it is already deleted but the token in this tab stays
- * valid until it expires — up to an hour of a supposedly-terminated session
- * still working. Signing out locally is what turns the revocation into something
+ * An admin has signed this browser out, and for a tab that is merely sitting
+ * open this is the mechanism that carries that out: the API refuses a revoked
+ * session on its next request, but an idle tab makes none and would go on
+ * showing everything it had already loaded. The ping is the request that finds
+ * out, and signing out locally is what turns the revocation into something
  * that happens within the two-minute ping tick.
  */
 
@@ -122,8 +123,7 @@ function screenSize(): string | null {
 
 async function currentToken(): Promise<string | null> {
   try {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
+    return await getAccessToken();
   } catch {
     return null;
   }
@@ -207,7 +207,7 @@ export async function pingLoginSession(): Promise<void> {
 /**
  * Close the session on an explicit sign-out.
  *
- * MUST be awaited before `supabase.auth.signOut()`, because it needs the access
+ * MUST be awaited before `signOut()` (lib/auth/session.ts), because it needs the access
  * token that sign-out is about to destroy. The id is cleared either way — a
  * failed end leaves a session the server will read as expired, which is a far
  * better outcome than leaving the id behind for the next account to offer up.
@@ -230,8 +230,8 @@ export async function endLoginSession(): Promise<void> {
 /**
  * Write down a sign-in that was refused.
  *
- * WHY THE BROWSER HAS TO REPORT THIS. Authentication happens between this page
- * and Supabase; our API is not in that request path and never sees the failure.
+ * WHY THE BROWSER HAS TO REPORT THIS. `/api/auth/login` refuses a bad sign-in
+ * and writes nothing down; the Login History is kept by the calls in this file.
  * So either the refusals go unrecorded — which is what left the Login History
  * unable to show the single most useful thing a security screen can, a burst of
  * failures nobody can explain — or the page that saw it posts it. There is no
@@ -264,15 +264,14 @@ export function recordFailedLogin(email: string, reason: LoginAttemptReason): vo
 }
 
 /**
- * Read a Supabase sign-in failure as one of our reason codes.
+ * Read a sign-in failure as one of our reason codes.
  *
- * MAPS FROM SUPABASE'S `code`, falling back to matching its message, because
- * GoTrue only grew stable error codes recently and an older deployment still
- * sends prose. Anything unrecognised becomes 'unknown' rather than being guessed
- * at — a wrong reason in a security log is worse than an honest absence of one.
+ * MAPS FROM THE API'S `code` (see lib/auth/session's AuthApiError). Anything
+ * unrecognised becomes 'unknown' rather than being guessed at — a wrong reason
+ * in a security log is worse than an honest absence of one.
  *
  * `invalid_credentials` deliberately covers both a wrong address and a wrong
- * password, because Supabase does not distinguish them and neither should this:
+ * password, because the API does not distinguish them and neither should this:
  * splitting them would turn the admin's failed-login screen into a way to
  * confirm which addresses are real accounts.
  */
@@ -282,18 +281,13 @@ export function loginFailureReason(err: unknown): LoginAttemptReason {
 
   const byCode: Record<string, LoginAttemptReason> = {
     invalid_credentials: 'invalid_credentials',
-    email_not_confirmed: 'email_not_confirmed',
-    user_banned: 'account_disabled',
-    over_request_rate_limit: 'rate_limited',
-    over_email_send_rate_limit: 'rate_limited',
+    account_inactive: 'account_disabled',
+    rate_limited: 'rate_limited',
     session_expired: 'expired_token',
-    session_not_found: 'invalid_session',
+    session_revoked: 'invalid_session',
   };
   if (byCode[code]) return byCode[code];
 
-  if (/invalid login credentials/i.test(message)) return 'invalid_credentials';
-  if (/email not confirmed/i.test(message)) return 'email_not_confirmed';
-  if (/banned|disabled/i.test(message)) return 'account_disabled';
   if (/rate limit|too many/i.test(message)) return 'rate_limited';
   if (/no role assigned/i.test(message)) return 'no_role';
   return 'unknown';

@@ -263,6 +263,16 @@ export const qk = {
   financeEmployees: (includeInactive?: boolean) =>
     ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,
   financeSalaryRevisions: (employeeId: string) => ['finance', 'salaryRevisions', employeeId] as const,
+  // The read-only year ledgers. Under the 'finance' root like everything else,
+  // so approving a payslip on Payroll refreshes the ledger it now belongs to.
+  financeSalaryLedger: (filters: Record<string, unknown>) => ['finance', 'salaryLedger', filters] as const,
+  financeSalaryLedgerPayments: (filters: Record<string, unknown>) =>
+    ['finance', 'salaryLedgerPayments', filters] as const,
+  financeEmployeeProfile: (employeeId: string) => ['finance', 'employeeProfile', employeeId] as const,
+  financeEmployeeSearch: (term: string) => ['finance', 'employeeSearch', term] as const,
+  financePartnerLedger: (filters: Record<string, unknown>) => ['finance', 'partnerLedger', filters] as const,
+  financePartnerLedgerTransactions: (filters: Record<string, unknown>) =>
+    ['finance', 'partnerLedgerTransactions', filters] as const,
   financeAdvances: (filters: Record<string, unknown>) => ['finance', 'advances', filters] as const,
   financeAdvanceSummary: (employeeId: string) => ['finance', 'advanceSummary', employeeId] as const,
   financePartnerExpenses: (filters: Record<string, unknown>) =>
@@ -278,6 +288,15 @@ export const qk = {
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,
+  // Daily Closing's Branch Sales tab. Under the finance root, so approving or
+  // rejecting a deposit refreshes it with everything else; `financeDailySalesRoot`
+  // is what a Daily Sale Record mutation drops, so a super admin who feeds a day
+  // and then opens Finance does not read the figures from before the feed.
+  financeDailySalesRoot: () => ['finance', 'dailySales'] as const,
+  financeDailySales: (filters: { from: string; to: string; branchId?: string | null }) =>
+    ['finance', 'dailySales', 'list', filters.from, filters.to, filters.branchId ?? 'all'] as const,
+  financeDailySaleDay: (branchId: string, businessDate: string) =>
+    ['finance', 'dailySales', 'day', branchId, businessDate] as const,
   financeSettings: () => ['finance', 'settings'] as const,
   financeAudit: (filters: Record<string, unknown>) => ['finance', 'audit', filters] as const,
   financeReport: (query: Record<string, unknown>) => ['finance', 'report', query] as const,

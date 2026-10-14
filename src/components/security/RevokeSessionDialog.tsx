@@ -37,10 +37,11 @@ import { formatDevice, formatLocation } from './sessionFormat';
  * does the job and a dialog reopened for a DIFFERENT session must never arrive
  * carrying the previous one's reason into that session's audit row.
  *
- * WHAT IT PROMISES IS DELIBERATELY HEDGED. Revocation deletes the authentication
- * session — the refresh token dies immediately — but a Supabase access token is
- * stateless and cannot be withdrawn once issued. The ping that every open tab
- * sends closes that gap within about two minutes. The dialog says so rather than
+ * WHAT IT PROMISES IS DELIBERATELY HEDGED. Revocation ends the session on the
+ * server — its refresh token dies immediately and the API refuses its next
+ * request — but a tab sitting idle makes no request and keeps showing what it
+ * already loaded. The ping that every open tab sends closes that gap within
+ * about two minutes. The dialog says so rather than
  * claiming an instant cut-off it cannot deliver, because an admin acting on a
  * suspected compromise needs to know whether to also change the password.
  */

@@ -41,7 +41,9 @@ import {
   FilterSelect as LegacyFilterSelect,
 } from './finance-actions';
 import { EmployeeAdvanceForm, EmployeeForm, SalaryForm, SalaryRevisionForm } from './SalaryForms';
-import { Eye, HandCoins, Pencil, Plus, TrendingUp, UserPlus } from 'lucide-react';
+import { ResignationDialog } from './ledger/ResignationDialog';
+import { niceDate } from './ledger/ledger-ui';
+import { Eye, HandCoins, Pencil, Plus, TrendingUp, UserMinus, UserPlus } from 'lucide-react';
 
 /** Matches the Data Engine's own filter-control sizing for the one field
     (Salary month) no shared component covers. */
@@ -49,8 +51,9 @@ const FIELD_CLASS = 'min-w-[9rem] flex-1 space-y-1 sm:flex-none';
 const INPUT_CLASS = 'h-11 md:h-9';
 
 /**
- * The salary ledger, the advances against it, and the payroll master behind
- * both, on three tabs.
+ * Payroll — payslips, the advances against them, and the payroll master behind
+ * both, on three tabs. This is where salary records are raised and approved;
+ * the Salary Ledger is the read-only year view of what was approved here.
  *
  * They are one screen because they are one job: nobody manages an employee
  * record except in the course of paying them, and nobody records an advance
@@ -69,14 +72,14 @@ const advanceCol = createColumnHelper<EmployeeAdvance>();
 const BASE_PATH = '/api/finance/payroll/salaries';
 const ADVANCE_PATH = '/api/finance/payroll/advances';
 
-export function SalaryLedgerPage() {
+export function PayrollPage() {
   const abilities = useFinanceAbilities();
 
   return (
     <div className="space-y-6">
       <FinancePageHeader
-        title="Salary Ledger"
-        description="Payslips, advances and the payroll master. Approving either document posts it to the ledger under Salaries."
+        title="Payroll"
+        description="Payslips, advances and the payroll master. Approving a payslip posts it under Salaries and adds it to the Salary Ledger."
       />
 
       <ReadOnlyNotice abilities={abilities} />
@@ -806,6 +809,7 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
   const [editing, setEditing] = useState<FinanceEmployee | null>(null);
   const [revising, setRevising] = useState<FinanceEmployee | null>(null);
   const [viewingEmployee, setViewingEmployee] = useState<FinanceEmployee | null>(null);
+  const [resigning, setResigning] = useState(false);
 
   const { data, isLoading } = useFinanceEmployees(includeInactive);
   const mut = useFinanceMutation();
@@ -860,14 +864,23 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
     employeeCol.accessor('isActive', {
       header: 'Active',
       meta: { mobile: 'badge' },
-      cell: (i) =>
-        i.getValue() ? (
+      cell: (i) => {
+        const resignation = i.row.original.resignation;
+        if (resignation) {
+          return (
+            <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
+              Resigned · {niceDate(resignation.resignationDate)}
+            </Badge>
+          );
+        }
+        return i.getValue() ? (
           <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
             Active
           </Badge>
         ) : (
           <Badge variant="secondary">Inactive</Badge>
-        ),
+        );
+      },
     }),
     employeeCol.display({
       id: 'actions',
@@ -890,9 +903,14 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
                 <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => setEditing(row)}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" disabled={mut.isPending} onClick={() => void toggleActive(row)}>
-                  {row.isActive ? 'Deactivate' : 'Reactivate'}
-                </Button>
+                {/* A resigned employee is inactive because of the resignation; it is
+                    undone by cancelling that (Salary Ledger › employee details),
+                    not by this switch — the API refuses it. */}
+                {!row.resignation && (
+                  <Button variant="ghost" size="sm" disabled={mut.isPending} onClick={() => void toggleActive(row)}>
+                    {row.isActive ? 'Deactivate' : 'Reactivate'}
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -916,12 +934,20 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
           />
         </LegacyFilterField>
         {abilities.configure && (
-          <Button size="sm" className="ml-auto h-11 md:h-9" onClick={() => setCreating(true)}>
-            <UserPlus className="h-3.5 w-3.5" />
-            Add employee
-          </Button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="h-11 md:h-9" onClick={() => setResigning(true)}>
+              <UserMinus className="h-3.5 w-3.5" />
+              Resignation
+            </Button>
+            <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
+              <UserPlus className="h-3.5 w-3.5" />
+              Add employee
+            </Button>
+          </div>
         )}
       </LegacyFilterBar>
+
+      <ResignationDialog open={resigning} onOpenChange={setResigning} />
 
       <DataTable columns={columns} data={data ?? []} loading={isLoading} searchPlaceholder="Search employees…" sortable />
 

@@ -405,7 +405,10 @@ export function SpecialOrdersPanel({ mode, token }: { mode: 'branch' | 'producti
   const ordersQ = useSpecialOrders(token);
   const [showDone, setShowDone] = useState(false);
 
-  const orders = ordersQ.data ?? [];
+  // Production is finished with an order the moment the branch verifies it — the
+  // units have left Production Stock and there is nothing left to do — so it
+  // drops off this screen then. Only the branch keeps the last week's history.
+  const orders = (ordersQ.data ?? []).filter((o) => mode === 'branch' || o.status !== 'approved');
   // Nothing raised, nothing shown: most days most branches have no Special
   // Order, and an empty card above the demand table would only be in the way.
   if (orders.length === 0) return null;

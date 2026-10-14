@@ -21,9 +21,9 @@ import { useNotifications } from './useNotifications';
  * reading yesterday's numbers off an open tab.
  *
  * Like `usePriceRealtime` and `useProductionRealtime`, this piggybacks on the
- * existing `notifications` stream rather than opening a realtime subscription on
- * `stock` — that table is not in the `supabase_realtime` publication, RLS would
- * block it, and it would sidestep the API data layer. Invalidating the bare
+ * existing `notifications` feed rather than watching `stock` itself — there is
+ * no realtime channel to subscribe on, the browser cannot reach the table, and
+ * everything goes through the API data layer. Invalidating the bare
  * `['stock']` prefix catches `qk.stock(branchId)` for every branch, which is what a
  * super_admin switching branches needs.
  *

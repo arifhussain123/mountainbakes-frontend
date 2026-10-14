@@ -14,8 +14,8 @@ loadEnvConfig(process.cwd());
 // This app is now a pure CLIENT-SIDE app: `next build` writes a static bundle to
 // out/ and nothing of ours runs on a server at request time. Nothing under /api
 // belongs to this origin any more — the old /api/login and /api/logout route
-// handlers are gone and the session lives entirely in the browser (Supabase,
-// localStorage).
+// handlers are gone and the session lives entirely in the browser
+// (src/lib/auth/session.ts, Web Storage).
 
 /**
  * The build stamp, reused as the deployment id so every asset URL moves per build.
@@ -41,6 +41,13 @@ function buildStamp(): string | undefined {
 }
 
 const nextConfig: NextConfig = {
+  // `next dev` only: hosts other than localhost that may load the dev server's
+  // own resources (/_next/*, the HMR socket). Opening the app by LAN address —
+  // a phone on the same Wi-Fi — is refused without it and the page never gets
+  // past its loading spinner. Comma-separated hostnames in DEV_ALLOWED_ORIGINS
+  // (frontend/.env), so no machine's address is committed here.
+  allowedDevOrigins: (process.env.DEV_ALLOWED_ORIGINS || '').split(',').map((h) => h.trim()).filter(Boolean),
+
   // Static export (CSR). Every route is pre-rendered to a plain .html shell at
   // build time and everything else happens in the browser, so the output can be
   // served by any static host — Firebase Hosting, in our case.

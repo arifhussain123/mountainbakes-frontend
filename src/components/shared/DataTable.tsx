@@ -121,6 +121,14 @@ interface DataTableProps<TData> {
   toolbar?: boolean;
   /** Hide the built-in pager — when the caller renders its own (Data Engine's `Pagination`). */
   pager?: boolean;
+  /**
+   * Halve the space between columns in the wide table.
+   *
+   * For a table with so many figure columns that the default padding pushes the
+   * last ones off the screen. Off by default, so no existing table changes; the
+   * phone cards are a label/value grid and are not affected.
+   */
+  dense?: boolean;
 }
 
 export function DataTable<TData>({
@@ -139,6 +147,7 @@ export function DataTable<TData>({
   sortable = false,
   toolbar = true,
   pager = true,
+  dense = false,
 }: DataTableProps<TData>) {
   const [localFilter, setLocalFilter] = useState('');
   const [localSorting, setLocalSorting] = useState<SortingState>([]);
@@ -238,7 +247,10 @@ export function DataTable<TData>({
       <div
         className={cn(
           'rounded-lg border bg-card overflow-hidden',
-          cards && 'hidden md:block print-table-wrap'
+          cards && 'hidden md:block print-table-wrap',
+          // The first and last columns keep their inset from the card's edge.
+          dense &&
+            '[&_td]:px-1 [&_th]:px-1 [&_td:first-child]:pl-3 [&_th:first-child]:pl-3 [&_td:last-child]:pr-3 [&_th:last-child]:pr-3'
         )}
       >
         <Table>

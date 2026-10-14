@@ -4,17 +4,17 @@ import type { AuthUser } from '@/providers/AuthProvider';
  * The last signed-in identity, kept so the app stays usable offline once the
  * access token has aged out.
  *
- * The problem this solves: a Supabase access token lasts about an hour. Offline,
- * the refresh that would renew it cannot reach the network, so Supabase drops
- * the session — and the app, doing as it was told, sent a branch user who had
- * been working for an hour to a login screen that cannot sign anyone in without
- * a connection. Everything they had was on the device; they just could not get
- * back to it.
+ * The problem this solves: an access token lasts fifteen minutes. Offline, the
+ * refresh that would renew it cannot reach the network, so there is no usable
+ * session to hand the app — and the app, doing as it was told, would send a
+ * branch user in the middle of their work to a login screen that cannot sign
+ * anyone in without a connection. Everything they had would still be on the
+ * device; they just could not get back to it.
  *
  * WHAT THIS IS NOT: a credential. No access token and no refresh token is
- * written here — Supabase owns those and keeps them where it always did. This
- * holds only who the person is, so the app can render the screens their role
- * uses and show the data already cached on this device.
+ * written here — lib/auth/session.ts owns those and keeps them under its own
+ * key. This holds only who the person is, so the app can render the screens
+ * their role uses and show the data already cached on this device.
  *
  * That distinction is what makes holding it safe. The API re-decides every
  * request against the JWT, so a held identity buys exactly nothing from the
@@ -22,9 +22,9 @@ import type { AuthUser } from '@/providers/AuthProvider';
  * which local screens open — the same job RouteGuard already does, which its own
  * notes describe as navigation UX rather than an authorisation boundary.
  *
- * Cleared on a real sign-out, and whenever Supabase ends the session while the
- * device is ONLINE — that is a genuine ending (signed out elsewhere, account
- * disabled, refresh token rejected) rather than a network failure.
+ * Cleared on a real sign-out, and whenever the session ends while the device is
+ * ONLINE — that is a genuine ending (signed out elsewhere, account deactivated,
+ * refresh token rejected) rather than a network failure.
  */
 
 const KEY = 'mb.lastSession';

@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ResetPasswordDialog } from './ResetPasswordDialog';
+import { ChangeEmailDialog } from './ChangeEmailDialog';
 import { EditUserDialog } from './EditUserDialog';
 import { UserDetailsDialog } from './UserDetailsDialog';
 import { UserActivity } from './UserActivity';
@@ -37,7 +38,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { MoreHorizontal, Pencil, KeyRound, Eye, Trash2, UserCheck, UserX } from 'lucide-react';
+import { MoreHorizontal, Pencil, KeyRound, Mail, Eye, Trash2, UserCheck, UserX } from 'lucide-react';
 
 const col = createColumnHelper<User>();
 
@@ -64,7 +65,7 @@ export function UsersPage() {
   const [selectedRole, setSelectedRole] = useState<UserRole>('branch_manager');
   const [submitting, setSubmitting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [dialog, setDialog] = useState<'edit' | 'reset' | 'details' | null>(null);
+  const [dialog, setDialog] = useState<'edit' | 'reset' | 'email' | 'details' | null>(null);
 
   const form = useForm<CreateUserInput>({
     resolver: zodResolver(CreateUserSchema),
@@ -199,6 +200,9 @@ export function UsersPage() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { setSelectedUser(u); setDialog('reset'); }}>
                 <KeyRound className="h-4 w-4" /> Reset Password
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSelectedUser(u); setDialog('email'); }}>
+                <Mail className="h-4 w-4" /> Change Email Address
               </DropdownMenuItem>
               {u.status === 'active' ? (
                 <DropdownMenuItem onClick={() => handleDeactivate(u.id, u.displayName)}>
@@ -339,6 +343,14 @@ export function UsersPage() {
         key={`reset-${selectedUser?.id ?? 'none'}-${dialog === 'reset'}`}
         user={selectedUser}
         open={dialog === 'reset'}
+        onOpenChange={(o) => { if (!o) setDialog(null); }}
+        token={token}
+        onDone={load}
+      />
+      <ChangeEmailDialog
+        key={`email-${selectedUser?.id ?? 'none'}-${dialog === 'email'}`}
+        user={selectedUser}
+        open={dialog === 'email'}
         onOpenChange={(o) => { if (!o) setDialog(null); }}
         token={token}
         onDone={load}

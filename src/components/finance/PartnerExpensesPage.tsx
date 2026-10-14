@@ -6,6 +6,7 @@ import {
   EDITABLE_DOC_STATUSES,
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
+  round2,
   type FilterConfig,
   type FinancePartner,
   type PageSize,
@@ -34,8 +35,10 @@ import { PartnerDetailForm, PartnerTxnForm } from './CompanyTransactionForms';
 import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
 
 /**
- * Company Transaction Details — four tabs over the same underlying idea:
- * money moving between the company and the people who own it.
+ * Partner Transactions — four tabs over the same underlying idea: money moving
+ * between the company and the people who own it. This is where an advance or a
+ * draw is raised and approved; Company Transaction Details is the read-only
+ * year view of what was approved here.
  *
  * Branch share is deliberately NOT here: the payout document
  * (branch_share_payments, /api/finance/branch-share) and its BranchShareForm
@@ -48,8 +51,9 @@ import { Eye, HandCoins, Pencil, Plus } from 'lucide-react';
  *     Share Detail, tracked separately because that table shows them
  *     separately.
  *   Partner Share Detail — the reconciliation: total expenses (excluding
- *     partner advances/draws), total company share, the grand total the four
- *     partners split 25% each, and each partner's advance/draw/balance.
+ *     partner advances/draws), the Daily Ledger's Balance the four partners
+ *     split 25% each, the grand total (company share − expenses), and each
+ *     partner's advance/draw/balance.
  *     Computed on read (finance-documents.service.ts#getPartnerShareSummary),
  *     never stored, so a reversal or adjustment is reflected automatically.
  */
@@ -82,8 +86,8 @@ export function PartnerExpensesPage() {
   return (
     <div className="space-y-6">
       <FinancePageHeader
-        title="Company Transaction Details"
-        description="Partner advances and draws, and the partner profit-share reconciliation."
+        title="Partner Transactions"
+        description="Partner advances and draws, and the partner profit-share reconciliation. Approved ones add up in Company Transaction Details."
       />
 
       <ReadOnlyNotice abilities={abilities} />
@@ -406,6 +410,14 @@ function PartnerShareDetailTab() {
   const filters = useMemo<FilterConfig[]>(() => [{ key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }], []);
   const summaryQ = usePartnerShareSummary(from, to);
   const summary = summaryQ.data;
+  const partnerRows = summary?.partners ?? [];
+  const sum = (pick: (p: PartnerShareRow) => number) => round2(partnerRows.reduce((s, p) => s + pick(p), 0));
+  const totals = {
+    sharePctAmount: sum((p) => p.sharePctAmount),
+    advancePaid: sum((p) => p.advancePaid),
+    drawPaid: sum((p) => p.drawPaid),
+    balance: sum((p) => p.balance),
+  };
 
   return (
     <div className="space-y-6">
@@ -422,8 +434,14 @@ function PartnerShareDetailTab() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total Company Share</p>
-              <Money value={summary.totalCompanyShare} className="text-xl font-bold text-emerald-600 dark:text-emerald-400" />
+              <p className="text-xs text-muted-foreground">Balance</p>
+              <Money
+                value={summary.ledgerBalance}
+                className={cn(
+                  'text-xl font-bold',
+                  summary.ledgerBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+                )}
+              />
             </CardContent>
           </Card>
           <Card>
@@ -448,7 +466,7 @@ function PartnerShareDetailTab() {
             </tr>
           </thead>
           <tbody>
-            {(summary?.partners ?? []).map((p) => (
+            {partnerRows.map((p) => (
               <tr key={p.id} className="border-t">
                 <td className="p-2 font-medium">{p.name}</td>
                 <td className="p-2 text-right tabular-nums">
@@ -471,6 +489,26 @@ function PartnerShareDetailTab() {
               </tr>
             ))}
           </tbody>
+          {partnerRows.length > 0 && (
+            <tfoot data-table-foot>
+              <tr className="border-t-2">
+                <td className="p-2 font-semibold">Total</td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.sharePctAmount} />
+                </td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.advancePaid} blankZero />
+                </td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.drawPaid} blankZero />
+                </td>
+                <td className="p-2 text-right tabular-nums font-semibold">
+                  <Money value={totals.balance} className={cn(totals.balance < 0 && 'text-red-600 dark:text-red-400')} />
+                </td>
+                <td className="p-2" />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

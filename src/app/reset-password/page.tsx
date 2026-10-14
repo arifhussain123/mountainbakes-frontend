@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { confirmPasswordReset } from '@/lib/auth/session';
 import { PasswordStrengthMeter } from '@/components/auth/PasswordStrengthMeter';
 import { isStrongPassword } from '@/utils/password';
 import { Button } from '@/components/ui/button';
@@ -12,14 +12,16 @@ import { toast } from 'sonner';
 import { Loader2, Lock, KeyRound, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 /**
- * Landing page for Supabase password-recovery emails. The reset link redirects
- * here with a recovery token in the URL hash; the browser client (with
- * detectSessionInUrl) parses it and emits PASSWORD_RECOVERY, establishing a
- * short-lived session that authorises `updateUser({ password })`.
+ * Landing page for password-reset emails. The link carries a single-use token
+ * (`/reset-password?token=…`); the new password is posted to the API together
+ * with it, and the API is what decides whether the token is still good. No
+ * session exists at any point — the person signs in afterwards, with the new
+ * password, like anyone else.
  */
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const [ready, setReady] = useState(false); // recovery session detected
+  const [resetToken, setResetToken] = useState('');
+  const [ready, setReady] = useState(false); // the link carried a token
   const [checked, setChecked] = useState(false); // finished the initial check
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -27,17 +29,13 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Read from the address bar in an effect, not with useSearchParams: this
+  // page is statically exported, and the query string only exists in the browser.
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || session) setReady(true);
-      setChecked(true);
-    });
-    // Fallback in case the event fired before this listener attached.
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true);
-      setChecked(true);
-    });
-    return () => sub.subscription.unsubscribe();
+    const fromLink = new URLSearchParams(window.location.search).get('token') ?? '';
+    setResetToken(fromLink);
+    setReady(fromLink !== '');
+    setChecked(true);
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -53,10 +51,7 @@ export default function ResetPasswordPage() {
     }
     setSubmitting(true);
     try {
-      const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
-      if (updErr) throw updErr;
-      // Recovery grants a real session — sign out so the user signs in fresh.
-      await supabase.auth.signOut();
+      await confirmPasswordReset(resetToken, newPassword);
       toast.success('Password updated. Please sign in.');
       router.replace('/login');
     } catch (err) {

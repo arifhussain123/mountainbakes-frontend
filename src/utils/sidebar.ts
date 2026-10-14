@@ -24,6 +24,8 @@ import {
   Wallet,
   UserCog,
   HandCoins,
+  Landmark,
+  Table2,
   ListTree,
   CalendarCheck,
   ShieldCheck,
@@ -89,8 +91,12 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
   { label: 'Cash Transfers',   href: ROUTES.FINANCE_CASH_TRANSFERS,    icon: Banknote },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
-  { label: 'Salaries',         href: ROUTES.FINANCE_SALARIES,          icon: UserCog },
-  { label: 'Company Transaction Details', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: HandCoins },
+  // Each subject has two screens: the one where its records are raised and
+  // approved, and the read-only year ledger those approvals add up to.
+  { label: 'Payroll',          href: ROUTES.FINANCE_PAYROLL,           icon: UserCog },
+  { label: 'Salary Ledger',    href: ROUTES.FINANCE_SALARIES,          icon: Table2 },
+  { label: 'Partner Transactions', href: ROUTES.FINANCE_PARTNER_TRANSACTIONS, icon: HandCoins },
+  { label: 'Company Transaction Details', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: Landmark },
   { label: 'Ledger Heads',     href: ROUTES.FINANCE_HEADS,             icon: ListTree },
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },

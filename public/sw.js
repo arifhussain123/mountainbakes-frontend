@@ -208,7 +208,7 @@ async function networkFirst(request) {
 // would activate the code below, and it would lose people's work:
 //
 //   1. `queueRequest` freezes the request's `Authorization: Bearer <jwt>`
-//      header. A Supabase access token lasts about an hour, so anything
+//      header. An access token lasts fifteen minutes, so anything
 //      replayed later arrives with an expired one and comes back 401 — and
 //      `replayQueue` DELETES any entry answered with a 4xx, on the reasoning
 //      that a client error "won't fix itself". A sale recorded offline at

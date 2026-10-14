@@ -2,9 +2,11 @@
 
 import {
   DAILY_SALE_STATUS_LABELS,
+  DEPOSIT_RECON_STATUS_LABELS,
   DIFFERENCE_STATUS_LABELS,
   differenceStatus,
   type DailySaleRecordStatus,
+  type DepositReconStatus,
 } from '@mb/shared';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -106,6 +108,63 @@ export function DifferenceBadge({
         // makes the reader work out the direction from the label; "-500" says it.
         ? `${difference! > 0 ? '+' : ''}${exactMoney(difference!, symbol)}`
         : DIFFERENCE_STATUS_LABELS[state]}
+    </Badge>
+  );
+}
+
+const DEPOSIT_DIFF_STYLES = {
+  none: 'bg-muted text-muted-foreground',
+  short: DIFF_STYLES.short,
+  over: DIFF_STYLES.over,
+} as const;
+
+/**
+ * Recorded money less what Finance has received for it.
+ *
+ * NOT `DifferenceBadge` with another number in it, because the sign means the
+ * opposite thing. That badge reads counted − system, so a positive figure is a
+ * drawer holding more than the till recorded. This reads recorded − received, so
+ * a positive figure is money the day recorded that has not arrived — a shortfall.
+ * Putting it through the other badge would label every unpaid day "Over".
+ *
+ * The colours keep their meaning across both: red is money missing, amber is
+ * money nobody can account for, and neither is ever green.
+ */
+export function DepositDifferenceBadge({
+  difference,
+  symbol = 'Rs.',
+}: {
+  difference: number;
+  symbol?: string;
+}) {
+  const state = difference === 0 ? 'none' : difference > 0 ? 'short' : 'over';
+  const Icon = state === 'none' ? MinusCircle : state === 'short' ? TrendingDown : TrendingUp;
+
+  return (
+    <Badge className={cn('border-0 gap-1', DEPOSIT_DIFF_STYLES[state])}>
+      <Icon />
+      {state === 'none'
+        ? exactMoney(0, symbol)
+        : `${exactMoney(Math.abs(difference), symbol)} ${state}`}
+    </Badge>
+  );
+}
+
+const DEPOSIT_STATUS_STYLES: Record<DepositReconStatus, string> = {
+  nothing_due: 'bg-muted text-muted-foreground',
+  not_received: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
+  matched: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+  // Orange, beside the red of "not received": both want attention, but one is
+  // money that has not come and the other is money that came and does not agree.
+  discrepancy: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400',
+};
+
+/** How a day's deposits stand against what the day recorded. */
+export function DepositStatusBadge({ status }: { status: DepositReconStatus }) {
+  return (
+    <Badge className={cn('border-0', DEPOSIT_STATUS_STYLES[status])}>
+      {DEPOSIT_RECON_STATUS_LABELS[status]}
     </Badge>
   );
 }
