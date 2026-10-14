@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FDF8F1;font-family:'Figtree',system-ui,sans-serif;color:#1C1714;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#E05A12;text-decoration:none}a:hover{color:#B8460B;text-decoration:underline}
+button,input,select,textarea{font-family:inherit}
+@keyframes mbPulse{0%,100%{opacity:1}50%{opacity:.45}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;background:#FDF8F1">
+  <header style="min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 20px;background:#FFFFFF;border-bottom:1px solid #EEE4D6;position:sticky;top:0;z-index:20;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">
+      <div style="font-weight:700;font-size:16px">Mountain Bakes</div>
+      <nav style="display:flex;gap:4px">
+        <sc-for list="{{ pages }}" as="pg" hint-placeholder-count="2">
+          <sc-if value="{{ pg.active }}" hint-placeholder-val="{{ false }}"><button onClick="{{ pg.go }}" style="border:0;background:#FDF0EC;color:#C24F12;border-radius:6px;padding:7px 12px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">{{ pg.label }}</button></sc-if>
+          <sc-if value="{{ pg.inactive }}" hint-placeholder-val="{{ true }}"><button onClick="{{ pg.go }}" style="border:0;background:transparent;color:#6E655D;border-radius:6px;padding:7px 12px;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap" style-hover="color:#1C1714;background:#F6EFE5">{{ pg.label }}</button></sc-if>
+        </sc-for>
+      </nav>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button onClick="{{ refresh }}" style="display:flex;align-items:center;gap:8px;border:0;background:transparent;font-size:14px;font-weight:500;color:#1C1714;cursor:pointer;padding:6px 10px;border-radius:6px" style-hover="background:#F6EFE5">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"></path><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"></path><path d="M21 3v5h-5"></path><path d="M3 21v-5h5"></path></svg>
+        <span>Refresh</span>
+      </button>
+      <div style="width:32px;height:32px;border-radius:50%;background:#F36A21;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">MO</div>
+    </div>
+  </header>
+
+  <main style="padding:28px 28px 64px;max-width:1720px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-0.01em">{{ pageTitle }} <span style="color:#F36A21">— {{ curYear }}</span><span style="vertical-align:middle;margin-left:12px;font-size:12px;font-weight:600;color:#6E655D;background:#F3ECE2;border-radius:999px;padding:3px 10px;letter-spacing:0">Read-only</span></h1>
+        <p style="margin:0;color:#6E655D;font-size:14px;text-wrap:pretty">{{ pageSub }}</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onClick="{{ print }}" style="display:flex;align-items:center;gap:6px;background:#FFFFFF;color:#1C1714;border:1px solid #E5D9C8;border-radius:6px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer" style-hover="border-color:#B8A893">Print</button>
+        <sc-if value="{{ canResignHeader }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button onClick="{{ openResign }}" style="display:flex;align-items:center;gap:6px;background:#FFFFFF;color:#1C1714;border:1px solid #E5D9C8;border-radius:6px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer" style-hover="border-color:#C8341E;color:#C8341E">Resignation</button>
+            
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:2px;background:#F3ECE2;border-radius:8px;padding:3px;width:max-content;max-width:100%;overflow-x:auto">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+        <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ t.go }}" style="display:flex;align-items:center;gap:6px;border:0;background:#FFFFFF;border-radius:6px;padding:6px 12px;font-size:14px;font-weight:600;color:#1C1714;cursor:pointer;box-shadow:0 1px 2px rgba(60,40,20,.08);white-space:nowrap">{{ t.label }}<sc-if value="{{ t.hasCount }}"><span style="background:#FFF1D6;color:#8A4F00;border-radius:999px;padding:0 7px;font-size:12px;font-weight:700">{{ t.count }}</span></sc-if></button>
+        </sc-if>
+        <sc-if value="{{ t.inactive }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ t.go }}" style="display:flex;align-items:center;gap:6px;border:0;background:transparent;border-radius:6px;padding:6px 12px;font-size:14px;font-weight:500;color:#6E655D;cursor:pointer;white-space:nowrap" style-hover="color:#1C1714">{{ t.label }}<sc-if value="{{ t.hasCount }}"><span style="background:#FFF1D6;color:#8A4F00;border-radius:999px;padding:0 7px;font-size:12px;font-weight:700">{{ t.count }}</span></sc-if></button>
+        </sc-if>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ showGrid }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+          <sc-for list="{{ cards }}" as="k" hint-placeholder-count="4">
+            <div style="background:#FFFFFF;border:1px solid #EEE4D6;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:13px;color:#6E655D">{{ k.label }}</div>
+              <div style="font-size:22px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums">{{ k.value }}</div>
+              <div style="font-size:12px;color:#8C8278">{{ k.note }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Year
+            <div style="display:flex;align-items:center;height:36px;border:1px solid #EEE4D6;border-radius:6px;background:#FFFFFF;overflow:hidden">
+              <button onClick="{{ prevYear }}" disabled="{{ prevDisabled }}" title="Previous year" style="width:32px;height:100%;border:0;border-right:1px solid #EEE4D6;background:#FFFFFF;cursor:pointer;font-size:15px;color:#3A322C" style-hover="background:#F6EFE5" style-disabled="color:#D3C8BB;cursor:default">‹</button>
+              <select value="{{ curYear }}" onChange="{{ setYear }}" style="height:100%;border:0;background:#FFFFFF;padding:0 8px;font-size:14px;font-weight:700;color:#1C1714;outline:0">
+                <sc-for list="{{ years }}" as="y"><option value="{{ y.v }}">{{ y.label }}</option></sc-for>
+              </select>
+              <button onClick="{{ nextYear }}" disabled="{{ nextDisabled }}" title="Next year" style="width:32px;height:100%;border:0;border-left:1px solid #EEE4D6;background:#FFFFFF;cursor:pointer;font-size:15px;color:#3A322C" style-hover="background:#F6EFE5" style-disabled="color:#D3C8BB;cursor:default">›</button>
+            </div>
+          </div>
+          <sc-if value="{{ isSalaryPage }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Department
+                <select value="{{ dept }}" onChange="{{ setDept }}" style="height:36px;min-width:150px;border:1px solid #EEE4D6;border-radius:6px;background:#FFFFFF;padding:0 10px;font-size:14px;color:#1C1714">
+                  <option value="all">All departments</option>
+                  <sc-for list="{{ depts }}" as="d"><option value="{{ d }}">{{ d }}</option></sc-for>
+                </select>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Status
+                <select value="{{ statusFilter }}" onChange="{{ setStatusFilter }}" style="height:36px;min-width:160px;border:1px solid #EEE4D6;border-radius:6px;background:#FFFFFF;padding:0 10px;font-size:14px;color:#1C1714">
+                  <option value="all">All employees</option>
+                  <option value="active">Active</option>
+                  <option value="resigned">Resigned</option>
+                  <option value="unpaid">Has unpaid months</option>
+                  <option value="pending">Has pending approval</option>
+                </select>
+              </label>
+            </div>
+          </sc-if>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Sort
+            <select value="{{ sort }}" onChange="{{ setSort }}" style="height:36px;min-width:150px;border:1px solid #EEE4D6;border-radius:6px;background:#FFFFFF;padding:0 10px;font-size:14px;color:#1C1714">
+              <sc-for list="{{ sortOptions }}" as="so"><option value="{{ so.v }}">{{ so.label }}</option></sc-for>
+            </select>
+          </label>
+          <div style="flex:1 1 240px;display:flex;align-items:center;gap:8px;height:36px;border:1px solid #EEE4D6;border-radius:6px;background:#FFFFFF;padding:0 10px;max-width:320px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E655D" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+            <input value="{{ search }}" onChange="{{ setSearch }}" placeholder="{{ searchPh }}" style="border:0;outline:0;flex:1;font-size:14px;background:transparent;color:#1C1714;min-width:0">
+          </div>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:#6E655D;align-items:center">
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#EEF9F1;border:1px solid #C6EBD2"></span>Approved amount (Rs.)</div>
+          <sc-if value="{{ isSalaryPage }}"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:#A35F00;font-weight:700">Review</span>Approved after resignation — flagged</div></sc-if>
+          <sc-if value="{{ legendUnpaid }}"><div style="display:flex;align-items:center;gap:6px"><span style="color:#D9634A;font-weight:700">—</span>Eligible month, no approved salary</div></sc-if>
+          <div style="display:flex;align-items:center;gap:6px"><span style="color:#C9C0B5;font-weight:700">—</span>No approved record</div>
+          <sc-if value="{{ isSalaryPage }}"><div style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:10px;border-radius:3px;background:repeating-linear-gradient(135deg,#EFE7DC 0 3px,#FFFFFF 3px 6px);border:1px solid #E5D9C8"></span>After resignation — closed</div></sc-if>
+        </div>
+
+        <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px solid #EEE4D6;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ skeleton }}" as="sk">
+              <div style="display:grid;grid-template-columns:90px 180px repeat(6,minmax(0,1fr));gap:12px;animation:mbPulse 1.2s ease-in-out infinite">
+                <div style="height:14px;border-radius:4px;background:#F1E9DD"></div><div style="height:14px;border-radius:4px;background:#F1E9DD"></div><div style="height:14px;border-radius:4px;background:#F6F0E7"></div><div style="height:14px;border-radius:4px;background:#F6F0E7"></div><div style="height:14px;border-radius:4px;background:#F6F0E7"></div><div style="height:14px;border-radius:4px;background:#F6F0E7"></div><div style="height:14px;border-radius:4px;background:#F6F0E7"></div><div style="height:14px;border-radius:4px;background:#F6F0E7"></div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ gridReady }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#FFFFFF;border:1px solid #EEE4D6;border-radius:10px;overflow:hidden">
+            <div style="overflow:auto">
+              <table style="border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums">
+                <thead>
+                  <tr>
+                    <th style="position:sticky;left:0;z-index:2;background:#FDF0EC;text-align:left;padding:12px 10px 12px 14px;font-weight:600;border-bottom:1px solid #EEE4D6;min-width:92px;white-space:nowrap">{{ idHead }}</th>
+                    <th style="position:sticky;left:92px;z-index:2;background:#FDF0EC;text-align:left;padding:12px 10px;font-weight:600;border-bottom:1px solid #EEE4D6;border-right:1px solid #EEE4D6;min-width:190px;white-space:nowrap">{{ nameHead }}</th>
+                    <sc-for list="{{ monthHeads }}" as="mh" hint-placeholder-count="12">
+                      <th style="background:#FDF0EC;text-align:right;padding:12px 10px;font-weight:600;border-bottom:1px solid #EEE4D6;min-width:96px;white-space:nowrap">{{ mh }}</th>
+                    </sc-for>
+                    <th style="background:#FDF0EC;text-align:right;padding:12px 14px;font-weight:600;border-bottom:1px solid #EEE4D6;border-left:1px solid #EEE4D6;min-width:120px;white-space:nowrap">Year Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+                    <tr>
+                      <td style="position:sticky;left:0;z-index:1;background:#FFFFFF;padding:8px 10px 8px 14px;border-bottom:1px solid #F3ECE2;color:#6E655D;white-space:nowrap">{{ r.code }}</td>
+                      <td style="position:sticky;left:92px;z-index:1;background:#FFFFFF;padding:8px 10px;border-bottom:1px solid #F3ECE2;border-right:1px solid #EEE4D6;white-space:nowrap">
+                        <button onClick="{{ r.open }}" style="border:0;background:transparent;padding:0;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:1px;color:#1C1714">
+                          <span style="font-weight:600;font-size:14px" style-hover="color:#E05A12">{{ r.name }}</span>
+                          <sc-if value="{{ r.resigned }}"><span style="font-size:11.5px;color:#C8341E;font-weight:600">Resigned · {{ r.resignLabel }}</span></sc-if>
+                          <sc-if value="{{ r.active }}"><span style="color:#8C8278;font-size:12px">{{ r.sub }}</span></sc-if>
+                        </button>
+                      </td>
+                      <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="12">
+                        <td style="padding:4px;border-bottom:1px solid #F3ECE2;vertical-align:middle">
+                          <sc-if value="{{ c.isAmt }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ c.open }}" title="{{ c.title }}" style="width:100%;display:flex;flex-direction:column;align-items:flex-end;gap:1px;background:#F2FAF4;border:1px solid #DDF1E3;border-radius:6px;padding:6px 8px;cursor:pointer;color:#1C1714" style-hover="border-color:#1F8A4D">
+                              <span style="font-size:13.5px;font-weight:600;white-space:nowrap">{{ c.amt }}</span>
+                              <sc-if value="{{ c.hasNote }}"><span style="font-size:11px;color:#1F8A4D;white-space:nowrap">{{ c.note }}</span></sc-if>
+                              <sc-if value="{{ c.hasFlag }}"><span style="font-size:11px;color:#A35F00;font-weight:700;white-space:nowrap">Review</span></sc-if>
+                              
+                            </button>
+                          </sc-if>
+                          <sc-if value="{{ c.isUnpaid }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ c.open }}" title="{{ c.title }}" style="width:100%;display:flex;flex-direction:column;align-items:flex-end;gap:1px;background:transparent;border:1px solid transparent;border-radius:6px;padding:6px 8px;cursor:pointer;color:#D9634A" style-hover="border-color:#F7CFC5;background:#FEF6F4">
+                              <span style="font-weight:700">—</span>
+                              
+                            </button>
+                          </sc-if>
+                          <sc-if value="{{ c.isDash }}" hint-placeholder-val="{{ true }}">
+                            <button onClick="{{ c.open }}" title="{{ c.title }}" style="width:100%;display:flex;flex-direction:column;align-items:flex-end;gap:1px;background:transparent;border:1px solid transparent;border-radius:6px;padding:6px 8px;cursor:pointer;color:#C9C0B5" style-hover="border-color:#EEE4D6">
+                              <span style="font-weight:700">—</span>
+                              
+                            </button>
+                          </sc-if>
+                          <sc-if value="{{ c.isClosed }}" hint-placeholder-val="{{ false }}">
+                            <div title="{{ c.title }}" style="display:flex;justify-content:flex-end;padding:6px 8px;border-radius:6px;background:repeating-linear-gradient(135deg,#F4EEE5 0 4px,#FFFFFF 4px 8px);color:#C9C0B5;font-weight:700">—</div>
+                          </sc-if>
+                        </td>
+                      </sc-for>
+                      <td style="padding:8px 14px;border-bottom:1px solid #F3ECE2;border-left:1px solid #EEE4D6;text-align:right;font-weight:700;white-space:nowrap">{{ r.total }}</td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td style="position:sticky;left:0;z-index:1;background:#FBF6EF;padding:12px 10px 12px 14px"></td>
+                    <td style="position:sticky;left:92px;z-index:1;background:#FBF6EF;padding:12px 10px;font-weight:700;border-right:1px solid #EEE4D6">Monthly total</td>
+                    <sc-for list="{{ monthTotals }}" as="mt" hint-placeholder-count="12">
+                      <td style="background:#FBF6EF;padding:12px 12px;text-align:right;font-weight:600;white-space:nowrap;color:#3A322C">{{ mt }}</td>
+                    </sc-for>
+                    <td style="background:#FBF6EF;padding:12px 14px;text-align:right;font-weight:700;border-left:1px solid #EEE4D6;white-space:nowrap;color:#F36A21">{{ yearTotal }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid #EEE4D6;font-size:13px;color:#6E655D;flex-wrap:wrap">
+              <span>{{ pageInfo }}</span>
+              <div style="display:flex;gap:6px">
+                <button onClick="{{ pgPrev }}" disabled="{{ pgPrevDis }}" style="border:1px solid #EEE4D6;background:#FFFFFF;border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer;color:#1C1714" style-disabled="color:#C9C0B5;cursor:default">Previous</button>
+                <button onClick="{{ pgNext }}" disabled="{{ pgNextDis }}" style="border:1px solid #EEE4D6;background:#FFFFFF;border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer;color:#1C1714" style-disabled="color:#C9C0B5;cursor:default">Next</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ gridEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px dashed #E2D6C5;border-radius:10px;padding:56px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+            <div style="font-size:17px;font-weight:600">{{ emptyTitle }}</div>
+            <div style="font-size:14px;color:#6E655D;max-width:460px;text-wrap:pretty">{{ emptyBody }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isCompanyPage }}">
+          <div style="font-size:12.5px;color:#8C8278;text-wrap:pretty">Counted categories: Partner payment, Profit distribution, Capital return. Reversals reduce the month they are posted in. Pending, rejected and other company expenses are excluded.</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showList }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#FFFFFF;border:1px solid #EEE4D6;border-radius:10px;overflow:auto">
+        <table style="border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums">
+          <thead><tr style="background:#FDF0EC;text-align:left">
+            <sc-for list="{{ listHeads }}" as="lh"><th style="padding:12px 12px;font-weight:600;white-space:nowrap">{{ lh }}</th></sc-for>
+            <th style="padding:12px 14px;font-weight:600">Status</th>
+          </tr></thead>
+          <tbody>
+            <sc-for list="{{ listRows }}" as="s" hint-placeholder-count="8">
+              <tr onClick="{{ s.open }}" style="border-top:1px solid #F3ECE2;cursor:pointer" style-hover="background:#FFFBF5">
+                <sc-for list="{{ s.cols }}" as="col"><td style="padding:12px 12px;white-space:nowrap">{{ col }}</td></sc-for>
+                <td style="padding:12px 14px">
+                  <sc-if value="{{ s.isApproved }}"><span style="background:#DDF4E4;color:#1F8A4D;font-size:12px;font-weight:600;border-radius:4px;padding:3px 8px">Approved</span></sc-if>
+                  <sc-if value="{{ s.isPending }}"><span style="background:#FFF1D6;color:#8A4F00;font-size:12px;font-weight:600;border-radius:4px;padding:3px 8px;white-space:nowrap">Pending</span></sc-if>
+                  <sc-if value="{{ s.isRejected }}"><span style="background:#FDE6E1;color:#C8341E;font-size:12px;font-weight:600;border-radius:4px;padding:3px 8px">Rejected</span></sc-if>
+                </td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showEmployees }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#FFFFFF;border:1px solid #EEE4D6;border-radius:10px;overflow:auto">
+        <table style="border-collapse:collapse;width:100%;font-size:14px">
+          <thead><tr style="background:#FDF0EC;text-align:left">
+            <th style="padding:12px 14px;font-weight:600">Code</th><th style="padding:12px 10px;font-weight:600">Employee</th><th style="padding:12px 10px;font-weight:600">Department</th><th style="padding:12px 10px;font-weight:600">Designation</th><th style="padding:12px 10px;font-weight:600">Joined</th><th style="padding:12px 10px;font-weight:600">Status</th><th style="padding:12px 14px;font-weight:600;text-align:right">Actions</th>
+          </tr></thead>
+          <tbody>
+            <sc-for list="{{ roster }}" as="e" hint-placeholder-count="8">
+              <tr style="border-top:1px solid #F3ECE2">
+                <td style="padding:12px 14px;color:#6E655D;white-space:nowrap">{{ e.id }}</td>
+                <td style="padding:12px 10px;font-weight:600;white-space:nowrap">{{ e.name }}</td>
+                <td style="padding:12px 10px">{{ e.dept }}</td>
+                <td style="padding:12px 10px;color:#6E655D">{{ e.desig }}</td>
+                <td style="padding:12px 10px;white-space:nowrap">{{ e.joined }}</td>
+                <td style="padding:12px 10px;white-space:nowrap">
+                  <sc-if value="{{ e.active }}"><span style="background:#DDF4E4;color:#1F8A4D;font-size:12px;font-weight:600;border-radius:4px;padding:3px 8px">Active</span></sc-if>
+                  <sc-if value="{{ e.resigned }}"><span style="background:#FDE6E1;color:#C8341E;font-size:12px;font-weight:600;border-radius:4px;padding:3px 8px">Resigned · {{ e.resignLabel }}</span></sc-if>
+                </td>
+                <td style="padding:12px 14px">
+                  <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button onClick="{{ e.view }}" style="border:1px solid #EEE4D6;background:#FFFFFF;border-radius:6px;padding:5px 10px;font-size:13px;font-weight:500;cursor:pointer;color:#1C1714;white-space:nowrap">View details</button>
+                    <sc-if value="{{ e.canResign }}"><button onClick="{{ e.resign }}" style="border:1px solid #EEE4D6;background:#FFFFFF;border-radius:6px;padding:5px 10px;font-size:13px;font-weight:600;cursor:pointer;color:#C8341E" style-hover="border-color:#C8341E">Resignation</button></sc-if>
+                  </div>
+                </td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </sc-if>
+  </main>
+
+  <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;z-index:40;display:flex;justify-content:flex-end">
+      <div onClick="{{ closeDrawer }}" style="position:absolute;inset:0;background:rgba(40,28,18,.28)"></div>
+      <aside style="position:relative;width:460px;max-width:100%;height:100%;background:#FFFFFF;border-left:1px solid #EEE4D6;display:flex;flex-direction:column;box-shadow:-12px 0 32px rgba(40,28,18,.12)">
+        <div style="padding:18px 20px;border-bottom:1px solid #EEE4D6;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:12px;color:#6E655D">{{ dr.kicker }}</div>
+            <div style="font-size:19px;font-weight:700">{{ dr.title }}</div>
+            <div style="font-size:14px;color:#3A322C">{{ dr.sub }}</div>
+          </div>
+          <button onClick="{{ closeDrawer }}" style="border:0;background:#F6EFE5;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:16px;color:#3A322C">×</button>
+        </div>
+        <div style="flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:18px">
+          <sc-if value="{{ dr.hasTotal }}">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <div style="font-size:26px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums">{{ dr.total }}</div>
+              <div style="font-size:13px;color:#6E655D">{{ dr.totalNote }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ dr.hasResign }}">
+            <div style="background:#FEF1EE;border:1px solid #F7CFC5;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;font-size:13.5px">
+              <div style="font-weight:700;color:#9E2A17">Resigned {{ dr.resign.date }} at {{ dr.resign.time }} PKT</div>
+              <div style="color:#3A322C">Reason: {{ dr.resign.reason }}</div>
+              <div style="color:#8C8278">Recorded by {{ dr.resign.by }} · {{ dr.resign.at }}</div>
+              <div style="color:#8C8278">Ordinary salary is closed after {{ dr.resign.closedAfter }}.</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ dr.hasConflict }}">
+            <div style="background:#FFF8EA;border:1px solid #E8B35A;border-radius:8px;padding:12px 14px;font-size:13.5px;color:#7A4700;text-wrap:pretty">{{ dr.conflictText }}</div>
+          </sc-if>
+          <sc-if value="{{ dr.hasFields }}">
+            <dl style="margin:0;display:grid;grid-template-columns:auto 1fr;gap:9px 16px;font-size:14px">
+              <sc-for list="{{ dr.fields }}" as="f" hint-placeholder-count="8">
+                <dt style="color:#6E655D">{{ f.label }}</dt>
+                <dd style="margin:0;text-align:right;font-weight:500;font-variant-numeric:tabular-nums">{{ f.value }}</dd>
+              </sc-for>
+            </dl>
+          </sc-if>
+          <sc-if value="{{ dr.hasItems }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:13px;font-weight:700;color:#3A322C">{{ dr.itemsTitle }}</div>
+              <sc-for list="{{ dr.items }}" as="it" hint-placeholder-count="3">
+                <div style="border:1px solid #EEE4D6;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                      <span style="font-weight:600;font-size:13.5px">{{ it.id }}</span>
+                      <sc-if value="{{ it.isApproved }}"><span style="background:#DDF4E4;color:#1F8A4D;font-size:11.5px;font-weight:600;border-radius:4px;padding:1px 6px">Approved · counted</span></sc-if>
+                      <sc-if value="{{ it.isPending }}"><span style="background:#FFF1D6;color:#8A4F00;font-size:11.5px;font-weight:600;border-radius:4px;padding:1px 6px">Pending · excluded</span></sc-if>
+                      <sc-if value="{{ it.isRejected }}"><span style="background:#FDE6E1;color:#C8341E;font-size:11.5px;font-weight:600;border-radius:4px;padding:1px 6px">Rejected · excluded</span></sc-if>
+                    </div>
+                    <span style="font-weight:700;font-size:14px;white-space:nowrap;font-variant-numeric:tabular-nums">{{ it.amount }}</span>
+                  </div>
+                  <div style="font-size:12.5px;color:#6E655D">{{ it.meta }}</div>
+                  <sc-if value="{{ it.canDecide }}">
+                    <div style="display:flex;gap:8px">
+                      <button onClick="{{ it.reject }}" disabled="{{ it.busy }}" style="flex:1;border:1px solid #EEE4D6;background:#FFFFFF;color:#C8341E;border-radius:6px;padding:7px;font-size:13px;font-weight:600;cursor:pointer" style-disabled="opacity:.45">Reject</button>
+                      <button onClick="{{ it.approve }}" disabled="{{ it.busy }}" style="flex:2;border:0;background:#1F8A4D;color:#FFFFFF;border-radius:6px;padding:7px;font-size:13px;font-weight:600;cursor:pointer" style-disabled="opacity:.55">{{ it.approveLabel }}</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ dr.hasEmpty }}">
+            <div style="display:flex;flex-direction:column;gap:12px;background:#FBF6EF;border:1px solid #EEE4D6;border-radius:8px;padding:14px">
+              <div style="font-size:14px;color:#3A322C;text-wrap:pretty">{{ dr.emptyText }}</div>
+              
+            </div>
+          </sc-if>
+          <sc-if value="{{ dr.canResign }}">
+            <button onClick="{{ dr.resignAction }}" style="align-self:flex-start;border:1px solid #EEE4D6;background:#FFFFFF;border-radius:6px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;color:#C8341E" style-hover="border-color:#C8341E">Record resignation</button>
+          </sc-if>
+        </div>
+      </aside>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ resignOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div onClick="{{ closeModal }}" style="position:absolute;inset:0;background:rgba(40,28,18,.32)"></div>
+      <div style="position:relative;width:640px;max-width:100%;max-height:100%;overflow:auto;background:#FFFFFF;border-radius:12px;border:1px solid #EEE4D6;box-shadow:0 20px 48px rgba(40,28,18,.18);display:flex;flex-direction:column">
+        <div style="padding:18px 20px 10px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid #F3ECE2">
+          <div style="font-size:18px;font-weight:700">Employee resignation</div>
+          <div style="font-size:13px;color:#6E655D">Salary history is kept. Ordinary salary closes after the resignation month.</div>
+        </div>
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:8px;height:38px;border:1px solid #E5D9C8;border-radius:6px;padding:0 10px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E655D" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+            <input value="{{ rq }}" onChange="{{ setRq }}" placeholder="Search by employee code or name…" style="border:0;outline:0;flex:1;font-size:14px;background:transparent;color:#1C1714;min-width:0">
+          </div>
+          <sc-if value="{{ showResults }}">
+            <div style="border:1px solid #EEE4D6;border-radius:8px;overflow:hidden">
+              <sc-for list="{{ rResults }}" as="rr" hint-placeholder-count="4">
+                <button onClick="{{ rr.pick }}" style="width:100%;display:flex;justify-content:space-between;gap:10px;align-items:center;border:0;border-bottom:1px solid #F3ECE2;background:#FFFFFF;padding:9px 12px;cursor:pointer;text-align:left;color:#1C1714" style-hover="background:#FFFBF5">
+                  <span style="display:flex;gap:10px;align-items:baseline"><span style="color:#6E655D;font-size:13px;min-width:56px">{{ rr.id }}</span><span style="font-weight:600;font-size:14px">{{ rr.name }}</span><span style="color:#8C8278;font-size:12.5px">{{ rr.dept }}</span></span>
+                  <sc-if value="{{ rr.resigned }}"><span style="background:#FDE6E1;color:#C8341E;font-size:11.5px;font-weight:600;border-radius:4px;padding:1px 6px">Resigned</span></sc-if>
+                </button>
+              </sc-for>
+              <sc-if value="{{ noResults }}"><div style="padding:14px;font-size:13px;color:#6E655D">No employee matches “{{ rq }}”.</div></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasRsel }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="background:#FBF6EF;border:1px solid #EEE4D6;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                  <div style="font-weight:700;font-size:15px">{{ rb.name }} <span style="color:#6E655D;font-weight:500;font-size:13px">{{ rb.id }}</span></div>
+                  <button onClick="{{ clearRsel }}" style="border:0;background:transparent;color:#E05A12;font-size:13px;cursor:pointer;padding:0">Change</button>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;font-size:13px">
+                  <sc-for list="{{ rb.bio }}" as="b" hint-placeholder-count="6">
+                    <div style="display:flex;flex-direction:column;gap:1px"><span style="color:#8C8278;font-size:12px">{{ b.label }}</span><span style="font-weight:600">{{ b.value }}</span></div>
+                  </sc-for>
+                </div>
+              </div>
+              <sc-if value="{{ rb.already }}">
+                <div style="background:#FEF1EE;border:1px solid #F7CFC5;color:#9E2A17;border-radius:8px;padding:10px 12px;font-size:13px;text-wrap:pretty">A resignation is already recorded for this employee ({{ rb.existing }}). Corrections go through the authorized correction workflow; a second resignation cannot be added.</div>
+              </sc-if>
+              <sc-if value="{{ rb.canFile }}">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Resignation date
+                    <input type="date" value="{{ rform.date }}" onChange="{{ r_date }}" style="height:36px;border:1px solid #EEE4D6;border-radius:6px;padding:0 10px;font-size:14px;color:#1C1714">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Time (PKT, UTC+5)
+                    <input type="time" value="{{ rform.time }}" onChange="{{ r_time }}" style="height:36px;border:1px solid #EEE4D6;border-radius:6px;padding:0 10px;font-size:14px;color:#1C1714">
+                  </label>
+                  <label style="grid-column:1 / -1;display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Reason
+                    <select value="{{ rform.reason }}" onChange="{{ r_reason }}" style="height:36px;border:1px solid #EEE4D6;border-radius:6px;padding:0 10px;font-size:14px;background:#FFFFFF;color:#1C1714">
+                      <option value="">Select a reason</option><option value="Personal reasons">Personal reasons</option><option value="Better opportunity">Better opportunity</option><option value="Relocation">Relocation</option><option value="Health">Health</option><option value="Further studies">Further studies</option><option value="Other">Other</option>
+                    </select>
+                  </label>
+                  <label style="grid-column:1 / -1;display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500">Remarks (optional)
+                    <textarea value="{{ rform.remarks }}" onChange="{{ r_remarks }}" rows="2" style="border:1px solid #EEE4D6;border-radius:6px;padding:8px 10px;font-size:14px;color:#1C1714;resize:vertical"></textarea>
+                  </label>
+                </div>
+                <div style="font-size:13px;color:#3A322C;background:#FFF8EA;border-radius:6px;padding:9px 11px;text-wrap:pretty">{{ rImpact }}</div>
+                <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;cursor:pointer">
+                  <input type="checkbox" checked="{{ rform.confirm }}" onChange="{{ r_confirm }}" style="margin-top:2px;accent-color:#F36A21;width:16px;height:16px">
+                  <span>I confirm {{ rb.name }} has resigned on the date above. The server timestamp and my user ID will be recorded.</span>
+                </label>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasRError }}">
+            <div style="background:#FEF1EE;border:1px solid #F7CFC5;color:#9E2A17;border-radius:8px;padding:10px 12px;font-size:13px">{{ rError }}</div>
+          </sc-if>
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid #F3ECE2;display:flex;justify-content:flex-end;gap:8px">
+          <button onClick="{{ closeModal }}" style="border:1px solid #EEE4D6;background:#FFFFFF;border-radius:6px;padding:8px 14px;font-size:14px;font-weight:500;cursor:pointer;color:#1C1714">Cancel</button>
+          <button onClick="{{ submitResign }}" disabled="{{ rDisabled }}" style="border:0;background:#C8341E;color:#FFFFFF;border-radius:6px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer;min-width:170px" style-hover="background:#A92A16" style-disabled="opacity:.45;cursor:not-allowed">{{ rSubmitLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;background:#1C1714;color:#FFFFFF;border-radius:10px;padding:12px 16px;display:flex;gap:16px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.2);max-width:calc(100% - 32px)">
+      <div style="display:flex;flex-direction:column;gap:2px"><div style="font-weight:600;font-size:14px">{{ toast.msg }}</div><div style="font-size:13px;color:#CFC5BA">{{ toast.sub }}</div></div>
+      <sc-if value="{{ toastHasAction }}"><button onClick="{{ toastAction }}" style="border:0;background:transparent;color:#FFA86B;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap">View in ledger</button></sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;highlightUnpaid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ledger&quot;},&quot;showPendingInDetails&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Ledger&quot;},&quot;canRecordResignation&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Role&quot;}}">
+const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MF=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const NOW={y:2026,m:10},TODAY='2026-10-10',PAGE=12;
+const pad=n=>String(n).padStart(2,'0');
+let _sd=11;const rnd=()=>(_sd=(_sd*16807)%2147483647)/2147483647;
+const EMP0=[
+ {id:'MB-001',name:'Ahmad Sha',dept:'Production',desig:'Baker',joined:'2025-11-01',phone:'0312-5550141',rate:13000},
+ {id:'MB-002',name:'Dilber Khaplu',dept:'Helper',desig:'Helper',joined:'2026-03-05',phone:'',rate:3000,resign:{date:'2026-09-28',time:'17:40',reason:'Relocation',by:'Mohsin O.',at:'2026-09-28 17:42 PKT'}},
+ {id:'MB-003',name:'Muhammad Ali',dept:'Production',desig:'Oven operator',joined:'2025-07-01',phone:'0333-5550187',rate:5000},
+ {id:'MB-004',name:'Muhammad Yasin',dept:'Production',desig:'Dish washer',joined:'2026-02-01',phone:'',rate:8500},
+ {id:'MB-005',name:'Mustafa Azeemi',dept:'Cake',desig:'Asst Chef',joined:'2025-09-01',phone:'0345-5550122',rate:28000},
+ {id:'MB-006',name:'Wajid',dept:'Helper',desig:'Helper',joined:'2026-09-01',phone:'',rate:3000},
+ {id:'MB-007',name:'Ali Hassan',dept:'Transportation',desig:'Driver',joined:'2025-06-10',phone:'0300-5550199',rate:15000},
+ {id:'MB-008',name:'Kosar Meer',dept:'Cake',desig:'Chef',joined:'2025-05-01',phone:'0321-5550164',rate:65000},
+ {id:'MB-009',name:'Shabbir Ali',dept:'Bakery',desig:'Bread maker',joined:'2026-01-05',phone:'0301-5550111',rate:30000,resign:{date:'2026-09-15',time:'11:20',reason:'Better opportunity',by:'Mohsin O.',at:'2026-09-15 11:24 PKT'}},
+ {id:'MB-010',name:'Rehana Bibi',dept:'Packaging',desig:'Packer',joined:'2026-01-02',phone:'',rate:22000},
+ {id:'MB-011',name:'Naveed Akhtar',dept:'Sales',desig:'Counter sales',joined:'2025-08-01',phone:'0315-5550176',rate:25000},
+ {id:'MB-012',name:'Faisal Karim',dept:'Transportation',desig:'Delivery rider',joined:'2026-02-15',phone:'',rate:18000,resign:{date:'2026-08-20',time:'16:05',reason:'Personal reasons',by:'Mohsin O.',at:'2026-09-30 10:12 PKT'}},
+ {id:'MB-013',name:'Zahid Iqbal',dept:'Bakery',desig:'Head baker',joined:'2025-04-01',phone:'0302-5550133',rate:45000},
+ {id:'MB-014',name:'Sadia Noor',dept:'Accounts',desig:'Cashier',joined:'2026-04-01',phone:'',rate:26000},
+];
+const RATE={'MB-008':[[24320,65000],[0,60000]],'MB-013':[[24313,45000],[0,42000]],'MB-005':[[24313,28000],[0,25000]]};
+const rateAt=(e,k)=>{const h=RATE[e.id];return h?h.find(r=>k>=r[0])[1]:e.rate;};
+const SPECIAL={'MB-011:2026-6':'skip','MB-003:2026-8':'skip','MB-010:2026-5':'skip','MB-001:2026-2':'skip','MB-004:2026-9':'pending','MB-014:2026-9':'pending','MB-007:2026-9':'pending','MB-003:2026-7':'pending','MB-002:2026-8':'rejected','MB-013:2026-7':'split','MB-009:2026-9':'final'};
+const PAY0=(()=>{const out=[];
+ const mk=(e,y,m,base,o)=>{const k=y*12+m,py=m===12?y+1:y,pm=m===12?1:m+1,pd=py+'-'+pad(pm)+'-0'+(3+k%5),bank=base>=25000;
+  return Object.assign({emp:e.id,y:y,m:m,base:base,bonus:0,ded:0,type:'Regular',status:'approved',method:bank?'Bank transfer':'Cash',ref:bank?'HBL-'+(88230000+k*13+out.length):'',remarks:'',payDate:pd,createdAt:pd,createdBy:'Sana (HR)',approvedBy:'Mohsin O.',approvedAt:pd},o);};
+ EMP0.forEach(e=>{const j=e.joined.split('-').map(Number),start=j[0]*12+j[1],end=e.resign&&e.id!=='MB-012'?+e.resign.date.slice(0,4)*12+ +e.resign.date.slice(5,7):(e.resign?+e.resign.date.slice(0,4)*12+ +e.resign.date.slice(5,7):2026*12+9);
+  for(let k=start;k<=end;k++){const y=Math.floor((k-1)/12),m=k-y*12,sp=SPECIAL[e.id+':'+y+'-'+m];if(sp==='skip')continue;
+   const rate=rateAt(e,k),bonus=(y===2026&&m===3&&k>start)?5000:0,ded=(k+e.id.charCodeAt(5))%7===0?2000:0;
+   if(sp==='split'){out.push(mk(e,y,m,rate/2,{type:'Installment',remarks:'Installment 1 of 2'}));out.push(mk(e,y,m,rate/2,{type:'Installment',remarks:'Installment 2 of 2',payDate:y+'-'+pad(m+1)+'-18',approvedAt:y+'-'+pad(m+1)+'-18'}));continue;}
+   if(sp==='final'){out.push(mk(e,y,m,Math.round(rate/2),{type:'Final settlement',remarks:'15 days to resignation date'}));continue;}
+   const o={bonus:bonus,ded:ded,remarks:[bonus?'Eid bonus':'',ded?'Advance recovery':''].filter(Boolean).join(', ')};
+   if(sp==='pending')Object.assign(o,{status:'pending',approvedBy:'',approvedAt:''});
+   if(sp==='rejected')Object.assign(o,{status:'rejected',approvedBy:'',approvedAt:'',rejectedBy:'Mohsin O.',rejectedAt:'2026-09-06',remarks:'Amount did not match attendance'});
+   out.push(mk(e,y,m,rate,o));}
+ });
+ out.push(mk(EMP0[11],2026,9,18000,{remarks:'Approved before the resignation was recorded'}));
+ out.sort((a,b)=>(a.y*12+a.m)-(b.y*12+b.m)||a.emp.localeCompare(b.emp));
+ out.forEach((p,i)=>p.id='SAL-'+String(i+1).padStart(6,'0'));return out;})();
+const P=(n,e,m,base,o={})=>Object.assign({id:'SAL-'+String(n).padStart(6,'0'),emp:e,y:2026,m,base,bonus:0,ded:0,type:'Regular',status:'approved',method:'Cash',ref:'',remarks:'',createdBy:'Sana (HR)',approvedBy:'Mohsin O.'},o);
+const PARTNERS=[{id:'PT-001',name:'Haji Rashid Khan',share:'30%'},{id:'PT-002',name:'Farhan Qureshi',share:'20%'},{id:'PT-003',name:'Nadia Baig',share:'20%'},{id:'PT-004',name:'Imran Sheikh',share:'15%'},{id:'PT-005',name:'Tariq Mehmood',share:'10%'},{id:'PT-006',name:'Saima Javed',share:'5%'}];
+const TX=(n,p,d,a,cat,st)=>({id:'TXN-'+String(n).padStart(5,'0'),partner:p,date:d,y:+d.slice(0,4),m:+d.slice(5,7),amount:a,cat:cat,status:st,method:n%2?'Bank transfer':'Cash',ref:n%2?'MCB-'+(70412000+n*37):'',createdBy:'Ayesha (Accounts)',createdAt:d,approvedBy:st==='approved'?'Mohsin O.':'',approvedAt:st==='approved'?d:'',rejectedBy:st==='rejected'?'Mohsin O.':'',rejectedAt:st==='rejected'?d:''});
+const TXN0=(()=>{const R=[];const add=(p,y,m,a,cat,st,d)=>R.push([p,y+'-'+pad(m)+'-'+pad(d||3+Math.floor(rnd()*24)),a,cat,st||'approved']);
+ for(let k=2025*12+7;k<=2026*12+9;k++){const y=Math.floor((k-1)/12),m=k-y*12;
+  if(y===2026&&m===3){add('PT-001',y,m,10000,'Partner payment','approved',4);add('PT-001',y,m,15000,'Partner payment','approved',14);add('PT-001',y,m,5000,'Partner payment','approved',27);}
+  else{add('PT-001',y,m,(30+Math.floor(rnd()*30))*1000,'Partner payment');if(rnd()<.35)add('PT-001',y,m,(5+Math.floor(rnd()*15))*1000,'Partner payment');}
+  add('PT-002',y,m,(20+Math.floor(rnd()*11))*1000,'Partner payment');
+  if(m%3===0)add('PT-003',y,m,(55+Math.floor(rnd()*10))*1000,'Profit distribution','approved',28);
+  if(m%3===2)add('PT-004',y,m,15000,'Capital return','approved',15);
+  if(rnd()<.7)add('PT-005',y,m,(8+Math.floor(rnd()*5))*1000,'Partner payment');
+  if(k>=2026*12+4)add('PT-006',y,m,5000,'Partner payment','approved',10);}
+ add('PT-002',2026,5,-5000,'Reversal','approved',21);add('PT-003',2026,9,15000,'Partner payment','rejected',22);
+ add('PT-002',2026,10,30000,'Partner payment','pending',6);add('PT-004',2026,10,15000,'Capital return','pending',8);add('PT-001',2026,10,35000,'Partner payment','pending',9);
+ R.sort((a,b)=>a[1].localeCompare(b[1]));return R.map((r,i)=>TX(1001+i,r[0],r[1],r[2],r[3],r[4]));})();
+const num=v=>{const n=parseFloat(String(v).replace(/,/g,''));return isFinite(n)?n:0};
+const grp=n=>n.toLocaleString('en-PK',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2});
+const rs=n=>'Rs. '+n.toLocaleString('en-PK',{minimumFractionDigits:2,maximumFractionDigits:2});
+const net=p=>p.base+p.bonus-p.ded;
+const ym=(y,m)=>y*12+m;
+const dym=d=>ym(+d.slice(0,4),+d.slice(5,7));
+const nice=d=>{if(!d)return '—';const [y,m,dd]=d.split('-');return +dd+' '+MS[+m-1]+' '+y;};
+const per=(y,m)=>MF[m-1]+' '+y;
+
+class Component extends DCLogic {
+  state={page:'salary',view:'ledger',cview:'summary',year:2026,cyear:2026,search:'',csearch:'',dept:'all',statusFilter:'all',sort:'code',csort:'id',pg:0,cpg:0,
+    employees:EMP0,payments:PAY0,txns:TXN0,sel:null,busy:{},toast:null,modal:null,form:null,formError:'',submitting:false,
+    rq:'',rsel:null,rform:null,rError:'',loading:false};
+  emp(id){return this.state.employees.find(e=>e.id===id);}
+  toastShow(t){clearTimeout(this._t);this.setState({toast:t});this._t=setTimeout(()=>this.setState({toast:null}),4500);}
+
+  decide(kind,id,approve){
+    if(this.state.busy[id]||(this.props.canApprove??true)===false)return;
+    this.setState(s=>({busy:{...s.busy,[id]:true}}));
+    setTimeout(()=>{
+      const done=()=>this.setState(s=>{const b={...s.busy};delete b[id];return {busy:b};});
+      const key=kind==='pay'?'payments':'txns',list=this.state[key],p=list.find(x=>x.id===id);
+      if(!p||p.status!=='pending'){done();return this.toastShow({msg:'Already decided',sub:id+' is no longer pending. Nothing changed.'});}
+      let label,sub;
+      if(kind==='pay'){
+        const e=this.emp(p.emp);label=e.name+' · '+per(p.y,p.m);
+        if(approve){
+          if(p.type==='Regular'){const dup=list.find(x=>x.id!==id&&x.emp===p.emp&&x.y===p.y&&x.m===p.m&&x.type==='Regular'&&x.status==='approved');
+            if(dup){done();return this.toastShow({msg:'Approval blocked',sub:e.name+' already has an approved regular salary for '+per(p.y,p.m)+' ('+dup.id+').'});}}
+          if(e.resign&&ym(p.y,p.m)>dym(e.resign.date)){done();return this.toastShow({msg:'Approval blocked',sub:e.name+' resigned on '+nice(e.resign.date)+'. Ordinary salary after that month is closed.'});}
+        }
+        sub=label+' · '+rs(net(p));
+      } else {const pt=PARTNERS.find(x=>x.id===p.partner);sub=pt.name+' · '+per(p.y,p.m)+' · '+rs(p.amount);}
+      const stamp=approve?{status:'approved',approvedBy:'Mohsin O.',approvedAt:TODAY}:{status:'rejected',rejectedBy:'Mohsin O.',rejectedAt:TODAY};
+      this.setState(s=>({[key]:s[key].map(x=>x.id===id?{...x,...stamp}:x)}));
+      done();
+      this.toastShow(approve?{msg:'Approved — ledger updated',sub,go:{kind,id}}:{msg:'Rejected',sub:id+' is excluded from the ledger.'});
+    },700);
+  }
+
+  openNew(pre){
+    const f={emp:pre?.emp||'MB-001',month:pre?`${pre.y}-${String(pre.m).padStart(2,'0')}`:'2026-10',type:'Regular',base:'',bonus:'',ded:'',method:'Cash'};
+    this.setState({modal:'payslip',form:f,formError:'',sel:null});
+  }
+  submitNew(){
+    if(this.state.submitting)return;
+    const f=this.state.form,[y,m]=f.month.split('-').map(Number),e=this.emp(f.emp),P_=ym(y,m);
+    const err=t=>this.setState({formError:t});
+    if(!y||!m)return err('Choose a payroll month.');
+    if(num(f.base)<=0)return err('Enter a salary amount greater than zero.');
+    if(P_<dym(e.joined))return err(`${e.name} joined on ${nice(e.joined)}. No salary can be recorded for ${per(y,m)}.`);
+    if(e.resign){const R=dym(e.resign.date);
+      if(P_>R)return err(`${e.name} resigned on ${nice(e.resign.date)}. Salary for ${per(y,m)} is closed; only an authorized adjustment can be recorded.`);
+      if(f.type==='Final settlement'&&P_!==R)return err(`A final settlement must be for the resignation month, ${per(+e.resign.date.slice(0,4),+e.resign.date.slice(5,7))}.`);
+    } else if(f.type==='Final settlement')return err(`${e.name} has no recorded resignation. Final settlement is only for resigned employees.`);
+    if(f.type==='Regular'){const ex=this.state.payments.find(x=>x.emp===f.emp&&x.y===y&&x.m===m&&x.type==='Regular'&&(x.status==='approved'||x.status==='pending'));
+      if(ex)return err(ex.status==='pending'?`${e.name} (${e.id}) already has a regular salary for ${per(y,m)} awaiting approval (${ex.id}). No new payslip was created.`:`${e.name} (${e.id}) already has an approved regular salary for ${per(y,m)} (${ex.id}). Use “Installment / component” for a legitimate extra payment.`);}
+    this.setState({submitting:true,formError:''});
+    setTimeout(()=>{
+      const n=Math.max(...this.state.payments.map(x=>+x.id.slice(4)))+1;
+      const p=P(n,f.emp,m,num(f.base),{y,bonus:num(f.bonus),ded:num(f.ded),type:f.type,method:f.method,status:'pending',approvedBy:'',payDate:TODAY,createdAt:TODAY,createdBy:'Mohsin O.'});
+      this.setState(s=>({payments:[...s.payments,p],submitting:false,modal:null,page:'salary',view:'approvals'}));
+      this.toastShow({msg:'Submitted for approval',sub:p.id+' · '+e.name+' · '+per(y,m)});
+    },600);
+  }
+
+  openResign(empId){
+    const now=new Date(),t=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    this.setState({modal:'resign',rq:'',rsel:empId||null,rform:{date:TODAY,time:t,reason:'',remarks:'',confirm:false},rError:'',sel:null,submitting:false});
+  }
+  submitResign(){
+    const s=this.state;if(s.submitting)return;
+    const e=this.emp(s.rsel),f=s.rform,err=t=>this.setState({rError:t});
+    if(!e)return err('Select an employee.');
+    if(e.resign)return err('A resignation is already recorded for this employee.');
+    if(!f.date)return err('Enter the resignation date.');
+    if(f.date<e.joined)return err('Resignation date cannot be before the joining date ('+nice(e.joined)+').');
+    if(!f.reason)return err('Select a resignation reason.');
+    if(!f.confirm)return err('Tick the confirmation box to continue.');
+    this.setState({submitting:true,rError:''});
+    setTimeout(()=>{
+      const r={date:f.date,time:f.time,reason:f.reason+(f.remarks?' — '+f.remarks:''),by:'Mohsin O.',at:TODAY+' '+f.time+' PKT'};
+      this.setState(st=>({employees:st.employees.map(x=>x.id===e.id?{...x,resign:r}:x),submitting:false,modal:null}));
+      this.toastShow({msg:'Resignation recorded',sub:e.name+' · '+nice(f.date)+'. Salary closes after '+MF[+f.date.slice(5,7)-1]+'.'});
+    },700);
+  }
+
+  refresh(){this.setState({loading:true});setTimeout(()=>this.setState({loading:false}),700);}
+
+  renderVals(){
+    const s=this.state,showPending=false,showPendDetail=this.props.showPendingInDetails??true,canApprove=false,canResign=this.props.canRecordResignation??true,hiUnpaid=this.props.highlightUnpaid??true;
+    const isS=s.page==='salary',Y=isS?s.year:s.cyear;
+    const E=s.employees,ps=s.payments,tx=s.txns;
+    const pendPay=ps.filter(p=>p.status==='pending'),pendTx=tx.filter(t=>t.status==='pending');
+    const dataYears=isS?ps.map(p=>p.y):tx.map(t=>t.y);
+    const minY=Math.min(...dataYears,NOW.y),maxY=NOW.y+1;
+    const years=[];for(let y=maxY;y>=minY;y--)years.push({v:y,label:y+(dataYears.includes(y)?'':' · no records')});
+    const setY=y=>this.setState(isS?{year:y,pg:0}:{cyear:y,cpg:0});
+    const monthSum=Array(12).fill(0);let rows=[],cards=[],unpaid=0,flags=0;
+    const pendLbl=a=>'Pending '+grp(a);
+
+    if(isS){
+      const base=E.filter(e=>dym(e.joined)<=ym(Y,12)||ps.some(p=>p.emp===e.id&&p.y===Y));
+      rows=base.map(e=>{
+        const R=e.resign?dym(e.resign.date):Infinity;let total=0,u=false,pe=false;
+        const cells=MS.map((_,i)=>{
+          const m=i+1,P_=ym(Y,m),list=ps.filter(p=>p.emp===e.id&&p.y===Y&&p.m===m);
+          const ap=list.filter(p=>p.status==='approved'),pn=list.filter(p=>p.status==='pending');
+          const sum=ap.reduce((t,p)=>t+net(p),0),pend=pn.reduce((t,p)=>t+net(p),0);
+          const c={isAmt:false,isUnpaid:false,isDash:false,isClosed:false,hasFlag:false,amt:'',hasNote:false,note:'',hasPend:showPending&&pn.length>0,pend:pendLbl(pend),open:()=>this.setState({sel:{t:'cell',emp:e.id,y:Y,m}}),title:e.name+' · '+per(Y,m)};
+          if(pn.length)pe=true;
+          if(ap.length){c.isAmt=true;c.hasFlag=P_>R&&ap.some(p=>p.type!=='Final settlement');if(c.hasFlag)flags++;c.amt=grp(sum);total+=sum;monthSum[i]+=sum;
+            if(ap.some(p=>p.type==='Final settlement')){c.hasNote=true;c.note='Final settlement';}
+            else if(ap.length>1){c.hasNote=true;c.note=ap.length+' payments';}}
+          else if(P_>R){c.isClosed=true;c.title+=' · closed after resignation';}
+          else if(P_>=dym(e.joined)&&P_<ym(NOW.y,NOW.m)){u=true;unpaid++;if(hiUnpaid)c.isUnpaid=true;else c.isDash=true;c.title+=' · no approved salary';}
+          else c.isDash=true;
+          return c;
+        });
+        return {code:e.id,name:e.name,sub:e.dept+(e.desig!=='—'?' · '+e.desig:''),resigned:!!e.resign,active:!e.resign,resignLabel:e.resign?nice(e.resign.date):'',cells,total:total?grp(total):'—',open:()=>this.setState({sel:{t:'emp',emp:e.id}}),_u:u,_p:pe,_d:e.dept,_r:!!e.resign,_t:total};
+      });
+      const q=s.search.trim().toLowerCase();
+      rows=rows.filter(r=>(!q||r.code.toLowerCase().includes(q)||r.name.toLowerCase().includes(q))&&(s.dept==='all'||r._d===s.dept)&&
+        ({all:true,active:!r._r,resigned:r._r,unpaid:r._u,pending:r._p})[s.statusFilter])
+        .sort((a,b)=>s.sort==='name'?a.name.localeCompare(b.name):s.sort==='total'?b._t-a._t:a.code.localeCompare(b.code));
+      const ap=ps.filter(p=>p.status==='approved'&&p.y===Y),pY=pendPay.filter(p=>p.y===Y);
+      const rz=base.filter(e=>e.resign).length,apS=ap.reduce((t,p)=>t+net(p),0);
+      cards=[{label:'Total approved salary',value:rs(apS),note:ap.length+' approved payments in '+Y},{label:'Employees on ledger',value:String(base.length),note:(base.length-rz)+' active · '+rz+' resigned'},{label:'Unpaid employee-months',value:String(unpaid),note:'Eligible months with no approved salary'},{label:'Flagged for review',value:String(flags),note:flags?'Approved after resignation date':'No conflicts'}];
+    } else {
+      rows=PARTNERS.filter(p=>tx.some(t=>t.partner===p.id&&t.y===Y)).map(p=>{
+        let total=0;
+        const cells=MS.map((_,i)=>{const m=i+1,list=tx.filter(t=>t.partner===p.id&&t.y===Y&&t.m===m);
+          const ap=list.filter(t=>t.status==='approved'),pn=list.filter(t=>t.status==='pending');
+          const sum=ap.reduce((a,t)=>a+t.amount,0);
+          const c={isAmt:!!ap.length,isUnpaid:false,isDash:!ap.length,isClosed:false,hasFlag:false,amt:grp(sum),hasNote:ap.length>1,note:ap.some(t=>t.amount<0)?'incl. reversal':ap.length+' transactions',hasPend:showPending&&pn.length>0,pend:pendLbl(pn.reduce((a,t)=>a+t.amount,0)),open:()=>this.setState({sel:{t:'pcell',partner:p.id,y:Y,m}}),title:p.name+' · '+per(Y,m)};
+          total+=sum;monthSum[i]+=sum;return c;});
+        return {code:p.id,name:p.name,sub:'Share '+p.share,resigned:false,active:true,cells,total:total?grp(total):'—',open:()=>this.setState({sel:{t:'partner',partner:p.id}}),_t:total};
+      });
+      const q=s.csearch.trim().toLowerCase();
+      rows=rows.filter(r=>!q||r.code.toLowerCase().includes(q)||r.name.toLowerCase().includes(q)).sort((a,b)=>s.csort==='name'?a.name.localeCompare(b.name):s.csort==='total'?b._t-a._t:a.code.localeCompare(b.code));
+      const ap=tx.filter(t=>t.status==='approved'&&t.y===Y),pY=pendTx.filter(t=>t.y===Y);
+      const byM=Array(12).fill(0);ap.forEach(t=>byM[t.m-1]+=t.amount);const top=Math.max(...byM,0),topI=byM.indexOf(top);
+      cards=[{label:'Year total',value:rs(ap.reduce((a,t)=>a+t.amount,0)),note:'Approved partner transactions, '+Y},{label:'Approved transactions',value:String(ap.length),note:'Each counted once'},{label:'Partners',value:String(rows.length),note:'With activity in '+Y},{label:'Highest month',value:top?rs(top):'—',note:top?MF[topI]+' '+Y:'No activity'}];
+    }
+    const pgN=isS?s.pg:s.cpg,pages=Math.max(1,Math.ceil(rows.length/PAGE)),pgC=Math.min(pgN,pages-1);
+    const shown=rows.slice(pgC*PAGE,pgC*PAGE+PAGE);
+    const setPg=v=>this.setState(isS?{pg:v}:{cpg:v});
+    const yearTotal=monthSum.reduce((a,b)=>a+b,0);
+
+    const view=isS?s.view:s.cview;
+    const tabs=(isS?[['ledger','Annual ledger'],['salaries','Source payslips'],['employees','Employees']]:[['summary','Monthly summary'],['all','Source transactions']])
+      .map(([k,l,c])=>({label:l,active:view===k,inactive:view!==k,hasCount:!!c,count:c,go:()=>this.setState(isS?{view:k}:{cview:k})}));
+
+    const openRef=(kind,x)=>()=>this.setState(kind==='pay'?{sel:{t:'cell',emp:x.emp,y:x.y,m:x.m}}:{sel:{t:'pcell',partner:x.partner,y:x.y,m:x.m}});
+    const who=kind=>x=>kind==='pay'?{name:this.emp(x.emp).name,code:x.emp,amount:rs(net(x)),type:x.type}:{name:PARTNERS.find(p=>p.id===x.partner).name,code:x.partner,amount:rs(x.amount),type:x.cat};
+    const kind=isS?'pay':'txn',src=isS?ps:tx,W=who(kind);
+    const pendingRows=(isS?pendPay:pendTx).slice().sort((a,b)=>a.createdAt.localeCompare(b.createdAt)).map(x=>{const w=W(x),b=!!s.busy[x.id];return {id:x.id,...w,period:per(x.y,x.m),created:x.createdAt+' · '+x.createdBy,disabled:b||!canApprove,approveLabel:b?'Approving…':'Approve',approve:()=>this.decide(kind,x.id,true),reject:()=>this.decide(kind,x.id,false),open:openRef(kind,x)};});
+    const decisions=src.filter(x=>x.status!=='pending').sort((a,b)=>(b.approvedAt||b.rejectedAt||'').localeCompare(a.approvedAt||a.rejectedAt||'')||b.id.localeCompare(a.id)).slice(0,6).map(x=>{const w=W(x);return {id:x.id,name:w.name,amount:w.amount,period:per(x.y,x.m),isApproved:x.status==='approved',isRejected:x.status==='rejected',by:x.status==='approved'?'Approved by '+x.approvedBy+' · '+x.approvedAt:'Rejected by '+x.rejectedBy+' · '+x.rejectedAt,open:openRef(kind,x)};});
+    const listHeads=isS?['Payslip No','Employee','Month','Type','Salary','Bonus','Deduction','Net Salary','Payment Date']:['Transaction','Partner','Date','Category','Method','Reference','Amount'];
+    const listRows=src.slice().sort((a,b)=>ym(b.y,b.m)-ym(a.y,a.m)||b.id.localeCompare(a.id)).map(x=>({cols:isS?[x.id,this.emp(x.emp).name,`${x.y}-${String(x.m).padStart(2,'0')}`,x.type,rs(x.base),x.bonus?rs(x.bonus):'—',x.ded?rs(x.ded):'—',rs(net(x)),x.payDate||'—']:[x.id,PARTNERS.find(p=>p.id===x.partner).name,nice(x.date),x.cat,x.method,x.ref||'—',rs(x.amount)],isApproved:x.status==='approved',isPending:x.status==='pending',isRejected:x.status==='rejected',open:openRef(kind,x)}));
+
+    const roster=E.map(e=>({id:e.id,name:e.name,dept:e.dept,desig:e.desig,joined:nice(e.joined),active:!e.resign,canResign:!e.resign&&canResign,resigned:!!e.resign,resignLabel:e.resign?nice(e.resign.date):'',view:()=>this.setState({sel:{t:'emp',emp:e.id}}),resign:()=>this.openResign(e.id)}));
+
+    // drawer
+    let dr={};
+    const payItem=x=>{const b=!!s.busy[x.id];return {id:x.id,amount:rs(net(x)),isApproved:x.status==='approved',isPending:x.status==='pending',isRejected:x.status==='rejected',
+      meta:[x.type,'Salary '+rs(x.base),x.bonus?'Bonus '+rs(x.bonus):'',x.ded?'Deduction '+rs(x.ded):'',x.method,x.ref,x.payDate?'Paid '+nice(x.payDate):'','Created by '+x.createdBy+' · '+x.createdAt,x.status==='approved'?'Approved by '+x.approvedBy+' · '+x.approvedAt:'',x.status==='rejected'?'Rejected by '+x.rejectedBy+' · '+x.rejectedAt:'',x.remarks].filter(Boolean).join(' · '),
+      canDecide:x.status==='pending'&&canApprove,busy:b,approveLabel:b?'Approving…':'Approve & post',approve:()=>this.decide('pay',x.id,true),reject:()=>this.decide('pay',x.id,false)};};
+    const txItem=x=>{const b=!!s.busy[x.id];return {id:x.id,amount:rs(x.amount),isApproved:x.status==='approved',isPending:x.status==='pending',isRejected:x.status==='rejected',
+      meta:[x.cat,nice(x.date),x.method,x.ref,'Created by '+x.createdBy,x.status==='approved'?'Approved by '+x.approvedBy+' · '+x.approvedAt:'',x.status==='rejected'?'Rejected by '+x.rejectedBy+' · '+x.rejectedAt:''].filter(Boolean).join(' · '),
+      canDecide:x.status==='pending'&&canApprove,busy:b,approveLabel:b?'Approving…':'Approve',approve:()=>this.decide('txn',x.id,true),reject:()=>this.decide('txn',x.id,false)};};
+    const resignBlock=e=>e.resign?{...e.resign,date:nice(e.resign.date),closedAfter:per(+e.resign.date.slice(0,4),+e.resign.date.slice(5,7))}:{};
+    const sel=s.sel;
+    if(sel?.t==='cell'){const e=this.emp(sel.emp),list=ps.filter(p=>p.emp===e.id&&p.y===sel.y&&p.m===sel.m&&(showPendDetail||p.status!=='pending')),ap=list.filter(p=>p.status==='approved');
+      const closed=e.resign&&ym(sel.y,sel.m)>dym(e.resign.date),before=ym(sel.y,sel.m)<dym(e.joined);
+      dr={kicker:e.id+' · '+e.dept,title:e.name,sub:per(sel.y,sel.m),hasTotal:true,total:rs(ap.reduce((t,p)=>t+net(p),0)),totalNote:ap.length?'Approved · '+ap.length+(ap.length>1?' payments':' payment'):'No approved salary',
+        hasResign:!!e.resign,resign:resignBlock(e),hasConflict:!!(closed&&ap.some(p=>p.type!=='Final settlement')),conflictText:'Approved after the resignation date ('+(e.resign?nice(e.resign.date):'')+'). The payment is kept as-is and flagged for authorized review.',hasItems:list.length>0,itemsTitle:'Payment records',items:list.map(payItem),hasEmpty:!list.length,
+        emptyText:closed?`Closed: ${e.name} resigned on ${nice(e.resign.date)}. No ordinary salary is recorded after the resignation month.`:before?`${e.name} joined on ${nice(e.joined)}, after this month.`:`No approved salary for ${per(sel.y,sel.m)}. Payslips are created and approved in Payroll › Salary payments.`,
+        canCreate:!list.length&&!closed&&!before};}
+    else if(sel?.t==='emp'){const e=this.emp(sel.emp),list=ps.filter(p=>p.emp===e.id&&(showPendDetail||p.status!=='pending')).sort((a,b)=>ym(b.y,b.m)-ym(a.y,a.m)||b.id.localeCompare(a.id)),ap=list.filter(p=>p.status==='approved');
+      dr={kicker:e.id,title:e.name,sub:e.resign?'Resigned':'Active',hasTotal:true,total:rs(ap.reduce((t,p)=>t+net(p),0)),totalNote:'All-time approved salary',hasConflict:false,hasResign:!!e.resign,resign:resignBlock(e),
+        hasFields:true,fields:[['Employee code',e.id],['Department',e.dept],['Designation',e.desig],['Joining date',nice(e.joined)],['Employment status',e.resign?'Resigned':'Active'],['Current salary rate',rs(e.rate)],['Contact',e.phone||'Not on file']].map(([label,value])=>({label,value})),
+        hasItems:list.length>0,itemsTitle:'Salary history',items:list.map(x=>({...payItem(x),id:x.id+' · '+per(x.y,x.m),canDecide:false})),canResign:!e.resign&&canResign,resignAction:()=>this.openResign(e.id)};}
+    else if(sel?.t==='pcell'||sel?.t==='partner'){const p=PARTNERS.find(x=>x.id===sel.partner),list=tx.filter(t=>t.partner===p.id&&(sel.t==='partner'?t.y===s.cyear:t.y===sel.y&&t.m===sel.m)).filter(t=>showPendDetail||t.status!=='pending').sort((a,b)=>b.date.localeCompare(a.date)),ap=list.filter(t=>t.status==='approved');
+      dr={kicker:p.id+' · Share '+p.share,title:p.name,sub:sel.t==='partner'?'Year '+s.cyear:per(sel.y,sel.m),hasTotal:true,total:rs(ap.reduce((a,t)=>a+t.amount,0)),totalNote:ap.length+' approved · counted once',hasConflict:false,
+        hasItems:list.length>0,itemsTitle:'Underlying transactions',items:list.map(txItem),hasEmpty:!list.length,emptyText:'No transactions recorded for this partner in this period.'};}
+
+    const f=s.form||{},setF=k=>ev=>{const v=ev.target.value;this.setState(st=>({form:{...st.form,[k]:v},formError:''}));};
+    const rf=s.rform||{},setR=k=>ev=>{const v=k==='confirm'?ev.target.checked:ev.target.value;this.setState(st=>({rform:{...st.rform,[k]:v},rError:''}));};
+    const rq=s.rq.trim().toLowerCase(),rsel=s.rsel&&this.emp(s.rsel);
+    const rResults=E.filter(e=>!rq||e.id.toLowerCase().includes(rq)||e.name.toLowerCase().includes(rq)).slice(0,6).map(e=>({id:e.id,name:e.name,dept:e.dept,resigned:!!e.resign,pick:()=>this.setState({rsel:e.id,rError:''})}));
+    let rb={},rImpact='';
+    if(rsel){const ap=ps.filter(p=>p.emp===rsel.id&&p.status==='approved').sort((a,b)=>ym(b.y,b.m)-ym(a.y,a.m));
+      rb={id:rsel.id,name:rsel.name,already:!!rsel.resign,canFile:!rsel.resign,existing:rsel.resign?nice(rsel.resign.date)+' · '+rsel.resign.reason:'',
+        bio:[['Department',rsel.dept],['Designation',rsel.desig],['Joining date',nice(rsel.joined)],['Status',rsel.resign?'Resigned':'Active'],['Salary rate',rs(rsel.rate)],['Last approved salary',ap[0]?per(ap[0].y,ap[0].m)+' · '+rs(net(ap[0])):'None'],['Contact',rsel.phone||'Not on file']].map(([label,value])=>({label,value}))};
+      if(rf.date){const R=dym(rf.date),later=ps.filter(p=>p.emp===rsel.id&&p.status==='pending'&&ym(p.y,p.m)>R).length,mo=per(+rf.date.slice(0,4),+rf.date.slice(5,7));
+        rImpact=`Salary records up to ${mo} stay as they are. ${mo} can still take an approved salary or final settlement; later months close for ordinary salary.`+(later?` ${later} pending payslip(s) after ${mo} will stay pending and cannot be approved as ordinary salary.`:'');}
+    }
+
+    return {
+      pages:[['salary','Salary Ledger'],['company','Company Transaction Details']].map(([k,l])=>({label:l,active:s.page===k,inactive:s.page!==k,go:()=>this.setState({page:k,sel:null})})),
+      isSalaryPage:isS,isCompanyPage:!isS,pageTitle:isS?'Salary Ledger':'Company Transaction Details',
+      pageSub:isS?'Approved salary per employee and month, read from approved payslips. Payslips are created and approved in Payroll.':'Approved partner transactions per month, summed from source records. Transactions are created and approved in Finance.',
+      curYear:Y,years,setYear:e=>setY(+e.target.value),prevYear:()=>setY(Y-1),nextYear:()=>setY(Y+1),prevDisabled:Y<=minY,nextDisabled:Y>=maxY,
+      tabs,showGrid:isS?s.view==='ledger':s.cview==='summary',showApprovals:view==='approvals',showList:isS?s.view==='salaries':s.cview==='all',showEmployees:isS&&s.view==='employees',
+      cards,showPending,legendUnpaid:isS&&hiUnpaid,
+      dept:s.dept,statusFilter:s.statusFilter,depts:[...new Set(E.map(e=>e.dept))],
+      sort:isS?s.sort:s.csort,sortOptions:isS?[{v:'code',label:'Employee code'},{v:'name',label:'Employee name'},{v:'total',label:'Year total'}]:[{v:'id',label:'Partner ID'},{v:'name',label:'Partner name'},{v:'total',label:'Year total'}],
+      search:isS?s.search:s.csearch,searchPh:isS?'Search by code or name…':'Search by partner ID or name…',
+      setDept:e=>this.setState({dept:e.target.value,pg:0}),setStatusFilter:e=>this.setState({statusFilter:e.target.value,pg:0}),setSort:e=>this.setState(isS?{sort:e.target.value}:{csort:e.target.value}),setSearch:e=>this.setState(isS?{search:e.target.value,pg:0}:{csearch:e.target.value,cpg:0}),
+      idHead:isS?'Employee Code':'Partner ID',nameHead:isS?'Employee Name':'Partner Name',monthHeads:MS,
+      loading:s.loading,skeleton:[1,2,3,4,5,6],gridReady:!s.loading&&rows.length>0,gridEmpty:!s.loading&&rows.length===0,
+      rows:shown,monthTotals:monthSum.map(v=>v?grp(v):'—'),yearTotal:grp(yearTotal),
+      pageInfo:rows.length?`Showing ${pgC*PAGE+1}–${Math.min(rows.length,pgC*PAGE+PAGE)} of ${rows.length}`:'',pgPrev:()=>setPg(pgC-1),pgNext:()=>setPg(pgC+1),pgPrevDis:pgC<=0,pgNextDis:pgC>=pages-1,
+      emptyTitle:(isS?(s.search||s.dept!=='all'||s.statusFilter!=='all'):s.csearch)?'No results match these filters':'No approved records for '+Y,
+      emptyBody:(isS?(s.search||s.dept!=='all'||s.statusFilter!=='all'):s.csearch)?'Clear the search or change the filters.':'Nothing has been approved for '+Y+' yet. Amounts appear here automatically once a payment for this year is approved.',
+      pendingRows,hasPending:pendingRows.length>0,noPending:!pendingRows.length,cannotApprove:!canApprove,
+      pendingSummary:pendingRows.length?pendingRows.length+' items · not in ledger totals':'',decisions,listHeads,listRows,roster,
+      drawerOpen:!!sel,dr,closeDrawer:()=>this.setState({sel:null}),
+      openNew:()=>this.openNew(),openResign:()=>this.openResign(),closeModal:()=>this.setState({modal:null,submitting:false}),
+      payslipOpen:s.modal==='payslip',resignOpen:s.modal==='resign',form:f,
+      empOptions:E.map(e=>({id:e.id,label:e.id+' — '+e.name+(e.resign?' (resigned)':'')})),
+      f_emp:setF('emp'),f_month:setF('month'),f_type:setF('type'),f_method:setF('method'),f_base:setF('base'),f_bonus:setF('bonus'),f_ded:setF('ded'),
+      formNet:rs(num(f.base)+num(f.bonus)-num(f.ded)),formError:s.formError,hasFormError:!!s.formError,
+      submitting:s.submitting,submitLabel:s.submitting?'Submitting…':'Submit for approval',submitNew:()=>this.submitNew(),
+      rq:s.rq,setRq:e=>this.setState({rq:e.target.value,rsel:null}),showResults:!rsel,rResults,noResults:!rResults.length,
+      hasRsel:!!rsel,rb,clearRsel:()=>this.setState({rsel:null}),rform:rf,r_date:setR('date'),r_time:setR('time'),r_reason:setR('reason'),r_remarks:setR('remarks'),r_confirm:setR('confirm'),
+      rImpact,rError:s.rError,hasRError:!!s.rError,rDisabled:!rsel||!!rsel?.resign||!rf.confirm||s.submitting,rSubmitLabel:s.submitting?'Recording…':'Submit resignation',submitResign:()=>this.submitResign(),
+      canResignHeader:isS&&canResign,print:()=>window.print(),refresh:()=>this.refresh(),
+      hasToast:!!s.toast,toast:s.toast||{},toastHasAction:!!s.toast?.go,
+      toastAction:()=>{const g=s.toast.go,src=g.kind==='pay'?ps:tx,x=src.find(z=>z.id===g.id);if(!x)return;
+        this.setState(g.kind==='pay'?{page:'salary',view:'ledger',year:x.y,sel:{t:'cell',emp:x.emp,y:x.y,m:x.m},toast:null}:{page:'company',cview:'summary',cyear:x.y,sel:{t:'pcell',partner:x.partner,y:x.y,m:x.m},toast:null});},
+    };
+  }
+}
+</script>
+</body>
+</html>

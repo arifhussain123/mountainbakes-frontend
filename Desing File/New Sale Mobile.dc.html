@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEE8E0;font-family:'Figtree',system-ui,sans-serif;color:#1E1A17}
+a{color:#D9692F}a:hover{color:#B8541F}
+@keyframes mbcaret{0%,50%{opacity:1}51%,100%{opacity:0}}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start;padding:40px 24px">
+
+  <div style="width:{{ phoneW }}px;height:{{ phoneH }}px;border-radius:34px;background:#141110;padding:10px;box-shadow:0 30px 60px -20px rgba(40,25,10,.35);flex:none">
+    <div style="width:100%;height:100%;border-radius:26px;overflow:hidden;display:flex;flex-direction:column;background:#fff;position:relative">
+      <div style="height:24px;flex:none;background:#1A1615;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:space-between;padding:0 16px"><span>6:54</span><span>94%</span></div>
+
+      <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 16px;border-bottom:1px solid #EEE7DE">
+        <div style="font-size:18px;font-weight:600">New Sale</div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <sc-if value="{{ kbOpen }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ dismissKb }}" aria-label="Hide keyboard" style="height:36px;padding:0 12px;border-radius:18px;border:1px solid #EEE0D2;background:#FBF4EC;font:600 13px Figtree;color:#D9692F;cursor:pointer">Done</button>
+          </sc-if>
+          <button onClick="{{ pressBack }}" aria-label="Close New Sale" style="width:44px;height:44px;border:0;background:none;font-size:22px;cursor:pointer;color:#1E1A17">✕</button>
+        </div>
+      </div>
+
+      <div ref="{{ scRef }}" style="flex:1;min-height:0;overflow-y:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:16px;scroll-behavior:smooth">
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
+          <div data-f="name" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:13px;font-weight:500;color:#4A423C">Customer name</div>
+            <div onClick="{{ f.name.tap }}" style="height:44px;border-radius:10px;border:1.5px solid {{ f.name.border }};box-shadow:{{ f.name.shadow }};display:flex;align-items:center;padding:0 12px;font-size:15px;color:{{ f.name.color }};cursor:text;overflow:hidden;white-space:nowrap">{{ f.name.text }}<sc-if value="{{ f.name.caret }}"><span style="width:1.5px;height:18px;background:#E8743B;margin-left:1px;animation:mbcaret 1s infinite"></span></sc-if></div>
+          </div>
+          <div data-f="mobile" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:13px;font-weight:500;color:#4A423C">Mobile</div>
+            <div onClick="{{ f.mobile.tap }}" style="height:44px;border-radius:10px;border:1.5px solid {{ f.mobile.border }};box-shadow:{{ f.mobile.shadow }};display:flex;align-items:center;padding:0 12px;font-size:15px;color:{{ f.mobile.color }};cursor:text;overflow:hidden;white-space:nowrap">{{ f.mobile.text }}<sc-if value="{{ f.mobile.caret }}"><span style="width:1.5px;height:18px;background:#E8743B;margin-left:1px;animation:mbcaret 1s infinite"></span></sc-if></div>
+          </div>
+        </div>
+
+        <div data-f="search" style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:13px;font-weight:500;color:#4A423C">Add product</div>
+          <div onClick="{{ f.search.tap }}" style="height:44px;border-radius:10px;border:1.5px solid {{ f.search.border }};box-shadow:{{ f.search.shadow }};display:flex;align-items:center;gap:8px;padding:0 12px;font-size:15px;color:{{ f.search.color }};cursor:text">
+            <span style="color:#9A8F86">⌕</span><span>{{ f.search.text }}</span><sc-if value="{{ f.search.caret }}"><span style="width:1.5px;height:18px;background:#E8743B;animation:mbcaret 1s infinite"></span></sc-if>
+          </div>
+          <sc-if value="{{ showResults }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid #EEE7DE;border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+              <sc-for list="{{ results }}" as="r" hint-placeholder-count="3">
+                <div onClick="{{ r.add }}" style="min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;border-bottom:1px solid #F3EDE6;cursor:pointer;background:#fff" style-hover="background:#FBF4EC">
+                  <div style="display:flex;flex-direction:column"><span style="font-size:14px;font-weight:600">{{ r.name }}</span><span style="font-size:12px;color:{{ r.availColor }}">Available: {{ r.avail }}</span></div>
+                  <span style="font-size:14px">{{ r.rateText }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ noResults }}"><div style="padding:12px;font-size:13px;color:#8A8077">No matching products</div></sc-if>
+            </div>
+          </sc-if>
+        </div>
+
+        <sc-for list="{{ items }}" as="it" hint-placeholder-count="1">
+          <div style="border:1px solid #EEE7DE;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div style="font-size:15px;font-weight:600">{{ it.name }}</div>
+              <button onClick="{{ it.remove }}" aria-label="Remove item" style="width:32px;height:32px;border:0;background:none;color:#9A8F86;font-size:16px;cursor:pointer">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
+              <div data-f="{{ it.qtyKey }}" style="display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:12px;font-weight:500;color:#4A423C">Qty</div>
+                <div style="height:44px;border-radius:10px;border:1.5px solid {{ it.qty.border }};box-shadow:{{ it.qty.shadow }};display:flex;align-items:center;overflow:hidden">
+                  <button onClick="{{ it.dec }}" aria-label="Decrease" style="width:40px;height:100%;border:0;background:#FBF8F4;font-size:18px;cursor:pointer;color:#4A423C">−</button>
+                  <div onClick="{{ it.qty.tap }}" style="flex:1;text-align:center;font-size:16px;cursor:text;display:flex;justify-content:center;align-items:center">{{ it.qty.text }}<sc-if value="{{ it.qty.caret }}"><span style="width:1.5px;height:18px;background:#E8743B;animation:mbcaret 1s infinite"></span></sc-if></div>
+                  <button onClick="{{ it.inc }}" aria-label="Increase" style="width:40px;height:100%;border:0;background:#FBF8F4;font-size:18px;cursor:pointer;color:#4A423C">+</button>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:12px;font-weight:500;color:#4A423C">Rate</div>
+                <div style="height:44px;border-radius:10px;border:1px solid #EEE7DE;background:#F7F3EE;display:flex;align-items:center;justify-content:flex-end;padding:0 12px;font-size:15px">{{ it.rateText }}</div>
+              </div>
+              <div data-f="{{ it.discKey }}" style="display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:12px;font-weight:500;color:#4A423C">Discount</div>
+                <div onClick="{{ it.disc.tap }}" style="height:44px;border-radius:10px;border:1.5px solid {{ it.disc.border }};box-shadow:{{ it.disc.shadow }};display:flex;align-items:center;padding:0 12px;font-size:15px;color:{{ it.disc.color }};cursor:text">{{ it.disc.text }}<sc-if value="{{ it.disc.caret }}"><span style="width:1.5px;height:18px;background:#E8743B;animation:mbcaret 1s infinite"></span></sc-if></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:12px;font-weight:500;color:#4A423C">Amount</div>
+                <div style="height:44px;border-radius:10px;border:1px solid #EEE7DE;background:#F7F3EE;display:flex;align-items:center;justify-content:flex-end;padding:0 12px;font-size:15px;font-weight:700">{{ it.amountText }}</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;column-gap:8px;row-gap:2px;font-size:12.5px;line-height:1.35;text-wrap:pretty">
+              <span style="color:#6E655D">Available: <b style="color:{{ it.availColor }}">{{ it.avail }}</b></span>
+              <sc-if value="{{ it.low }}"><span style="color:#C9710A">⚠ Low Stock (min {{ it.min }}) — please create a Production Order.</span></sc-if>
+              <sc-if value="{{ it.over }}"><span style="color:#C8102E;font-weight:600">Qty exceeds available stock.</span></sc-if>
+            </div>
+          </div>
+        </sc-for>
+
+        <div style="height:1px;background:#EEE7DE"></div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:15px;font-weight:600">Payment Method</div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">
+            <sc-for list="{{ methods }}" as="m" hint-placeholder-count="4">
+              <button onClick="{{ m.pick }}" aria-pressed="{{ m.sel }}" style="height:46px;border-radius:10px;border:1px solid {{ m.border }};background:{{ m.bg }};color:{{ m.color }};font:500 15px Figtree;cursor:pointer">{{ m.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ isCash }}" hint-placeholder-val="{{ true }}">
+          <div data-f="cash" style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font-size:15px;font-weight:600">Received Cash</div>
+              <div style="font-size:13px;color:{{ changeColor }};font-weight:600">{{ changeInline }}</div>
+            </div>
+            <div onClick="{{ f.cash.tap }}" style="height:50px;border-radius:12px;border:1.5px solid {{ f.cash.border }};box-shadow:{{ f.cash.shadow }};display:flex;align-items:center;gap:6px;padding:0 14px;font-size:18px;color:{{ f.cash.color }};cursor:text"><span style="color:#9A8F86;font-size:15px">Rs.</span>{{ f.cash.text }}<sc-if value="{{ f.cash.caret }}"><span style="width:1.5px;height:20px;background:#E8743B;animation:mbcaret 1s infinite"></span></sc-if></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ quickCash }}" as="q" hint-placeholder-count="3">
+                <button onClick="{{ q.pick }}" style="height:34px;padding:0 12px;border-radius:17px;border:1px solid #EEE0D2;background:#FBF4EC;font:500 13px Figtree;color:#4A423C;cursor:pointer">{{ q.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <div data-f="notes" style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:15px;font-weight:600">Notes <span style="font-weight:400;color:#8A8077">(optional)</span></div>
+          <div onClick="{{ f.notes.tap }}" style="min-height:64px;border-radius:10px;border:1.5px solid {{ f.notes.border }};box-shadow:{{ f.notes.shadow }};padding:10px 12px;font-size:15px;color:{{ f.notes.color }};cursor:text">{{ f.notes.text }}<sc-if value="{{ f.notes.caret }}"><span style="display:inline-block;width:1.5px;height:17px;background:#E8743B;vertical-align:middle;animation:mbcaret 1s infinite"></span></sc-if></div>
+        </div>
+      </div>
+
+      <sc-if value="{{ kbClosed }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:none;background:#FBF4EC;border-top:1px solid #EEE0D2;padding:10px 16px 12px;display:flex;flex-direction:column;gap:10px">
+          <sc-if value="{{ summaryOpen }}">
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:14px;color:#6E655D;padding-bottom:8px;border-bottom:1px solid #EEE0D2">
+              <div style="display:flex;justify-content:space-between"><span>Subtotal</span><span style="color:#1E1A17">{{ subtotalText }}</span></div>
+              <div style="display:flex;justify-content:space-between"><span>Discount</span><span style="color:#1E1A17">-{{ discountText }}</span></div>
+              <div style="display:flex;justify-content:space-between"><span>Government Tax</span><span style="color:#1E1A17">{{ taxText }}</span></div>
+            </div>
+          </sc-if>
+          <button onClick="{{ toggleSummary }}" aria-expanded="{{ summaryOpen }}" aria-label="Show price breakdown" style="border:0;background:none;padding:0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-family:Figtree;color:#1E1A17;text-align:left">
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:16px;font-weight:700;white-space:nowrap">Grand Total <span style="font-size:12px;font-weight:500;color:#8A8077">{{ chevron }}</span></span>
+              <sc-if value="{{ isCash }}"><span style="font-size:13px;color:#6E655D;white-space:nowrap">Recv {{ receivedText }} · <span style="color:{{ changeColor }};font-weight:600">{{ changeInline }}</span></span></sc-if>
+            </div>
+            <span style="font-size:20px;font-weight:700;color:#E8743B;flex:none;white-space:nowrap">{{ totalText }}</span>
+          </button>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
+            <button onClick="{{ saveSale }}" disabled="{{ saveDisabled }}" style="height:48px;border-radius:12px;border:1px solid #E8DCCF;background:#fff;font:600 15px Figtree;color:{{ saveColor }};cursor:pointer">{{ saveLabel }}</button>
+            <button onClick="{{ savePdf }}" disabled="{{ saveDisabled }}" style="height:48px;border-radius:12px;border:0;background:{{ pdfBg }};font:600 15px Figtree;color:#fff;cursor:pointer">{{ pdfLabel }}</button>
+          </div>
+          <sc-if value="{{ hasBlock }}"><div style="font-size:12px;color:#C8102E;text-align:center;margin-top:-4px">{{ blockReason }}</div></sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ kbOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;background:#FBF4EC;border-top:1px solid #EEE0D2;padding:8px 12px 8px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;flex-direction:column;min-width:0">
+            <span style="font-size:15px;font-weight:700">Total <span style="color:#E8743B">{{ totalText }}</span></span>
+            <sc-if value="{{ isCash }}"><span style="font-size:12.5px;color:{{ changeColor }};font-weight:600;white-space:nowrap">{{ changeLabel }}</span></sc-if>
+          </div>
+          <div style="display:flex;gap:6px;flex:none">
+            <button onClick="{{ savePdf }}" disabled="{{ saveDisabled }}" aria-label="Save and PDF" style="height:44px;padding:0 12px;border-radius:12px;border:1px solid #E8DCCF;background:#fff;font:600 14px Figtree;color:{{ saveColor }};cursor:pointer">PDF</button>
+            <button onClick="{{ saveSale }}" disabled="{{ saveDisabled }}" style="height:44px;padding:0 16px;border-radius:12px;border:0;background:{{ pdfBg }};font:600 14px Figtree;color:#fff;cursor:pointer">{{ saveLabel }}</button>
+          </div>
+        </div>
+        <div style="flex:none;background:#E9E4DF;padding:6px 5px 8px;display:grid;grid-template-columns:{{ kbCols }};gap:6px">
+          <sc-for list="{{ keys }}" as="k" hint-placeholder-count="16">
+            <button onClick="{{ k.press }}" style="height:{{ k.h }}px;grid-column:{{ k.span }};border:0;border-radius:6px;background:{{ k.bg }};font:500 {{ k.fs }}px Figtree;color:#1E1A17;cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.15)">{{ k.label }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <div style="height:40px;flex:none;background:#141110;display:flex;justify-content:space-around;align-items:center;color:#fff;font-size:18px">
+        <span>|||</span><span>◻</span>
+        <button onClick="{{ pressBack }}" aria-label="Android back" style="width:56px;height:40px;border:0;background:none;color:#fff;font-size:20px;cursor:pointer">‹</button>
+      </div>
+
+      <sc-if value="{{ hasToast }}">
+        <div style="position:absolute;left:16px;right:16px;top:84px;background:#1E1A17;color:#fff;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.4">{{ toast }}</div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="max-width:380px;flex:1 1 300px;display:flex;flex-direction:column;gap:22px;padding-top:8px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#D9692F;font-weight:700">Mountain Bakes POS</div>
+      <div style="font-size:26px;font-weight:700;line-height:1.15">New Sale — keyboard-safe layout</div>
+      <div style="font-size:14px;color:#5E554E;line-height:1.5;text-wrap:pretty">Interactive. Tap any field to open the on-screen keyboard; your physical keyboard also types into the focused field. Esc = Android back.</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:13px;font-weight:700;color:#4A423C">Try a scenario</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <sc-for list="{{ scenarios }}" as="s" hint-placeholder-count="5">
+          <button onClick="{{ s.run }}" style="height:36px;padding:0 14px;border-radius:18px;border:1px solid #DCCFC2;background:#fff;font:500 13px Figtree;color:#1E1A17;cursor:pointer" style-hover="border-color:#E8743B">{{ s.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13.5px;line-height:1.5;color:#3A332E">
+      <div style="font-size:13px;font-weight:700;color:#4A423C">What changed vs. current screen</div>
+      <div><b>Footer collapses.</b> The summary card took ~40% of the screen. Closed keyboard: Grand Total + received/return line, breakdown behind a tap. Open keyboard: one 60px bar with Total, change and Save, sitting above the keyboard.</div>
+      <div><b>One scroll surface.</b> Header stays fixed, form scrolls between header and footer. The scroll area shrinks when the keyboard opens and the focused field is scrolled into view with its label.</div>
+      <div><b>Cash return inline.</b> Change / short amount is shown next to the Received Cash label so it's visible while typing. Quick amounts (exact, next 500/1000) reduce typing.</div>
+      <div><b>Back + Done.</b> Back closes the keyboard first. A Done pill in the header and Next/Done keys move through fields.</div>
+      <div><b>Compact stock line.</b> Available and Low Stock warning wrap on one flowing line.</div>
+      <div style="color:#8A8077;font-size:12.5px">RN mapping: KeyboardAvoidingView (iOS padding / Android adjustResize) → header · ScrollView (keyboardShouldPersistTaps: handled, keyboardDismissMode: on-drag) · footer outside the ScrollView, no absolute positioning.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;device&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Small Android (360×800)&quot;,&quot;Large Android (393×852)&quot;],&quot;default&quot;:&quot;Small Android (360×800)&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  catalog = [
+    { id: 'cake', name: 'Plain Cake 1 lb', rate: 1500, avail: 1, min: 5 },
+    { id: 'pastry', name: 'Chocolate Pastry', rate: 250, avail: 24, min: 5 },
+    { id: 'rusk', name: 'Rusk 500g', rate: 420, avail: 12, min: 5 },
+    { id: 'bread', name: 'Milky Bread', rate: 180, avail: 3, min: 5 },
+  ];
+  state = { items: [{ id: 'cake', name: 'Plain Cake 1 lb', rate: 1500, avail: 1, min: 5, qty: '1', disc: '' }], name: '', mobile: '', search: '', method: 'Cash', cash: '', notes: '', active: null, saving: null, summaryOpen: false, toast: null };
+  scRef = React.createRef();
+  numeric = k => k === 'mobile' || k === 'cash' || k.startsWith('qty:') || k.startsWith('disc:');
+  fmt = n => 'Rs. ' + Math.round(n).toLocaleString('en-US');
+
+  componentDidMount() {
+    this.onKey = e => {
+      const a = this.state.active;
+      if (e.key === 'Escape') { e.preventDefault(); return this.back(); }
+      if (!a) return;
+      if (e.key === 'Backspace') { e.preventDefault(); this.press('del'); }
+      else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); this.press('next'); }
+      else if (e.key.length === 1) { e.preventDefault(); this.press(e.key); }
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); clearTimeout(this.tt); }
+
+  getVal(k) {
+    if (k.includes(':')) { const [f, i] = k.split(':'); return this.state.items[+i]?.[f] ?? ''; }
+    return this.state[k] ?? '';
+  }
+  setVal(k, v) {
+    if (k.includes(':')) {
+      const [f, i] = k.split(':');
+      this.setState(s => ({ items: s.items.map((it, j) => j === +i ? { ...it, [f]: v } : it) }));
+    } else this.setState({ [k]: v });
+  }
+  order() {
+    const o = ['name', 'mobile', 'search'];
+    this.state.items.forEach((_, i) => o.push('qty:' + i, 'disc:' + i));
+    if (this.state.method === 'Cash') o.push('cash');
+    o.push('notes');
+    return o;
+  }
+  focus(k) {
+    this.setState({ active: k });
+    setTimeout(() => this.scrollTo(k), 40);
+  }
+  scrollTo(k) {
+    const sc = this.scRef.current; if (!sc) return;
+    const el = sc.querySelector(`[data-f="${k}"]`); if (!el) return;
+    const sr = sc.getBoundingClientRect(), er = el.getBoundingClientRect();
+    const top = er.top - sr.top + sc.scrollTop, bottom = top + er.height;
+    if (k === 'search') return sc.scrollTo({ top: top - 8 });
+    if (bottom > sc.scrollTop + sc.clientHeight - 16) sc.scrollTo({ top: bottom - sc.clientHeight + 24 });
+    else if (top < sc.scrollTop + 8) sc.scrollTo({ top: Math.max(0, top - 12) });
+  }
+  back() {
+    if (this.state.active) return this.setState({ active: null });
+    this.showToast('Back with keyboard closed → existing close behaviour. Entered sale data is kept.');
+  }
+  showToast(t) { clearTimeout(this.tt); this.setState({ toast: t }); this.tt = setTimeout(() => this.setState({ toast: null }), 2600); }
+
+  press(key) {
+    const a = this.state.active; if (!a) return;
+    if (key === 'done') return this.setState({ active: null });
+    if (key === 'next') {
+      const o = this.order(), i = o.indexOf(a);
+      return i < o.length - 1 ? this.focus(o[i + 1]) : this.setState({ active: null });
+    }
+    let v = String(this.getVal(a));
+    if (key === 'del') v = v.slice(0, -1);
+    else if (key === 'space') v += ' ';
+    else {
+      if (this.numeric(a)) {
+        const allowed = a.startsWith('disc:') ? /[0-9%]/ : /[0-9]/;
+        if (!allowed.test(key)) return;
+        if (key === '%' && (v.includes('%') || !v)) return;
+        if (a.startsWith('disc:') && v.includes('%')) return;
+        if (a === 'mobile' && v.length >= 11) return;
+        if (v === '0') v = '';
+      }
+      v += key;
+    }
+    this.setVal(a, v);
+    if (a === 'search') setTimeout(() => this.scrollTo('search'), 0);
+  }
+
+  calc() {
+    const lines = this.state.items.map(it => {
+      const q = parseInt(it.qty) || 0, gross = q * it.rate;
+      let d = 0; const ds = String(it.disc || '');
+      if (ds.endsWith('%')) d = gross * (parseFloat(ds) || 0) / 100; else d = parseFloat(ds) || 0;
+      d = Math.min(d, gross);
+      return { q, gross, d, net: gross - d };
+    });
+    const subtotal = lines.reduce((a, l) => a + l.gross, 0), discount = lines.reduce((a, l) => a + l.d, 0), tax = 0;
+    return { lines, subtotal, discount, tax, total: subtotal - discount + tax };
+  }
+
+  field(k, ph) {
+    const v = String(this.getVal(k)), act = this.state.active === k;
+    return { text: v || (act ? '' : ph), color: v ? '#1E1A17' : '#A39990', border: act ? '#EE9A6E' : '#E8E1D8', shadow: act ? '0 0 0 3px rgba(238,154,110,.22)' : 'none', caret: act, tap: () => this.focus(k) };
+  }
+
+  save(kind) {
+    if (this.state.saving || this.block()) return;
+    this.setState({ saving: kind, active: null });
+    setTimeout(() => { this.setState({ saving: null }); this.showToast(kind === 'pdf' ? 'Sale MB-1043 saved · PDF generated (one request, buttons locked while saving).' : 'Sale MB-1043 saved. Buttons were locked during submission.'); }, 1300);
+  }
+  block() {
+    const c = this.calc();
+    if (!this.state.items.length) return 'Add at least one product';
+    if (this.state.items.some(it => (parseInt(it.qty) || 0) < 1)) return 'Quantity must be at least 1';
+    if (this.state.items.some(it => (parseInt(it.qty) || 0) > it.avail)) return 'Quantity exceeds available stock';
+    if (this.state.method === 'Cash' && this.state.cash !== '' && (parseFloat(this.state.cash) || 0) < c.total) return 'Received cash is less than Grand Total';
+    return null;
+  }
+
+  renderVals() {
+    const s = this.state, c = this.calc(), a = s.active;
+    const kbType = a ? (this.numeric(a) ? 'num' : 'text') : null;
+    const recv = s.cash === '' ? null : (parseFloat(s.cash) || 0);
+    let changeLabel = 'Enter received cash', changeColor = '#8A8077', changeInline = 'enter amount';
+    if (recv !== null && recv > 0) {
+      const diff = recv - c.total;
+      if (diff >= 0) { changeLabel = 'Cash Returned ' + this.fmt(diff); changeColor = '#2E7D4F'; changeInline = 'Return ' + this.fmt(diff); }
+      else { changeLabel = 'Short by ' + this.fmt(-diff); changeColor = '#C8102E'; changeInline = 'Short ' + this.fmt(-diff); }
+    }
+    const blockReason = this.block();
+    const saveDisabled = !!blockReason || !!s.saving;
+
+    let keys;
+    if (kbType === 'num') {
+      const x = a.startsWith('disc:') ? '%' : '';
+      const L = ['1', '2', '3', '⌫', '4', '5', '6', '', '7', '8', '9', 'Next', x, '0', '', 'Done'];
+      const M = { '⌫': 'del', 'Next': 'next', 'Done': 'done' };
+      keys = L.map(l => ({ label: l, press: () => l && this.press(M[l] || l), h: 46, span: 'auto', fs: M[l] ? 15 : 22, bg: l === 'Done' ? '#F4A27A' : M[l] ? '#D6D0CA' : l ? '#fff' : '#E9E4DF' }));
+    } else if (kbType === 'text') {
+      const rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+      keys = [];
+      rows[0].split('').forEach(l => keys.push({ label: l, press: () => this.press(l), h: 42, span: 'span 2', fs: 18, bg: '#fff' }));
+      keys.push({ label: '', press: () => {}, h: 42, span: 'span 1', fs: 18, bg: '#E9E4DF' });
+      rows[1].split('').forEach(l => keys.push({ label: l, press: () => this.press(l), h: 42, span: 'span 2', fs: 18, bg: '#fff' }));
+      keys.push({ label: '', press: () => {}, h: 42, span: 'span 3', fs: 18, bg: '#E9E4DF' });
+      rows[2].split('').forEach(l => keys.push({ label: l, press: () => this.press(l), h: 42, span: 'span 2', fs: 18, bg: '#fff' }));
+      keys.push({ label: '⌫', press: () => this.press('del'), h: 42, span: 'span 3', fs: 16, bg: '#D6D0CA' });
+      keys.push({ label: 'Next', press: () => this.press('next'), h: 42, span: 'span 4', fs: 14, bg: '#D6D0CA' });
+      keys.push({ label: 'space', press: () => this.press('space'), h: 42, span: 'span 12', fs: 14, bg: '#fff' });
+      keys.push({ label: 'Done', press: () => this.press('done'), h: 42, span: 'span 5', fs: 14, bg: '#F4A27A' });
+    }
+
+    const q = s.search.trim().toLowerCase();
+    const results = this.catalog.filter(p => !q || p.name.toLowerCase().includes(q)).map(p => ({
+      name: p.name, avail: p.avail, rateText: this.fmt(p.rate), availColor: p.avail < p.min ? '#C8102E' : '#6E655D',
+      add: () => {
+        this.setState(st => {
+          const ex = st.items.findIndex(i => i.id === p.id);
+          const items = ex >= 0 ? st.items.map((i, j) => j === ex ? { ...i, qty: String((parseInt(i.qty) || 0) + 1) } : i) : [...st.items, { ...p, qty: '1', disc: '' }];
+          return { items, search: '', active: null };
+        });
+      },
+    }));
+
+    const methods = ['Cash', 'Easypaisa', 'Foodpanda', 'Bank Account'].map(m => {
+      const sel = s.method === m;
+      return { label: m, sel, border: sel ? '#EE9A6E' : '#EEE7DE', bg: sel ? '#FDEDE4' : '#fff', color: sel ? '#E8743B' : '#1E1A17', pick: () => this.setState({ method: m, active: s.active === 'cash' && m !== 'Cash' ? null : s.active }) };
+    });
+
+    const quick = []; if (c.total > 0) {
+      quick.push(c.total); [500, 1000, 5000].forEach(r => { const v = Math.ceil(c.total / r) * r; if (v > c.total && !quick.includes(v)) quick.push(v); });
+    }
+    const quickCash = quick.slice(0, 3).map((v, i) => ({ label: i === 0 ? 'Exact ' + this.fmt(v) : this.fmt(v), pick: () => this.setState({ cash: String(v) }) }));
+
+    const tall = (this.props.device ?? 'Small Android (360×800)').startsWith('Small');
+    const run = fn => () => { const sc = this.scRef.current; fn(); };
+    const scenarios = [
+      { label: 'Focus Received Cash', run: run(() => this.focus('cash')) },
+      { label: 'Rs 1,500 sale, receive 2,000', run: run(() => { this.setState({ method: 'Cash', cash: '2000', items: [{ ...this.catalog[0], qty: '1', disc: '' }] }); this.focus('cash'); }) },
+      { label: 'Short payment', run: run(() => { this.setState({ method: 'Cash', cash: '1000' }); this.focus('cash'); }) },
+      { label: 'Edit discount', run: run(() => this.focus('disc:0')) },
+      { label: 'Search product', run: run(() => this.focus('search')) },
+      { label: 'Close keyboard', run: run(() => this.setState({ active: null })) },
+    ];
+
+    return {
+      phoneW: tall ? 380 : 413, phoneH: tall ? 820 : 872,
+      scRef: this.scRef, kbOpen: !!a, kbClosed: !a, kbCols: kbType === 'text' ? 'repeat(20,1fr)' : 'repeat(4,1fr)', keys: keys || [],
+      dismissKb: () => this.setState({ active: null }), pressBack: () => this.back(),
+      f: { name: this.field('name', 'Walk-in'), mobile: this.field('mobile', '03xx…'), search: this.field('search', 'Search product'), cash: this.field('cash', '0'), notes: this.field('notes', 'Add a note') },
+      showResults: a === 'search', results, noResults: a === 'search' && !results.length,
+      items: s.items.map((it, i) => {
+        const l = c.lines[i];
+        return {
+          name: it.name, avail: it.avail, min: it.min, rateText: this.fmt(it.rate), amountText: this.fmt(l.net),
+          availColor: it.avail < it.min ? '#C8102E' : '#2E7D4F', low: it.avail < it.min, over: l.q > it.avail,
+          qtyKey: 'qty:' + i, discKey: 'disc:' + i,
+          qty: this.field('qty:' + i, '0'), disc: this.field('disc:' + i, '0 or 10%'),
+          inc: () => this.setVal('qty:' + i, String((parseInt(it.qty) || 0) + 1)),
+          dec: () => this.setVal('qty:' + i, String(Math.max(1, (parseInt(it.qty) || 0) - 1))),
+          remove: () => this.setState(st => ({ items: st.items.filter((_, j) => j !== i), active: null })),
+        };
+      }),
+      methods, isCash: s.method === 'Cash', quickCash,
+      changeLabel, changeColor, changeInline,
+      subtotalText: this.fmt(c.subtotal), discountText: this.fmt(c.discount), taxText: this.fmt(c.tax), totalText: this.fmt(c.total),
+      receivedText: recv === null ? '—' : this.fmt(recv),
+      summaryOpen: s.summaryOpen, chevron: s.summaryOpen ? '▾ hide' : '▸ details', toggleSummary: () => this.setState(st => ({ summaryOpen: !st.summaryOpen })),
+      saveSale: () => this.save('sale'), savePdf: () => this.save('pdf'),
+      saveDisabled, saveColor: saveDisabled ? '#B9AFA6' : '#1E1A17', pdfBg: saveDisabled ? '#F8C7AC' : '#E8743B',
+      saveLabel: s.saving === 'sale' ? 'Saving…' : 'Save Sale', pdfLabel: s.saving === 'pdf' ? 'Saving…' : 'Save & PDF',
+      hasBlock: !!blockReason && !s.saving, blockReason,
+      hasToast: !!s.toast, toast: s.toast, scenarios,
+    };
+  }
+}
+</script>
+</body>
+</html>
