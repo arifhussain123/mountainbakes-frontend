@@ -7,8 +7,20 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFinanceDashboardRecords } from '@/lib/finance';
+import { LedgerEntryDetailDialog } from '../LedgerEntryDialogs';
 import { useMoney } from '../finance-ui';
 import { dayLabel, METRIC_INFO, type DrillTarget } from './dashboard-model';
+import { DemandDetailDialog } from './DemandDetailDialog';
+
+/** Which record store a reference identifier (PV/RV number or demand number) opens. */
+const REFERENCE_KIND: Record<DrillTarget['metric'], 'voucher' | 'demand' | null> = {
+  demand: 'demand',
+  share: 'demand',
+  discount: 'demand',
+  received: 'voucher',
+  ledger: 'voucher',
+  return: null,
+};
 
 const PAGE_SIZE = 25;
 
@@ -45,6 +57,13 @@ function DrawerBody({ target, dashboardBranchId }: { target: DrillTarget; dashbo
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
+  // Kept separate from the Sheet's own open state so the drill-down list stays
+  // mounted — with its page, search and scroll intact — underneath the detail.
+  const [openVoucherId, setOpenVoucherId] = useState<string | null>(null);
+  const [openDemand, setOpenDemand] = useState<{ orderId: string; amountLabel: string; amount: number } | null>(
+    null,
+  );
+  const referenceKind = REFERENCE_KIND[target.metric];
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -136,7 +155,22 @@ function DrawerBody({ target, dashboardBranchId }: { target: DrillTarget; dashbo
                   <li key={r.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 px-5 py-2.5 text-sm">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="font-semibold text-fin-share">{r.reference ?? '—'}</span>
+                        {r.reference && referenceKind ? (
+                          <button
+                            type="button"
+                            className="font-semibold text-fin-share underline-offset-2 hover:underline"
+                            title={referenceKind === 'voucher' ? 'View complete voucher' : 'View complete demand'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (referenceKind === 'voucher') setOpenVoucherId(r.id);
+                              else setOpenDemand({ orderId: r.id, amountLabel: info.title, amount: r.amount });
+                            }}
+                          >
+                            {r.reference}
+                          </button>
+                        ) : (
+                          <span className="font-semibold text-fin-share">{r.reference ?? '—'}</span>
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {dayLabel(r.date)} {r.date.slice(0, 4)} · {r.branchName ?? 'Company / unassigned'}
                         </span>
@@ -185,6 +219,22 @@ function DrawerBody({ target, dashboardBranchId }: { target: DrillTarget; dashbo
             </div>
           </footer>
         </>
+      )}
+
+      {openVoucherId && (
+        <LedgerEntryDetailDialog
+          entryId={openVoucherId}
+          onClose={() => setOpenVoucherId(null)}
+          onOpenVoucher={setOpenVoucherId}
+        />
+      )}
+      {openDemand && (
+        <DemandDetailDialog
+          orderId={openDemand.orderId}
+          amountLabel={openDemand.amountLabel}
+          amount={openDemand.amount}
+          onClose={() => setOpenDemand(null)}
+        />
       )}
     </>
   );

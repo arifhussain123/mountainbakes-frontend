@@ -34,6 +34,7 @@ import type {
   FinanceTicketStats,
   FinanceTicketVersion,
   FinanceTransaction,
+  LedgerEntry,
   LedgerHead,
   LedgerPage,
   LedgerSummary,
@@ -255,6 +256,17 @@ export function useFinanceCashTransfer(id: string | null) {
     enabled: Boolean(token) && Boolean(id),
     staleTime: 15_000,
     queryFn: () => apiCall<CashTransfer>(`/api/finance/cash-transfers/${id}`, {}, token).then(normalizeCashTransfer),
+  });
+}
+
+/** One entry by id — what a PV/RV voucher number opens from a Finance Income drill-down. */
+export function useLedgerEntry(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeLedgerEntry(id ?? ''),
+    enabled: Boolean(token) && Boolean(id),
+    staleTime: 15_000,
+    queryFn: () => apiCall<{ entry: LedgerEntry }>(`/api/finance/ledger/${id}`, {}, token).then((r) => r.entry),
   });
 }
 
