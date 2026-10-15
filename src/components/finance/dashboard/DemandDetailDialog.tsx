@@ -2,7 +2,7 @@
 
 import { liveItems, livePackingItems } from '@/utils/demandLines';
 import { useAuth } from '@/hooks/useAuth';
-import { useProductionOrder } from '@/lib/queries';
+import { useProductionOrder, usePreviousOrderBalance } from '@/lib/queries';
 import { ApiError } from '@/utils/api';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { Button } from '@/components/ui/button';
@@ -76,6 +76,12 @@ export function DemandDetailDialog({
   const order = q.data;
   const items = liveItems(order?.items);
   const packingItems = livePackingItems(order?.packingItems);
+  // What the branch owed coming INTO this demand — the same figures the
+  // production slip prints (previous-balance.service.ts), not a second
+  // computation: previous demand's company share, less what came back as
+  // returns/discounts, less what Finance has already received for it.
+  const prevQ = usePreviousOrderBalance(token ?? '', orderId, { enabled: !!order });
+  const prev = prevQ.data;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -134,6 +140,37 @@ export function DemandDetailDialog({
                   <Money value={amount} />
                 </Row>
               </Section>
+
+              {prev && (
+                <Section title="Previous delivery">
+                  {prev.previous ? (
+                    <>
+                      <Row label="Previous demand">
+                        <span className="font-mono">{prev.previous.demandNumber}</span>
+                      </Row>
+                      <Row label="Previous amount">
+                        <Money value={prev.companyShareValue} />
+                      </Row>
+                      <Row label="Return amount">
+                        <Money value={prev.returnsValue} blankZero />
+                      </Row>
+                      {!!prev.discountsValue && (
+                        <Row label="Discount amount">
+                          <Money value={prev.discountsValue} />
+                        </Row>
+                      )}
+                      <Row label="Received amount">
+                        <Money value={prev.paymentsReceivedValue ?? 0} blankZero />
+                      </Row>
+                      <Row label="Remaining balance">
+                        <Money value={prev.remainingBalance ?? prev.amountToCollect} />
+                      </Row>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No earlier delivery to this branch — nothing owed coming in.</p>
+                  )}
+                </Section>
+              )}
 
               <Section title={`Items (${items.length})`}>
                 <div className="overflow-x-auto">
