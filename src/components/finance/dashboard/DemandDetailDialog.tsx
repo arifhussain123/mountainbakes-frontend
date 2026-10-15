@@ -1,6 +1,5 @@
 'use client';
 
-import { liveItems, livePackingItems } from '@/utils/demandLines';
 import { useAuth } from '@/hooks/useAuth';
 import { useProductionOrder, usePreviousOrderBalance } from '@/lib/queries';
 import { ApiError } from '@/utils/api';
@@ -57,8 +56,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * qty), and re-deriving it from this order's own `unitPrice` SNAPSHOTS — the
  * figure Production bills the branch on — would show a second, legitimately
  * different number next to the one the user clicked. Everything else here (the
- * record itself: items, quantities, dates, approvals) comes straight off the
- * production order Finance is looking at.
+ * record itself: dates, status, approvals) comes straight off the production
+ * order Finance is looking at.
  */
 export function DemandDetailDialog({
   orderId,
@@ -74,8 +73,6 @@ export function DemandDetailDialog({
   const { token } = useAuth();
   const q = useProductionOrder(token ?? '', orderId);
   const order = q.data;
-  const items = liveItems(order?.items);
-  const packingItems = livePackingItems(order?.packingItems);
   // What the branch owed coming INTO this demand — the same figures the
   // production slip prints (previous-balance.service.ts), not a second
   // computation: previous demand's company share, less what came back as
@@ -172,57 +169,6 @@ export function DemandDetailDialog({
                 </Section>
               )}
 
-              <Section title={`Items (${items.length})`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-[11px] text-muted-foreground uppercase">
-                        <th className="py-1 pr-2 font-semibold">Product</th>
-                        <th className="py-1 pr-2 text-right font-semibold">Requested</th>
-                        <th className="py-1 text-right font-semibold">Approved</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((it, i) => (
-                        <tr key={`${it.productId}-${i}`} className="border-b last:border-b-0">
-                          <td className="py-1 pr-2">
-                            {it.productName}
-                            {it.isSpecial ? ' (special)' : ''}
-                          </td>
-                          <td className="py-1 pr-2 text-right tabular-nums">{it.qty}</td>
-                          <td className="py-1 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Section>
-
-              {packingItems.length > 0 && (
-                <Section title={`Packing materials (${packingItems.length})`}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-[11px] text-muted-foreground uppercase">
-                          <th className="py-1 pr-2 font-semibold">Material</th>
-                          <th className="py-1 pr-2 text-right font-semibold">Requested</th>
-                          <th className="py-1 text-right font-semibold">Approved</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {packingItems.map((it, i) => (
-                          <tr key={`${it.packingMaterialId}-${i}`} className="border-b last:border-b-0">
-                            <td className="py-1 pr-2">{it.materialName}</td>
-                            <td className="py-1 pr-2 text-right tabular-nums">{it.qty}</td>
-                            <td className="py-1 text-right tabular-nums">{it.approvedQty ?? '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Section>
-              )}
-
               {order.changeReason && (
                 <Section title="Change reason">
                   <p className="text-sm">{order.changeReason}</p>
@@ -236,23 +182,6 @@ export function DemandDetailDialog({
                   {order.cancelledAt && <Row label="Cancelled at">{formatDateTime(order.cancelledAt)}</Row>}
                 </Section>
               )}
-
-              <Section title="Audit">
-                <Row label="Created by">{order.createdByName}</Row>
-                <Row label="Submitted at">{formatDateTime(order.submittedAt)}</Row>
-                {order.verifiedByName && (
-                  <Row label="Verified by">
-                    {order.verifiedByName}
-                    {order.verifiedAt ? ` · ${formatDateTime(order.verifiedAt)}` : ''}
-                  </Row>
-                )}
-                {order.approvedByName && (
-                  <Row label="Approved by">
-                    {order.approvedByName}
-                    {order.approvedAt ? ` · ${formatDateTime(order.approvedAt)}` : ''}
-                  </Row>
-                )}
-              </Section>
 
               {((order.demandPhotos && order.demandPhotos.length > 0) ||
                 (order.verificationPhotos && order.verificationPhotos.length > 0)) && (
