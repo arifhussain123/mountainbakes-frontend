@@ -66,12 +66,18 @@ import {
  * one reached from inside a popup is exactly where a mis-click is cheapest.
  */
 
-/** Demand search matches the demand number or the date, like the table's own search. */
+/**
+ * Demand search matches the demand number or the date, like the table's own
+ * search. `demandNumber`/`date` are typed as always-present, but a malformed
+ * row (a bad legacy record, a partial API response) must not crash this
+ * popup for every demand on the page — a row that way is simply not matched,
+ * not thrown on.
+ */
 function demandMatchesQuery(o: BranchProductionOrder | null, query: string): boolean {
   if (o == null) return false;
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return o.demandNumber.toLowerCase().includes(q) || o.date.includes(q);
+  return (o.demandNumber ?? '').toLowerCase().includes(q) || (o.date ?? '').includes(q);
 }
 
 export function DiscountModal({
@@ -272,7 +278,7 @@ export function DiscountModal({
                     filter={demandMatchesQuery}
                     value={demand}
                     onValueChange={(o: BranchProductionOrder | null) => setDemand(o)}
-                    itemToStringLabel={(o: BranchProductionOrder) => o.demandNumber}
+                    itemToStringLabel={(o: BranchProductionOrder) => o.demandNumber ?? ''}
                     itemToStringValue={(o: BranchProductionOrder) => o.id}
                     isItemEqualToValue={(a: BranchProductionOrder, b: BranchProductionOrder) => a?.id === b?.id}
                   >
