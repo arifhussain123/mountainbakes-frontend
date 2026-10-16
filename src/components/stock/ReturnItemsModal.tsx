@@ -64,7 +64,7 @@ function stockMatchesQuery(r: StockRow | null, query: string): boolean {
   if (r == null) return false;
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return r.stockCode.toLowerCase().includes(q) || r.productName.toLowerCase().includes(q);
+  return (r.stockCode ?? '').toLowerCase().includes(q) || (r.productName ?? '').toLowerCase().includes(q);
 }
 
 export function ReturnItemsModal({
