@@ -12,13 +12,14 @@ import {
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
-import { useFinanceMutation, useLedgerHeads } from '@/lib/finance';
+import { useFinanceMutation, useLedgerEntry, useLedgerHeads } from '@/lib/finance';
 import { ApiError } from '@/utils/api';
-import { formatDate } from '@/utils/date';
+import { formatDate, formatDateTime } from '@/utils/date';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Money, useMoney } from './finance-ui';
+import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
+import { Money, StatusBadge, useMoney } from './finance-ui';
 
 /**
  * The Daily Ledger's Edit and Delete.
@@ -44,6 +46,24 @@ import { Money, useMoney } from './finance-ui';
 
 const selectClass = 'h-11 w-full rounded-md border bg-background px-2 text-base md:h-9 md:text-sm';
 const amountOf = (e: LedgerEntry) => (e.debit > 0 ? e.debit : e.credit);
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b py-1.5 text-sm last:border-b-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{children}</span>
+    </div>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-card px-3.5 py-2.5">
+      <p className="mb-1 text-[11px] font-extrabold tracking-[0.1em] text-muted-foreground uppercase">{title}</p>
+      {children}
+    </div>
+  );
+}
 
 type Draft = {
   amount: string;
@@ -312,6 +332,165 @@ export function DeleteLedgerEntryDialog({ entry, onClose }: { entry: LedgerEntry
           </Button>
           <Button variant="destructive" onClick={() => void submit()} disabled={mut.isPending || reason.trim().length < 5}>
             {mut.isPending ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The complete voucher — what a PV/RV number opens from the Finance Income
+ * drill-down (RecordsDrawer) and from anywhere else a voucher number is shown.
+ *
+ * Fetches `GET /api/finance/ledger/:id` itself (the same read the Daily Ledger's
+ * Edit/Delete dialogs mutate against), so it always shows the one, real, posted
+ * entry rather than a reconstruction of the drill-down row that opened it.
+ * `onOpenVoucher` lets a reversal/reversed-by id swap this dialog to the other
+ * entry without closing and reopening it.
+ */
+export function LedgerEntryDetailDialog({
+  entryId,
+  onClose,
+  onOpenVoucher,
+}: {
+  entryId: string;
+  onClose: () => void;
+  onOpenVoucher?: (id: string) => void;
+}) {
+  const q = useLedgerEntry(entryId);
+  const entry = q.data;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto gap-0 p-0 md:max-w-lg">
+        <DialogHeader className="bg-fin-income px-5 py-4 text-fin-ink-foreground">
+          <DialogTitle className="text-base font-extrabold text-fin-ink-foreground">
+            {entry ? entry.voucherNo : q.isError ? 'Voucher' : 'Loading voucher…'}
+          </DialogTitle>
+          <DialogDescription className="text-fin-ink-muted">
+            {entry ? `${entry.debit > 0 ? 'Receipt' : 'Payment'} · ${entry.ledgerHeadName}` : 'Complete voucher record'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3 p-5">
+          {q.isError ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm font-semibold">
+                {q.error instanceof ApiError && q.error.status === 404
+                  ? 'This voucher could not be found. It may have been deleted.'
+                  : q.error instanceof ApiError && q.error.status === 403
+                    ? 'You do not have permission to view this voucher.'
+                    : 'This voucher could not be loaded.'}
+              </p>
+              {!(q.error instanceof ApiError && (q.error.status === 404 || q.error.status === 403)) && (
+                <Button variant="outline" size="sm" onClick={() => void q.refetch()}>
+                  Retry
+                </Button>
+              )}
+            </div>
+          ) : !entry ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }, (_, i) => (
+                <Skeleton key={i} className="h-9 w-full" />
+              ))}
+            </div>
+          ) : (
+            <>
+              <DetailSection title="Transaction">
+                <DetailRow label="Voucher no.">
+                  <span className="font-mono">{entry.voucherNo}</span>
+                </DetailRow>
+                <DetailRow label="Date">{formatDate(entry.entryDate)}</DetailRow>
+                <DetailRow label="Branch">{entry.branchName ?? 'Company-wide'}</DetailRow>
+                <DetailRow label="Category / head">{entry.ledgerHeadName}</DetailRow>
+                <DetailRow label="Account">{FINANCE_ACCOUNT_LABELS[entry.account] ?? entry.account}</DetailRow>
+                <DetailRow label="Payment method">
+                  {entry.paymentMethod ? FINANCE_PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod : '—'}
+                </DetailRow>
+                <DetailRow label="Status">
+                  <StatusBadge status={entry.status} />
+                </DetailRow>
+              </DetailSection>
+
+              <DetailSection title="Amount">
+                <DetailRow label="Debit">
+                  <Money value={entry.debit} blankZero />
+                </DetailRow>
+                <DetailRow label="Credit">
+                  <Money value={entry.credit} blankZero />
+                </DetailRow>
+                <DetailRow label="Running balance (at posting)">
+                  <Money value={entry.balance} signed />
+                </DetailRow>
+              </DetailSection>
+
+              <DetailSection title="Description">
+                <p className="whitespace-pre-wrap text-sm">{entry.description || '—'}</p>
+              </DetailSection>
+
+              {(entry.reversesEntryId || entry.reversedByEntryId) && (
+                <DetailSection title="Related vouchers">
+                  {entry.reversesEntryId && (
+                    <DetailRow label="Reverses">
+                      {onOpenVoucher ? (
+                        <button
+                          type="button"
+                          className="font-mono text-fin-share underline-offset-2 hover:underline"
+                          onClick={() => onOpenVoucher(entry.reversesEntryId!)}
+                        >
+                          {entry.reversesEntryId}
+                        </button>
+                      ) : (
+                        <span className="font-mono">{entry.reversesEntryId}</span>
+                      )}
+                    </DetailRow>
+                  )}
+                  {entry.reversedByEntryId && (
+                    <DetailRow label="Reversed by">
+                      {onOpenVoucher ? (
+                        <button
+                          type="button"
+                          className="font-mono text-fin-share underline-offset-2 hover:underline"
+                          onClick={() => onOpenVoucher(entry.reversedByEntryId!)}
+                        >
+                          {entry.reversedByEntryId}
+                        </button>
+                      ) : (
+                        <span className="font-mono">{entry.reversedByEntryId}</span>
+                      )}
+                    </DetailRow>
+                  )}
+                </DetailSection>
+              )}
+
+              <DetailSection title="Audit">
+                <DetailRow label="Created by">{entry.createdByName ?? '—'}</DetailRow>
+                <DetailRow label="Posted at">{formatDateTime(entry.postedAt)}</DetailRow>
+                <DetailRow label="Approved by">{entry.approvedByName ?? '—'}</DetailRow>
+                {entry.updatedAt && (
+                  <DetailRow label="Last edited">
+                    {formatDateTime(entry.updatedAt)}
+                    {entry.updatedByName ? ` · ${entry.updatedByName}` : ''}
+                  </DetailRow>
+                )}
+                <DetailRow label="Source">{entry.sourceType.replace(/_/g, ' ')}</DetailRow>
+              </DetailSection>
+
+              {entry.attachments && entry.attachments.length > 0 && (
+                <DetailSection title="Attachments">
+                  <AttachmentGallery attachments={entry.attachments} size="sm" title="Source document" />
+                </DetailSection>
+              )}
+
+              <p className="font-mono text-[10px] text-muted-foreground select-all">ID {entry.id}</p>
+            </>
+          )}
+        </div>
+
+        <DialogFooter className="border-t px-5 py-3">
+          <Button variant="outline" onClick={onClose}>
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

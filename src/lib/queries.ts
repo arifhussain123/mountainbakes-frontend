@@ -725,6 +725,16 @@ export function useProductionOrders(token: string, opts?: { branchId?: string | 
   });
 }
 
+/** One demand by id — what Finance Income opens when a demand number is clicked. */
+export function useProductionOrder(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.productionOrder(id ?? ''),
+    queryFn: () => apiCall<{ order: BranchProductionOrder }>(`/api/production-orders/${id}`, {}, token),
+    select: (r) => r.order,
+    enabled: !!token && !!id,
+  });
+}
+
 /**
  * Live outstanding pending balances per product for a branch, keyed by productId.
  *

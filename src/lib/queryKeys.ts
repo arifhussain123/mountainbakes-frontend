@@ -147,6 +147,8 @@ export const qk = {
   loginAttempts: (params: Record<string, unknown>) =>
     ['loginHistory', 'attempts', params] as const,
   productionOrders: (branchId?: string | null) => ['productionOrders', branchId ?? 'me'] as const,
+  // One demand by id — what a Finance Income drill-down opens from a demand number.
+  productionOrder: (id: string) => ['productionOrders', 'detail', id] as const,
   // Special Orders are their own document, not demand — hence their own key
   // rather than a sub-key of 'productionOrders'.
   specialOrders: () => ['specialOrders'] as const,
