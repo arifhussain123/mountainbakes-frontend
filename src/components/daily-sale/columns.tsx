@@ -5,7 +5,7 @@ import { karachiTimeStr, type DailySaleRecord } from '@mb/shared';
 import { DifferenceBadge, StatusBadge, money } from './parts';
 
 /**
- * The Daily Sale Record table's columns — Date through Status.
+ * The Daily Sale Record table's columns — Date through Branch Share.
  *
  * One definition, because two screens show this table: the branch's own board
  * (DailySaleRecordPage) and Finance's Daily Closing, which exists to check the
@@ -77,9 +77,6 @@ export function dailySaleRecordColumns<T extends DailySaleRecord = DailySaleReco
     // percentage booked on the day's income approval where there is one).
     // Nothing is multiplied here, so the column cannot disagree with the API.
     figure('companyShare', 'Company Share', (r) => r.companyShare, true, 'text-red-600 dark:text-red-400 font-bold', paisaMoney),
-    // Server-computed: `100 − companySharePct`, Admin-defined, applied to Total
-    // Sale. Never multiplied client-side, so it cannot drift from the API.
-    figure('branchShare', 'Branch Share', (r) => r.branchShare, true, 'text-green-600 dark:text-green-400 font-bold', paisaMoney),
     figure('cash', 'Cash', (r) => r.autoCash),
     figure('easypaisa', 'Easypaisa', (r) => r.autoEasypaisa),
     figure('foodpanda', 'Foodpanda', (r) => r.autoFoodpanda),
@@ -119,6 +116,9 @@ export function dailySaleRecordColumns<T extends DailySaleRecord = DailySaleReco
       meta: { align: 'center', mobile: 'badge' },
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
+    // Server-computed: `100 − companySharePct`, Admin-defined, applied to Total
+    // Sale. Never multiplied client-side, so it cannot drift from the API.
+    figure('branchShare', 'Branch Share', (r) => r.branchShare, true, 'text-green-600 dark:text-green-400 font-bold', paisaMoney),
   ];
 }
 
