@@ -252,7 +252,6 @@ export function DemandSummaryPrintModal({ open, onOpenChange, orders, stockByPro
 function DemandSummaryA4Sheet({ doc, snapshot }: { doc: DemandSummaryDoc; snapshot: DemandSummarySnapshot }) {
   const sym = doc.currencySymbol;
   const money = (n: number) => `${sym} ${Math.round(n).toLocaleString()}`;
-  const branches = snapshot.branchNames;
   /** Negative is a real shortfall, never zeroed — just styled to stand out. */
   const neg = (n: number) => (n < 0 ? 'font-semibold text-red-700' : '');
 
@@ -273,90 +272,67 @@ function DemandSummaryA4Sheet({ doc, snapshot }: { doc: DemandSummaryDoc; snapsh
         {doc.statusText && <p className="mt-1 text-[11px] text-neutral-500">{doc.statusText}</p>}
       </div>
 
+      {/* A. Product Demand Summary — name and total qty ONLY. Branch breakdown
+          lives exclusively in the Branch-wise Summary below, and today's
+          stock/balance in the Stock Summary at the end — never mixed into
+          this table, so production staff read one number per product. */}
       <section className="avoid-break">
-        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Product Demand</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Product Demand Summary</h3>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-neutral-300 text-left">
+              <th className="w-10 py-1.5 pr-2 font-semibold">S.No.</th>
+              <th className="py-1.5 pr-2 font-semibold">Product Name</th>
+              <th className="py-1.5 pr-1 text-right font-semibold">Total Demand Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.products.length === 0 ? (
+              <tr><td colSpan={3} className="py-3 text-center text-neutral-400">No waiting demand.</td></tr>
+            ) : snapshot.products.map((row, i) => (
+              <tr key={row.productId} className="border-b border-neutral-200">
+                <td className="py-1 pr-2 tabular-nums text-neutral-500">{i + 1}</td>
+                <td className="py-1 pr-2">{row.productName}</td>
+                <td className="py-1 pr-1 text-right font-bold tabular-nums">{row.qty.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {/* B. Packing Material Requirements — material and required qty ONLY. */}
+      <section className="avoid-break">
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Packing Material Requirements</h3>
+        {snapshot.packing.length === 0 ? (
+          <p className="text-neutral-400">No packing material requirements.</p>
+        ) : (
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-neutral-300 text-left">
-                <th className="py-1.5 pr-2 font-semibold">Product Name</th>
-                <th className="py-1.5 text-right font-semibold">Today&apos;s Stock</th>
-                <th className="py-1.5 text-right font-semibold">Total Demand</th>
-                <th className="py-1.5 pr-3 text-right font-semibold">Balance Stock</th>
-                {branches.map((b) => (
-                  <th key={b} className="py-1.5 pl-3 text-right font-semibold">{b}</th>
-                ))}
+                <th className="py-1.5 pr-3 font-semibold">Packing Material</th>
+                <th className="py-1.5 pr-1 text-right font-semibold">Required Qty</th>
               </tr>
             </thead>
             <tbody>
-              {snapshot.products.length === 0 ? (
-                <tr><td colSpan={4 + branches.length} className="py-3 text-center text-neutral-400">No waiting demand.</td></tr>
-              ) : snapshot.products.map((row) => (
-                <tr key={row.productId} className="border-b border-neutral-200">
-                  <td className="py-1 pr-2">{row.productName}</td>
-                  <td className="py-1 text-right tabular-nums">{row.stock === null ? '—' : row.stock.toLocaleString()}</td>
-                  <td className="py-1 text-right font-medium tabular-nums">{row.qty.toLocaleString()}</td>
-                  <td className={cn('py-1 pr-3 text-right tabular-nums', row.balance !== null && neg(row.balance))}>
-                    {row.balance === null ? '—' : row.balance.toLocaleString()}
-                  </td>
-                  {branches.map((b) => (
-                    <td key={b} className="py-1 pl-3 text-right tabular-nums text-neutral-500">{(row.byBranch[b] ?? 0).toLocaleString()}</td>
-                  ))}
+              {snapshot.packing.map((row) => (
+                <tr key={row.packingMaterialId} className="border-b border-neutral-200">
+                  <td className="py-1 pr-3">{row.materialName}</td>
+                  <td className="py-1 pr-1 text-right font-medium tabular-nums">{row.qty.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        )}
       </section>
 
-      <section className="avoid-break grid grid-cols-3 gap-x-6 gap-y-1 rounded-md bg-neutral-50 p-3 text-[13px]">
-        <div><span className="text-neutral-500">Total Stock</span><p className="font-bold tabular-nums">{snapshot.totals.totalStock === null ? '—' : snapshot.totals.totalStock.toLocaleString()}</p></div>
-        <div><span className="text-neutral-500">Total Demand</span><p className="font-bold tabular-nums">{snapshot.totals.totalProductQty.toLocaleString()}</p></div>
-        <div>
-          <span className="text-neutral-500">Balance Stock</span>
-          <p className={cn('font-bold tabular-nums', snapshot.totals.balanceStock !== null && neg(snapshot.totals.balanceStock))}>
-            {snapshot.totals.balanceStock === null ? '—' : snapshot.totals.balanceStock.toLocaleString()}
-          </p>
-        </div>
-      </section>
-
-      {snapshot.packing.length > 0 && (
-        <section className="avoid-break">
-          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Packing Material Demand</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-neutral-300 text-left">
-                  <th className="py-1.5 pr-3 font-semibold">Packing Material</th>
-                  <th className="py-1.5 pr-3 text-right font-semibold">Total Quantity</th>
-                  {branches.map((b) => (
-                    <th key={b} className="py-1.5 pl-3 text-right font-semibold">{b}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {snapshot.packing.map((row) => (
-                  <tr key={row.packingMaterialId} className="border-b border-neutral-200">
-                    <td className="py-1 pr-3">{row.materialName}</td>
-                    <td className="py-1 pr-3 text-right font-medium tabular-nums">{row.qty.toLocaleString()}</td>
-                    {branches.map((b) => (
-                      <td key={b} className="py-1 pl-3 text-right tabular-nums text-neutral-500">{(row.byBranch[b] ?? 0).toLocaleString()}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
+      {/* C. Branch-wise Summary — the only place branch quantities/amounts appear. */}
       <section className="avoid-break">
-        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Branch-wise Demand Summary</h3>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Branch-wise Summary</h3>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-neutral-300 text-left">
               <th className="py-1.5 font-semibold">Branch Name</th>
-              <th className="py-1.5 text-right font-semibold">Total Product Qty</th>
+              <th className="py-1.5 text-right font-semibold">Total Qty</th>
               <th className="py-1.5 text-right font-semibold">Total Amount</th>
             </tr>
           </thead>
@@ -381,6 +357,19 @@ function DemandSummaryA4Sheet({ doc, snapshot }: { doc: DemandSummaryDoc; snapsh
             </tr>
           </tfoot>
         </table>
+      </section>
+
+      {/* D. Stock Summary — today's stock, demand and balance, kept apart from
+          the per-product list above so it reads as one bottom-line figure. */}
+      <section className="avoid-break grid grid-cols-3 gap-x-6 gap-y-1 rounded-md bg-neutral-50 p-3 text-[13px]">
+        <div><span className="text-neutral-500">Total Stock</span><p className="font-bold tabular-nums">{snapshot.totals.totalStock === null ? '—' : snapshot.totals.totalStock.toLocaleString()}</p></div>
+        <div><span className="text-neutral-500">Total Demand</span><p className="font-bold tabular-nums">{snapshot.totals.totalProductQty.toLocaleString()}</p></div>
+        <div>
+          <span className="text-neutral-500">Balance</span>
+          <p className={cn('font-bold tabular-nums', snapshot.totals.balanceStock !== null && neg(snapshot.totals.balanceStock))}>
+            {snapshot.totals.balanceStock === null ? '—' : snapshot.totals.balanceStock.toLocaleString()}
+          </p>
+        </div>
       </section>
 
       <p className="pt-2 text-center text-[10px] text-neutral-400">
