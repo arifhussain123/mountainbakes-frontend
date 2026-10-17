@@ -17,7 +17,9 @@ export { cachedLogo, useCachedLogo, warmLogo } from './logoCache';
 export {
   printProductionOrder,
   printSaleReceipt,
+  printDemandSummary,
   productionOrderDocument,
+  demandSummaryDocument,
   printingSupported,
   isPrinting,
   subscribeToPrintQueue,
@@ -33,6 +35,7 @@ export { PAPER_OPTIONS, readReceiptPaper, useReceiptPaper, writeReceiptPaper } f
 
 export { buildProductionOrderDocument } from './receipt/productionOrder';
 export { buildSaleReceiptDocument } from './receipt/saleReceipt';
+export { buildDemandSummaryDocument } from './receipt/demandSummary';
 export { PRINT_STYLES, PAPERS, DEFAULT_PAPER } from './receipt/styles';
 export type { PrintDocument } from './receipt/document';
 export type {
@@ -43,4 +46,9 @@ export type {
   ProductionOrderPackingLine,
   ReceiptLine,
   SaleReceiptDoc,
+  DemandSummaryDoc,
+  DemandSummaryProductLine,
+  DemandSummaryPackingLine,
+  DemandSummaryBranchLine,
+  DemandSummaryTotals,
 } from './receipt/types';

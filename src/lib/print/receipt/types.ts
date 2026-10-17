@@ -99,6 +99,63 @@ export interface PreviousCollection {
   remainingBalance?: number;
 }
 
+/** One row of the consolidated product-demand pivot — name and aggregated quantity only. */
+export interface DemandSummaryProductLine {
+  productName: string;
+  qty: number;
+}
+
+/** One row of the packing-material pivot — same shape as the per-order one, aggregated across orders. */
+export interface DemandSummaryPackingLine {
+  materialName: string;
+  qty: number;
+}
+
+/**
+ * One branch's row in the branch-wise summary.
+ *
+ * `amount` is `null` when it could not be reliably priced — a line with no
+ * price snapshot AND no matching catalogue product (e.g. the product was since
+ * deleted). The document then prints "Amount unavailable" for that branch
+ * rather than a total that silently excludes the unpriced line.
+ */
+export interface DemandSummaryBranchLine {
+  branchName: string;
+  qty: number;
+  amount: number | null;
+}
+
+export interface DemandSummaryTotals {
+  distinctProducts: number;
+  totalProductQty: number;
+  distinctPacking: number;
+  totalPackingQty: number;
+  /** `null` when any branch's amount is unknown — see {@link DemandSummaryBranchLine.amount}. */
+  grandAmount: number | null;
+}
+
+/**
+ * The production-wide demand snapshot — every waiting order's demand, pivoted
+ * three ways (product, packing material, branch) from ONE read of the same
+ * order list, so the three sections and the totals can never disagree with
+ * each other.
+ */
+export interface DemandSummaryDoc {
+  businessDateText: string;
+  printDateText: string;
+  printTimeText: string;
+  /** e.g. "12 to review · 3 sent, awaiting branch verification". Empty when there is nothing waiting. */
+  statusText: string;
+  companyName?: string | null;
+  currencySymbol: string;
+  items: DemandSummaryProductLine[];
+  packingItems: DemandSummaryPackingLine[];
+  branchItems: DemandSummaryBranchLine[];
+  totals: DemandSummaryTotals;
+  /** An inlined `data:` URL for the logo, when one is already in hand. Never fetched here. */
+  logo?: string | null;
+}
+
 export interface ProductionOrderDoc {
   orderNumber: string;
   dateText: string;

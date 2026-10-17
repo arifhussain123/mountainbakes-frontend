@@ -1,4 +1,4 @@
-import type { ProductionOrderDoc, SaleReceiptDoc } from './types';
+import type { DemandSummaryDoc, ProductionOrderDoc, SaleReceiptDoc } from './types';
 
 /**
  * Validation — run before a document is built, so an empty or self-contradicting
@@ -80,5 +80,29 @@ export function validateProductionDoc(doc: ProductionOrderDoc): void {
     const key = name.toLowerCase();
     if (seen.has(key)) throw new InvalidDocumentError(`"${name}" appears twice on this order.`);
     seen.add(key);
+  }
+}
+
+/**
+ * There has to be something waiting to print, and the branch total has to
+ * agree with the grand total — the same "assert, don't recompute" rule as
+ * {@link validateProductionDoc}, applied to the branch-wise pivot instead of a
+ * single order's lines.
+ */
+export function validateDemandSummaryDoc(doc: DemandSummaryDoc): void {
+  if (doc.items.length === 0 && doc.packingItems.length === 0) {
+    throw new InvalidDocumentError('There are no waiting demands to print.');
+  }
+  if (doc.totals.grandAmount !== null) {
+    const known = doc.branchItems.filter((b) => b.amount !== null);
+    if (known.length !== doc.branchItems.length) {
+      throw new InvalidDocumentError('The grand amount is stated but a branch amount is unavailable.');
+    }
+    const summed = known.reduce((total, b) => total + (b.amount ?? 0), 0);
+    if (Math.abs(summed - doc.totals.grandAmount) > 1) {
+      throw new InvalidDocumentError(
+        `The branch amounts do not add up to the grand total (${summed} ≠ ${doc.totals.grandAmount}).`,
+      );
+    }
   }
 }
