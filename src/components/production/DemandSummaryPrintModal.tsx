@@ -125,7 +125,20 @@ export function DemandSummaryPrintModal({ open, onOpenChange, orders, stockByPro
     }
   }
 
-  const posHtml = format !== 'a4' ? demandSummaryDocument(doc, format).html : null;
+  // Guarded on `hasData`: the builder throws when there is nothing waiting to
+  // print (InvalidDocumentError), which must never happen mid-render — this ran
+  // unconditionally before and crashed the whole page with an empty demand
+  // queue. Still wrapped in try/catch so any other validation edge case shows
+  // as an inline message rather than taking the page down with it.
+  let posHtml: string | null = null;
+  let posBuildError: string | null = null;
+  if (format !== 'a4' && hasData && !loadingPrices) {
+    try {
+      posHtml = demandSummaryDocument(doc, format).html;
+    } catch (error) {
+      posBuildError = error instanceof Error ? error.message : 'Could not build the preview.';
+    }
+  }
   const paperWidthMm = format === '58mm' ? 58 : 80;
 
   return (
@@ -175,6 +188,8 @@ export function DemandSummaryPrintModal({ open, onOpenChange, orders, stockByPro
                     <DemandSummaryA4Sheet doc={doc} snapshot={snapshot} />
                   </div>
                 </div>
+              ) : posBuildError ? (
+                <p className="py-10 text-center text-sm text-destructive">{posBuildError}</p>
               ) : (
                 <div className="flex justify-center overflow-x-auto rounded-md border bg-muted/30 p-3">
                   {posHtml && (
@@ -202,7 +217,7 @@ export function DemandSummaryPrintModal({ open, onOpenChange, orders, stockByPro
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={posPrinting}>
             Cancel
           </Button>
-          <Button onClick={handlePrint} disabled={!hasData || loadingPrices || posPrinting || a4Printing}>
+          <Button onClick={handlePrint} disabled={!hasData || loadingPrices || !!posBuildError || posPrinting || a4Printing}>
             {posPrinting || a4Printing ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
