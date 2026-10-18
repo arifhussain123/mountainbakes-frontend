@@ -23,7 +23,6 @@ import {
   type DrillTarget,
   type Granularity,
 } from '@/components/finance/dashboard/dashboard-model';
-import { RecentOrdersTable } from './RecentOrdersTable';
 import { LoginHistoryCard } from './LoginHistoryCard';
 import { SECTIONS, adminCsv, type Section } from './admin/admin-model';
 import { BranchSummary, FinanceSummary, HeadlineKpis, ProductionSummary, SalesOverview } from './admin/sections';
@@ -82,8 +81,15 @@ export function AdminDashboard() {
     { from, to, branchId: branchId || null, topLimit },
     { enabled: !!token, keepPrevious: true },
   );
+  // Current Sale by Branch: today's business day, whatever month is selected.
+  // Only the branch filter applies; the summary's `branchData` is per branch.
+  const todayQ = useReportSummary(token, 'daily', branchId || null, null, 'full', { keepPrevious: true });
   const data = fin.data;
   const sales = salesQ.data ?? null;
+  const currentRows = useMemo(
+    () => (data && todayQ.data ? currentSaleRows(data.branches, todayQ.data.branchData ?? [], branchId || null) : []),
+    [data, todayQ.data, branchId],
+  );
 
   const monthOptions = useMemo(
     () => Array.from({ length: MONTHS_BACK }, (_, i) => shiftMonth(currentMonth, -i)),
@@ -125,11 +131,12 @@ export function AdminDashboard() {
   // Dim only while a new month/branch/range stands on the previous figures —
   // never on a same-filter refresh.
   const updating = (fin.isPlaceholderData || salesQ.isPlaceholderData) && !!data;
-  const refreshing = fin.isFetching || salesQ.isFetching;
+  const refreshing = fin.isFetching || salesQ.isFetching || todayQ.isFetching;
 
   const refresh = () => {
     void fin.refetch();
     void salesQ.refetch();
+    void todayQ.refetch();
   };
   const exportCsv = () => {
     if (!data) return;
@@ -339,6 +346,17 @@ export function AdminDashboard() {
               onTopLimit={setTopLimit}
               subtitle={context}
               format={format}
+              current={
+                <CurrentBranchSales
+                  rows={currentRows}
+                  total={todayQ.data?.totalRevenue ?? null}
+                  loading={!todayQ.data && !todayQ.isError}
+                  failed={todayQ.isError}
+                  onRetry={() => void todayQ.refetch()}
+                  businessDate={today}
+                  format={format}
+                />
+              }
             />
           )}
           {show('branches') && (
@@ -365,10 +383,9 @@ export function AdminDashboard() {
       )}
 
       {/* Not month-scoped, so outside the figures above and left off the print:
-          the latest orders, and the login record a super admin audits. */}
+          the login record a super admin audits. */}
       {section === 'overview' && (
-        <div className="no-print flex min-w-0 flex-col gap-6">
-          <RecentOrdersTable />
+        <div className="no-print min-w-0">
           <LoginHistoryCard />
         </div>
       )}

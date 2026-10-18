@@ -1,4 +1,4 @@
-import type { FinanceMonthlyDashboard, SalesAnalytics } from '@mb/shared';
+import type { BranchSalesData, FinanceMonthlyDashboard, SalesAnalytics } from '@mb/shared';
 import {
   branchTotals,
   bucketRange,
@@ -87,6 +87,53 @@ export function branchSummaryRows(data: FinanceMonthlyDashboard): BranchSummaryR
     });
   }
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Current sale — today's paid sales per branch
+// ---------------------------------------------------------------------------
+
+export interface CurrentSaleRow {
+  branchId: string;
+  branch: string;
+  sales: number;
+  orders: number;
+}
+
+/**
+ * Today's sales per branch, from `/api/reports/summary?period=daily`'s
+ * `branchData` (paid orders; cancelled and staff sales excluded).
+ *
+ * The API only reports branches that sold something, so every active branch is
+ * listed and a quiet one shows Rs. 0 — a branch missing from "current sale"
+ * reads as "not loaded", not as "has not sold yet". An inactive branch appears
+ * only if it somehow sold today. Largest first.
+ */
+export function currentSaleRows(
+  branches: { id: string; name: string; isActive: boolean }[],
+  branchData: BranchSalesData[],
+  branchId: string | null,
+): CurrentSaleRow[] {
+  const sold = new Map(branchData.map((b) => [b.branchId, b]));
+  const rows: CurrentSaleRow[] = [];
+  for (const b of branches) {
+    if (branchId && b.id !== branchId) continue;
+    const s = sold.get(b.id);
+    sold.delete(b.id);
+    if (!b.isActive && !s) continue;
+    rows.push({
+      branchId: b.id,
+      branch: b.isActive ? b.name : `${b.name} (inactive)`,
+      sales: round2(s?.totalRevenue ?? 0),
+      orders: s?.totalOrders ?? 0,
+    });
+  }
+  // A branch the list does not know (deleted since) still sold — keep its money in.
+  for (const s of sold.values()) {
+    if (branchId && s.branchId !== branchId) continue;
+    rows.push({ branchId: s.branchId, branch: s.branchName || 'Unknown branch', sales: round2(s.totalRevenue), orders: s.totalOrders });
+  }
+  return rows.sort((a, b) => b.sales - a.sales || a.branch.localeCompare(b.branch));
 }
 
 // ---------------------------------------------------------------------------

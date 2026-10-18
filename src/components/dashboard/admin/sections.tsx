@@ -29,6 +29,7 @@ import type {
 } from '@mb/shared';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PaymentMethodSummary } from '@/components/dashboard/daily-sales/PaymentMethodSummary';
 import { TopSellingProducts } from '@/components/dashboard/daily-sales/TopSellingProducts';
 import { financeOverviewGroups, OverviewCard } from '@/components/finance/dashboard/FinanceMonthlyDashboard';
@@ -54,6 +55,7 @@ import {
   demandComparison,
   weeklyReturnsDiscount,
   type BranchSummaryRow,
+  type CurrentSaleRow,
 } from './admin-model';
 
 type Format = (v: number | null | undefined) => string;
@@ -148,6 +150,7 @@ export function SalesOverview({
   onTopLimit,
   subtitle,
   format,
+  current,
 }: {
   sales: SalesAnalytics | null;
   loading: boolean;
@@ -158,11 +161,13 @@ export function SalesOverview({
   onTopLimit: (l: SalesTopProductLimit) => void;
   subtitle: string;
   format: Format;
+  current: React.ReactNode;
 }) {
   const s = sales;
   return (
     <section className="flex min-w-0 flex-col gap-4">
       <SectionHeading title="Sales Overview" sub={`Point-of-sale orders · ${subtitle}`} />
+      {current}
       {failed && !s ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
           <span>The sales figures could not be loaded. The finance figures below are unaffected.</span>
@@ -215,6 +220,85 @@ export function SalesOverview({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Current Sale by Branch — what each branch has taken so far today.
+ *
+ * Today's business date whatever month the filters show: it is the live figure
+ * an admin checks during the day. Paid orders only, the same money rule as
+ * Total Sales (cancelled and staff sales excluded).
+ */
+export function CurrentBranchSales({
+  rows,
+  total,
+  loading,
+  failed,
+  onRetry,
+  businessDate,
+  format,
+}: {
+  rows: CurrentSaleRow[];
+  total: number | null;
+  loading: boolean;
+  failed: boolean;
+  onRetry: () => void;
+  businessDate: string;
+  format: Format;
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b px-4 py-3">
+        <h3 className="text-base font-bold">Current Sale by Branch</h3>
+        <span className="text-xs text-muted-foreground">
+          Today · {dayLabel(businessDate)} {businessDate.slice(0, 4)} · paid orders, cancelled and staff excluded
+        </span>
+      </div>
+      {failed && !rows.length ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 text-sm">
+          <span>Today’s branch sales could not be loaded.</span>
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      ) : loading ? (
+        <div className="flex flex-col gap-2 p-4" aria-busy="true">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
+        </div>
+      ) : !rows.length ? (
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">No active branches.</p>
+      ) : (
+        <ul className="divide-y">
+          {rows.map((r) => (
+            <li key={r.branchId} className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">{r.branch}</span>
+                <span className="block text-xs text-muted-foreground">
+                  Current Sale · {r.orders ? plural(r.orders, 'order') : 'no sales yet'}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  'shrink-0 text-base font-extrabold whitespace-nowrap tabular-nums',
+                  !r.sales && 'text-muted-foreground',
+                )}
+              >
+                {format(r.sales)}
+              </span>
+            </li>
+          ))}
+          {rows.length > 1 && total !== null && (
+            <li className="flex items-center justify-between gap-3 bg-fin-soft px-4 py-3 font-extrabold">
+              <span className="text-sm">Total today</span>
+              <span className="text-base whitespace-nowrap tabular-nums">{format(total)}</span>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 
