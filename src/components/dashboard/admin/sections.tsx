@@ -223,12 +223,57 @@ export function SalesOverview({
   );
 }
 
+/** One branch's live figure: its name in one box, today's sale in the other. */
+function CurrentSaleCard({ row, format }: { row: CurrentSaleRow; format: Format }) {
+  return (
+    <div data-testid="current-sale-card" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+      {/* Two lines' room for every name, so the amount boxes line up across a row. */}
+      <div className="flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5">
+        <p className="line-clamp-2 text-sm leading-snug font-semibold break-words" title={row.branch}>
+          {row.branch}
+        </p>
+      </div>
+      <div className="flex flex-1 flex-col px-3.5 py-3">
+        <p className="text-xs font-medium text-muted-foreground">Current Sale</p>
+        {/* A notch smaller on a phone, where two cards share the row: six figures and paisa still fit. */}
+        <p className={cn('mt-0.5 text-[0.9375rem] font-extrabold whitespace-nowrap tabular-nums sm:text-base', !row.sales && 'text-muted-foreground')}>
+          {format(row.sales)}
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{row.orders ? plural(row.orders, 'order') : 'No sales yet'}</p>
+      </div>
+    </div>
+  );
+}
+
+/** A card while today's figures load, laid out as the loaded one. */
+function CurrentSaleCardSkeleton() {
+  return (
+    <div data-testid="current-sale-card-skeleton" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+      <div className="flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5">
+        <Skeleton className="h-4 w-24" />
+      </div>
+      <div className="flex flex-col gap-1.5 px-3.5 py-3">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-3 w-14" />
+      </div>
+    </div>
+  );
+}
+
 /**
- * Current Sale by Branch — what each branch has taken so far today.
+ * Current Sale by Branch — what each branch has taken so far today, one card
+ * per branch.
  *
  * Today's business date whatever month the filters show: it is the live figure
  * an admin checks during the day. Paid orders only, the same money rule as
- * Total Sales (cancelled and staff sales excluded).
+ * Total Sales (cancelled and staff sales excluded). The figures refresh with
+ * the rest of the app (useAppRefresh) and keep the last answer on screen while
+ * they do, so a refresh never flashes the cards.
+ *
+ * The cards share one width and form a single row when the screen is wide
+ * enough; otherwise they wrap — two across on a phone — rather than scrolling
+ * the page sideways.
  */
 export function CurrentBranchSales({
   rows,
@@ -248,7 +293,7 @@ export function CurrentBranchSales({
   format: Format;
 }) {
   return (
-    <div className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
+    <div data-testid="current-sale-by-branch" className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b px-4 py-3">
         <h3 className="text-base font-bold">Current Sale by Branch</h3>
         <span className="text-xs text-muted-foreground">
@@ -256,47 +301,28 @@ export function CurrentBranchSales({
         </span>
       </div>
       {failed && !rows.length ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 text-sm">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 text-sm">
           <span>Today’s branch sales could not be loaded.</span>
           <Button size="sm" variant="outline" onClick={onRetry}>
             Retry
           </Button>
         </div>
-      ) : loading ? (
-        <div className="flex flex-col gap-2 p-4" aria-busy="true">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-9 w-full" />
-          ))}
-        </div>
-      ) : !rows.length ? (
+      ) : !loading && !rows.length ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">No active branches.</p>
       ) : (
-        <ul className="divide-y">
-          {rows.map((r) => (
-            <li key={r.branchId} className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">{r.branch}</span>
-                <span className="block text-xs text-muted-foreground">
-                  Current Sale · {r.orders ? plural(r.orders, 'order') : 'no sales yet'}
-                </span>
-              </span>
-              <span
-                className={cn(
-                  'shrink-0 text-base font-extrabold whitespace-nowrap tabular-nums',
-                  !r.sales && 'text-muted-foreground',
-                )}
-              >
-                {format(r.sales)}
-              </span>
-            </li>
-          ))}
-          {rows.length > 1 && total !== null && (
-            <li className="flex items-center justify-between gap-3 bg-fin-soft px-4 py-3 font-extrabold">
+        <div className="flex flex-col gap-3 p-4" aria-busy={loading || undefined}>
+          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
+            {loading
+              ? [0, 1, 2, 3].map((i) => <CurrentSaleCardSkeleton key={i} />)
+              : rows.map((r) => <CurrentSaleCard key={r.branchId} row={r} format={format} />)}
+          </div>
+          {!loading && rows.length > 1 && total !== null && (
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-fin-soft px-3.5 py-2.5 font-extrabold">
               <span className="text-sm">Total today</span>
               <span className="text-base whitespace-nowrap tabular-nums">{format(total)}</span>
-            </li>
+            </div>
           )}
-        </ul>
+        </div>
       )}
     </div>
   );
