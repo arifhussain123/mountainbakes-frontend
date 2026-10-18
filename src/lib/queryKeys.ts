@@ -115,6 +115,12 @@ export const qk = {
   // a different set of rows, and a key that ignored any of them would serve one
   // filter's answer to another.
   branchReturns: (params: Record<string, unknown>) => ['stock', 'returns', params] as const,
+  // The branch's month-to-date returns summary. Under the same ['stock'] prefix
+  // as the list, so every return write and `useStockRealtime` refresh it with no
+  // wiring of their own. Keyed by today's business date: the window is
+  // 1st-of-month → today, so a new day (and with it a new month) is a new key
+  // rather than yesterday's figures served as today's.
+  branchReturnsSummary: (businessDate: string) => ['stock', 'returns', 'summary', businessDate] as const,
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and
@@ -175,6 +181,12 @@ export const qk = {
   // Keyed by the whole filter object — branch, product, status, search and date
   // range each select a different set of rows, same convention as `branchReturns`.
   productionReturns: (params: Record<string, unknown>) => ['productionReturns', params] as const,
+  // Production's month-to-date returns summary, per branch. Under
+  // ['productionReturns'] so review/create and the realtime hook refresh it too;
+  // keyed by branch filter and today's business date for the same reason as
+  // `branchReturnsSummary`.
+  productionReturnsSummary: (branchId: string | null, businessDate: string) =>
+    ['productionReturns', 'summary', branchId, businessDate] as const,
   // Discounts, keyed as their own family rather than under ['stock'] the way
   // `branchReturns` is — and the difference is not cosmetic. A return moves units,
   // so it belongs under the prefix `useStockRealtime` invalidates; a discount

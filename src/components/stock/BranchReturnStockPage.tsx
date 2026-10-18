@@ -6,6 +6,7 @@ import type { FilterConfig, ProductionReturn } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useBranchReturns,
+  useBranchReturnsSummary,
   useProducts,
   useResubmitBranchReturn,
   useReviseBranchReturn,
@@ -19,6 +20,7 @@ import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sort
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
+import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -156,6 +158,10 @@ export function BranchReturnStockPage() {
   const reviseMut = useReviseBranchReturn(token);
   const withdrawMut = useWithdrawBranchReturn(token);
   const resubmitMut = useResubmitBranchReturn(token);
+  // This branch's month to date — the server reads the branch off the JWT.
+  // Under the ['stock'] prefix, so the realtime hook below and every return
+  // write here refresh it along with the table.
+  const summaryQ = useBranchReturnsSummary(token);
 
   // A return moves stock, so the same notification stream that refreshes the
   // Stock page refreshes this list — `qk.branchReturns` sits under the ['stock']
@@ -359,6 +365,16 @@ export function BranchReturnStockPage() {
           </p>
         </div>
       </div>
+
+      <MonthlyReturnsSummary
+        summary={summaryQ.data}
+        isLoading={summaryQ.isPending}
+        isError={summaryQ.isError}
+        isFetching={summaryQ.isFetching}
+        error={summaryQ.error}
+        onRetry={() => void summaryQ.refetch()}
+        statusLabels={STATUS_LABELS}
+      />
 
       <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />

@@ -37,6 +37,7 @@ import type {
   ProductionBalanceDoc,
   ProductionReturn,
   ProductionReturnStatus,
+  MonthlyReturnsSummary,
   BranchDiscount,
   BranchDiscountStatus,
   CashTransfer,
@@ -1711,6 +1712,42 @@ export function useBranchReturns(
     },
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The branch's own returns this business month (1st → today), by status — summed
+ * on the server (GET /api/stock/returns/summary), which also decides the branch
+ * from the JWT. See `shared/utils/returns-summary.ts` for what each figure means.
+ */
+export function useBranchReturnsSummary(token: string) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.branchReturnsSummary(today),
+    queryFn: () => apiCall<MonthlyReturnsSummary>('/api/stock/returns/summary', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Production's month-to-date returns summary: every branch and an overall total,
+ * or one branch when `branchId` is set (the same filter the returns table takes).
+ */
+export function useProductionReturnsSummary(token: string, branchId: string | null) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.productionReturnsSummary(branchId, today),
+    queryFn: () =>
+      apiCall<MonthlyReturnsSummary>(
+        `/api/production-returns/summary${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`,
+        {},
+        token,
+      ),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
   });
 }
 

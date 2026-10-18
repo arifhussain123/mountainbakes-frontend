@@ -4,11 +4,12 @@ import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { FilterConfig, ProductionReturn, ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranches, useProducts, useProductionReturns, useReviewReturn } from '@/lib/queries';
+import { useBranches, useProducts, useProductionReturns, useProductionReturnsSummary, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/shared/DataTable';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
+import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
@@ -175,6 +176,10 @@ export function ProductionReturnsPage() {
     sortDir: list.state.sort?.direction,
   });
   const reviewMut = useReviewReturn(token);
+  // Follows the table's Branch filter only. Status, product and date narrow the
+  // rows below; the summary is always this whole month, by status, so those
+  // filters would only make it disagree with its own heading.
+  const summaryQ = useProductionReturnsSummary(token, (list.getFilter('branchId')?.value as string | undefined) ?? null);
 
   // Server-filtered and server-paginated — the query above already narrows to
   // the selected branch/product/status/date range and this page's slice.
@@ -282,6 +287,17 @@ export function ProductionReturnsPage() {
           Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
         </p>
       </div>
+
+      <MonthlyReturnsSummary
+        summary={summaryQ.data}
+        isLoading={summaryQ.isPending}
+        isError={summaryQ.isError}
+        isFetching={summaryQ.isFetching}
+        error={summaryQ.error}
+        onRetry={() => void summaryQ.refetch()}
+        statusLabels={STATUS_LABELS}
+        showBranches
+      />
 
       <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
