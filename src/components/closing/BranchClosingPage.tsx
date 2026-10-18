@@ -113,7 +113,9 @@ export function BranchClosingPage() {
   );
 
   return (
-    <div className="space-y-6">
+    // `print-area` is what Print prints: globals.css hides every other body
+    // child and reveals this subtree, same convention as DailySalesSection.
+    <div className="print-area space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{user?.branchName || 'Branch'} — Closing</h2>
@@ -121,7 +123,7 @@ export function BranchClosingPage() {
             End-of-day summary. This is a read of the day, not a lock on it.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="no-print flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs">Business date</Label>
             <Input
