@@ -5,6 +5,8 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchDiscount, BranchDiscountStatus, FilterConfig } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useProductionDiscounts, useReviewDiscount } from '@/lib/queries';
+import { useProductionDiscountSummary } from '@/lib/discountSummaryQueries';
+import { MonthlyDiscountSummary } from '@/components/production-orders/MonthlyDiscountSummary';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -146,6 +148,10 @@ export function ProductionDiscountsPage() {
     sortDir: list.state.sort?.direction,
   });
   const reviewMut = useReviewDiscount(token);
+  // Always every active branch; picking a branch in the filter marks its card
+  // rather than hiding the others (and costs no second request).
+  const summaryQ = useProductionDiscountSummary(token, null);
+  const filteredBranchId = (list.getFilter('branchId')?.value as string | undefined) ?? null;
 
   // Server-filtered and server-paginated — the query above already narrows to
   // the selected branch/status/date range and this page's slice.
@@ -263,6 +269,18 @@ export function ProductionDiscountsPage() {
           Last 30 days by default · open a claim to approve it, reject it, or send it back to the branch to correct
         </p>
       </div>
+
+      <MonthlyDiscountSummary
+        summary={summaryQ.data}
+        isLoading={summaryQ.isLoading}
+        isError={summaryQ.isError}
+        isFetching={summaryQ.isFetching}
+        error={summaryQ.error}
+        onRetry={() => void summaryQ.refetch()}
+        updatedAt={summaryQ.dataUpdatedAt}
+        showBranches
+        highlightBranchId={filteredBranchId}
+      />
 
       <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />

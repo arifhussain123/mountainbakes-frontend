@@ -373,3 +373,14 @@ export const qk = {
 
 /** Prefix that matches every finance cache entry. See the note above. */
 export const FINANCE_QK_ROOT = ['finance'] as const;
+
+/**
+ * The monthly Branch Discount summary. Under ['discounts'], so every claim write
+ * (raise, correct, withdraw, review) refreshes it with no wiring of its own.
+ * Keyed by today's business date: the window is 1st-of-month → today, so a new
+ * day (and with it a new month) is a new key rather than yesterday's figures.
+ */
+export const discountSummaryKeys = {
+  production: (branchId: string | null, businessDate: string) => ['discounts', 'summary', 'production', branchId, businessDate] as const,
+  branch: (businessDate: string) => ['discounts', 'summary', 'branch', businessDate] as const,
+};
