@@ -217,7 +217,7 @@ export function BranchClosingPage() {
             {stockTotals.sold.toLocaleString()} units sold · {stockTotals.returned.toLocaleString()} returned to production ·{' '}
             {stockTotals.balance.toLocaleString()} left on the shelf
           </p>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-sm">
               <thead>
                 <tr data-table-head className="border-b text-left text-xs">
