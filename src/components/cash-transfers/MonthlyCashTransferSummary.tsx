@@ -75,7 +75,14 @@ export function MonthlyCashTransferSummary({
     <section aria-label="Monthly transfers summary" className={cn('space-y-3 transition-opacity', isFetching && summary && 'opacity-70')}>
       <MonthlySummaryHeader
         title={summary ? `Monthly Transfers: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'Monthly Transfers'}
-        subtitle={summary ? <MonthToDateLine from={summary.from} /> : null}
+        subtitle={
+          summary ? (
+            <MonthToDateLine from={summary.from} />
+          ) : (
+            // The dates are the server's, so the line waits for it — but keeps its row, so nothing below moves.
+            <span data-testid="summary-subtitle-skeleton" className="inline-block w-72 max-w-full animate-pulse rounded-md bg-muted align-top">{' '}</span>
+          )
+        }
         note="Approved transfers are confirmed by Finance"
       />
 
