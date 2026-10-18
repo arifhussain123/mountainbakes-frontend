@@ -7,10 +7,10 @@ import { useBranches } from '@/lib/queries';
 import type { Expense, FilterConfig } from '@mb/shared';
 import { EXPENSE_CATEGORIES, businessDateStr, businessMonthStartStr } from '@mb/shared';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Fab } from '@/components/shared/Fab';
+import { SummaryTotalCard, formatSummaryAmount } from '@/components/shared/SummaryTotalCard';
 import { GenericDataTable } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { useInvalidateResource, useResourceAggregate } from '@/lib/data-engine/useResource';
@@ -123,18 +123,12 @@ export function ExpensesPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="flex items-center justify-between p-4">
-          <p className="text-sm font-medium text-muted-foreground">Total ({windowLabel.toLowerCase()})</p>
-          <p className="text-xl font-bold text-primary" aria-busy={totalsQ.isFetching}>
-            {sum !== null
-              ? `${cur}${sum.toLocaleString()}`
-              : totalsQ.isError
-                ? '—'
-                : '…'}
-          </p>
-        </CardContent>
-      </Card>
+      <SummaryTotalCard
+        layout="inline"
+        label={`Total (${windowLabel.toLowerCase()})`}
+        amount={sum !== null ? formatSummaryAmount(sum, cur) : totalsQ.isError ? '—' : '…'}
+        busy={totalsQ.isFetching}
+      />
 
       <GenericDataTable<Expense>
         resource="expenses"
