@@ -5,7 +5,7 @@ import { Download, Printer, RefreshCw } from 'lucide-react';
 import { businessDateStr, type FinanceDashboardMetric, type SalesTopProductLimit } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useFinanceMonthlyDashboard } from '@/lib/finance';
-import { useSalesAnalytics } from '@/lib/queries';
+import { useReportSummary, useSalesAnalytics } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { printDocument } from '@/lib/print/browser/documentPrint';
@@ -24,8 +24,15 @@ import {
   type Granularity,
 } from '@/components/finance/dashboard/dashboard-model';
 import { LoginHistoryCard } from './LoginHistoryCard';
-import { SECTIONS, adminCsv, type Section } from './admin/admin-model';
-import { BranchSummary, FinanceSummary, HeadlineKpis, ProductionSummary, SalesOverview } from './admin/sections';
+import { SECTIONS, adminCsv, currentSaleRows, type Section } from './admin/admin-model';
+import {
+  BranchSummary,
+  CurrentBranchSales,
+  FinanceSummary,
+  HeadlineKpis,
+  ProductionSummary,
+  SalesOverview,
+} from './admin/sections';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** How far back the month picker reaches — the same as the Finance Dashboard's. */

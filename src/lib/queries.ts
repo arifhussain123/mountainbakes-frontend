@@ -38,6 +38,7 @@ import type {
   ProductionReturn,
   ProductionReturnStatus,
   MonthlyReturnsSummary,
+  MonthlyCashTransferSummary,
   BranchDiscount,
   BranchDiscountStatus,
   CashTransfer,
@@ -2069,6 +2070,24 @@ export function useBranchCashTransfers(
     // mounted on every visit and opened on few — see useBranchDiscounts.
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The branch's own cash transfers this business month (1st → today): Total
+ * Amount per channel and status, and Fuel Charges — summed on the server
+ * (GET /api/cash-transfers/monthly-summary), which also decides the branch from
+ * the JWT. Ignores the table's filters by design. See
+ * `shared/utils/cash-transfer-summary.ts` for what each figure means.
+ */
+export function useBranchCashTransferSummary(token: string) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.branchCashTransferSummary(today),
+    queryFn: () => apiCall<MonthlyCashTransferSummary>('/api/cash-transfers/monthly-summary', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
   });
 }
 

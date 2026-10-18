@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import type { FinanceDashboardDay, FinanceMonthlyDashboard } from '@mb/shared';
-import { adminCsv, branchSummaryRows, dailyDemand, demandComparison, weeklyReturnsDiscount } from '../admin-model';
+import {
+  adminCsv,
+  branchSummaryRows,
+  currentSaleRows,
+  dailyDemand,
+  demandComparison,
+  weeklyReturnsDiscount,
+} from '../admin-model';
 
 function day(over: Partial<FinanceDashboardDay>): FinanceDashboardDay {
   return {
@@ -162,6 +169,31 @@ describe('demandComparison', () => {
 
   test('null when no day of the window has happened yet', () => {
     expect(demandComparison(dashboard({ from: '2026-10-20', to: '2026-10-31' }))).toBeNull();
+  });
+});
+
+describe('currentSaleRows', () => {
+  const branches = dashboard().branches;
+  const sold = [
+    { branchId: 'b2', branchName: 'Committee Chowk', totalOrders: 40, totalRevenue: 12520, averageOrderValue: 313 },
+    { branchId: 'b1', branchName: 'Alabad', totalOrders: 9, totalRevenue: 2220, averageOrderValue: 246.67 },
+  ];
+
+  test('every active branch, largest sale first; a quiet branch shows 0, an inactive one is left off', () => {
+    expect(currentSaleRows(branches, sold, null)).toEqual([
+      { branchId: 'b2', branch: 'Committee Chowk', sales: 12520, orders: 40 },
+      { branchId: 'b1', branch: 'Alabad', sales: 2220, orders: 9 },
+      { branchId: 'b3', branch: 'Commercial Market', sales: 0, orders: 0 },
+    ]);
+  });
+
+  test('the branch filter narrows it to that branch', () => {
+    expect(currentSaleRows(branches, sold, 'b1').map((r) => r.branchId)).toEqual(['b1']);
+  });
+
+  test('sales from a branch the list does not know are kept, not dropped', () => {
+    const rows = currentSaleRows(branches, [...sold, { branchId: 'gone', branchName: 'DHA', totalOrders: 3, totalRevenue: 2300, averageOrderValue: 0 }], null);
+    expect(rows.find((r) => r.branchId === 'gone')).toMatchObject({ branch: 'DHA', sales: 2300 });
   });
 });
 

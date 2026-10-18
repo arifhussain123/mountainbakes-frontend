@@ -207,6 +207,10 @@ export const qk = {
   // `financeCashTransfers` below, under the finance root so a decision
   // invalidates it with everything else finance.
   branchCashTransfers: (params: Record<string, unknown>) => ['cashTransfers', 'branch', params] as const,
+  // Under the same ['cashTransfers'] prefix as the list, so a new deposit (and
+  // anything else that refreshes the list) refreshes the monthly summary too.
+  // Keyed by today's business date: a new day, and with it a new month, is a new key.
+  branchCashTransferSummary: (businessDate: string) => ['cashTransfers', 'summary', businessDate] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.

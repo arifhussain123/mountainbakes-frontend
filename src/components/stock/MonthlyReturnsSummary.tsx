@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { addMonths, format, parseISO } from 'date-fns';
 import { AlertTriangle } from 'lucide-react';
 import type {
   MonthlyReturnsSummary as Summary,
@@ -11,6 +10,7 @@ import type {
 } from '@mb/shared';
 import { buildBranchReturnBoxes, emptyReturnsTotals } from '@mb/shared';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MonthToDateLine, MonthlySummaryHeader, SUMMARY_TONE, SummaryTile, longDate } from '@/components/shared/MonthlySummary';
 import { SectionError } from '@/components/dashboard/branch-v2/parts';
 import { CURRENCY_LOCALE, CURRENCY_SYMBOL, formatCurrency } from '@/utils/currency';
 import { logger } from '@/utils/logger';
@@ -34,35 +34,28 @@ import { cn } from '@/lib/utils';
  *
  * The window is the server's, so the date line is too — it always names the
  * month the figures actually cover, never one computed here.
+ *
+ * The header and the tiles are the shared month-summary parts
+ * (components/shared/MonthlySummary.tsx), which Branch → Cash Transfer Details
+ * uses as well.
  */
 
 const TONE: Record<ProductionReturnStatus | 'submitted', string> = {
-  submitted: 'text-foreground',
-  accepted: 'text-emerald-700 dark:text-emerald-400',
-  pending: 'text-amber-700 dark:text-amber-400',
-  rejected: 'text-red-700 dark:text-red-400',
-  returned: 'text-sky-700 dark:text-sky-400',
+  submitted: SUMMARY_TONE.neutral,
+  accepted: SUMMARY_TONE.positive,
+  pending: SUMMARY_TONE.warning,
+  rejected: SUMMARY_TONE.negative,
+  returned: SUMMARY_TONE.info,
 };
 
 const STATUS_ORDER: ProductionReturnStatus[] = ['accepted', 'pending', 'rejected', 'returned'];
 
-const longDate = (d: string) => format(parseISO(d), 'd MMMM yyyy');
 const qtyText = (n: number) => n.toLocaleString();
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 const bucketLine = (b: ReturnsBucket) => `${plural(b.qty, 'item', 'items')} · ${plural(b.count, 'return', 'returns')}`;
 /** Box amounts always carry the paisa: "Rs. 12,500.00", "Rs. 0.00". */
 const boxAmount = (n: number) =>
   `${CURRENCY_SYMBOL} ${n.toLocaleString(CURRENCY_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-function Tile({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: string }) {
-  return (
-    <div className="min-w-0 rounded-lg border bg-card p-3">
-      <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 truncate text-xl font-bold tabular-nums', tone)}>{value}</p>
-      <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>
-    </div>
-  );
-}
 
 function BranchBox({ name, amount, selected, onPick }: { name: string; amount: number; selected: boolean; onPick?: () => void }) {
   return (
@@ -150,25 +143,21 @@ export function MonthlyReturnsSummary({
 
   return (
     <section aria-label="Monthly returns summary" className={cn('space-y-3 transition-opacity', isFetching && summary && 'opacity-70')}>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">
+      <MonthlySummaryHeader
+        title={
+          <>
             {summary ? `Monthly Returns: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'Monthly Returns'}
             {selected ? ` · ${selected.branchName.replace('Mountain Bakes ', '')}` : ''}
-          </h3>
-          {summary ? (
-            <p className="text-xs text-muted-foreground">
-              Month to date, Karachi business day · starts again on {longDate(format(addMonths(parseISO(summary.from), 1), 'yyyy-MM-dd'))}
-            </p>
-          ) : null}
-        </div>
-        <p className="text-xs text-muted-foreground">Valued at each product&apos;s price on the return date</p>
-      </div>
+          </>
+        }
+        subtitle={summary ? <MonthToDateLine from={summary.from} /> : null}
+        note="Valued at each product's price on the return date"
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {isLoading || !t
           ? Array.from({ length: tileCount }, (_, i) => <Skeleton key={i} className="h-[86px] rounded-lg" />)
-          : tiles.map((tile) => <Tile key={tile.label} {...tile} />)}
+          : tiles.map((tile) => <SummaryTile key={tile.label} {...tile} />)}
       </div>
 
       {t && t.unpricedCount > 0 ? (
