@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { DataTable } from '@/components/shared/DataTable';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
 import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
+import { RecordReturnDialog } from '@/components/production/RecordReturnDialog';
 import { createdByColumn, returnValueColumns } from '@/components/stock/returnColumns';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
@@ -28,7 +29,7 @@ import {
 import { formatDate, formatDateTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Check, Eye, Undo2, X } from 'lucide-react';
+import { Check, Eye, Plus, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -158,6 +159,7 @@ export function ProductionReturnsPage() {
   const [pendingAction, setPendingAction] = useState<ProductionReturnStatus | null>(null);
   const [disposition, setDisposition] = useState<ProductionReturnDisposition>('saleable');
   const [dispositionNote, setDispositionNote] = useState('');
+  const [recording, setRecording] = useState(false);
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'branchId', 'productId', 'businessDate'] });
   const branchesQ = useBranches(token);
@@ -307,11 +309,18 @@ export function ProductionReturnsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Product Returns</h2>
-        <p className="text-sm text-muted-foreground">
-          Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">Product Returns</h2>
+          <p className="text-sm text-muted-foreground">
+            Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
+          </p>
+        </div>
+        {/* Full width under the heading on a phone, where it is the one thing to
+            tap; beside it from `sm` up. */}
+        <Button className="h-11 w-full shrink-0 sm:h-9 sm:w-auto" onClick={() => setRecording(true)}>
+          <Plus className="mr-1.5 h-4 w-4" /> Record Return
+        </Button>
       </div>
 
       <MonthlyReturnsSummary
@@ -357,6 +366,8 @@ export function ProductionReturnsPage() {
         onPageSizeChange={list.setPageSize}
         loading={returnsQ.isLoading}
       />
+
+      <RecordReturnDialog open={recording} onOpenChange={setRecording} branches={branchesQ.data ?? []} products={productsQ.data ?? []} />
 
       {/* ── View, and decide ────────────────────────────────────────────────
           One dialog, two faces. It opens on the record; picking an action turns
