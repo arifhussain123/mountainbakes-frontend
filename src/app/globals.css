@@ -153,6 +153,26 @@
   --stock-returned: #eda100;
   --stock-balance: #e87ba4;
 
+  /* Production Dashboard — one colour per meaning, used by every chart on the
+     page through chartColors (components/production/dashboard/chartColors.ts).
+     Fixed, not --chart-1: an accent switch must not turn Demand green beside
+     Repaired. Each group a chart draws together passes the dataviz colour checks
+     (lightness band, chroma, CVD and normal-vision separation); the dark values
+     are re-stepped for the dark card, not a flip of these. */
+  --dash-demand: #e04f1a;
+  --dash-produced: #7e3e1b;
+  --dash-delivered: #d3ad1b;
+  --dash-returned: #8c352d;
+  --dash-repaired: #009589;
+  --dash-prod-stock: #7e3e1b;
+  --dash-branch-stock: #d3ad1b;
+  --dash-low: #dc8900;
+  --dash-out: #cc2827;
+  --dash-waiting: #7d6bb0;
+  --dash-verified: #2a669f;
+  --dash-other: #2a669f;
+  --dash-none: oklch(0.8 0.01 80);
+
   /* Finance Dashboard — the purple/brown accounting palette. Series colours are
      fixed to the figure they draw (Company Share is always violet, Received
      always orange) and were run through the dataviz palette validator per chart
@@ -216,6 +236,19 @@
   --stock-sold: #199e70;
   --stock-returned: #c98500;
   --stock-balance: #d55181;
+  --dash-demand: #d24100;
+  --dash-produced: #b58d47;
+  --dash-delivered: #a79600;
+  --dash-returned: #9c2e5a;
+  --dash-repaired: #009b8f;
+  --dash-prod-stock: #a04f27;
+  --dash-branch-stock: #b58d47;
+  --dash-low: #ed990e;
+  --dash-out: #f14d4c;
+  --dash-waiting: #866ec5;
+  --dash-verified: #32669a;
+  --dash-other: #4984bf;
+  --dash-none: oklch(0.45 0.02 60);
   --fin-ink: #1d1733;
   --fin-ink-foreground: #f4f1fb;
   --fin-ink-muted: #b3a8d9;

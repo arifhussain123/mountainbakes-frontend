@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { FilterConfig, ProductionReturn, ProductionReturnStatus } from '@mb/shared';
+import { RETURN_DISPOSITION_LABELS, type FilterConfig, type ProductionReturn, type ProductionReturnDisposition, type ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useProducts, useProductionReturns, useProductionReturnsSummary, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { DataTable } from '@/components/shared/DataTable';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
 import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
@@ -134,6 +135,15 @@ function confirmCopy(r: ProductionReturn, status: ProductionReturnStatus): { tit
   };
 }
 
+/**
+ * The goods' condition, chosen when approving. Every one lands in Branch Return
+ * Stock all the same; it is the record of what came back. Repaired feeds the
+ * Production Dashboard's Repaired Stock section. Damaged and expired write value
+ * off, so they need a note, as the API requires.
+ */
+const DISPOSITIONS: ProductionReturnDisposition[] = ['saleable', 'repaired', 'damaged', 'expired'];
+const needsNote = (d: ProductionReturnDisposition) => d === 'damaged' || d === 'expired';
+
 const col = createColumnHelper<ProductionReturn>();
 
 export function ProductionReturnsPage() {
@@ -146,6 +156,8 @@ export function ProductionReturnsPage() {
   // of a confirmation returns to the detail rather than closing the dialog.
   const [viewRow, setViewRow] = useState<ProductionReturn | null>(null);
   const [pendingAction, setPendingAction] = useState<ProductionReturnStatus | null>(null);
+  const [disposition, setDisposition] = useState<ProductionReturnDisposition>('saleable');
+  const [dispositionNote, setDispositionNote] = useState('');
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'branchId', 'productId', 'businessDate'] });
   const branchesQ = useBranches(token);
@@ -191,6 +203,8 @@ export function ProductionReturnsPage() {
     if (reviewMut.isPending) return;
     setViewRow(null);
     setPendingAction(null);
+    setDisposition('saleable');
+    setDispositionNote('');
   }
 
   async function submit() {
@@ -198,7 +212,11 @@ export function ProductionReturnsPage() {
     const row = viewRow;
     const status = pendingAction;
     try {
-      await reviewMut.mutateAsync({ id: row.id, status });
+      await reviewMut.mutateAsync(
+        status === 'accepted'
+          ? { id: row.id, status, disposition, dispositionNote: needsNote(disposition) ? dispositionNote.trim() : undefined }
+          : { id: row.id, status },
+      );
       toast.success(
         status === 'accepted'
           ? `Approved — ${row.qty} × ${row.productName} added to return stock`
@@ -208,6 +226,8 @@ export function ProductionReturnsPage() {
       );
       setViewRow(null);
       setPendingAction(null);
+      setDisposition('saleable');
+      setDispositionNote('');
     } catch (err) {
       // The API's message names the reason a review was refused ("Return already
       // reviewed" when someone else got there first), which is more use than a
@@ -342,6 +362,39 @@ export function ProductionReturnsPage() {
             {copy && <DialogDescription>{copy.body}</DialogDescription>}
           </DialogHeader>
 
+          {copy && pendingAction === 'accepted' && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium" id="return-condition">Condition</p>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="return-condition">
+                {DISPOSITIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    role="radio"
+                    aria-checked={disposition === d}
+                    onClick={() => setDisposition(d)}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                      disposition === d ? 'border-foreground bg-foreground text-background' : 'bg-card hover:bg-muted',
+                    )}
+                  >
+                    {RETURN_DISPOSITION_LABELS[d]}
+                  </button>
+                ))}
+              </div>
+              {needsNote(disposition) && (
+                <Textarea
+                  value={dispositionNote}
+                  onChange={(e) => setDispositionNote(e.target.value)}
+                  placeholder={`Why is it ${disposition}?`}
+                  aria-label="Why the stock is damaged or expired"
+                  maxLength={500}
+                  rows={2}
+                />
+              )}
+            </div>
+          )}
+
           {viewRow && !copy && (
             <>
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
@@ -437,7 +490,7 @@ export function ProductionReturnsPage() {
                 <Button
                   variant={pendingAction === 'rejected' ? 'destructive' : 'default'}
                   onClick={submit}
-                  disabled={reviewMut.isPending}
+                  disabled={reviewMut.isPending || (pendingAction === 'accepted' && needsNote(disposition) && !dispositionNote.trim())}
                 >
                   {reviewMut.isPending
                     ? 'Saving…'

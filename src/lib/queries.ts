@@ -84,6 +84,12 @@ import type {
   EventProductionStatusRow,
   EventScheduleResult,
   SpecialEventView,
+  ReceivedDemandSection,
+  BranchSummarySection,
+  RepairedStockSection,
+  ReturnStockSection,
+  CurrentStockSection,
+  ProductionReturnDisposition,
 } from '@mb/shared';
 
 // Query keys live in ./queryKeys so non-React code (@/utils/productPrice) can reuse
@@ -1096,6 +1102,42 @@ export function useProductionOverview(token: string, branchId?: string | null, p
   });
 }
 
+/** The Production Dashboard's sections and what each one answers (shared/utils/production-dashboard.ts). */
+export interface ProductionDashboardSections {
+  'received-demand': ReceivedDemandSection;
+  'branch-summary': BranchSummarySection;
+  'repaired-stock': RepairedStockSection;
+  'return-stock': ReturnStockSection;
+  'current-stock': CurrentStockSection;
+}
+export type ProductionDashboardSectionName = keyof ProductionDashboardSections;
+
+/**
+ * One section of the Production Dashboard. Each is its own query, so each
+ * loads, fails and retries on its own. `current-stock` is stock right now: it
+ * takes no period, and its key does not change with one.
+ */
+export function useProductionDashboardSection<S extends ProductionDashboardSectionName>(
+  section: S,
+  token: string,
+  period: ProductionPeriod,
+  branchId: string | null,
+) {
+  const p = section === 'current-stock' ? 'live' : period;
+  // The branch list is every branch by definition, so it never takes the filter.
+  const b = section === 'branch-summary' ? null : branchId;
+  const qs = [section === 'current-stock' ? null : `period=${period}`, b ? `branchId=${encodeURIComponent(b)}` : null]
+    .filter(Boolean)
+    .join('&');
+  return useQuery({
+    queryKey: qk.productionDashboardSection(section, p, b),
+    queryFn: () => apiCall<ProductionDashboardSections[S]>(`/api/production/dashboard/${section}${qs ? `?${qs}` : ''}`, {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export type ProductionQueueOrder = Order;
 
 export interface ProductionQueueStats {
@@ -1867,8 +1909,16 @@ export function useCreateReturn(token: string) {
 export function useReviewReturn(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: ProductionReturnStatus }) =>
-      apiCall(`/api/production-returns/${id}/review`, { method: 'PUT', body: JSON.stringify({ status }) }, token),
+    // `disposition` only with an accept: the goods' condition, which the
+    // Production Dashboard's Repaired Stock section reads. Left out, the API
+    // records 'saleable', as every accept did before.
+    mutationFn: ({ id, status, disposition, dispositionNote }: {
+      id: string;
+      status: ProductionReturnStatus;
+      disposition?: ProductionReturnDisposition;
+      dispositionNote?: string;
+    }) =>
+      apiCall(`/api/production-returns/${id}/review`, { method: 'PUT', body: JSON.stringify({ status, disposition, dispositionNote }) }, token),
     // ['stock'] as well as the Production keys, which the accept-only version did
     // not need. Every outcome now touches a branch balance: accepting a
     // Production-recorded return debits the branch, and rejecting a branch-raised

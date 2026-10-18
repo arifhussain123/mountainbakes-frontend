@@ -164,6 +164,11 @@ export const qk = {
   // covers every branch filter and period at once.
   productionOverview: (branchId?: string | null, period: string = 'week') =>
     ['productionOverview', branchId ?? 'all', period] as const,
+  // The dashboard's sections, one query each. Under the 'productionOverview'
+  // prefix on purpose: every mutation and live notification that already
+  // invalidates the overview refreshes the sections with it.
+  productionDashboardSection: (section: string, period: string, branchId?: string | null) =>
+    ['productionOverview', 'section', section, period, branchId ?? 'all'] as const,
   productionQueue: () => ['productionQueue'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })
