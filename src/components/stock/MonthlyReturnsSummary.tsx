@@ -130,6 +130,9 @@ export function MonthlyReturnsSummary({
     : [];
   const tileCount = showBranches ? 8 : 7;
   const colSpan = 4 + STATUS_ORDER.length;
+  // Only branches with a return this month get a row; the totals and Branches
+  // Reporting are the server's, so hiding the zero rows changes no figure.
+  const reporting = summary ? summary.branches.filter((b) => b.submitted.count > 0) : [];
 
   return (
     <section aria-label="Monthly returns summary" className={cn('space-y-3 transition-opacity', isFetching && summary && 'opacity-70')}>
@@ -166,8 +169,8 @@ export function MonthlyReturnsSummary({
       ) : null}
 
       {showBranches && summary ? (
-        summary.branches.length === 0 ? (
-          <p className="rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No branches to summarise.</p>
+        reporting.length === 0 ? (
+          <p className="rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No branch has returns this month.</p>
         ) : (
           <div className="rounded-lg border bg-card">
             <Table className="whitespace-nowrap">
@@ -183,7 +186,7 @@ export function MonthlyReturnsSummary({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summary.branches.map((b) => {
+                {reporting.map((b) => {
                   const open = openBranch === b.branchId;
                   return (
                     <Fragment key={b.branchId}>
@@ -222,7 +225,7 @@ export function MonthlyReturnsSummary({
                   );
                 })}
               </TableBody>
-              {summary.branches.length > 1 && t ? (
+              {reporting.length > 1 && t ? (
                 <TableFooter>
                   <TableRow className="font-semibold">
                     <TableCell>All Branches</TableCell>
