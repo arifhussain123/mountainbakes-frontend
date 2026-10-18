@@ -154,14 +154,52 @@ export function DemandStatusColumns({ data, bucket, height = 260 }: { data: Rece
   );
 }
 
-// ─── 2. Branch-wise: grouped horizontal bars ────────────────────────────────
+// ─── 2. Branch-wise: grouped columns ─────────────────────────────────────────
+
+/** Width each branch's group of three columns needs; below it the chart scrolls sideways. */
+const BRANCH_GROUP_MIN_WIDTH = 84;
+/** Characters per line of a branch name under its columns, and at most two lines. */
+const BRANCH_TICK_LINE_CHARS = 13;
+
+/** A branch name split into at most two lines at word breaks; an over-long rest ends in "…". */
+export function wrapBranchName(name: string, maxChars = BRANCH_TICK_LINE_CHARS): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of name.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxChars || !line) {
+      line = next;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  if (lines.length <= 2) return lines;
+  const second = lines.slice(1).join(' ');
+  return [lines[0]!, second.length > maxChars ? `${second.slice(0, maxChars - 1).trimEnd()}…` : second];
+}
+
+function BranchTick(props: { x?: number | string; y?: number | string; payload?: { value?: string } }) {
+  const name = String(props.payload?.value ?? '');
+  const lines = wrapBranchName(name);
+  return (
+    <text x={Number(props.x)} y={Number(props.y) + 4} textAnchor="middle" fontSize={11.5} fill="var(--foreground)">
+      <title>{name}</title>
+      {lines.map((l, i) => (
+        <tspan key={i} x={Number(props.x)} dy={i === 0 ? '0.71em' : '1.15em'}>{l}</tspan>
+      ))}
+    </text>
+  );
+}
 
 export function BranchGroupedBars({
-  rows, selectedId, onSelect,
+  rows, selectedId, onSelect, height = 300,
 }: {
   rows: BranchSummaryRow[];
   selectedId: string | null;
   onSelect: (branchId: string) => void;
+  height?: number;
 }) {
   const data = rows.map((b) => ({ ...b, name: shortBranch(b.branchName) }));
   const dim = (id: string) => (selectedId && selectedId !== id ? 0.3 : 1);
@@ -170,45 +208,53 @@ export function BranchGroupedBars({
     { key: 'delivered', name: 'Delivered', color: chartColors.delivered },
     { key: 'returned', name: 'Returned', color: chartColors.returned },
   ] as const;
+  // Branches along the bottom, each one's three columns side by side. On a
+  // narrow screen the chart keeps a width every branch name fits under and
+  // scrolls sideways inside its own box — `contain: inline-size` keeps that
+  // width from pushing the page wider.
   return (
-    <ResponsiveContainer width="100%" height={Math.max(data.length * 50 + 24, 160)}>
-      <BarChart data={data} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }} barGap={2} barCategoryGap="20%">
-        <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" horizontal={false} />
-        <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={compact} allowDecimals={false} />
-        <YAxis type="category" dataKey="name" tick={{ ...AXIS_TICK, fontSize: 11.5, fill: 'var(--foreground)' }} tickLine={false} axisLine={false} width={112} interval={0} />
-        <Tooltip
-          cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
-          content={tip<(typeof data)[number]>((b) => (
-            <TipBox
-              title={b.name}
-              rows={[
-                ...series.map((s) => ({ label: s.name, value: fmt(b[s.key]), color: s.color })),
-                { label: 'Fulfilment', value: b.fulfilment === null ? '—' : `${b.fulfilment.toFixed(1)}%`, strong: true },
-              ]}
+    <div className="overflow-x-auto [contain:inline-size]" data-testid="branch-grouped-columns">
+      <div style={{ minWidth: data.length * BRANCH_GROUP_MIN_WIDTH + 48 }}>
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data} margin={{ top: 22, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="22%">
+            <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={<BranchTick />} tickLine={false} axisLine={false} interval={0} height={40} />
+            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={compact} allowDecimals={false} width={40} />
+            <Tooltip
+              cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
+              content={tip<(typeof data)[number]>((b) => (
+                <TipBox
+                  title={b.name}
+                  rows={[
+                    ...series.map((s) => ({ label: s.name, value: fmt(b[s.key]), color: s.color })),
+                    { label: 'Fulfilment', value: b.fulfilment === null ? '—' : `${b.fulfilment.toFixed(1)}%`, strong: true },
+                  ]}
+                />
+              ))}
             />
-          ))}
-        />
-        {series.map((s) => (
-          <Bar
-            key={s.key}
-            dataKey={s.key}
-            name={s.name}
-            fill={s.color}
-            barSize={9}
-            radius={[0, R, R, 0]}
-            isAnimationActive={false}
-            cursor="pointer"
-            onClick={(d: { branchId?: string }) => d.branchId && onSelect(d.branchId)}
-          >
-            {data.map((b) => <Cell key={b.branchId} fillOpacity={dim(b.branchId)} />)}
-            {/* Demand is the figure each row is sorted by, so it is the one written out. */}
-            {s.key === 'demanded' && (
-              <LabelList content={pointLabel(new Set(data.flatMap((b, i) => (b.demanded > 0 ? [i] : []))), (i) => data[i]?.demanded ?? 0, 'right')} />
-            )}
-          </Bar>
-        ))}
-      </BarChart>
-    </ResponsiveContainer>
+            {series.map((s) => (
+              <Bar
+                key={s.key}
+                dataKey={s.key}
+                name={s.name}
+                fill={s.color}
+                maxBarSize={18}
+                radius={[R, R, 0, 0]}
+                isAnimationActive={false}
+                cursor="pointer"
+                onClick={(d: { branchId?: string }) => d.branchId && onSelect(d.branchId)}
+              >
+                {data.map((b) => <Cell key={b.branchId} fillOpacity={dim(b.branchId)} />)}
+                {/* Demand is the figure the branches are ranked by, so it is the one written out. */}
+                {s.key === 'demanded' && (
+                  <LabelList content={pointLabel(new Set(data.flatMap((b, i) => (b.demanded > 0 ? [i] : []))), (i) => data[i]?.demanded ?? 0, 'above')} />
+                )}
+              </Bar>
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
 
@@ -308,63 +354,81 @@ export function ReturnsLine({ data, bucket, height = 200 }: { data: ReturnStockP
 
 // ─── 5. Current stock: production + branch stock per product ────────────────
 
-const ROW_H = 26;
+/** Width each product's column needs; below it the chart scrolls sideways. */
+const STOCK_COLUMN_MIN_WIDTH = 46;
 
-export function StockBars({ rows }: { rows: CurrentStockRow[] }) {
+export function StockBars({ rows, height = 340 }: { rows: CurrentStockRow[]; height?: number }) {
   const data = rows.map((r) => ({
     ...r,
     prod: Math.max(r.production, 0),
     shelf: Math.max(r.branch, 0),
   }));
   const endOf = (row: Record<string, unknown>) => (Number(row['shelf']) > 0 ? 'shelf' : Number(row['prod']) > 0 ? 'prod' : null);
-  // Low stock repaints the whole bar amber — the split is still in the tooltip.
+  // Low stock repaints the whole column amber — the split is still in the tooltip.
   const fillFor = (r: CurrentStockRow, base: string) => (r.state === 'low' ? chartColors.lowStock : base);
   const StatusLabel = (props: { x?: number | string; y?: number | string; width?: number | string; height?: number | string; index?: number }) => {
     const r = data[props.index ?? -1];
     if (!r) return null;
-    const x = Number(props.x) + Number(props.width ?? 0) + 6;
-    const y = Number(props.y) + Number(props.height ?? 0) / 2;
-    // Status never by colour alone: a mark and a word, the word in text ink.
+    const x = Number(props.x) + Number(props.width ?? 0) / 2;
+    const y = Number(props.y) - 7;
+    // Status never by colour alone: a mark beside the figure, the text in text ink.
     return (
-      <text x={x} y={y} dominantBaseline="central" fontSize={11} fontWeight={700} fill="var(--foreground)">
+      <text x={x} y={y} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--foreground)">
         {r.state === 'out' ? (
-          <><tspan fill={chartColors.outOfStock}>●</tspan><tspan dx={4} fill="var(--muted-foreground)">Out</tspan></>
+          <><tspan fill={chartColors.outOfStock}>●</tspan><tspan dx={2} fill="var(--muted-foreground)">Out</tspan></>
         ) : (
           <>
-            {fmt(r.total)}
-            {r.state === 'low' && <><tspan dx={6} fill={chartColors.lowStock}>▲</tspan><tspan dx={3} fill="var(--muted-foreground)">Low</tspan></>}
+            {r.state === 'low' && <tspan dx={0} fill={chartColors.lowStock}>▲</tspan>}
+            <tspan dx={r.state === 'low' ? 2 : 0}>{fmt(r.total)}</tspan>
           </>
         )}
       </text>
     );
   };
+  // Products along the bottom, largest stock first, names at an angle so a long
+  // one never overlaps its neighbour. Past what the screen holds the chart
+  // scrolls sideways inside its own box — `contain: inline-size` keeps that
+  // width from pushing the page wider.
   return (
-    <ResponsiveContainer width="100%" height={data.length * ROW_H + 28}>
-      <BarChart data={data} layout="vertical" margin={{ top: 0, right: 64, left: 0, bottom: 0 }} barCategoryGap={6}>
-        <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" horizontal={false} />
-        <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={compact} allowDecimals={false} orientation="top" />
-        <YAxis type="category" dataKey="productName" tick={{ ...AXIS_TICK, fontSize: 11, fill: 'var(--foreground)' }} tickLine={false} axisLine={false} width={130} interval={0} />
-        <Tooltip
-          cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
-          content={tip<(typeof data)[number]>((r) => (
-            <TipBox
-              title={r.productName}
-              rows={[
-                { label: 'Production stock', value: fmt(r.production), color: chartColors.productionStock },
-                { label: 'Branch stock', value: fmt(r.branch), color: chartColors.branchStock },
-                { label: r.state === 'out' ? 'Out of stock' : r.state === 'low' ? 'Low stock · total' : 'Total', value: fmt(r.total), strong: true },
-              ]}
+    <div className="overflow-x-auto [contain:inline-size]" data-testid="stock-columns">
+      <div style={{ minWidth: data.length * STOCK_COLUMN_MIN_WIDTH + 48 }}>
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data} margin={{ top: 22, right: 8, left: 0, bottom: 0 }} barCategoryGap="18%">
+            <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
+            <XAxis
+              dataKey="productName"
+              tick={{ ...AXIS_TICK, fontSize: 11, fill: 'var(--foreground)' }}
+              tickLine={false}
+              axisLine={false}
+              interval={0}
+              angle={-40}
+              textAnchor="end"
+              height={92}
             />
-          ))}
-        />
-        <Bar dataKey="prod" name="Production stock" stackId="stock" fill={chartColors.productionStock} isAnimationActive={false} shape={stackSegment('prod', endOf, 'right')}>
-          {data.map((r) => <Cell key={r.productId} fill={fillFor(r, chartColors.productionStock)} />)}
-        </Bar>
-        <Bar dataKey="shelf" name="Branch stock" stackId="stock" fill={chartColors.branchStock} isAnimationActive={false} shape={stackSegment('shelf', endOf, 'right')}>
-          {data.map((r) => <Cell key={r.productId} fill={fillFor(r, chartColors.branchStock)} fillOpacity={r.state === 'low' ? 0.65 : 1} />)}
-          <LabelList content={StatusLabel} />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={compact} allowDecimals={false} width={40} />
+            <Tooltip
+              cursor={{ fill: 'var(--muted)', opacity: 0.5 }}
+              content={tip<(typeof data)[number]>((r) => (
+                <TipBox
+                  title={r.productName}
+                  rows={[
+                    { label: 'Production stock', value: fmt(r.production), color: chartColors.productionStock },
+                    { label: 'Branch stock', value: fmt(r.branch), color: chartColors.branchStock },
+                    { label: r.state === 'out' ? 'Out of stock' : r.state === 'low' ? 'Low stock · total' : 'Total', value: fmt(r.total), strong: true },
+                  ]}
+                />
+              ))}
+            />
+            <Bar dataKey="prod" name="Production stock" stackId="stock" fill={chartColors.productionStock} maxBarSize={28} isAnimationActive={false} shape={stackSegment('prod', endOf, 'top')}>
+              {data.map((r) => <Cell key={r.productId} fill={fillFor(r, chartColors.productionStock)} />)}
+            </Bar>
+            <Bar dataKey="shelf" name="Branch stock" stackId="stock" fill={chartColors.branchStock} maxBarSize={28} isAnimationActive={false} shape={stackSegment('shelf', endOf, 'top')}>
+              {data.map((r) => <Cell key={r.productId} fill={fillFor(r, chartColors.branchStock)} fillOpacity={r.state === 'low' ? 0.65 : 1} />)}
+              <LabelList content={StatusLabel} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }

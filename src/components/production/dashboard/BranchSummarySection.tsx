@@ -96,7 +96,7 @@ export function BranchSummarySection({
         if (!d) return null;
         const unit = BUCKET_UNIT[d.bucket];
         const leader = d.series[0];
-        const label = `Grouped horizontal bars per branch: units demanded, delivered and returned, ${rangeLabel(d.window)}, highest demand first.` +
+        const label = `Grouped columns per branch: units demanded, delivered and returned, ${rangeLabel(d.window)}, highest demand first, left to right.` +
           (leader && leader.demanded > 0 ? ` ${shortBranch(leader.branchName)} asked for the most, ${fmt(leader.demanded)} units.` : '');
         return (
           <div className="flex flex-col gap-5">

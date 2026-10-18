@@ -15,7 +15,7 @@ import type { SectionProps } from './ReceivedDemandSection';
 
 const StockBars = dynamic(() => import('./charts').then((m) => m.StockBars), {
   ssr: false,
-  loading: () => <Skeleton className="h-[320px] w-full" />,
+  loading: () => <Skeleton className="h-[340px] w-full" />,
 });
 
 /** Stock right now. It ignores the period switch, and says so. */
@@ -57,7 +57,7 @@ export function CurrentStockSection({ token, period, branchId, scope }: Omit<Sec
     >
       {() => {
         if (!d) return null;
-        const label = `Horizontal bars per product, production stock stacked with branch stock, largest first. ` +
+        const label = `Columns per product, production stock stacked under branch stock, largest first, left to right. ` +
           `${fmt(d.kpis.low)} products are low (amber) and ${fmt(d.kpis.out)} are out of stock.`;
         return (
           <div className="flex flex-col gap-3">
@@ -88,7 +88,7 @@ export function CurrentStockSection({ token, period, branchId, scope }: Omit<Sec
             {rows.length === 0 ? (
               <EmptyState height={140}>{lowOnly ? 'Nothing is running low' : 'No products match'}</EmptyState>
             ) : (
-              <Figure label={label} className="max-h-[560px] overflow-y-auto pr-1">
+              <Figure label={label}>
                 <StockBars rows={rows} />
               </Figure>
             )}
