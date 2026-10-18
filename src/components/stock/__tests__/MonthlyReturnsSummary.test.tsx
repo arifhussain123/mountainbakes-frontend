@@ -63,25 +63,22 @@ describe('MonthlyReturnsSummary — Production branch boxes', () => {
     expect(screen.getByText('Monthly Return Amount by Branch')).toBeTruthy();
   });
 
-  test('one box per active branch, alphabetical, name and amount in separate parts', () => {
+  test('one box per active branch with an amount, name and amount in separate parts', () => {
     render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} />);
-    expect(boxes().map((b) => b.firstElementChild?.textContent)).toEqual([
-      'Alabad Branch',
-      'Commercial Market Branch',
-      'Committee Chowk Branch',
-    ]);
+    expect(boxes().map((b) => b.firstElementChild?.textContent)).toEqual(['Alabad Branch']);
     expect(box('Alabad Branch').lastElementChild?.textContent).toBe('Rs. 12,500.00');
   });
 
   test('approved, awaiting review and sent back count; rejected does not', () => {
     render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} />);
     expect(box('Alabad Branch').textContent).not.toContain('777');
-    expect(box('Committee Chowk Branch').lastElementChild?.textContent).toBe('Rs. 0.00');
+    // Committee Chowk's only return was rejected, so it has nothing to show.
+    expect(boxes().some((b) => b.textContent?.startsWith('Committee Chowk'))).toBe(false);
   });
 
-  test('a branch with no returns shows Rs. 0.00; an inactive one gets no box', () => {
+  test('a branch with no returns gets no box, nor does an inactive one', () => {
     render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} />);
-    expect(box('Commercial Market Branch').lastElementChild?.textContent).toBe('Rs. 0.00');
+    expect(boxes().some((b) => b.textContent?.startsWith('Commercial Market'))).toBe(false);
     expect(boxes().some((b) => b.textContent?.startsWith('Saddar'))).toBe(false);
   });
 
@@ -90,15 +87,21 @@ describe('MonthlyReturnsSummary — Production branch boxes', () => {
     const { rerender } = render(
       <MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} onSelectBranch={onSelect} />,
     );
-    fireEvent.click(box('Committee Chowk Branch'));
-    expect(onSelect).toHaveBeenLastCalledWith(B);
+    fireEvent.click(box('Alabad Branch'));
+    expect(onSelect).toHaveBeenLastCalledWith(A);
     rerender(
-      <MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} selectedBranchId={B} onSelectBranch={onSelect} />,
+      <MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} selectedBranchId={A} onSelectBranch={onSelect} />,
     );
-    expect(box('Committee Chowk Branch').getAttribute('aria-pressed')).toBe('true');
-    expect(boxes()).toHaveLength(3);
-    fireEvent.click(box('Committee Chowk Branch'));
+    expect(box('Alabad Branch').getAttribute('aria-pressed')).toBe('true');
+    expect(boxes()).toHaveLength(1);
+    fireEvent.click(box('Alabad Branch'));
     expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  test('a selected branch keeps its box at Rs. 0.00 so it can be cleared', () => {
+    render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} selectedBranchId={B} />);
+    expect(boxes().map((b) => b.firstElementChild?.textContent)).toEqual(['Alabad Branch', 'Committee Chowk Branch']);
+    expect(box('Committee Chowk Branch').lastElementChild?.textContent).toBe('Rs. 0.00');
   });
 
   test('a selected branch narrows the cards to its own figures', () => {

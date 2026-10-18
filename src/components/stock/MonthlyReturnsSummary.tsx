@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
  *
  * On Production the cards are followed by one box per active branch — its
  * monthly return amount under `branchReturnAmount` (approved, awaiting review
- * and sent back; rejected excluded). The boxes always show every active branch;
+ * and sent back; rejected excluded). Branches whose amount is zero get no box;
  * picking one narrows the cards above (and the table below) to it.
  *
  * The window is the server's, so the date line is too — it always names the
@@ -138,7 +138,11 @@ export function MonthlyReturnsSummary({
       ]
     : [];
   const tileCount = showBranches ? 8 : 7;
-  const boxes = showBranches && summary && branches ? buildBranchReturnBoxes(summary, branches) : null;
+  // A branch with nothing to show this month gets no box — unless it is the
+  // selected one, which stays so it can be clicked again to clear the filter.
+  const boxes = showBranches && summary && branches
+    ? buildBranchReturnBoxes(summary, branches).filter((b) => b.amount !== 0 || b.branchId === selectedBranchId)
+    : null;
   const ruleText = `Active branches · ${statusLabels.accepted.toLowerCase()}, ${statusLabels.pending.toLowerCase()} and ${statusLabels.returned.toLowerCase()} · ${statusLabels.rejected.toLowerCase()} excluded`;
 
   return (
@@ -179,7 +183,7 @@ export function MonthlyReturnsSummary({
             {!boxes ? (
               Array.from({ length: 4 }, (_, i) => <Skeleton key={i} data-testid="return-branch-skeleton" className="h-[104px] rounded-lg" />)
             ) : boxes.length === 0 ? (
-              <p className="col-span-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No active branches.</p>
+              <p className="col-span-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No branch return amounts this month.</p>
             ) : (
               boxes.map((b) => (
                 <BranchBox

@@ -12,7 +12,7 @@ import { DataTable } from '@/components/shared/DataTable';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
 import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
 import { RecordReturnDialog } from '@/components/production/RecordReturnDialog';
-import { createdByColumn, returnValueColumns } from '@/components/stock/returnColumns';
+import { returnValueColumns } from '@/components/stock/returnColumns';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
@@ -265,7 +265,8 @@ export function ProductionReturnsPage() {
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('qty', { header: 'Qty', meta: { align: 'center' }, cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span> }),
-    ...returnValueColumns(col),
+    // Price and amount only — this page leaves out the product code.
+    ...returnValueColumns(col).filter((c) => c.id !== 'productCode'),
     // Which side raised it. It decides what Approve moves and whether Send Back
     // is offered at all, so it belongs on the row rather than only in the dialog.
     col.accessor((r) => (r.source === 'branch' ? 'Branch' : 'Production'), {
@@ -274,7 +275,6 @@ export function ProductionReturnsPage() {
       cell: (i) => <span className="text-muted-foreground text-xs">{i.getValue()}</span>,
     }),
     col.accessor('reason', { header: 'Reason', meta: { mobileFull: true }, cell: (i) => <ExpandableText text={i.getValue()} className="text-muted-foreground" /> }),
-    createdByColumn(col),
     // Not sortable — there is nothing to order a picture by. A small fixed
     // thumbnail; the full photo opens from it. Rows without one show a dash.
     col.display({
