@@ -9,17 +9,18 @@ import { useBranchClosing } from '@/lib/queries';
 import { useStockRealtime } from '@/hooks/useStockRealtime';
 import { businessDateStr, businessDaysAgoStr, computeClosingTotals } from '@mb/shared';
 import { StatCard } from '@/components/shared/StatCard';
-import { PrintButton } from '@/components/shared/PrintButton';
-import { printDocument } from '@/lib/print/browser/documentPrint';
+import { PopPrintButton } from '@/components/print/PopPrintButton';
+import { printBranchClosing, type BranchClosingDoc } from '@/lib/print';
+import { useCachedLogo } from '@/lib/print/logoCache';
 import { Button } from '@/components/ui/button';
 import { ClosingExportModal } from './ClosingExportModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
+import { PAYMENT_METHOD_LABELS, COMPANY_NAME } from '@/utils/constants';
+import { formatDate, formatTime } from '@/utils/date';
 import { FileSpreadsheet } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 /**
  * The shop's end-of-day sheet.
@@ -58,6 +59,9 @@ export function BranchClosingPage() {
   useStockRealtime();
   const cur = settings?.currencySymbol || 'Rs.';
   const money = (n: number) => `${cur}${Math.round(n).toLocaleString()}`;
+  const logo = useCachedLogo(settings?.logoUrl);
+  const companyName = settings?.companyName?.trim() || COMPANY_NAME;
+  const branchName = user?.branchName || 'Branch';
 
   // The expenses endpoint only serves the last 7 business days. Outside that
   // window the expense figures are absent rather than zero, and saying so beats
@@ -113,20 +117,53 @@ export function BranchClosingPage() {
     [data],
   );
 
+  // The receipt's own Balance Stock section — positive balance only. A missing
+  // or non-numeric balance is treated as zero rather than printed as stock that
+  // is not really there. Filtered here, not on the screen table above: a
+  // product sitting at zero is still useful to see on screen (it says what ran
+  // out), just not worth handing over on the printed sheet.
+  const printableStock = useMemo(
+    () =>
+      (data?.stock ?? [])
+        .filter((r) => Number.isFinite(Number(r.balance)) && Number(r.balance) > 0)
+        .map((r) => ({ productName: r.productName, balance: Number(r.balance) })),
+    [data],
+  );
+
+  const closingDoc: BranchClosingDoc = useMemo(() => {
+    const now = new Date();
+    return {
+      branchName,
+      businessDateText: formatDate(date),
+      printDateText: formatDate(now),
+      printTimeText: formatTime(now),
+      companyName,
+      currencySymbol: cur,
+      stockLines: printableStock,
+      paymentLines: totals.byMethod.map((r) => ({
+        label: PAYMENT_METHOD_LABELS[r.method] ?? r.method,
+        amount: r.total,
+      })),
+      totalSales: totals.sales,
+      discounts: totals.discounts,
+      totalExpenses: totals.expenses,
+      cashInHand: totals.cashInHand,
+      orderCount: totals.orderCount,
+      cancelled: totals.cancelled,
+      logo,
+    };
+  }, [branchName, date, companyName, cur, printableStock, totals, logo]);
+
   return (
-    // `print-area` is what Print prints: globals.css hides every other body
-    // child and reveals this subtree, same convention as DailySalesSection.
-    // `print-pos` sets the page box to an 80mm receipt roll instead of A4 —
-    // this sheet is handed over at the till, not filed as a report.
-    <div className="print-area print-pos space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">{user?.branchName || 'Branch'} — Closing</h2>
+          <h2 className="text-lg font-semibold">{branchName} — Closing</h2>
           <p className="text-sm text-muted-foreground">
             End-of-day summary. This is a read of the day, not a lock on it.
           </p>
         </div>
-        <div className="no-print flex flex-wrap items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs">Business date</Label>
             <Input
@@ -143,15 +180,21 @@ export function BranchClosingPage() {
           <Button variant="outline" size="sm" className="h-9" onClick={() => setExportOpen(true)}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export Excel
           </Button>
-          <PrintButton onPrint={() => printDocument()} printLabel="Print" saveLabel="Save PDF" size="sm" />
+          {/* POP Print sends the canonical Branch Closing receipt — Balance
+              Stock (positive balance only) plus the full Payment Details — to
+              the printer this computer has installed, on its own 80mm/58mm
+              roll. Not `PrintButton`/`window.print()`: this is a till receipt,
+              not an A4 report. */}
+          <PopPrintButton
+            label="Print"
+            size="sm"
+            disabled={isLoading}
+            print={(hooks) => printBranchClosing(closingDoc, { paper: hooks.paper, onJobUpdate: hooks.onJobUpdate })}
+          />
         </div>
       </div>
 
-      {/* Summary cards, the expense-range notice and the payment/expense
-          breakdown are all screen-only: the printed sheet is the Closing
-          Stock table alone, on an 80mm roll — not a report with a payment
-          detail section. */}
-      <div className="print:hidden grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard title="Sales" value={isLoading ? '…' : money(totals.sales)} icon={ShoppingCart} color="green" loading={isLoading} />
         <StatCard title="Expenses" value={isLoading ? '…' : money(totals.expenses)} icon={Receipt} color="red" loading={isLoading} />
         <StatCard title="Net" value={isLoading ? '…' : money(totals.net)} icon={TrendingUp} color="orange" loading={isLoading} />
@@ -160,7 +203,7 @@ export function BranchClosingPage() {
       </div>
 
       {expensesOutOfRange && (
-        <Card className="print:hidden border-dashed">
+        <Card className="border-dashed">
           <CardContent className="p-4 text-sm text-muted-foreground">
             Shop expenses are only available for the last 7 business days, so the expense,
             net and cash figures above cover sales only for this date.
@@ -168,7 +211,7 @@ export function BranchClosingPage() {
         </Card>
       )}
 
-      <div className="print:hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Takings by Payment Method</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -224,7 +267,7 @@ export function BranchClosingPage() {
             {stockTotals.sold.toLocaleString()} units sold · {stockTotals.returned.toLocaleString()} returned to production ·{' '}
             {stockTotals.balance.toLocaleString()} left on the shelf
           </p>
-          <div className="overflow-x-auto print:overflow-visible">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr data-table-head className="border-b text-left text-xs">
@@ -247,11 +290,8 @@ export function BranchClosingPage() {
                 {!isLoading && stock.length === 0 && (
                   <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No stock activity for this business day.</td></tr>
                 )}
-                {/* A product sitting at zero on the shelf has nothing to hand
-                    over — kept on screen (it's still useful to see what ran
-                    out) but left off the printed sheet. */}
                 {stock.map((r) => (
-                  <tr key={r.productId} className={cn('border-b last:border-0', r.balance === 0 && 'print:hidden')}>
+                  <tr key={r.productId} className="border-b last:border-0">
                     <td className="py-2 pr-3 font-medium">{r.productName}</td>
                     <td className="py-2 px-3 text-right">{r.opening}</td>
                     <td className="py-2 px-3 text-right">{r.newQty}</td>
@@ -263,9 +303,7 @@ export function BranchClosingPage() {
               </tbody>
               {/* Only when there are rows to total. A Total line under "No stock
                   activity for this business day" would be five zeroes dressed up
-                  as a finding. In <tfoot>, so a printed sheet that runs to a second
-                  page repeats it — this page has a Print button and the sheet is
-                  what a shift hands over on. */}
+                  as a finding. */}
               {!isLoading && stock.length > 0 && (
                 <tfoot>
                   <tr data-table-foot className="border-t-2 font-semibold">
@@ -288,11 +326,9 @@ export function BranchClosingPage() {
         </CardContent>
       </Card>
 
-      {/* The same `stock` rows and `stockTotals` the table above just printed —
-          the graph is the table drawn, not a second read of the day. Kept off
-          the printed sheet (`print:hidden`): the table is the handover record
-          and the export keeps its own format. */}
-      <Card className="print:hidden">
+      {/* The same `stock` rows and `stockTotals` the table above just showed —
+          the graph is the table drawn, not a second read of the day. */}
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Closing Stock Histogram</CardTitle>
         </CardHeader>

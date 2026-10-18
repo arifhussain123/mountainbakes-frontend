@@ -8,7 +8,8 @@ import { PAGE_STYLE_ID } from './receipt/styles';
 import { buildProductionOrderDocument } from './receipt/productionOrder';
 import { buildSaleReceiptDocument } from './receipt/saleReceipt';
 import { buildDemandSummaryDocument } from './receipt/demandSummary';
-import type { DemandSummaryDoc, PaperWidth, ProductionOrderDoc, SaleReceiptDoc } from './receipt/types';
+import { buildBranchClosingDocument } from './receipt/branchClosing';
+import type { BranchClosingDoc, DemandSummaryDoc, PaperWidth, ProductionOrderDoc, SaleReceiptDoc } from './receipt/types';
 import { InvalidDocumentError } from './receipt/validate';
 import { isIOS } from '@/utils/pwa';
 
@@ -122,6 +123,11 @@ export function printDemandSummary(doc: DemandSummaryDoc, options: PrintOptions 
   return submit(doc.businessDateText, 'demand-summary', () => buildDemandSummaryDocument(doc, options.paper ?? '80mm'), options);
 }
 
+/** POP Print of the Branch Closing end-of-day sheet. */
+export function printBranchClosing(doc: BranchClosingDoc, options: PrintOptions = {}): Promise<PrintResult> {
+  return submit(`${doc.branchName}-${doc.businessDateText}`, 'branch-closing', () => buildBranchClosingDocument(doc, options.paper ?? '80mm'), options);
+}
+
 /**
  * The canonical document for a caller that wants to SHOW it — a preview tab, a
  * diagnostic — rather than print it. Same builder, same validation.
@@ -133,6 +139,11 @@ export function productionOrderDocument(doc: ProductionOrderDoc, paper: PaperWid
 /** Same as {@link productionOrderDocument}, for the demand-summary preview. */
 export function demandSummaryDocument(doc: DemandSummaryDoc, paper: PaperWidth = '80mm'): PrintDocument {
   return buildDemandSummaryDocument(doc, paper);
+}
+
+/** Same as {@link productionOrderDocument}, for the Branch Closing preview. */
+export function branchClosingDocument(doc: BranchClosingDoc, paper: PaperWidth = '80mm'): PrintDocument {
+  return buildBranchClosingDocument(doc, paper);
 }
 
 /**

@@ -156,6 +156,46 @@ export interface DemandSummaryDoc {
   logo?: string | null;
 }
 
+/** One row of the Balance Stock section — only products with balance > 0 reach this type; the caller filters, this file never recomputes. */
+export interface BranchClosingStockLine {
+  productName: string;
+  balance: number;
+}
+
+/** One row of the Payment Details section — a payment method and what it took. */
+export interface BranchClosingPaymentLine {
+  label: string;
+  amount: number;
+}
+
+/**
+ * The Branch Closing end-of-day sheet, as a till receipt.
+ *
+ * Every figure here is the screen's own — `computeClosingTotals` and the
+ * Closing Stock table the Branch Closing page already reads — never
+ * recomputed. `stockLines` is PRE-FILTERED by the caller to balance > 0; this
+ * document has no opinion on which products qualify, only on how to lay out
+ * the ones it is handed.
+ */
+export interface BranchClosingDoc {
+  branchName: string;
+  businessDateText: string;
+  printDateText: string;
+  printTimeText: string;
+  companyName?: string | null;
+  currencySymbol: string;
+  stockLines: BranchClosingStockLine[];
+  paymentLines: BranchClosingPaymentLine[];
+  totalSales: number;
+  discounts: number;
+  totalExpenses: number;
+  cashInHand: number;
+  orderCount: number;
+  cancelled: number;
+  /** An inlined `data:` URL for the logo, when one is already in hand. Never fetched here. */
+  logo?: string | null;
+}
+
 export interface ProductionOrderDoc {
   orderNumber: string;
   dateText: string;

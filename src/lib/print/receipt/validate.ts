@@ -1,4 +1,4 @@
-import type { DemandSummaryDoc, ProductionOrderDoc, SaleReceiptDoc } from './types';
+import type { BranchClosingDoc, DemandSummaryDoc, ProductionOrderDoc, SaleReceiptDoc } from './types';
 
 /**
  * Validation — run before a document is built, so an empty or self-contradicting
@@ -104,5 +104,30 @@ export function validateDemandSummaryDoc(doc: DemandSummaryDoc): void {
         `The branch amounts do not add up to the grand total (${summed} ≠ ${doc.totals.grandAmount}).`,
       );
     }
+  }
+}
+
+/**
+ * The branch and date identify whose drawer this is, and the payment-method
+ * lines have to add up to the same total sales the screen states — the same
+ * "assert, don't recompute" rule as the other documents in this file, applied
+ * to `computeClosingTotals.sales` instead of an order's own total.
+ *
+ * An empty `stockLines` is NOT refused here: a branch that sold out of
+ * everything legitimately prints "No balance stock" rather than being told it
+ * has nothing to hand over.
+ */
+export function validateBranchClosingDoc(doc: BranchClosingDoc): void {
+  if (!doc.branchName?.trim()) {
+    throw new InvalidDocumentError('This closing sheet has no branch to print.');
+  }
+  if (!doc.businessDateText?.trim()) {
+    throw new InvalidDocumentError('This closing sheet has no business date to print.');
+  }
+  const summed = doc.paymentLines.reduce((total, line) => total + line.amount, 0);
+  if (Math.abs(summed - doc.totalSales) > 1) {
+    throw new InvalidDocumentError(
+      `The payment method totals do not add up to total sales (${summed} ≠ ${doc.totalSales}).`,
+    );
   }
 }
