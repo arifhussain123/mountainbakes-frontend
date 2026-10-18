@@ -125,7 +125,7 @@ export function ExpensesPage() {
 
       <SummaryTotalCard
         layout="inline"
-        label={`Total (${windowLabel.toLowerCase()})`}
+        label={<>Total ({windowLabel.toLowerCase()})</>}
         amount={sum !== null ? formatSummaryAmount(sum, cur) : totalsQ.isError ? '—' : '…'}
         busy={totalsQ.isFetching}
       />

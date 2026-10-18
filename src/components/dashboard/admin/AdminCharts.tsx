@@ -35,9 +35,42 @@ const TOOLTIP_STYLE = {
   color: 'var(--card-foreground)',
 };
 
+/** Legend labels in text ink; the swatch beside each carries the series colour. */
+const legendText = (value: string) => <span style={{ color: 'var(--foreground)' }}>{value}</span>;
+
 function useMoneyTooltip() {
   const { format } = useMoney();
   return (value: number | string, name: string) => [format(Number(value)), name] as [string, string];
+}
+
+/**
+ * A category tick that wraps the branch name into the width its group of bars
+ * gets — on a phone four names side by side otherwise run into each other.
+ */
+function WrappedTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+  width?: number;
+  visibleTicksCount?: number;
+}) {
+  const { x = 0, y = 0, payload, width = 0, visibleTicksCount = 1 } = props;
+  const maxChars = Math.max(6, Math.floor(width / Math.max(1, visibleTicksCount) / 6.2));
+  const lines: string[] = [];
+  for (const word of String(payload?.value ?? '').split(/\s+/)) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && `${last} ${word}`.length <= maxChars) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return (
+    <text x={x} y={y + 4} textAnchor="middle" fontSize={AXIS.fontSize} fill={AXIS.fill}>
+      {lines.slice(0, 3).map((l, i) => (
+        <tspan key={i} x={x} dy={i === 0 ? '0.71em' : '1.15em'}>
+          {l}
+        </tspan>
+      ))}
+    </text>
+  );
 }
 
 /** Company Share, Received and Ledger Expense, one group of bars per branch. */
@@ -64,10 +97,10 @@ export function BranchPerformanceChart({
         }}
       >
         <CartesianGrid stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="branch" tick={AXIS} tickLine={false} axisLine={false} interval={0} />
+        <XAxis dataKey="branch" tick={<WrappedTick />} tickLine={false} axisLine={false} interval={0} height={48} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} tickFormatter={compact} width={44} />
         <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--fin-soft)' }} formatter={fmt} />
-        <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" iconSize={10} />
+        <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" iconSize={10} formatter={legendText} />
         <Bar
           isAnimationActive={false}
           dataKey="companyShare"
@@ -105,7 +138,7 @@ export function DailyDemandChart({
   data,
   onDay,
 }: {
-  data: { date: string; label: string; demand: number; orders: number }[];
+  data: { date: string; label: string; demand: number | null; orders: number }[];
   onDay: (date: string) => void;
 }) {
   const fmt = useMoneyTooltip();
@@ -167,7 +200,7 @@ export function WeeklyReturnDiscountChart({
         <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} interval={0} />
         <YAxis tick={AXIS} tickLine={false} axisLine={false} tickFormatter={compact} width={44} />
         <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--fin-soft)' }} formatter={fmt} />
-        <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" iconSize={10} />
+        <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" iconSize={10} formatter={legendText} />
         <Bar isAnimationActive={false} dataKey="returns" name="Return" fill={SERIES.returns} radius={[4, 4, 0, 0]} maxBarSize={36}>
           <LabelList dataKey="returns" position="top" formatter={label} style={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
         </Bar>

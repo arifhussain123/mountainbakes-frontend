@@ -41,7 +41,7 @@ describe('SummaryTotalCard', () => {
     render(<SummaryTotalCard data-testid="card" label="Total" amount="Rs. 1" secondaryText="" loading />);
     const skeleton = screen.getByTestId('card-skeleton');
     expect(skeleton.getAttribute('aria-busy')).toBe('true');
-    expect(skeleton.textContent).toBe('');
+    expect(skeleton.textContent?.trim()).toBe('');
     expect(skeleton.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
     expect(screen.queryByTestId('card')).toBeNull();
   });

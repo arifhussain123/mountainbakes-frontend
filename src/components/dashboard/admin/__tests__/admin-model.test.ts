@@ -116,14 +116,25 @@ describe('dailyDemand', () => {
     expect(d[8]).toMatchObject({ date: '2026-10-09', demand: 700, orders: 2 });
     expect(d[1]!.demand).toBe(0);
   });
+
+  test('a day after the business date is a gap, not a zero', () => {
+    const d = dailyDemand(dashboard());
+    expect(d[9]).toMatchObject({ date: '2026-10-10', demand: 0 });
+    expect(d[10]).toMatchObject({ date: '2026-10-11', demand: null });
+  });
 });
 
 describe('weeklyReturnsDiscount', () => {
   test('buckets by week of the month (1–7, 8–14, …), clipped to the window', () => {
-    const w = weeklyReturnsDiscount(dashboard());
+    const w = weeklyReturnsDiscount(dashboard({ businessDate: '2026-11-02' }));
     expect(w.map((x) => x.label)).toEqual(['01–07 Oct', '08–14 Oct', '15–21 Oct', '22–28 Oct', '29–31 Oct']);
     expect(w[0]).toMatchObject({ returns: 30, discount: 0 });
     expect(w[1]).toMatchObject({ returns: 0, discount: 20 });
+  });
+
+  test('weeks that have not started are left off', () => {
+    // Business date 10 Oct: week 2 has started, week 3 has not.
+    expect(weeklyReturnsDiscount(dashboard()).map((x) => x.label)).toEqual(['01–07 Oct', '08–14 Oct']);
   });
 
   test('a narrowed range only yields the weeks it touches', () => {

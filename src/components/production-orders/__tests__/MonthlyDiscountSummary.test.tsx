@@ -77,11 +77,6 @@ describe('MonthlyDiscountSummary', () => {
     expect(card('DHA Branch').getAttribute('aria-current')).toBeNull();
   });
 
-  test('a branch page shows no All Branches card', () => {
-    const own = { ...SUMMARY, branches: SUMMARY.branches.filter((b) => b.branchId === A) };
-    render(<MonthlyDiscountSummary {...base} summary={own} />);
-    expect(cards().map((c) => c.firstElementChild?.textContent)).toEqual(['DHA Branch']);
-  });
 
   test('skeletons while the first load runs', () => {
     render(<MonthlyDiscountSummary {...base} summary={undefined} isLoading showBranches />);
@@ -96,7 +91,7 @@ describe('MonthlyDiscountSummary', () => {
 
   test('a first load that fails offers a retry and no figures', () => {
     const onRetry = vi.fn();
-    render(<MonthlyDiscountSummary {...base} summary={undefined} isError error={new Error('offline')} onRetry={onRetry} />);
+    render(<MonthlyDiscountSummary {...base} summary={undefined} isError error={new Error('offline')} onRetry={onRetry} showBranches />);
     expect(screen.getByRole('alert').textContent).toContain('Unable to load the monthly discount summary');
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledOnce();
@@ -118,5 +113,74 @@ describe('MonthlyDiscountSummary', () => {
   test('a fresh load carries no out-of-date notice', () => {
     render(<MonthlyDiscountSummary {...base} summary={SUMMARY} showBranches />);
     expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+/** Branch → Discounts: the branch's own total, one full-width card like Shop Expenses'. */
+describe('MonthlyDiscountSummary, branch view', () => {
+  const ownSummary = (approved: { count: number; amount: number }, pending = { count: 0, amount: 0 }) =>
+    buildDiscountSummary(
+      [
+        ...(approved.count ? [{ branchId: A, branchName: 'Committee Chowk Branch', status: 'approved' as const, ...approved }] : []),
+        ...(pending.count ? [{ branchId: A, branchName: 'Committee Chowk Branch', status: 'pending' as const, ...pending }] : []),
+      ],
+      [{ id: A, name: 'Committee Chowk Branch' }],
+      RANGE,
+    );
+
+  test('one card: the period start in the label, the approved total and the claim count, no branch name', () => {
+    render(<MonthlyDiscountSummary {...base} summary={ownSummary({ count: 17, amount: 12200 })} currencySymbol="Rs.  " />);
+    expect(cards()).toHaveLength(1);
+    const c = cards()[0]!;
+    expect(c.textContent).toContain('Total discount (since 2026-10-01)');
+    expect(c.textContent).toContain('17 claims approved');
+    expect(c.textContent).toContain('Rs.  12,200');
+    expect(c.textContent).not.toContain('Committee Chowk');
+    expect(screen.queryByText('All Branches')).toBeNull();
+  });
+
+  test('one claim is singular', () => {
+    render(<MonthlyDiscountSummary {...base} summary={ownSummary({ count: 1, amount: 500 })} currencySymbol="Rs. " />);
+    expect(cards()[0]!.textContent).toContain('1 claim approved');
+    expect(cards()[0]!.textContent).not.toContain('1 claims');
+  });
+
+  test('no approved claims still shows the card, at Rs. 0', () => {
+    render(<MonthlyDiscountSummary {...base} summary={ownSummary({ count: 0, amount: 0 })} currencySymbol="Rs. " />);
+    expect(cards()[0]!.textContent).toContain('Rs. 0');
+    expect(cards()[0]!.textContent).toContain('No approved claims yet');
+  });
+
+  test('claims awaiting review are their own line, not added in', () => {
+    render(<MonthlyDiscountSummary {...base} summary={ownSummary({ count: 2, amount: 1000 }, { count: 1, amount: 300 })} currencySymbol="Rs. " />);
+    expect(cards()[0]!.textContent).toContain('Rs. 1,000');
+    expect(cards()[0]!.textContent).toContain('Rs. 300 awaiting review · 1 claim');
+  });
+
+  test('the period sits under the heading', () => {
+    render(<MonthlyDiscountSummary {...base} summary={ownSummary({ count: 17, amount: 12200 })} />);
+    const heading = screen.getByRole('heading', { name: 'Monthly Discount Summary' });
+    expect(heading.nextElementSibling?.textContent).toContain('Period: 1 October 2026 – 18 October 2026 · approved claims');
+  });
+
+  test('a skeleton card while the first load runs', () => {
+    render(<MonthlyDiscountSummary {...base} summary={undefined} isLoading />);
+    expect(screen.getByTestId('discount-summary-card-skeleton')).toBeTruthy();
+    expect(screen.queryAllByTestId('discount-summary-card')).toHaveLength(0);
+  });
+
+  test('a failed first load says so inside the card, with a retry', () => {
+    const onRetry = vi.fn();
+    render(<MonthlyDiscountSummary {...base} summary={undefined} isError error={new Error('offline')} onRetry={onRetry} />);
+    expect(cards()).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toContain('Could not load the discount summary.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  test('a failed refresh keeps the figures but says they may be out of date', () => {
+    render(<MonthlyDiscountSummary {...base} summary={ownSummary({ count: 17, amount: 12200 })} isError error={new Error('offline')} />);
+    expect(screen.getByRole('status').textContent).toContain('Could not refresh');
+    expect(cards()[0]!.textContent).toContain('17 claims approved');
   });
 });

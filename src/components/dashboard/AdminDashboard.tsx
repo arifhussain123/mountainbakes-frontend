@@ -323,7 +323,6 @@ export function AdminDashboard() {
             data={data}
             sales={sales}
             salesFailed={salesQ.isError && !sales}
-            currency={symbol}
             drillTo={drillTo}
             format={format}
           />
@@ -334,10 +333,12 @@ export function AdminDashboard() {
               loading={salesQ.isPending}
               failed={salesQ.isError}
               onRetry={() => void salesQ.refetch()}
-              currency={symbol}
+              // The two reused cards print `${currency}${n}`; the space matches `format`.
+              currency={`${symbol} `}
               topLimit={topLimit}
               onTopLimit={setTopLimit}
               subtitle={context}
+              format={format}
             />
           )}
           {show('branches') && (

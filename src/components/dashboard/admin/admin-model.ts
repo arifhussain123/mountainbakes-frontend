@@ -93,30 +93,39 @@ export function branchSummaryRows(data: FinanceMonthlyDashboard): BranchSummaryR
 // Production
 // ---------------------------------------------------------------------------
 
-/** Approved demand per business date of the window — dense, a quiet day is a 0. */
+/**
+ * Approved demand per business date of the window — dense, a quiet day is a 0.
+ * A day after today is `null`, not 0: it has not happened, and a line dropping
+ * to zero for the rest of the month reads as a collapse.
+ */
 export function dailyDemand(data: FinanceMonthlyDashboard) {
   const byDate = new Map(
     datesBetween(data.from, data.to).map((date) => [
       date,
-      { date, label: date.slice(8, 10), demand: 0, orders: 0 },
+      { date, label: date.slice(8, 10), demand: 0 as number | null, orders: 0 },
     ]),
   );
   for (const d of data.days) {
     const r = byDate.get(d.date);
     if (!r) continue;
-    r.demand += d.demand;
+    r.demand = (r.demand ?? 0) + d.demand;
     r.orders += d.orders;
   }
-  return [...byDate.values()].map((r) => ({ ...r, demand: round2(r.demand) }));
+  return [...byDate.values()].map((r) => ({
+    ...r,
+    demand: r.date > data.businessDate ? null : round2(r.demand ?? 0),
+  }));
 }
 
 /**
  * Return and discount per week of the month (days 1–7, 8–14, …), the same
  * weeks the Finance Dashboard's weekly tables use, clipped to the window.
+ * Weeks that have not started yet are left off rather than drawn empty.
  */
 export function weeklyReturnsDiscount(data: FinanceMonthlyDashboard) {
   const weeks = new Map<string, { key: string; label: string; from: string; to: string; returns: number; discount: number }>();
   for (const date of datesBetween(data.from, data.to)) {
+    if (date > data.businessDate) break;
     const key = `${date.slice(0, 7)}-W${Math.ceil(Number(date.slice(8, 10)) / 7)}`;
     if (weeks.has(key)) continue;
     const r = bucketRange('weekly', key, data.from, data.to);

@@ -17,6 +17,7 @@ import {
   Scale,
   ShoppingCart,
   TrendingUp,
+  Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -146,6 +147,7 @@ export function SalesOverview({
   topLimit,
   onTopLimit,
   subtitle,
+  format,
 }: {
   sales: SalesAnalytics | null;
   loading: boolean;
@@ -155,8 +157,8 @@ export function SalesOverview({
   topLimit: SalesTopProductLimit;
   onTopLimit: (l: SalesTopProductLimit) => void;
   subtitle: string;
+  format: Format;
 }) {
-  const money = (n: number) => `${currency}${Math.round(n).toLocaleString()}`;
   const s = sales;
   return (
     <section className="flex min-w-0 flex-col gap-4">
@@ -170,32 +172,33 @@ export function SalesOverview({
         </div>
       ) : (
         <>
+          {/* Total Sales itself is the first headline tile above. */}
           <div className={KPI_GRID}>
-            <KpiTile
-              label="Total Sales"
-              value={s ? money(s.totalSales) : '…'}
-              sub="Paid orders, cancelled and staff excluded"
-              icon={Wallet}
-            />
             <KpiTile
               label="Transactions"
               value={s ? s.totalTransactions.toLocaleString() : '…'}
-              sub={s && s.staffCount ? `+ ${plural(s.staffCount, 'staff sale')} (unpaid)` : 'Paid orders'}
+              sub="Paid orders, cancelled and staff excluded"
               icon={ShoppingCart}
-              tone="received"
             />
             <KpiTile
               label="Average Sale"
-              value={s ? (s.totalTransactions ? money(s.totalSales / s.totalTransactions) : '—') : '…'}
+              value={s ? (s.totalTransactions ? format(s.totalSales / s.totalTransactions) : '—') : '…'}
               sub="Total Sales ÷ transactions"
               icon={Receipt}
-              tone="ledger"
+              tone="received"
             />
             <KpiTile
               label="Average Daily Sales"
-              value={s ? money(s.averageDailySales) : '…'}
+              value={s ? format(s.averageDailySales) : '…'}
               sub="Over every elapsed day of the range"
               icon={CalendarDays}
+              tone="ledger"
+            />
+            <KpiTile
+              label="Staff Sales (unpaid)"
+              value={s ? format(s.staffTotal) : '…'}
+              sub={s ? `${plural(s.staffCount, 'sale')} · not in Total Sales` : 'Not in Total Sales'}
+              icon={Users}
               tone="neutral"
             />
           </div>
@@ -269,9 +272,10 @@ export function BranchSummary({
   const s = data.summary;
   const month = monthLong(data.month);
   const sub = (r: BranchSummaryRow, key: BranchKey): string | null => {
-    if (key === 'demand') return plural(r.orders, 'demand');
-    if (key === 'companyShare') return `${pct(r.companyShare, r.demand)} of demand`;
-    if (key === 'received') return `${pct(r.received, r.companyShare)} of share`;
+    // Company expenses have no demand behind them — no count, no percentage.
+    if (key === 'demand') return r.orders ? plural(r.orders, 'demand') : null;
+    if (key === 'companyShare') return r.demand ? `${pct(r.companyShare, r.demand)} of demand` : null;
+    if (key === 'received') return r.companyShare ? `${pct(r.received, r.companyShare)} of share` : null;
     return null;
   };
   const drillBranch = (metric: FinanceDashboardMetric, r: BranchSummaryRow) =>
@@ -449,7 +453,7 @@ export function ProductionSummary({
         <KpiTile
           label="Demand Amount"
           value={format(s.demand)}
-          sub={plural(s.orders, 'reviewed order')}
+          sub="Approved qty × product price"
           icon={Factory}
           tone="neutral"
           onClick={s.orders ? () => drillTo('demand') : undefined}
@@ -664,14 +668,12 @@ export function HeadlineKpis({
   data,
   sales,
   salesFailed,
-  currency,
   drillTo,
   format,
 }: {
   data: FinanceMonthlyDashboard;
   sales: SalesAnalytics | null;
   salesFailed: boolean;
-  currency: string;
   drillTo: DrillTo;
   format: Format;
 }) {
@@ -681,7 +683,7 @@ export function HeadlineKpis({
     <div className={KPI_GRID}>
       <KpiTile
         label="Total Sales"
-        value={sales ? `${currency}${Math.round(sales.totalSales).toLocaleString()}` : salesFailed ? '—' : '…'}
+        value={sales ? format(sales.totalSales) : salesFailed ? '—' : '…'}
         sub={
           sales
             ? `${plural(sales.totalTransactions, 'transaction')} at the counter`

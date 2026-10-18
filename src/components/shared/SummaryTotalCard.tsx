@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 
 /**
  * A full-width total: a muted label on the left, the amount large and bold in
@@ -52,14 +51,18 @@ export function SummaryTotalCard({
       : 'flex flex-col items-start gap-1 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4';
 
   if (loading) {
+    // Each bar sits in a line with the real text's classes, so it is exactly
+    // that line's height — line heights follow the font size, which fixed bar
+    // heights would not.
+    const bar = (width: string) => <Skeleton className={`inline-block max-w-full align-top ${width}`}>{' '}</Skeleton>;
     return (
       <Card className={className} aria-busy="true" data-testid={testId && `${testId}-skeleton`}>
         <CardContent className={row}>
           <div className="min-w-0">
-            <Skeleton className="h-5 w-48 max-w-full" />
-            {hasSecondary ? <Skeleton className="mt-0.5 h-4 w-28" /> : null}
+            <div className="text-sm font-medium">{bar('w-48')}</div>
+            {hasSecondary ? <div className="mt-0.5 text-xs">{bar('w-28')}</div> : null}
           </div>
-          <Skeleton className="h-7 w-28" />
+          <div className="text-xl font-bold">{bar('w-28')}</div>
         </CardContent>
       </Card>
     );
