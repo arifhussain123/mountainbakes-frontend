@@ -64,9 +64,11 @@ export function Kpi({
 }) {
   return (
     <div className={cn('flex min-w-0 flex-col rounded-[14px] border bg-card', size === 'lg' ? 'gap-2 px-[18px] py-4' : 'gap-1.5 bg-muted/30 px-3.5 py-3')}>
-      <div className="flex items-center justify-between gap-2">
-        <p className={cn('flex min-w-0 items-center gap-1 font-semibold text-muted-foreground', size === 'lg' ? 'text-[12.5px]' : 'text-[11.5px]')}>
-          <span className="truncate">{name}</span>
+      {/* Wraps rather than truncates: on a phone the delta drops under the name
+          instead of cutting "Fulfilment rate" down to "Fulfilm…". */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <p className={cn('flex min-w-0 items-center gap-1 font-semibold leading-tight text-muted-foreground', size === 'lg' ? 'text-[12.5px]' : 'text-[11.5px]')}>
+          <span>{name}</span>
           {definition && <Definition text={definition} />}
         </p>
         {!loading && delta}

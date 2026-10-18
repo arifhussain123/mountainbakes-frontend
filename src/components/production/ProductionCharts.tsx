@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { Panel } from './ProductionPanel';
 import { chartColors } from './dashboard/chartColors';
+import { labelledIndexes } from './dashboard/format';
 
 const TOOLTIP_STYLE = {
   backgroundColor: 'var(--card)',
@@ -73,7 +74,7 @@ function ChartShell({
   );
 }
 
-/** Demand beside output, one point per month, each point labelled with its value. */
+/** Demand beside output, one point per month; the peak and the latest month are labelled with their values. */
 export function MonthlyDemandProduction({
   data, subtitle, loading,
 }: {
@@ -84,11 +85,14 @@ export function MonthlyDemandProduction({
   const total = (k: 'demand' | 'produced') => fmt(Math.round(data.reduce((s, d) => s + d[k], 0)));
   // Each label sits on the outer side of its own line, so the two never land
   // on top of each other where the lines run close.
+  const shown = { demand: labelledIndexes(data.map((d) => d.demand)), produced: labelledIndexes(data.map((d) => d.produced)) };
   const label = (key: 'demand' | 'produced', color: string) => function PointLabel(props: { x?: number | string; y?: number | string; index?: number }) {
-    const d = data[props.index ?? 0];
-    // A month with nothing in it is the flat line itself. A "0" there sat on
-    // the month names below it (Nov to Jul, before the first order in Aug).
-    if (!d || !d[key]) return null;
+    const i = props.index ?? 0;
+    const d = data[i];
+    // Only the peak and the latest month carry a number. A "0" on every empty
+    // month sat on the month names below it (Nov to Jul, before the first order
+    // in Aug), and a number on every point ran together on a phone.
+    if (!d || !shown[key].has(i)) return null;
     const above = key === 'demand' ? d.demand >= d.produced : d.produced > d.demand;
     return (
       <text

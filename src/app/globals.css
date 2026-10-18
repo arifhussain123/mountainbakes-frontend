@@ -238,7 +238,7 @@
   --stock-balance: #d55181;
   --dash-demand: #d24100;
   --dash-produced: #b58d47;
-  --dash-delivered: #a79600;
+  --dash-delivered: #c39227; /* L 0.69, just over the 0.67 dark band: the olive inside it no longer read as gold */
   --dash-returned: #9c2e5a;
   --dash-repaired: #009b8f;
   --dash-prod-stock: #a04f27;

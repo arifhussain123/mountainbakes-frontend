@@ -1,6 +1,6 @@
 # Production Dashboard redesign: plan
 
-Status: discovery done, waiting on two decisions (see "Blocking questions").
+Status: built and verified 2026-10-18. Decisions taken on the blocking questions below: add `'repaired'` to the enum (migration `20261018000001_return_disposition_repaired`, not yet applied to Railway); bucket return reasons by keyword; add vitest + Testing Library + jsdom as dev dependencies.
 Data figures below were read from the live database (read-only) on 2026-10-18.
 
 ## Files today
