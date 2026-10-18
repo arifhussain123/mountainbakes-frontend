@@ -1,18 +1,18 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
-import { format, parseISO } from 'date-fns';
-import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { useEffect } from 'react';
+import { addMonths, format, parseISO } from 'date-fns';
+import { AlertTriangle } from 'lucide-react';
 import type {
   MonthlyReturnsSummary as Summary,
   ProductionReturnStatus,
-  ProductReturnsLine,
   ReturnsBucket,
+  ReturnsSummaryTotals,
 } from '@mb/shared';
+import { buildBranchReturnBoxes, emptyReturnsTotals } from '@mb/shared';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SectionError } from '@/components/dashboard/branch-v2/parts';
-import { formatCurrency } from '@/utils/currency';
+import { CURRENCY_LOCALE, CURRENCY_SYMBOL, formatCurrency } from '@/utils/currency';
 import { logger } from '@/utils/logger';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +26,11 @@ import { cn } from '@/lib/utils';
  * priced. The headline cards count every return raised this month, whatever
  * its status; the status cards beside them split that same total, so an
  * unreviewed or refused request is never read as an approved one.
+ *
+ * On Production the cards are followed by one box per active branch — its
+ * monthly return amount under `branchReturnAmount` (approved, awaiting review
+ * and sent back; rejected excluded). The boxes always show every active branch;
+ * picking one narrows the cards above (and the table below) to it.
  *
  * The window is the server's, so the date line is too — it always names the
  * month the figures actually cover, never one computed here.
@@ -45,6 +50,9 @@ const longDate = (d: string) => format(parseISO(d), 'd MMMM yyyy');
 const qtyText = (n: number) => n.toLocaleString();
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 const bucketLine = (b: ReturnsBucket) => `${plural(b.qty, 'item', 'items')} · ${plural(b.count, 'return', 'returns')}`;
+/** Box amounts always carry the paisa: "Rs. 12,500.00", "Rs. 0.00". */
+const boxAmount = (n: number) =>
+  `${CURRENCY_SYMBOL} ${n.toLocaleString(CURRENCY_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function Tile({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: string }) {
   return (
@@ -56,32 +64,29 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub: 
   );
 }
 
-/** Item-wise lines: product, code, qty, amount, transactions. */
-function ProductLines({ lines, dense = false }: { lines: ProductReturnsLine[]; dense?: boolean }) {
-  if (lines.length === 0) return <p className="py-3 text-center text-sm text-muted-foreground">No returns this month.</p>;
+function BranchBox({ name, amount, selected, onPick }: { name: string; amount: number; selected: boolean; onPick?: () => void }) {
   return (
-    <Table className={cn('whitespace-nowrap', dense && 'text-xs')}>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Product</TableHead>
-          <TableHead>Code</TableHead>
-          <TableHead className="text-right">Returned Qty</TableHead>
-          <TableHead className="text-right">Return Amount</TableHead>
-          <TableHead className="text-right">Transactions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {lines.map((p) => (
-          <TableRow key={p.productId}>
-            <TableCell className="font-medium">{p.productName}</TableCell>
-            <TableCell className="font-mono text-xs text-muted-foreground">{p.productCode || '—'}</TableCell>
-            <TableCell className="text-right tabular-nums">{qtyText(p.qty)}</TableCell>
-            <TableCell className="text-right tabular-nums">{formatCurrency(p.amount)}</TableCell>
-            <TableCell className="text-right tabular-nums">{p.count}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <button
+      type="button"
+      data-testid="return-branch-box"
+      aria-pressed={selected}
+      title={selected ? 'Showing this branch only — click to show all' : 'Show only this branch'}
+      onClick={onPick}
+      className={cn(
+        'flex min-h-[104px] min-w-0 flex-col justify-between gap-2.5 rounded-lg border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary',
+        selected && 'border-primary bg-primary/10 ring-2 ring-primary/25',
+      )}
+    >
+      <span className="text-sm font-semibold leading-snug break-words">{name}</span>
+      <span
+        className={cn(
+          'block border-t pt-2.5 text-xl font-bold whitespace-nowrap tabular-nums',
+          amount === 0 && 'text-muted-foreground',
+        )}
+      >
+        {boxAmount(amount)}
+      </span>
+    </button>
   );
 }
 
@@ -94,6 +99,9 @@ export function MonthlyReturnsSummary({
   onRetry,
   statusLabels,
   showBranches = false,
+  branches,
+  selectedBranchId = null,
+  onSelectBranch,
 }: {
   summary: Summary | undefined;
   isLoading: boolean;
@@ -103,11 +111,15 @@ export function MonthlyReturnsSummary({
   onRetry: () => void;
   /** Each page already names the statuses its own way ("Awaiting Review" vs "Awaiting Production"). */
   statusLabels: Record<ProductionReturnStatus, string>;
-  /** Production: Branches Reporting, and a per-branch table with an All Branches total row. */
+  /** Production: Branches Reporting, and one return-amount box per active branch. */
   showBranches?: boolean;
+  /** Branch records (with `isActive`) — the boxes are the active ones, matched by id. */
+  branches?: { id: string; name: string; isActive?: boolean }[];
+  /** The branch the page is filtered to: its box is marked and the cards show its figures. */
+  selectedBranchId?: string | null;
+  /** A box was clicked: its id, or null when the selected box is clicked again. */
+  onSelectBranch?: (branchId: string | null) => void;
 }) {
-  const [openBranch, setOpenBranch] = useState<string | null>(null);
-
   useEffect(() => {
     if (error) logger.error('Monthly returns summary request failed', error);
   }, [error]);
@@ -116,7 +128,11 @@ export function MonthlyReturnsSummary({
     return <SectionError what="the monthly returns summary" onRetry={onRetry} retrying={isFetching} />;
   }
 
-  const t = summary?.totals;
+  // The summary always covers every branch; a selected branch narrows the cards
+  // to that branch's own figures without a second request.
+  const selected = selectedBranchId && summary ? summary.branches.find((b) => b.branchId === selectedBranchId) : undefined;
+  // A branch with no entry (e.g. an inactive one picked in the filter) has no returns: zeros, not a skeleton.
+  const t: ReturnsSummaryTotals | undefined = summary && selectedBranchId ? (selected ?? emptyReturnsTotals()) : summary?.totals;
   const tiles = t && summary
     ? [
         { label: 'Total Returned Items', value: qtyText(t.submitted.qty), sub: 'every status, this month', tone: TONE.submitted },
@@ -129,17 +145,23 @@ export function MonthlyReturnsSummary({
       ]
     : [];
   const tileCount = showBranches ? 8 : 7;
-  const colSpan = 4 + STATUS_ORDER.length;
-  // Only branches with a return this month get a row; the totals and Branches
-  // Reporting are the server's, so hiding the zero rows changes no figure.
-  const reporting = summary ? summary.branches.filter((b) => b.submitted.count > 0) : [];
+  const boxes = showBranches && summary && branches ? buildBranchReturnBoxes(summary, branches) : null;
+  const ruleText = `Active branches · ${statusLabels.accepted.toLowerCase()}, ${statusLabels.pending.toLowerCase()} and ${statusLabels.returned.toLowerCase()} · ${statusLabels.rejected.toLowerCase()} excluded`;
 
   return (
     <section aria-label="Monthly returns summary" className={cn('space-y-3 transition-opacity', isFetching && summary && 'opacity-70')}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold">
-          {summary ? `Monthly Returns: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'Monthly Returns'}
-        </h3>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">
+            {summary ? `Monthly Returns: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'Monthly Returns'}
+            {selected ? ` · ${selected.branchName.replace('Mountain Bakes ', '')}` : ''}
+          </h3>
+          {summary ? (
+            <p className="text-xs text-muted-foreground">
+              Month to date, Karachi business day · starts again on {longDate(format(addMonths(parseISO(summary.from), 1), 'yyyy-MM-dd'))}
+            </p>
+          ) : null}
+        </div>
         <p className="text-xs text-muted-foreground">Valued at each product&apos;s price on the return date</p>
       </div>
 
@@ -152,97 +174,36 @@ export function MonthlyReturnsSummary({
       {t && t.unpricedCount > 0 ? (
         <p role="status" className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <AlertTriangle className="size-4 shrink-0" />
-          {t.unpricedCount} {t.unpricedCount === 1 ? 'return has' : 'returns have'} no price on record, so the amounts above leave {t.unpricedCount === 1 ? 'it' : 'them'} out.
+          {t.unpricedCount} {t.unpricedCount === 1 ? 'return has' : 'returns have'} no price on record, so the amounts {showBranches ? 'and branch boxes ' : ''}leave {t.unpricedCount === 1 ? 'it' : 'them'} out.
           Their quantities are still counted.
         </p>
       ) : null}
 
-      {summary && !showBranches ? (
-        <details className="rounded-lg border bg-card" open={summary.products.length > 0 && summary.products.length <= 8}>
-          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
-            Item-wise returns ({summary.products.length})
-          </summary>
-          <div className="border-t">
-            <ProductLines lines={summary.products} />
+      {showBranches ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-1.5">
+            <h3 className="text-sm font-semibold">Monthly Return Amount by Branch</h3>
+            <span className="text-xs text-muted-foreground">{ruleText}</span>
           </div>
-        </details>
-      ) : null}
-
-      {showBranches && summary ? (
-        reporting.length === 0 ? (
-          <p className="rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No branch has returns this month.</p>
-        ) : (
-          <div className="rounded-lg border bg-card">
-            <Table className="whitespace-nowrap">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Branch</TableHead>
-                  <TableHead className="text-right">Return Qty</TableHead>
-                  <TableHead className="text-right">Return Amount</TableHead>
-                  <TableHead className="text-right">Transactions</TableHead>
-                  {STATUS_ORDER.map((s) => (
-                    <TableHead key={s} className="text-right">{statusLabels[s]}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reporting.map((b) => {
-                  const open = openBranch === b.branchId;
-                  return (
-                    <Fragment key={b.branchId}>
-                      <TableRow>
-                        <TableCell className="font-medium">
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 hover:underline disabled:no-underline disabled:opacity-100"
-                            aria-expanded={open}
-                            disabled={b.products.length === 0}
-                            onClick={() => setOpenBranch(open ? null : b.branchId)}
-                          >
-                            {b.products.length > 0
-                              ? (open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />)
-                              : <span className="inline-block size-4" />}
-                            {b.branchName.replace('Mountain Bakes ', '')}
-                          </button>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{qtyText(b.submitted.qty)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatCurrency(b.submitted.amount)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{b.submitted.count}</TableCell>
-                        {STATUS_ORDER.map((s) => (
-                          <TableCell key={s} className="text-right tabular-nums">
-                            {qtyText(b[s].qty)} · {formatCurrency(b[s].amount)}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      {open ? (
-                        <TableRow className="bg-muted/30 hover:bg-muted/30">
-                          <TableCell colSpan={colSpan} className="p-2 pl-8">
-                            <ProductLines lines={b.products} dense />
-                          </TableCell>
-                        </TableRow>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </TableBody>
-              {reporting.length > 1 && t ? (
-                <TableFooter>
-                  <TableRow className="font-semibold">
-                    <TableCell>All Branches</TableCell>
-                    <TableCell className="text-right tabular-nums">{qtyText(t.submitted.qty)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(t.submitted.amount)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{t.submitted.count}</TableCell>
-                    {STATUS_ORDER.map((s) => (
-                      <TableCell key={s} className="text-right tabular-nums">
-                        {qtyText(t[s].qty)} · {formatCurrency(t[s].amount)}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableFooter>
-              ) : null}
-            </Table>
+          {/* One row when the width allows; fewer columns on a tablet, two (or one) on a phone. */}
+          <div className="grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-3">
+            {!boxes ? (
+              Array.from({ length: 4 }, (_, i) => <Skeleton key={i} data-testid="return-branch-skeleton" className="h-[104px] rounded-lg" />)
+            ) : boxes.length === 0 ? (
+              <p className="col-span-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No active branches.</p>
+            ) : (
+              boxes.map((b) => (
+                <BranchBox
+                  key={b.branchId}
+                  name={b.branchName.replace('Mountain Bakes ', '')}
+                  amount={b.amount}
+                  selected={b.branchId === selectedBranchId}
+                  onPick={onSelectBranch ? () => onSelectBranch(b.branchId === selectedBranchId ? null : b.branchId) : undefined}
+                />
+              ))
+            )}
           </div>
-        )
+        </div>
       ) : null}
     </section>
   );

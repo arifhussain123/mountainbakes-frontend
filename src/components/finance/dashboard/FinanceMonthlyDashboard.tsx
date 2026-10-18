@@ -399,90 +399,7 @@ function DashboardBody({
   const exp = useMemo(() => expenseRows(data, expGran), [data, expGran]);
   const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(1)}%` : '—');
 
-  const overview: OverviewGroup[] = [
-    {
-      title: 'INCOME',
-      band: 'bg-fin-income',
-      items: [
-        {
-          label: 'Company Share',
-          value: s.companyShare,
-          sub: `${s.orders} approved demand${s.orders === 1 ? '' : 's'}`,
-          onClick: () => drillTo('share'),
-        },
-        {
-          label: 'Received Amount',
-          value: s.received,
-          sub: `${s.receipts} ledger receipt${s.receipts === 1 ? '' : 's'} · incl. fuel`,
-          onClick: () => drillTo('received'),
-        },
-        {
-          label: 'Balance',
-          value: s.balance,
-          sub: 'Company Share − Received',
-          signed: true,
-          strong: true,
-        },
-        {
-          label: 'Last Month Balance',
-          value: s.lastMonthBalance,
-          sub: s.lastMonthBalance === null ? `No records in ${prevLabel}` : `${prevLabel} · Share − Received`,
-          signed: true,
-        },
-      ],
-    },
-    {
-      title: 'EXPENSE',
-      band: 'bg-fin-expense',
-      items: [
-        {
-          label: 'Ledger Expenses',
-          value: s.ledgerExpense,
-          sub:
-            scoped && !s.ledgerEntries
-              ? 'Company expenses carry no branch'
-              : `${s.ledgerEntries} approved ledger entr${s.ledgerEntries === 1 ? 'y' : 'ies'}`,
-          onClick: s.ledgerEntries ? () => drillTo('ledger') : undefined,
-        },
-        {
-          label: 'Return',
-          value: s.returns,
-          sub: `${s.returnCount} accepted production return${s.returnCount === 1 ? '' : 's'}`,
-          onClick: s.returnCount ? () => drillTo('return') : undefined,
-        },
-        {
-          label: 'Discount',
-          value: s.discount,
-          sub: `${s.discountCount} approved production discount${s.discountCount === 1 ? '' : 's'}`,
-          onClick: s.discountCount ? () => drillTo('discount') : undefined,
-        },
-      ],
-    },
-    {
-      title: 'OVERALL · FINANCE LEDGER',
-      band: 'bg-fin-ink',
-      items: [
-        {
-          label: 'Total Income',
-          value: s.ledgerIncome,
-          sub: 'All ledger receipts (debits), every head',
-        },
-        {
-          label: 'Total Expense',
-          value: s.ledgerExpenseTotal,
-          sub: 'All ledger payments (credits), every head',
-        },
-        {
-          label: 'Net',
-          value: s.ledgerNet,
-          sub: 'Total Income − Total Expense',
-          signed: true,
-          strong: true,
-        },
-      ],
-      note: 'The ledger’s own totals, as the Daily Ledger defines them. Production figures (Company Share, Return, Discount) are not combined into a single net figure: no business rule in the system relates them.',
-    },
-  ];
+  const overview = financeOverviewGroups(data, scoped, drillTo);
 
   return (
     <>
@@ -757,9 +674,106 @@ function DashboardBody({
 
 // ---------------------------------------------------------------------------
 
+/**
+ * The three overview cards — Income, Expense and the ledger's own totals.
+ * Exported so the Admin Dashboard shows the same figures under the same rules.
+ */
+export function financeOverviewGroups(
+  data: Dashboard,
+  scoped: boolean,
+  drillTo: (metric: FinanceDashboardMetric, extra?: Partial<DrillTarget>) => void,
+): OverviewGroup[] {
+  const s = data.summary;
+  const prevLabel = monthLong(data.previousMonth);
+  return [
+    {
+      title: 'INCOME',
+      band: 'bg-fin-income',
+      items: [
+        {
+          label: 'Company Share',
+          value: s.companyShare,
+          sub: `${s.orders} approved demand${s.orders === 1 ? '' : 's'}`,
+          onClick: () => drillTo('share'),
+        },
+        {
+          label: 'Received Amount',
+          value: s.received,
+          sub: `${s.receipts} ledger receipt${s.receipts === 1 ? '' : 's'} · incl. fuel`,
+          onClick: () => drillTo('received'),
+        },
+        {
+          label: 'Balance',
+          value: s.balance,
+          sub: 'Company Share − Received',
+          signed: true,
+          strong: true,
+        },
+        {
+          label: 'Last Month Balance',
+          value: s.lastMonthBalance,
+          sub: s.lastMonthBalance === null ? `No records in ${prevLabel}` : `${prevLabel} · Share − Received`,
+          signed: true,
+        },
+      ],
+    },
+    {
+      title: 'EXPENSE',
+      band: 'bg-fin-expense',
+      items: [
+        {
+          label: 'Ledger Expenses',
+          value: s.ledgerExpense,
+          sub:
+            scoped && !s.ledgerEntries
+              ? 'Company expenses carry no branch'
+              : `${s.ledgerEntries} approved ledger entr${s.ledgerEntries === 1 ? 'y' : 'ies'}`,
+          onClick: s.ledgerEntries ? () => drillTo('ledger') : undefined,
+        },
+        {
+          label: 'Return',
+          value: s.returns,
+          sub: `${s.returnCount} accepted production return${s.returnCount === 1 ? '' : 's'}`,
+          onClick: s.returnCount ? () => drillTo('return') : undefined,
+        },
+        {
+          label: 'Discount',
+          value: s.discount,
+          sub: `${s.discountCount} approved production discount${s.discountCount === 1 ? '' : 's'}`,
+          onClick: s.discountCount ? () => drillTo('discount') : undefined,
+        },
+      ],
+    },
+    {
+      title: 'OVERALL · FINANCE LEDGER',
+      band: 'bg-fin-ink',
+      items: [
+        {
+          label: 'Total Income',
+          value: s.ledgerIncome,
+          sub: 'All ledger receipts (debits), every head',
+        },
+        {
+          label: 'Total Expense',
+          value: s.ledgerExpenseTotal,
+          sub: 'All ledger payments (credits), every head',
+        },
+        {
+          label: 'Net',
+          value: s.ledgerNet,
+          sub: 'Total Income − Total Expense',
+          signed: true,
+          strong: true,
+        },
+      ],
+      note: 'The ledger’s own totals, as the Daily Ledger defines them. Production figures (Company Share, Return, Discount) are not combined into a single net figure: no business rule in the system relates them.',
+    },
+  ];
+}
+
 type Format = (v: number | null | undefined) => string;
 
-interface OverviewGroup {
+export interface OverviewGroup {
   title: string;
   band: string;
   items: {
@@ -773,7 +787,7 @@ interface OverviewGroup {
   note?: string;
 }
 
-function OverviewCard({ group, format }: { group: OverviewGroup; format: Format }) {
+export function OverviewCard({ group, format }: { group: OverviewGroup; format: Format }) {
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
       <h3 className={cn('px-3.5 py-2 text-xs font-extrabold tracking-[0.12em] text-fin-ink-foreground', group.band)}>

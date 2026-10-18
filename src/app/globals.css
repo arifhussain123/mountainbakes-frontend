@@ -276,6 +276,42 @@
   --sidebar-ring: oklch(0.702 0.187 41.5);
 }
 
+/* Admin Dashboard — the Finance Dashboard's components in the brand's brown and
+   orange. The page reuses the finance tables, cards and drawer, which paint
+   with --fin-*; this re-points those tokens inside `.admin-dash-theme` only.
+   The three series a chart draws together (Company Share / Received / Ledger
+   Expense) were run through the dataviz validator against each mode's card;
+   dark is re-stepped, not flipped. Return and Discount keep the finance
+   green and blue so those figures read the same on every screen. */
+.admin-dash-theme {
+  --fin-ink: #3b1a0a;
+  --fin-ink-foreground: #ffffff;
+  --fin-ink-muted: #e9cdb9;
+  --fin-ink-field: #55301c;
+  --fin-income: #6b2e12;
+  --fin-expense: #5c3d26;
+  --fin-soft: #fff1e6;
+  --fin-row-hover: #fffaf5;
+  --fin-share: #e04f1a;
+  --fin-received: #7e3e1b;
+  --fin-ledger: #d3ad1b;
+  --fin-balance: #3b1a0a;
+}
+.dark .admin-dash-theme {
+  --fin-ink: #1f1209;
+  --fin-ink-foreground: #fbeee4;
+  --fin-ink-muted: #d9c2b2;
+  --fin-ink-field: #3a2416;
+  --fin-income: #4a2410;
+  --fin-expense: #4a301d;
+  --fin-soft: #33221a;
+  --fin-row-hover: #2a1c13;
+  --fin-share: #d24100;
+  --fin-received: #b58d47;
+  --fin-ledger: #a04f27;
+  --fin-balance: #f6dcc8;
+}
+
 /* Accent color themes.
    Each block overrides only the brand-accent tokens (primary + everything derived
    from it), so the color a user picks recolors buttons, active nav, focus rings,

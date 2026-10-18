@@ -192,7 +192,10 @@ export function ProductionReturnsPage() {
   // Follows the table's Branch filter only. Status, product and date narrow the
   // rows below; the summary is always this whole month, by status, so those
   // filters would only make it disagree with its own heading.
-  const summaryQ = useProductionReturnsSummary(token, (list.getFilter('branchId')?.value as string | undefined) ?? null);
+  // Always every branch: the boxes show each active branch's month, and the
+  // branch filter only marks one and narrows the cards — no second request.
+  const summaryQ = useProductionReturnsSummary(token, null);
+  const filteredBranchId = (list.getFilter('branchId')?.value as string | undefined) ?? null;
 
   // Server-filtered and server-paginated — the query above already narrows to
   // the selected branch/product/status/date range and this page's slice.
@@ -320,6 +323,9 @@ export function ProductionReturnsPage() {
         onRetry={() => void summaryQ.refetch()}
         statusLabels={STATUS_LABELS}
         showBranches
+        branches={branchesQ.data}
+        selectedBranchId={filteredBranchId}
+        onSelectBranch={(id) => (id ? list.setFilter('branchId', 'eq', id) : list.clearFilter('branchId'))}
       />
 
       <FilterBar list={list} filters={filters} searchable={false} />
