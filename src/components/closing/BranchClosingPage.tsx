@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { FileSpreadsheet } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /**
  * The shop's end-of-day sheet.
@@ -115,7 +116,9 @@ export function BranchClosingPage() {
   return (
     // `print-area` is what Print prints: globals.css hides every other body
     // child and reveals this subtree, same convention as DailySalesSection.
-    <div className="print-area space-y-6">
+    // `print-pos` sets the page box to an 80mm receipt roll instead of A4 —
+    // this sheet is handed over at the till, not filed as a report.
+    <div className="print-area print-pos space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{user?.branchName || 'Branch'} — Closing</h2>
@@ -144,7 +147,11 @@ export function BranchClosingPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* Summary cards, the expense-range notice and the payment/expense
+          breakdown are all screen-only: the printed sheet is the Closing
+          Stock table alone, on an 80mm roll — not a report with a payment
+          detail section. */}
+      <div className="print:hidden grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard title="Sales" value={isLoading ? '…' : money(totals.sales)} icon={ShoppingCart} color="green" loading={isLoading} />
         <StatCard title="Expenses" value={isLoading ? '…' : money(totals.expenses)} icon={Receipt} color="red" loading={isLoading} />
         <StatCard title="Net" value={isLoading ? '…' : money(totals.net)} icon={TrendingUp} color="orange" loading={isLoading} />
@@ -153,7 +160,7 @@ export function BranchClosingPage() {
       </div>
 
       {expensesOutOfRange && (
-        <Card className="border-dashed">
+        <Card className="print:hidden border-dashed">
           <CardContent className="p-4 text-sm text-muted-foreground">
             Shop expenses are only available for the last 7 business days, so the expense,
             net and cash figures above cover sales only for this date.
@@ -161,7 +168,7 @@ export function BranchClosingPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="print:hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Takings by Payment Method</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -240,8 +247,11 @@ export function BranchClosingPage() {
                 {!isLoading && stock.length === 0 && (
                   <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No stock activity for this business day.</td></tr>
                 )}
+                {/* A product sitting at zero on the shelf has nothing to hand
+                    over — kept on screen (it's still useful to see what ran
+                    out) but left off the printed sheet. */}
                 {stock.map((r) => (
-                  <tr key={r.productId} className="border-b last:border-0">
+                  <tr key={r.productId} className={cn('border-b last:border-0', r.balance === 0 && 'print:hidden')}>
                     <td className="py-2 pr-3 font-medium">{r.productName}</td>
                     <td className="py-2 px-3 text-right">{r.opening}</td>
                     <td className="py-2 px-3 text-right">{r.newQty}</td>

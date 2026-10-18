@@ -396,7 +396,15 @@
   size: A4;
   margin: 12mm;
 }
+/* Branch Closing prints as a till receipt, not an A4 report — a named page so
+   every other @page-governed print (reports, challans) stays at A4. Applied
+   via the `page` property below, scoped to `.print-pos`. */
+@page pos {
+  size: 80mm auto;
+  margin: 3mm;
+}
 @media print {
+  .print-pos { page: pos; }
   /* Paper has a fixed width, so the fluid scale has nothing meaningful to respond to
      — and `vw` resolves against the page box, which would make a receipt print at a
      different size than it previews. Pin the scale back to fixed values on paper. */
