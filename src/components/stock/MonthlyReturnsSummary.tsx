@@ -241,14 +241,6 @@ export function MonthlyReturnsSummary({
                 </TableFooter>
               ) : null}
             </Table>
-            <details className="border-t">
-              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
-                Item-wise returns, all branches ({summary.products.length})
-              </summary>
-              <div className="border-t">
-                <ProductLines lines={summary.products} />
-              </div>
-            </details>
           </div>
         )
       ) : null}
