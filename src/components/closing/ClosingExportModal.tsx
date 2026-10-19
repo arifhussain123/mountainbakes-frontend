@@ -65,7 +65,8 @@ export function ClosingExportModal({ open, onOpenChange, token, defaultDate }: C
             <FileSpreadsheet className="h-5 w-5 text-primary" /> Export Closing
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            One row per day — sales, discounts, expenses, net, cash and stock on hand.
+            Daily Summary sheet (sales, discounts, expenses, net, cash, takings by payment
+            method, stock on hand) plus a Closing Stock sheet with per-product detail.
           </p>
         </div>
 

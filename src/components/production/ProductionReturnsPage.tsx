@@ -2,13 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
-import type { FilterConfig, ProductionReturn, ProductionReturnStatus } from '@mb/shared';
+import { RETURN_DISPOSITION_LABELS, type FilterConfig, type ProductionReturn, type ProductionReturnDisposition, type ProductionReturnStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranches, useProducts, useProductionReturns, useReviewReturn } from '@/lib/queries';
+import { useBranches, useProducts, useProductionReturns, useProductionReturnsSummary, useReviewReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { DataTable } from '@/components/shared/DataTable';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
+import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
+import { RecordReturnDialog } from '@/components/production/RecordReturnDialog';
+import { returnValueColumns } from '@/components/stock/returnColumns';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
@@ -25,7 +29,7 @@ import {
 import { formatDate, formatDateTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Check, Eye, Undo2, X } from 'lucide-react';
+import { Check, Eye, Plus, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -132,6 +136,15 @@ function confirmCopy(r: ProductionReturn, status: ProductionReturnStatus): { tit
   };
 }
 
+/**
+ * The goods' condition, chosen when approving. Every one lands in Branch Return
+ * Stock all the same; it is the record of what came back. Repaired feeds the
+ * Production Dashboard's Repaired Stock section. Damaged and expired write value
+ * off, so they need a note, as the API requires.
+ */
+const DISPOSITIONS: ProductionReturnDisposition[] = ['saleable', 'repaired', 'damaged', 'expired'];
+const needsNote = (d: ProductionReturnDisposition) => d === 'damaged' || d === 'expired';
+
 const col = createColumnHelper<ProductionReturn>();
 
 export function ProductionReturnsPage() {
@@ -144,6 +157,9 @@ export function ProductionReturnsPage() {
   // of a confirmation returns to the detail rather than closing the dialog.
   const [viewRow, setViewRow] = useState<ProductionReturn | null>(null);
   const [pendingAction, setPendingAction] = useState<ProductionReturnStatus | null>(null);
+  const [disposition, setDisposition] = useState<ProductionReturnDisposition>('saleable');
+  const [dispositionNote, setDispositionNote] = useState('');
+  const [recording, setRecording] = useState(false);
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'branchId', 'productId', 'businessDate'] });
   const branchesQ = useBranches(token);
@@ -175,6 +191,13 @@ export function ProductionReturnsPage() {
     sortDir: list.state.sort?.direction,
   });
   const reviewMut = useReviewReturn(token);
+  // Follows the table's Branch filter only. Status, product and date narrow the
+  // rows below; the summary is always this whole month, by status, so those
+  // filters would only make it disagree with its own heading.
+  // Always every branch: the boxes show each active branch's month, and the
+  // branch filter only marks one and narrows the cards — no second request.
+  const summaryQ = useProductionReturnsSummary(token, null);
+  const filteredBranchId = (list.getFilter('branchId')?.value as string | undefined) ?? null;
 
   // Server-filtered and server-paginated — the query above already narrows to
   // the selected branch/product/status/date range and this page's slice.
@@ -185,6 +208,8 @@ export function ProductionReturnsPage() {
     if (reviewMut.isPending) return;
     setViewRow(null);
     setPendingAction(null);
+    setDisposition('saleable');
+    setDispositionNote('');
   }
 
   async function submit() {
@@ -192,7 +217,11 @@ export function ProductionReturnsPage() {
     const row = viewRow;
     const status = pendingAction;
     try {
-      await reviewMut.mutateAsync({ id: row.id, status });
+      await reviewMut.mutateAsync(
+        status === 'accepted'
+          ? { id: row.id, status, disposition, dispositionNote: needsNote(disposition) ? dispositionNote.trim() : undefined }
+          : { id: row.id, status },
+      );
       toast.success(
         status === 'accepted'
           ? `Approved — ${row.qty} × ${row.productName} added to return stock`
@@ -202,6 +231,8 @@ export function ProductionReturnsPage() {
       );
       setViewRow(null);
       setPendingAction(null);
+      setDisposition('saleable');
+      setDispositionNote('');
     } catch (err) {
       // The API's message names the reason a review was refused ("Return already
       // reviewed" when someone else got there first), which is more use than a
@@ -234,6 +265,8 @@ export function ProductionReturnsPage() {
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
     col.accessor('productName', { header: 'Product', meta: { mobile: 'title' }, cell: (i) => <span>{i.getValue()}</span> }),
     col.accessor('qty', { header: 'Qty', meta: { align: 'center' }, cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span> }),
+    // Price and amount only — this page leaves out the product code.
+    ...returnValueColumns(col).filter((c) => c.id !== 'productCode'),
     // Which side raised it. It decides what Approve moves and whether Send Back
     // is offered at all, so it belongs on the row rather than only in the dialog.
     col.accessor((r) => (r.source === 'branch' ? 'Branch' : 'Production'), {
@@ -276,12 +309,33 @@ export function ProductionReturnsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Product Returns</h2>
-        <p className="text-sm text-muted-foreground">
-          Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">Product Returns</h2>
+          <p className="text-sm text-muted-foreground">
+            Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
+          </p>
+        </div>
+        {/* Full width under the heading on a phone, where it is the one thing to
+            tap; beside it from `sm` up. */}
+        <Button className="h-11 w-full shrink-0 sm:h-9 sm:w-auto" onClick={() => setRecording(true)}>
+          <Plus className="mr-1.5 h-4 w-4" /> Record Return
+        </Button>
       </div>
+
+      <MonthlyReturnsSummary
+        summary={summaryQ.data}
+        isLoading={summaryQ.isPending}
+        isError={summaryQ.isError}
+        isFetching={summaryQ.isFetching}
+        error={summaryQ.error}
+        onRetry={() => void summaryQ.refetch()}
+        statusLabels={STATUS_LABELS}
+        showBranches
+        branches={branchesQ.data}
+        selectedBranchId={filteredBranchId}
+        onSelectBranch={(id) => (id ? list.setFilter('branchId', 'eq', id) : list.clearFilter('branchId'))}
+      />
 
       <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />
@@ -313,6 +367,8 @@ export function ProductionReturnsPage() {
         loading={returnsQ.isLoading}
       />
 
+      <RecordReturnDialog open={recording} onOpenChange={setRecording} branches={branchesQ.data ?? []} products={productsQ.data ?? []} />
+
       {/* ── View, and decide ────────────────────────────────────────────────
           One dialog, two faces. It opens on the record; picking an action turns
           it over to that action's confirmation, and Back returns to the record. */}
@@ -322,6 +378,39 @@ export function ProductionReturnsPage() {
             <DialogTitle>{copy ? copy.title : 'Return Detail'}</DialogTitle>
             {copy && <DialogDescription>{copy.body}</DialogDescription>}
           </DialogHeader>
+
+          {copy && pendingAction === 'accepted' && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium" id="return-condition">Condition</p>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="return-condition">
+                {DISPOSITIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    role="radio"
+                    aria-checked={disposition === d}
+                    onClick={() => setDisposition(d)}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                      disposition === d ? 'border-foreground bg-foreground text-background' : 'bg-card hover:bg-muted',
+                    )}
+                  >
+                    {RETURN_DISPOSITION_LABELS[d]}
+                  </button>
+                ))}
+              </div>
+              {needsNote(disposition) && (
+                <Textarea
+                  value={dispositionNote}
+                  onChange={(e) => setDispositionNote(e.target.value)}
+                  placeholder={`Why is it ${disposition}?`}
+                  aria-label="Why the stock is damaged or expired"
+                  maxLength={500}
+                  rows={2}
+                />
+              )}
+            </div>
+          )}
 
           {viewRow && !copy && (
             <>
@@ -418,7 +507,7 @@ export function ProductionReturnsPage() {
                 <Button
                   variant={pendingAction === 'rejected' ? 'destructive' : 'default'}
                   onClick={submit}
-                  disabled={reviewMut.isPending}
+                  disabled={reviewMut.isPending || (pendingAction === 'accepted' && needsNote(disposition) && !dispositionNote.trim())}
                 >
                   {reviewMut.isPending
                     ? 'Saving…'

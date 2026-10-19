@@ -177,7 +177,7 @@ export function SaleForm({
       notes: '',
     },
   });
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
+  const { fields, prepend, remove } = useFieldArray({ control: form.control, name: 'items' });
 
   const items = form.watch('items');
   const paymentMethod = form.watch('paymentMethod');
@@ -435,7 +435,7 @@ export function SaleForm({
               type="button"
               size="sm"
               className="rounded-full shadow-sm"
-              onClick={() => append({ productId: '', qty: 1, discount: 0 })}
+              onClick={() => prepend({ productId: '', qty: 1, discount: 0 })}
             >
               <Plus className="mr-1 h-4 w-4" /> Add Item
             </Button>

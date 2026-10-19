@@ -4,7 +4,7 @@ import { PosPrintError, asPrintError, type PrintErrorCode } from './errors';
 import { printDebugEnabled, printTrace } from './diagnostics';
 
 /** The two documents the shop prints on a roll. */
-export type PrintDocumentType = 'sale' | 'production-order';
+export type PrintDocumentType = 'sale' | 'production-order' | 'demand-summary' | 'branch-closing';
 
 /**
  * The POS print queue.

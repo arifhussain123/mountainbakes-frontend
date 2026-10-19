@@ -5,7 +5,10 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchDiscount, BranchDiscountStatus, FilterConfig } from '@mb/shared';
 import { isDiscountOpen } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
+import { useSettings } from '@/hooks/useSettings';
 import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount } from '@/lib/queries';
+import { useBranchDiscountSummary } from '@/lib/discountSummaryQueries';
+import { MonthlyDiscountSummary } from './MonthlyDiscountSummary';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
@@ -87,7 +90,9 @@ const STATUSES: BranchDiscountStatus[] = ['pending', 'approved', 'rejected', 're
 
 export function BranchDiscountsPage() {
   const { token } = useAuth();
+  const { settings } = useSettings();
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'businessDate'] });
+  const summaryQ = useBranchDiscountSummary(token);
   const filters = useMemo<FilterConfig[]>(
     () => [
       {
@@ -274,6 +279,17 @@ export function BranchDiscountsPage() {
           </p>
         </div>
       </div>
+
+      <MonthlyDiscountSummary
+        summary={summaryQ.data}
+        isLoading={summaryQ.isLoading}
+        isError={summaryQ.isError}
+        isFetching={summaryQ.isFetching}
+        error={summaryQ.error}
+        onRetry={() => void summaryQ.refetch()}
+        updatedAt={summaryQ.dataUpdatedAt}
+        currencySymbol={settings?.currencySymbol}
+      />
 
       <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />

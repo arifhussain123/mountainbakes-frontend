@@ -5,12 +5,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useBranches } from '@/lib/queries';
 import type { Expense, FilterConfig } from '@mb/shared';
-import { EXPENSE_CATEGORIES, businessDateStr, businessDaysAgoStr } from '@mb/shared';
+import { EXPENSE_CATEGORIES, businessDateStr, businessMonthStartStr } from '@mb/shared';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Fab } from '@/components/shared/Fab';
+import { SummaryTotalCard, formatSummaryAmount } from '@/components/shared/SummaryTotalCard';
 import { GenericDataTable } from '@/components/data-engine';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { useInvalidateResource, useResourceAggregate } from '@/lib/data-engine/useResource';
@@ -30,10 +30,12 @@ const PAYMENT_OPTIONS = ['cash', 'easypaisa'].map((value) => ({ value, label: PA
 /**
  * Shop Expenses.
  *
- * Opens on the last seven business days, as before — but the window is now a
- * filter a person can widen, and the total card is computed in the database
- * over exactly the rows the filters select (`useResourceAggregate`), not by
- * adding up one page.
+ * Opens on the current calendar month to date (day 1 through today) — a
+ * window that rolls itself back to day 1 the moment the month turns over,
+ * since it is recomputed from "now" on every mount rather than stored. It
+ * is still a filter a person can widen, and the total card is computed in
+ * the database over exactly the rows the filters select
+ * (`useResourceAggregate`), not by adding up one page.
  */
 export function ExpensesPage() {
   const { token, user } = useAuth();
@@ -54,7 +56,7 @@ export function ExpensesPage() {
     filterKeys: FILTER_KEYS,
     defaults: {
       sort: { key: 'createdAt', direction: 'desc' },
-      filters: [{ key: 'businessDate', op: 'gte', value: businessDaysAgoStr(6) }],
+      filters: [{ key: 'businessDate', op: 'gte', value: businessMonthStartStr() }],
     },
   });
 
@@ -121,18 +123,12 @@ export function ExpensesPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="flex items-center justify-between p-4">
-          <p className="text-sm font-medium text-muted-foreground">Total ({windowLabel.toLowerCase()})</p>
-          <p className="text-xl font-bold text-primary" aria-busy={totalsQ.isFetching}>
-            {sum !== null
-              ? `${cur}${sum.toLocaleString()}`
-              : totalsQ.isError
-                ? '—'
-                : '…'}
-          </p>
-        </CardContent>
-      </Card>
+      <SummaryTotalCard
+        layout="inline"
+        label={<>Total ({windowLabel.toLowerCase()})</>}
+        amount={sum !== null ? formatSummaryAmount(sum, cur) : totalsQ.isError ? '—' : '…'}
+        busy={totalsQ.isFetching}
+      />
 
       <GenericDataTable<Expense>
         resource="expenses"

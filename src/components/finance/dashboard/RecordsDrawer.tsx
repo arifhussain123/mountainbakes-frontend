@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { useFinanceDashboardRecords } from '@/lib/finance';
 import { LedgerEntryDetailDialog } from '../LedgerEntryDialogs';
 import { useMoney } from '../finance-ui';
@@ -37,14 +38,20 @@ export function RecordsDrawer({
   target,
   dashboardBranchId,
   onClose,
+  className,
 }: {
   target: DrillTarget | null;
   dashboardBranchId: string;
   onClose: () => void;
+  /** The sheet is portalled out of the page, so a page's theme class has to be passed in. */
+  className?: string;
 }) {
   return (
     <Sheet open={target !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
+      <SheetContent
+        side="right"
+        className={cn('w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl', className)}
+      >
         {/* Keyed by the figure, so a new figure starts at page 1 with no search. */}
         {target && <DrawerBody key={JSON.stringify(target)} target={target} dashboardBranchId={dashboardBranchId} />}
       </SheetContent>

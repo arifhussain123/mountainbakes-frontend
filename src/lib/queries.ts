@@ -37,6 +37,8 @@ import type {
   ProductionBalanceDoc,
   ProductionReturn,
   ProductionReturnStatus,
+  MonthlyReturnsSummary,
+  MonthlyCashTransferSummary,
   BranchDiscount,
   BranchDiscountStatus,
   CashTransfer,
@@ -83,6 +85,12 @@ import type {
   EventProductionStatusRow,
   EventScheduleResult,
   SpecialEventView,
+  ReceivedDemandSection,
+  BranchSummarySection,
+  RepairedStockSection,
+  ReturnStockSection,
+  CurrentStockSection,
+  ProductionReturnDisposition,
 } from '@mb/shared';
 
 // Query keys live in ./queryKeys so non-React code (@/utils/productPrice) can reuse
@@ -1095,6 +1103,42 @@ export function useProductionOverview(token: string, branchId?: string | null, p
   });
 }
 
+/** The Production Dashboard's sections and what each one answers (shared/utils/production-dashboard.ts). */
+export interface ProductionDashboardSections {
+  'received-demand': ReceivedDemandSection;
+  'branch-summary': BranchSummarySection;
+  'repaired-stock': RepairedStockSection;
+  'return-stock': ReturnStockSection;
+  'current-stock': CurrentStockSection;
+}
+export type ProductionDashboardSectionName = keyof ProductionDashboardSections;
+
+/**
+ * One section of the Production Dashboard. Each is its own query, so each
+ * loads, fails and retries on its own. `current-stock` is stock right now: it
+ * takes no period, and its key does not change with one.
+ */
+export function useProductionDashboardSection<S extends ProductionDashboardSectionName>(
+  section: S,
+  token: string,
+  period: ProductionPeriod,
+  branchId: string | null,
+) {
+  const p = section === 'current-stock' ? 'live' : period;
+  // The branch list is every branch by definition, so it never takes the filter.
+  const b = section === 'branch-summary' ? null : branchId;
+  const qs = [section === 'current-stock' ? null : `period=${period}`, b ? `branchId=${encodeURIComponent(b)}` : null]
+    .filter(Boolean)
+    .join('&');
+  return useQuery({
+    queryKey: qk.productionDashboardSection(section, p, b),
+    queryFn: () => apiCall<ProductionDashboardSections[S]>(`/api/production/dashboard/${section}${qs ? `?${qs}` : ''}`, {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export type ProductionQueueOrder = Order;
 
 export interface ProductionQueueStats {
@@ -1714,6 +1758,42 @@ export function useBranchReturns(
   });
 }
 
+/**
+ * The branch's own returns this business month (1st → today), by status — summed
+ * on the server (GET /api/stock/returns/summary), which also decides the branch
+ * from the JWT. See `shared/utils/returns-summary.ts` for what each figure means.
+ */
+export function useBranchReturnsSummary(token: string) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.branchReturnsSummary(today),
+    queryFn: () => apiCall<MonthlyReturnsSummary>('/api/stock/returns/summary', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Production's month-to-date returns summary: every branch and an overall total,
+ * or one branch when `branchId` is set (the same filter the returns table takes).
+ */
+export function useProductionReturnsSummary(token: string, branchId: string | null) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.productionReturnsSummary(branchId, today),
+    queryFn: () =>
+      apiCall<MonthlyReturnsSummary>(
+        `/api/production-returns/summary${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ''}`,
+        {},
+        token,
+      ),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
 function invalidateAfterReturnChange(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['stock'] });
   qc.invalidateQueries({ queryKey: ['productionReturns'] });
@@ -1830,8 +1910,16 @@ export function useCreateReturn(token: string) {
 export function useReviewReturn(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: ProductionReturnStatus }) =>
-      apiCall(`/api/production-returns/${id}/review`, { method: 'PUT', body: JSON.stringify({ status }) }, token),
+    // `disposition` only with an accept: the goods' condition, which the
+    // Production Dashboard's Repaired Stock section reads. Left out, the API
+    // records 'saleable', as every accept did before.
+    mutationFn: ({ id, status, disposition, dispositionNote }: {
+      id: string;
+      status: ProductionReturnStatus;
+      disposition?: ProductionReturnDisposition;
+      dispositionNote?: string;
+    }) =>
+      apiCall(`/api/production-returns/${id}/review`, { method: 'PUT', body: JSON.stringify({ status, disposition, dispositionNote }) }, token),
     // ['stock'] as well as the Production keys, which the accept-only version did
     // not need. Every outcome now touches a branch balance: accepting a
     // Production-recorded return debits the branch, and rejecting a branch-raised
@@ -1982,6 +2070,24 @@ export function useBranchCashTransfers(
     // mounted on every visit and opened on few — see useBranchDiscounts.
     enabled: !!token && (opts?.enabled ?? true),
     staleTime: LIVE_STALE_TIME,
+  });
+}
+
+/**
+ * The branch's own cash transfers this business month (1st → today): Total
+ * Amount per channel and status, and Fuel Charges — summed on the server
+ * (GET /api/cash-transfers/monthly-summary), which also decides the branch from
+ * the JWT. Ignores the table's filters by design. See
+ * `shared/utils/cash-transfer-summary.ts` for what each figure means.
+ */
+export function useBranchCashTransferSummary(token: string) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.branchCashTransferSummary(today),
+    queryFn: () => apiCall<MonthlyCashTransferSummary>('/api/cash-transfers/monthly-summary', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
   });
 }
 

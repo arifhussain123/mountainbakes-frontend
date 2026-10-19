@@ -99,6 +99,103 @@ export interface PreviousCollection {
   remainingBalance?: number;
 }
 
+/** One row of the consolidated product-demand pivot — name and aggregated quantity only. */
+export interface DemandSummaryProductLine {
+  productName: string;
+  qty: number;
+}
+
+/** One row of the packing-material pivot — same shape as the per-order one, aggregated across orders. */
+export interface DemandSummaryPackingLine {
+  materialName: string;
+  qty: number;
+}
+
+/**
+ * One branch's row in the branch-wise summary.
+ *
+ * `amount` is `null` when it could not be reliably priced — a line with no
+ * price snapshot AND no matching catalogue product (e.g. the product was since
+ * deleted). The document then prints "Amount unavailable" for that branch
+ * rather than a total that silently excludes the unpriced line.
+ */
+export interface DemandSummaryBranchLine {
+  branchName: string;
+  qty: number;
+  amount: number | null;
+}
+
+export interface DemandSummaryTotals {
+  distinctProducts: number;
+  totalProductQty: number;
+  distinctPacking: number;
+  totalPackingQty: number;
+  /** `null` when any branch's amount is unknown — see {@link DemandSummaryBranchLine.amount}. */
+  grandAmount: number | null;
+}
+
+/**
+ * The production-wide demand snapshot — every waiting order's demand, pivoted
+ * three ways (product, packing material, branch) from ONE read of the same
+ * order list, so the three sections and the totals can never disagree with
+ * each other.
+ */
+export interface DemandSummaryDoc {
+  businessDateText: string;
+  printDateText: string;
+  printTimeText: string;
+  /** e.g. "12 to review · 3 sent, awaiting branch verification". Empty when there is nothing waiting. */
+  statusText: string;
+  companyName?: string | null;
+  currencySymbol: string;
+  items: DemandSummaryProductLine[];
+  packingItems: DemandSummaryPackingLine[];
+  branchItems: DemandSummaryBranchLine[];
+  totals: DemandSummaryTotals;
+  /** An inlined `data:` URL for the logo, when one is already in hand. Never fetched here. */
+  logo?: string | null;
+}
+
+/** One row of the Balance Stock section — only products with balance > 0 reach this type; the caller filters, this file never recomputes. */
+export interface BranchClosingStockLine {
+  productName: string;
+  balance: number;
+}
+
+/** One row of the Payment Details section — a payment method and what it took. */
+export interface BranchClosingPaymentLine {
+  label: string;
+  amount: number;
+}
+
+/**
+ * The Branch Closing end-of-day sheet, as a till receipt.
+ *
+ * Every figure here is the screen's own — `computeClosingTotals` and the
+ * Closing Stock table the Branch Closing page already reads — never
+ * recomputed. `stockLines` is PRE-FILTERED by the caller to balance > 0; this
+ * document has no opinion on which products qualify, only on how to lay out
+ * the ones it is handed.
+ */
+export interface BranchClosingDoc {
+  branchName: string;
+  businessDateText: string;
+  printDateText: string;
+  printTimeText: string;
+  companyName?: string | null;
+  currencySymbol: string;
+  stockLines: BranchClosingStockLine[];
+  paymentLines: BranchClosingPaymentLine[];
+  totalSales: number;
+  discounts: number;
+  totalExpenses: number;
+  cashInHand: number;
+  orderCount: number;
+  cancelled: number;
+  /** An inlined `data:` URL for the logo, when one is already in hand. Never fetched here. */
+  logo?: string | null;
+}
+
 export interface ProductionOrderDoc {
   orderNumber: string;
   dateText: string;

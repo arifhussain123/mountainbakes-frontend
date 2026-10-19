@@ -265,12 +265,15 @@ export interface ProductionShortfall {
  * record of the goods' condition, which is what whoever later considers
  * transferring them into production needs to know.
  */
-export type ProductionReturnDisposition = 'saleable' | 'damaged' | 'expired';
+export type ProductionReturnDisposition = 'saleable' | 'damaged' | 'expired' | 'repaired';
 
 export const RETURN_DISPOSITION_LABELS: Record<ProductionReturnDisposition, string> = {
   saleable: 'Saleable',
   damaged: 'Damaged',
   expired: 'Expired',
+  // Came back damaged and Production repaired it (migration 20261018000001).
+  // Read by the Production Dashboard's Repaired Stock section.
+  repaired: 'Repaired',
 };
 
 // ── Branch Return Stock ──────────────────────────────────────────────────────
@@ -402,4 +405,14 @@ export interface ProductionReturn {
    * re-minted on every read, so key any client-side cache on `photo.id`.
    */
   photo?: Attachment | null;
+  /** The product's SKU at read time, or null where none is set. */
+  productCode?: string | null;
+  /**
+   * Rs. per unit — the product's price in force on `date`, from the price
+   * history (a return row stores no price of its own). Null when no price
+   * exists anywhere. Same rule as the monthly summary's amounts.
+   */
+  unitPrice?: number | null;
+  /** qty × unitPrice, rounded to the paisa; null exactly when unitPrice is. */
+  amount?: number | null;
 }

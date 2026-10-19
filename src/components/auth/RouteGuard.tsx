@@ -93,7 +93,7 @@ function isPublic(pathname: string): boolean {
  * Where the current identity should be, or null if the current path is already fine.
  * Pure, so the routing rules can be read in one place without the effect around them.
  */
-function redirectFor(
+export function redirectFor(
   pathname: string,
   user: { role: string; mustChangePassword: boolean } | null
 ): string | null {
@@ -132,7 +132,13 @@ function redirectFor(
   const wrongRole =
     (ADMIN_PREFIXES.some((p) => pathname.startsWith(p)) && user.role !== 'super_admin') ||
     (pathname.startsWith('/branch-') && !isBranchRole(user.role)) ||
-    (pathname.startsWith('/production-') && user.role !== 'production_user') ||
+    // Production's screens are Production's — except the Production Dashboard,
+    // which the admin menu links to ("Production") and whose API already admits
+    // super_admin (production.routes.ts). Without this an admin's click bounced
+    // straight back to the Admin Dashboard.
+    (pathname.startsWith('/production-') &&
+      user.role !== 'production_user' &&
+      !(user.role === 'super_admin' && pathname === ROUTES.PRODUCTION_DASHBOARD)) ||
     // Finance Ledger. The only prefix rule that admits MORE than one role: all
     // four finance roles plus Super Admin, who the brief grants report access.
     // What each may actually do on those screens is decided per action by

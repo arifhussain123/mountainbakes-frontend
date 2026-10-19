@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GenericDataTable } from '@/components/data-engine';
 import { ExpandableText } from '@/components/shared/ExpandableText';
-import { Eye, FileSpreadsheet, Sparkles } from 'lucide-react';
+import { Eye, FileSpreadsheet, Printer, Sparkles } from 'lucide-react';
 import {
   effectivePackingQty,
   effectiveQty,
@@ -26,6 +26,7 @@ import {
   requestedTotals,
 } from '@/utils/demandLines';
 import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
+import { DemandSummaryPrintModal } from './DemandSummaryPrintModal';
 import { CollectionsExportModal } from './CollectionsExportModal';
 import { SpecialOrdersPanel } from '@/components/special-orders/SpecialOrdersPanel';
 
@@ -97,6 +98,7 @@ export function ProductionOrdersPage() {
   const [clicked, setClicked] = useState<BranchProductionOrder | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [printSummaryOpen, setPrintSummaryOpen] = useState(false);
 
   const orders = useMemo(() => ordersQ.data ?? [], [ordersQ.data]);
 
@@ -384,7 +386,23 @@ export function ProductionOrdersPage() {
       {/* Demand summary */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Demand Summary — Waiting Orders</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Immediately before the heading, same row — prints the SAME figures
+                this card shows (today's stock, total demand, balance stock, the
+                branch breakdown, packing materials, and a branch-wise amount
+                summary) as a POS receipt or an A4 report. See
+                DemandSummaryPrintModal. */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0"
+              onClick={() => setPrintSummaryOpen(true)}
+              disabled={demand.rows.length === 0 && demand.packingRows.length === 0}
+            >
+              <Printer className="mr-1.5 h-3.5 w-3.5" /> Print for Production
+            </Button>
+            <CardTitle className="text-base">Demand Summary — Waiting Orders</CardTitle>
+          </div>
           {/* Says which of the two waiting states the numbers below are made of.
               Rendered only when something is waiting, so an empty card keeps its
               single-line header. */}
@@ -706,6 +724,16 @@ export function ProductionOrdersPage() {
       </div>
 
       <CollectionsExportModal open={exportOpen} onOpenChange={setExportOpen} token={token} />
+
+      <DemandSummaryPrintModal
+        open={printSummaryOpen}
+        onOpenChange={setPrintSummaryOpen}
+        orders={waiting}
+        stockByProduct={stockByProduct}
+        stockLoaded={stockLoaded}
+        settings={settings}
+        token={token}
+      />
 
       <OrderPrintPreview
         open={modalOpen}

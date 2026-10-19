@@ -7,7 +7,9 @@ import type { PrintDocument } from './receipt/document';
 import { PAGE_STYLE_ID } from './receipt/styles';
 import { buildProductionOrderDocument } from './receipt/productionOrder';
 import { buildSaleReceiptDocument } from './receipt/saleReceipt';
-import type { PaperWidth, ProductionOrderDoc, SaleReceiptDoc } from './receipt/types';
+import { buildDemandSummaryDocument } from './receipt/demandSummary';
+import { buildBranchClosingDocument } from './receipt/branchClosing';
+import type { BranchClosingDoc, DemandSummaryDoc, PaperWidth, ProductionOrderDoc, SaleReceiptDoc } from './receipt/types';
 import { InvalidDocumentError } from './receipt/validate';
 import { isIOS } from '@/utils/pwa';
 
@@ -116,12 +118,32 @@ export function printSaleReceipt(doc: SaleReceiptDoc, options: PrintOptions = {}
   return submit(doc.saleId, 'sale', () => buildSaleReceiptDocument(doc, options.paper ?? '80mm'), options);
 }
 
+/** POP Print of the production-wide demand snapshot — the POS 58mm/80mm route for it. */
+export function printDemandSummary(doc: DemandSummaryDoc, options: PrintOptions = {}): Promise<PrintResult> {
+  return submit(doc.businessDateText, 'demand-summary', () => buildDemandSummaryDocument(doc, options.paper ?? '80mm'), options);
+}
+
+/** POP Print of the Branch Closing end-of-day sheet. */
+export function printBranchClosing(doc: BranchClosingDoc, options: PrintOptions = {}): Promise<PrintResult> {
+  return submit(`${doc.branchName}-${doc.businessDateText}`, 'branch-closing', () => buildBranchClosingDocument(doc, options.paper ?? '80mm'), options);
+}
+
 /**
  * The canonical document for a caller that wants to SHOW it — a preview tab, a
  * diagnostic — rather than print it. Same builder, same validation.
  */
 export function productionOrderDocument(doc: ProductionOrderDoc, paper: PaperWidth = '80mm'): PrintDocument {
   return buildProductionOrderDocument(doc, paper);
+}
+
+/** Same as {@link productionOrderDocument}, for the demand-summary preview. */
+export function demandSummaryDocument(doc: DemandSummaryDoc, paper: PaperWidth = '80mm'): PrintDocument {
+  return buildDemandSummaryDocument(doc, paper);
+}
+
+/** Same as {@link productionOrderDocument}, for the Branch Closing preview. */
+export function branchClosingDocument(doc: BranchClosingDoc, paper: PaperWidth = '80mm'): PrintDocument {
+  return buildBranchClosingDocument(doc, paper);
 }
 
 /**

@@ -12,7 +12,7 @@ import {
   type FilterConfig,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranchCashTransfers } from '@/lib/queries';
+import { useBranchCashTransferSummary, useBranchCashTransfers } from '@/lib/queries';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
@@ -27,6 +27,7 @@ import { Banknote, Eye, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { CashDepositModal } from './CashDepositModal';
 import { CashTransferDetailsDialog } from './CashTransferDetailsDialog';
+import { MonthlyCashTransferSummary } from './MonthlyCashTransferSummary';
 import {
   CashTransferStatusBadge,
   cashTransferStatusLabel,
@@ -81,6 +82,9 @@ export function BranchCashTransfersPage() {
     sortBy: (list.state.sort?.key as CashTransferSortKey | undefined) ?? null,
     sortDir: list.state.sort?.direction,
   });
+
+  // Month to date, whatever the table is filtered to.
+  const summaryQ = useBranchCashTransferSummary(token);
 
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
@@ -201,6 +205,15 @@ export function BranchCashTransfersPage() {
           <Plus className="mr-1.5 h-4 w-4" /> Cash Deposit
         </Button>
       </div>
+
+      <MonthlyCashTransferSummary
+        summary={summaryQ.data}
+        isLoading={summaryQ.isPending}
+        isError={summaryQ.isError}
+        isFetching={summaryQ.isFetching}
+        error={summaryQ.error}
+        onRetry={() => void summaryQ.refetch()}
+      />
 
       <FilterBar list={list} filters={filters} searchable={false} />
       <ActiveFilters filters={list.activeFilters} configs={filters} onRemove={list.clearFilter} onClearAll={list.clearAll} />

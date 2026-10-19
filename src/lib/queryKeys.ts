@@ -115,6 +115,12 @@ export const qk = {
   // a different set of rows, and a key that ignored any of them would serve one
   // filter's answer to another.
   branchReturns: (params: Record<string, unknown>) => ['stock', 'returns', params] as const,
+  // The branch's month-to-date returns summary. Under the same ['stock'] prefix
+  // as the list, so every return write and `useStockRealtime` refresh it with no
+  // wiring of their own. Keyed by today's business date: the window is
+  // 1st-of-month → today, so a new day (and with it a new month) is a new key
+  // rather than yesterday's figures served as today's.
+  branchReturnsSummary: (businessDate: string) => ['stock', 'returns', 'summary', businessDate] as const,
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and
@@ -158,6 +164,11 @@ export const qk = {
   // covers every branch filter and period at once.
   productionOverview: (branchId?: string | null, period: string = 'week') =>
     ['productionOverview', branchId ?? 'all', period] as const,
+  // The dashboard's sections, one query each. Under the 'productionOverview'
+  // prefix on purpose: every mutation and live notification that already
+  // invalidates the overview refreshes the sections with it.
+  productionDashboardSection: (section: string, period: string, branchId?: string | null) =>
+    ['productionOverview', 'section', section, period, branchId ?? 'all'] as const,
   productionQueue: () => ['productionQueue'] as const,
   productionStock: (date?: string | null) => ['productionStock', date ?? 'today'] as const,
   // Prefixed 'productionStock' so one invalidateQueries({ queryKey: ['productionStock'] })
@@ -175,6 +186,12 @@ export const qk = {
   // Keyed by the whole filter object — branch, product, status, search and date
   // range each select a different set of rows, same convention as `branchReturns`.
   productionReturns: (params: Record<string, unknown>) => ['productionReturns', params] as const,
+  // Production's month-to-date returns summary, per branch. Under
+  // ['productionReturns'] so review/create and the realtime hook refresh it too;
+  // keyed by branch filter and today's business date for the same reason as
+  // `branchReturnsSummary`.
+  productionReturnsSummary: (branchId: string | null, businessDate: string) =>
+    ['productionReturns', 'summary', branchId, businessDate] as const,
   // Discounts, keyed as their own family rather than under ['stock'] the way
   // `branchReturns` is — and the difference is not cosmetic. A return moves units,
   // so it belongs under the prefix `useStockRealtime` invalidates; a discount
@@ -190,6 +207,10 @@ export const qk = {
   // `financeCashTransfers` below, under the finance root so a decision
   // invalidates it with everything else finance.
   branchCashTransfers: (params: Record<string, unknown>) => ['cashTransfers', 'branch', params] as const,
+  // Under the same ['cashTransfers'] prefix as the list, so a new deposit (and
+  // anything else that refreshes the list) refreshes the monthly summary too.
+  // Keyed by today's business date: a new day, and with it a new month, is a new key.
+  branchCashTransferSummary: (businessDate: string) => ['cashTransfers', 'summary', businessDate] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
@@ -356,3 +377,14 @@ export const qk = {
 
 /** Prefix that matches every finance cache entry. See the note above. */
 export const FINANCE_QK_ROOT = ['finance'] as const;
+
+/**
+ * The monthly Branch Discount summary. Under ['discounts'], so every claim write
+ * (raise, correct, withdraw, review) refreshes it with no wiring of its own.
+ * Keyed by today's business date: the window is 1st-of-month → today, so a new
+ * day (and with it a new month) is a new key rather than yesterday's figures.
+ */
+export const discountSummaryKeys = {
+  production: (branchId: string | null, businessDate: string) => ['discounts', 'summary', 'production', branchId, businessDate] as const,
+  branch: (businessDate: string) => ['discounts', 'summary', 'branch', businessDate] as const,
+};
