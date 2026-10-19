@@ -1,14 +1,17 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useIsFetching, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { Download, Printer, RefreshCw } from 'lucide-react';
 import { businessDateStr, type FinanceDashboardMetric, type ReportSummary, type SalesTopProductLimit } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
+import { useOnline } from '@/hooks/useOnline';
 import { useFinanceMonthlyDashboard } from '@/lib/finance';
 import { qk } from '@/lib/queryKeys';
 import {
+  useBranchSales,
+  useBranches,
   useProductionDashboardSection,
   useProductionOverview,
   useReportSummary,
@@ -32,59 +35,90 @@ import {
   type Granularity,
 } from '@/components/finance/dashboard/dashboard-model';
 import { LoginHistoryCard } from './LoginHistoryCard';
-import { SECTIONS, adminCsv, asSection, currentSaleRows, type Section } from './admin/admin-model';
+import { adminCsv, asSection, liveSaleRows, salesPeriodRange, type SalesPeriod } from './admin/admin-model';
 import {
   BranchSummary,
-  CurrentBranchSales,
   FinanceSummary,
   HeadlineKpis,
+  LiveBranchSales,
   ProductionSummary,
   SalesOverview,
   SectionHeading,
   TodaySnapshot,
+  type LiveSalesStatus,
 } from './admin/sections';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** How far back the month picker reaches — the same as the Finance Dashboard's. */
 const MONTHS_BACK = 24;
 
-// The whole Production Dashboard, as the Production tab. Loaded — code and
-// requests alike — only when that tab is first opened.
+// The whole Production Dashboard, as the Live Production section. Its code and
+// requests wait until the section is scrolled near (WhenVisible).
 const ProductionDashboard = dynamic(
   () => import('@/components/production/ProductionDashboard').then((m) => m.ProductionDashboard),
   { ssr: false, loading: () => <Skeleton className="h-96 rounded-xl" /> },
 );
 
 /**
- * The open tab lives in the address bar (`?section=finance`), so a refresh, a
- * bookmark or an old `/finance-dashboard` link (RouteGuard) opens the right
- * one. Read through `window.location`, not useSearchParams: the app is a static
- * export and the query string only exists in the browser. Other parameters
- * (the Production tab's `?branch=`) are left as they are.
+ * `?section=sales` (an old tab link, or RouteGuard's landing for the retired
+ * `/production-dashboard` and `/finance-dashboard`) scrolls to that part of
+ * the page, once, as soon as it has rendered. Read through `window.location`,
+ * not useSearchParams: the app is a static export and the query string only
+ * exists in the browser. The parameter is then dropped from the address bar.
  */
-function useSectionParam(): [Section, (s: Section) => void] {
-  const [section, setSection] = useState<Section>('overview');
+function useSectionAnchor(ready: boolean) {
+  const done = useRef(false);
   useEffect(() => {
-    const read = () => setSection(asSection(new URLSearchParams(window.location.search).get('section')));
-    read();
-    window.addEventListener('popstate', read);
-    return () => window.removeEventListener('popstate', read);
-  }, []);
-  const set = useCallback((s: Section) => {
-    setSection(s);
+    if (done.current || !ready) return;
     const url = new URL(window.location.href);
-    if (s === 'overview') url.searchParams.delete('section');
-    else url.searchParams.set('section', s);
+    const raw = url.searchParams.get('section');
+    if (!raw) {
+      done.current = true;
+      return;
+    }
+    const el = document.getElementById(`dash-${asSection(raw)}`);
+    if (!el) return; // that part is not on the page (an empty month): stay at the top
+    done.current = true;
+    el.scrollIntoView({ block: 'start' });
+    url.searchParams.delete('section');
     window.history.replaceState(window.history.state, '', url);
-  }, []);
-  return [section, set];
+  }, [ready]);
 }
 
 /**
- * Admin Dashboard — the admin's one dashboard: Overview, Sales, Branches,
- * Production and Finance as tabs of a single page. The Production and Finance
- * Dashboards are not separate admin pages; RouteGuard sends their old URLs to
- * the matching tab.
+ * Mounts its children once they are about to scroll into view, so a section
+ * far down the page costs no requests until someone gets to it. Mounted for
+ * good after that — scrolling away does not drop it.
+ */
+function WhenVisible({ children, placeholder }: { children: React.ReactNode; placeholder: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (shown) return;
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setShown(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setShown(true);
+      },
+      { rootMargin: '600px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [shown]);
+  return <div ref={ref} className="min-w-0">{shown ? children : placeholder}</div>;
+}
+
+/**
+ * Admin Dashboard — the admin's one dashboard. What used to be the Overview,
+ * Sales, Branches, Production and Finance tabs is one page, top to bottom:
+ * today's tiles, Live Sales — All Branches, the month's headline tiles, the
+ * branch comparison, sales trends, production, finance and login history. The
+ * Production and Finance Dashboards are not separate admin pages; RouteGuard
+ * sends their old URLs to the matching part of this one (`?section=`).
  *
  * Two requests drive the month-scoped figures, and the month / branch / day
  * range feed both, so no section can show a different period from its
@@ -96,11 +130,10 @@ function useSectionParam(): [Section, (s: Section) => void] {
  *   - `/api/sales-analytics` (migration 100) for the point-of-sale figures.
  * Every figure is summed in Postgres; nothing is added up in the browser.
  *
- * Each tab asks only for what it shows, when it is opened: today's report
- * summary on Overview and Sales, Production's overview and stock on Overview,
- * the whole Production Dashboard (and its code) on Production, and the cash
- * strip on Finance. React Query keeps each answer, so going back to a tab
- * shows it at once and refreshes it in the background.
+ * Today's tiles and Live Sales have requests of their own and do not wait for
+ * the month. The whole Production Dashboard (and its code) is loaded only when
+ * its section is scrolled near. Everything mounted is refetched by the app's
+ * 30-second refresh tick (useAppRefresh) while the tab is visible.
  *
  * The finance components paint with the `--fin-*` tokens, which the
  * `admin-dash-theme` class re-points to the brand palette (globals.css).
@@ -116,7 +149,6 @@ export function AdminDashboard() {
   const [dayFrom, setDayFrom] = useState(1);
   const [dayTo, setDayTo] = useState(31);
   const [branchId, setBranchId] = useState('');
-  const [section, setSection] = useSectionParam();
   const [incGran, setIncGran] = useState<Granularity>('monthly');
   const [expGran, setExpGran] = useState<Granularity>('monthly');
   const [topLimit, setTopLimit] = useState<SalesTopProductLimit>(5);
@@ -140,20 +172,11 @@ export function AdminDashboard() {
     { from, to, branchId: branchId || null, topLimit },
     { enabled: !!token, keepPrevious: true },
   );
-  // Today's business day, whatever month is selected: the Overview's today
-  // tiles and the Sales tab's Current Sale by Branch. Only the branch filter
-  // applies; the summary's `branchData` is per branch. Not asked for until one
-  // of those two tabs is open.
-  const todayQ = useReportSummary(token, 'daily', branchId || null, null, 'full', {
-    keepPrevious: true,
-    enabled: section === 'overview' || section === 'sales',
-  });
+  // Today's business day, whatever month is selected: the today tiles. Only
+  // the branch filter applies.
+  const todayQ = useReportSummary(token, 'daily', branchId || null, null, 'full', { keepPrevious: true });
   const data = fin.data;
   const sales = salesQ.data ?? null;
-  const currentRows = useMemo(
-    () => (data && todayQ.data ? currentSaleRows(data.branches, todayQ.data.branchData ?? [], branchId || null) : []),
-    [data, todayQ.data, branchId],
-  );
 
   const monthOptions = useMemo(
     () => Array.from({ length: MONTHS_BACK }, (_, i) => shiftMonth(currentMonth, -i)),
@@ -196,20 +219,22 @@ export function AdminDashboard() {
   // never on a same-filter refresh.
   const updating = (fin.isPlaceholderData || salesQ.isPlaceholderData) && !!data;
   const qc = useQueryClient();
+  // Waits for the month's figures, which are what push the sections down.
+  useSectionAnchor(!!data || fin.isError);
   // Production's overview and sections all sit under this prefix (queryKeys.ts).
   const productionFetching = useIsFetching({ queryKey: ['productionOverview'] }) > 0;
-  const refreshing = fin.isFetching || salesQ.isFetching || todayQ.isFetching || productionFetching;
 
-  // Refetches what the open tab shows; the others are refetched as stale when
-  // next opened.
+  const branchSalesFetching = useIsFetching({ queryKey: qk.dataResource('orders') }) > 0;
+  const refreshing = fin.isFetching || salesQ.isFetching || todayQ.isFetching || productionFetching || branchSalesFetching;
+
+  // Everything on the page: React Query refetches only what is mounted.
   const refresh = () => {
     void fin.refetch();
     void salesQ.refetch();
-    if (section === 'overview' || section === 'sales') void todayQ.refetch();
-    if (section === 'overview' || section === 'production') {
-      void qc.invalidateQueries({ queryKey: ['productionOverview'] });
-    }
-    if (section === 'finance') void qc.invalidateQueries({ queryKey: qk.financeDashboard({ from: today, to: today }) });
+    void todayQ.refetch();
+    void qc.invalidateQueries({ queryKey: qk.dataResource('orders') });
+    void qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    void qc.invalidateQueries({ queryKey: qk.financeDashboard({ from: today, to: today }) });
   };
   const exportCsv = () => {
     if (!data) return;
@@ -341,29 +366,8 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* ---------------- Section tabs ---------------- */}
-      <div role="tablist" aria-label="Dashboard sections" className="no-print -mb-1 flex gap-1 overflow-x-auto border-b">
-        {SECTIONS.map((x) => (
-          <button
-            key={x.key}
-            type="button"
-            role="tab"
-            aria-selected={section === x.key}
-            onClick={() => setSection(x.key)}
-            className={cn(
-              '-mb-px shrink-0 border-b-[3px] px-3.5 py-2.5 text-sm font-bold transition-colors',
-              section === x.key
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {x.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ---------------- Sections that do not wait for the month ---------------- */}
-      {section === 'overview' && (
+      {/* ---------------- Today & live sales: not month-scoped ---------------- */}
+      <div id="dash-overview" className="flex min-w-0 scroll-mt-20 flex-col gap-5">
         <OverviewToday
           token={token}
           branchId={branchId}
@@ -372,18 +376,10 @@ export function AdminDashboard() {
           scope={scopeLabel}
           format={format}
         />
-      )}
-      {section === 'production' && (
-        <section className="flex min-w-0 flex-col gap-4">
-          <SectionHeading
-            title="Live Production"
-            sub="Orders, output and stock for today, this week or this month, with its own branch picker. The month and day filters above apply to the Production Summary below."
-          />
-          <ProductionDashboard embedded />
-        </section>
-      )}
+        <LiveSales token={token} today={today} format={format} />
+      </div>
 
-      {/* ---------------- States ---------------- */}
+      {/* ---------------- The selected month ---------------- */}
       {!data && fin.isError ? (
         <StatePanel
           title="Dashboard data could not be loaded."
@@ -419,19 +415,20 @@ export function AdminDashboard() {
             </div>
           )}
 
-          {section === 'overview' && (
-            <section className="flex min-w-0 flex-col gap-4">
-              <SectionHeading title={monthLong(month)} sub={`Sales, Company Share and Finance Ledger · ${context}`} />
-              <HeadlineKpis
-                data={data}
-                sales={sales}
-                salesFailed={salesQ.isError && !sales}
-                drillTo={drillTo}
-                format={format}
-              />
-            </section>
-          )}
-          {section === 'sales' && (
+          <section className="flex min-w-0 flex-col gap-4">
+            <SectionHeading title={monthLong(month)} sub={`Sales, Company Share and Finance Ledger · ${context}`} />
+            <HeadlineKpis
+              data={data}
+              sales={sales}
+              salesFailed={salesQ.isError && !sales}
+              drillTo={drillTo}
+              format={format}
+            />
+          </section>
+          <div id="dash-branches" className="min-w-0 scroll-mt-20">
+            <BranchSummary data={data} scoped={!!branchId} subtitle={context} drillTo={drillTo} format={format} />
+          </div>
+          <div id="dash-sales" className="min-w-0 scroll-mt-20">
             <SalesOverview
               sales={sales}
               loading={salesQ.isPending}
@@ -443,49 +440,55 @@ export function AdminDashboard() {
               onTopLimit={setTopLimit}
               subtitle={context}
               format={format}
-              current={
-                <CurrentBranchSales
-                  rows={currentRows}
-                  total={todayQ.data?.totalRevenue ?? null}
-                  loading={!todayQ.data && !todayQ.isError}
-                  failed={todayQ.isError}
-                  onRetry={() => void todayQ.refetch()}
-                  businessDate={today}
-                  format={format}
-                />
-              }
             />
-          )}
-          {section === 'branches' && (
-            <BranchSummary data={data} scoped={!!branchId} subtitle={context} drillTo={drillTo} format={format} />
-          )}
-          {section === 'production' && (
-            <ProductionSummary data={data} subtitle={context} context={context} drillTo={drillTo} format={format} />
-          )}
-          {section === 'finance' && (
-            <FinanceSummary
-              data={data}
-              scoped={!!branchId}
-              subtitle={context}
-              context={context}
-              incGran={incGran}
-              setIncGran={setIncGran}
-              expGran={expGran}
-              setExpGran={setExpGran}
-              drillTo={drillTo}
-              format={format}
-            />
-          )}
+          </div>
         </div>
       )}
 
-      {/* Not month-scoped, so outside the figures above and left off the print:
-          the login record a super admin audits. */}
-      {section === 'overview' && (
-        <div className="no-print min-w-0">
-          <LoginHistoryCard />
+      {/* ---------------- Production ----------------
+          The live board has its own period and branch picker and does not wait
+          for the month, so it stays up when the month's figures are empty or
+          failed. Kept off the print: it is a working screen, not a report. */}
+      <section id="dash-production" className="flex min-w-0 scroll-mt-20 flex-col gap-4">
+        <div className="no-print flex min-w-0 flex-col gap-4">
+          <SectionHeading
+            title="Live Production"
+            sub="Orders, output and stock for today, this week or this month, with its own branch picker."
+          />
+          <WhenVisible placeholder={<Skeleton className="h-96 rounded-xl" />}>
+            <ProductionDashboard embedded />
+          </WhenVisible>
+        </div>
+        {data && !isEmpty && (
+          <div className={cn('min-w-0 transition-opacity', updating && 'opacity-60')}>
+            <ProductionSummary data={data} subtitle={context} context={context} drillTo={drillTo} format={format} />
+          </div>
+        )}
+      </section>
+
+      {/* ---------------- Finance ---------------- */}
+      {data && !isEmpty && (
+        <div id="dash-finance" className={cn('min-w-0 scroll-mt-20 transition-opacity', updating && 'opacity-60')}>
+          <FinanceSummary
+            data={data}
+            scoped={!!branchId}
+            subtitle={context}
+            context={context}
+            incGran={incGran}
+            setIncGran={setIncGran}
+            expGran={expGran}
+            setExpGran={setExpGran}
+            drillTo={drillTo}
+            format={format}
+          />
         </div>
       )}
+
+      {/* Not month-scoped, and left off the print: the login record a super
+          admin audits. */}
+      <div className="no-print min-w-0">
+        <LoginHistoryCard />
+      </div>
 
       <RecordsDrawer
         target={drill}
@@ -498,9 +501,8 @@ export function AdminDashboard() {
 }
 
 /**
- * The Overview's today tiles. Production's two requests live here so they are
- * made only while the Overview is open; with no branch picked they share
- * their cache with the Production tab's Today view and its stock section.
+ * Today's tiles. With no branch picked, Production's two requests share their
+ * cache with the Live Production section's Today view and its stock section.
  */
 function OverviewToday({
   token,
@@ -532,6 +534,77 @@ function OverviewToday({
         if (prod.isError) void prod.refetch();
         if (stock.isError) void stock.refetch();
       }}
+    />
+  );
+}
+
+/**
+ * How long without a successful refresh before the board stops calling itself
+ * live: three of the app's 30-second refresh ticks (useAppRefresh).
+ */
+const STALE_AFTER_MS = 90_000;
+
+/**
+ * Live Sales — All Branches: the period picker, the per-branch request and
+ * the decision whether the figures can still be called live.
+ *
+ * No timer of its own fetches anything. The board is a mounted query, so the
+ * app's single 30-second refresh tick refetches it while the tab is visible,
+ * and catches up the moment a hidden tab is shown again; a sale saved on this
+ * device invalidates `orders` and refreshes it at once. Sales rung up on a
+ * branch's till arrive with the next tick — there is no sale notification to
+ * push them sooner. The one interval here only re-reads the clock, so
+ * "Live" turns into "Not updating" when the refreshes stop.
+ */
+function LiveSales({ token, today, format }: { token: string; today: string; format: (v: number | null | undefined) => string }) {
+  const [period, setPeriod] = useState<SalesPeriod>('today');
+  const [custom, setCustom] = useState({ from: today, to: today });
+  const range = salesPeriodRange(period, today, custom);
+  const salesQ = useBranchSales(token, range);
+  const branchesQ = useBranches(token);
+  const online = useOnline();
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // A failed branch list still lets the sales through — cards for the branches
+  // that sold, rather than none at all.
+  const branchesSettled = !!branchesQ.data || branchesQ.isError;
+  const rows = useMemo(
+    () => (salesQ.data && branchesSettled ? liveSaleRows(branchesQ.data ?? [], salesQ.data.rows) : []),
+    [salesQ.data, branchesQ.data, branchesSettled],
+  );
+  const loading = !salesQ.isError && (!salesQ.data || !branchesSettled);
+  const updatedAt = salesQ.data ? salesQ.dataUpdatedAt : null;
+
+  let status: LiveSalesStatus = 'loading';
+  if (updatedAt) {
+    if (!online) status = 'offline';
+    else if (salesQ.isError) status = 'error';
+    else if (range.to < today) status = 'closed';
+    else if (now - updatedAt > STALE_AFTER_MS && !salesQ.isFetching) status = 'stale';
+    else status = 'live';
+  }
+
+  return (
+    <LiveBranchSales
+      rows={rows}
+      loading={loading}
+      failed={salesQ.isError}
+      onRetry={() => void salesQ.refetch()}
+      period={period}
+      onPeriod={setPeriod}
+      custom={custom}
+      onCustom={setCustom}
+      today={today}
+      from={range.from}
+      to={range.to}
+      status={status}
+      updatedAt={updatedAt}
+      format={format}
     />
   );
 }

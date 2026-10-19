@@ -62,8 +62,11 @@ import {
   dailyDemand,
   demandComparison,
   weeklyReturnsDiscount,
+  SALES_PERIODS,
+  salesPeriodLabel,
   type BranchSummaryRow,
-  type CurrentSaleRow,
+  type LiveSaleRow,
+  type SalesPeriod,
 } from './admin-model';
 
 type Format = (v: number | null | undefined) => string;
@@ -158,7 +161,6 @@ export function SalesOverview({
   onTopLimit,
   subtitle,
   format,
-  current,
 }: {
   sales: SalesAnalytics | null;
   loading: boolean;
@@ -169,23 +171,18 @@ export function SalesOverview({
   onTopLimit: (l: SalesTopProductLimit) => void;
   subtitle: string;
   format: Format;
-  /** Today's sale per branch — its own request, so it shows even if the range's sales fail. */
-  current: React.ReactNode;
 }) {
   const s = sales;
   return (
     <section className="flex min-w-0 flex-col gap-4">
       <SectionHeading title="Sales Overview" sub={`Point-of-sale orders · ${subtitle}`} />
       {failed && !s ? (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
-            <span>The sales figures could not be loaded. The other tabs are unaffected.</span>
-            <Button size="sm" variant="outline" onClick={onRetry}>
-              Retry
-            </Button>
-          </div>
-          {current}
-        </>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
+          <span>The sales figures could not be loaded. The rest of the dashboard is unaffected.</span>
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
@@ -227,7 +224,6 @@ export function SalesOverview({
           <Panel title="Daily Sales" aside={<span className="text-[11px] text-muted-foreground">{subtitle}</span>}>
             {s ? <DailySalesGraph data={s.daily} currency={currency} /> : <Skeleton className="h-[300px] w-full" />}
           </Panel>
-          {current}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <PaymentMethodSummary analytics={s} loading={loading} currency={currency} />
             <TopSellingProducts
@@ -244,10 +240,10 @@ export function SalesOverview({
   );
 }
 
-/** One branch's live figure: its name in one box, today's sale in the other. */
-function CurrentSaleCard({ row, format }: { row: CurrentSaleRow; format: Format }) {
+/** One branch's figure for the period: its name in one box, its sale in the other. */
+function LiveSaleCard({ row, label, format }: { row: LiveSaleRow; label: string; format: Format }) {
   return (
-    <div data-testid="current-sale-card" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+    <div data-testid="live-sale-card" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       {/* Two lines' room for every name, so the amount boxes line up across a row. */}
       <div className="flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5">
         <p className="line-clamp-2 text-sm leading-snug font-semibold break-words" title={row.branch}>
@@ -255,27 +251,26 @@ function CurrentSaleCard({ row, format }: { row: CurrentSaleRow; format: Format 
         </p>
       </div>
       <div className="flex flex-1 flex-col px-3.5 py-3">
-        <p className="text-xs font-medium text-muted-foreground">Current Sale</p>
-        {/* A notch smaller on a phone, where two cards share the row: six figures and paisa still fit. */}
-        <p className={cn('mt-0.5 text-[0.9375rem] font-extrabold whitespace-nowrap tabular-nums sm:text-base', !row.sales && 'text-muted-foreground')}>
+        <p className={cn('text-lg font-extrabold whitespace-nowrap tabular-nums', !row.sales && 'text-muted-foreground')}>
           {format(row.sales)}
         </p>
+        <p className="mt-0.5 text-xs font-medium text-muted-foreground">{label}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{row.orders ? plural(row.orders, 'order') : 'No sales yet'}</p>
       </div>
     </div>
   );
 }
 
-/** A card while today's figures load, laid out as the loaded one. */
-function CurrentSaleCardSkeleton() {
+/** A card while the figures load, laid out as the loaded one. */
+function LiveSaleCardSkeleton() {
   return (
-    <div data-testid="current-sale-card-skeleton" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+    <div data-testid="live-sale-card-skeleton" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5">
         <Skeleton className="h-4 w-24" />
       </div>
       <div className="flex flex-col gap-1.5 px-3.5 py-3">
-        <Skeleton className="h-3 w-16" />
         <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-3 w-16" />
         <Skeleton className="h-3 w-14" />
       </div>
     </div>
@@ -283,69 +278,180 @@ function CurrentSaleCardSkeleton() {
 }
 
 /**
- * Current Sale by Branch — what each branch has taken so far today, one card
- * per branch.
- *
- * Today's business date whatever month the filters show: it is the live figure
- * an admin checks during the day. Paid orders only, the same money rule as
- * Total Sales (cancelled and staff sales excluded). The figures refresh with
- * the rest of the app (useAppRefresh) and keep the last answer on screen while
- * they do, so a refresh never flashes the cards.
- *
- * The cards share one width and form a single row when the screen is wide
- * enough; otherwise they wrap — two across on a phone — rather than scrolling
- * the page sideways.
+ * How current the figures are. `live` only while the period takes in today and
+ * the last refresh is recent; `closed` for a period that is over, which cannot
+ * change; the other three say plainly that updates have stopped, so a frozen
+ * figure is never passed off as live.
  */
-export function CurrentBranchSales({
+export type LiveSalesStatus = 'loading' | 'live' | 'closed' | 'stale' | 'offline' | 'error';
+
+const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+function LiveStatus({ status, updatedAt, onRetry }: { status: LiveSalesStatus; updatedAt: number | null; onRetry: () => void }) {
+  if (status === 'loading' || !updatedAt) return null;
+  const at = clock(updatedAt);
+  const [dot, text] =
+    status === 'live'
+      ? ['bg-emerald-500 animate-pulse', `Live · updated ${at}`]
+      : status === 'closed'
+        ? ['bg-muted-foreground', `Closed period · loaded ${at}`]
+        : status === 'offline'
+          ? ['bg-amber-500', `Offline · showing figures from ${at}`]
+          : status === 'stale'
+            ? ['bg-amber-500', `Not updating · last updated ${at}`]
+            : ['bg-destructive', `Could not refresh · showing figures from ${at}`];
+  return (
+    <span data-testid="live-sales-status" className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+      <span className={cn('size-2 shrink-0 rounded-full', dot)} aria-hidden />
+      {text}
+      {(status === 'error' || status === 'stale') && (
+        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={onRetry}>
+          Retry
+        </Button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Live Sales — All Branches: one card per active branch with its paid sales
+ * for the chosen period, and the combined total under them.
+ *
+ * Every figure is a per-branch sum from the server (useBranchSales); the total
+ * is those branch figures added together, so it matches the cards exactly.
+ * Always every branch, whatever branch the dashboard's own filter is on — that
+ * filter scopes the month figures below, this board is the whole company.
+ *
+ * Wraps two across on a phone and as many as fit on a wider screen, rather
+ * than scrolling the page sideways.
+ */
+export function LiveBranchSales({
   rows,
-  total,
   loading,
   failed,
   onRetry,
-  businessDate,
+  period,
+  onPeriod,
+  custom,
+  onCustom,
+  today,
+  from,
+  to,
+  status,
+  updatedAt,
   format,
 }: {
-  rows: CurrentSaleRow[];
-  total: number | null;
+  rows: LiveSaleRow[];
   loading: boolean;
   failed: boolean;
   onRetry: () => void;
-  businessDate: string;
+  period: SalesPeriod;
+  onPeriod: (p: SalesPeriod) => void;
+  custom: { from: string; to: string };
+  onCustom: (c: { from: string; to: string }) => void;
+  today: string;
+  from: string;
+  to: string;
+  status: LiveSalesStatus;
+  updatedAt: number | null;
   format: Format;
 }) {
+  const label = salesPeriodLabel(period, from, to);
+  const range = from === to ? `${dayLabel(from)} ${from.slice(0, 4)}` : `${dayLabel(from)} – ${dayLabel(to)} ${to.slice(0, 4)}`;
+  const total = rows.reduce((s, r) => s + r.sales, 0);
+  const orders = rows.reduce((s, r) => s + r.orders, 0);
+  const dateCls = 'h-10 rounded-lg border bg-card px-2.5 text-base text-foreground md:h-8 md:text-sm';
   return (
-    <div data-testid="current-sale-by-branch" className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b px-4 py-3">
-        <h3 className="text-base font-bold">Current Sale by Branch</h3>
-        <span className="text-xs text-muted-foreground">
-          Today · {dayLabel(businessDate)} {businessDate.slice(0, 4)} · paid orders, cancelled and staff excluded
-        </span>
+    <section
+      id="live-sales"
+      data-testid="live-sales"
+      aria-labelledby="live-sales-title"
+      className="min-w-0 scroll-mt-20 overflow-hidden rounded-xl border bg-card shadow-xs"
+    >
+      <div className="flex flex-col gap-3 border-b px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h2 id="live-sales-title" className="text-base font-bold tracking-wide uppercase sm:text-lg">
+              Live Sales — All Branches
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {label} · {range} · paid orders, cancelled and staff sales excluded
+            </p>
+          </div>
+          <LiveStatus status={status} updatedAt={updatedAt} onRetry={onRetry} />
+        </div>
+        <div className="no-print flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Sales period" className="flex max-w-full flex-wrap gap-1 rounded-lg bg-muted p-[3px]">
+            {SALES_PERIODS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                aria-pressed={period === p.key}
+                onClick={() => onPeriod(p.key)}
+                className={cn(
+                  'h-9 shrink-0 rounded-md px-3 text-sm font-semibold transition-colors md:h-7',
+                  period === p.key ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+              <input
+                type="date"
+                aria-label="From date"
+                className={dateCls}
+                max={today}
+                value={custom.from}
+                onChange={(e) => e.target.value && onCustom({ from: e.target.value, to: custom.to < e.target.value ? e.target.value : custom.to })}
+              />
+              <span>to</span>
+              <input
+                type="date"
+                aria-label="To date"
+                className={dateCls}
+                min={custom.from}
+                max={today}
+                value={custom.to}
+                onChange={(e) => e.target.value && onCustom({ from: custom.from > e.target.value ? e.target.value : custom.from, to: e.target.value })}
+              />
+            </div>
+          )}
+        </div>
       </div>
       {failed && !rows.length ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 text-sm">
-          <span>Today’s branch sales could not be loaded.</span>
+          <span>Branch sales could not be loaded. No figures are shown rather than out-of-date ones.</span>
           <Button size="sm" variant="outline" onClick={onRetry}>
             Retry
           </Button>
         </div>
       ) : !loading && !rows.length ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">No branch has sold anything yet today.</p>
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">There are no active branches to show.</p>
       ) : (
         <div className="flex flex-col gap-3 p-4" aria-busy={loading || undefined}>
-          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
+          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
             {loading
-              ? [0, 1, 2, 3].map((i) => <CurrentSaleCardSkeleton key={i} />)
-              : rows.map((r) => <CurrentSaleCard key={r.branchId} row={r} format={format} />)}
+              ? [0, 1, 2, 3].map((i) => <LiveSaleCardSkeleton key={i} />)
+              : rows.map((r) => <LiveSaleCard key={r.branchId} row={r} label={label} format={format} />)}
           </div>
-          {!loading && rows.length > 1 && total !== null && (
-            <div className="flex items-center justify-between gap-3 rounded-lg bg-fin-soft px-3.5 py-2.5 font-extrabold">
-              <span className="text-sm">Total today</span>
-              <span className="text-base whitespace-nowrap tabular-nums">{format(total)}</span>
+          {!loading && (
+            <div
+              data-testid="live-sales-total"
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded-lg bg-fin-soft px-3.5 py-2.5"
+            >
+              <span className="text-sm font-extrabold uppercase">Total Sales</span>
+              <span className="flex items-baseline gap-2">
+                <span className="text-xs text-muted-foreground">{plural(orders, 'order')}</span>
+                <span className="text-lg font-extrabold whitespace-nowrap tabular-nums">{format(total)}</span>
+              </span>
             </div>
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -696,8 +802,8 @@ export function ProductionSummary({
  * The Finance Dashboard's own body — every card, chart and table it shows —
  * fed the Admin Dashboard's request, so the two pages cannot disagree and the
  * admin needs no separate Finance Dashboard. The cash strip is today's
- * position, company-wide, under the Finance Dashboard's own query key; it is
- * asked for only once this tab opens.
+ * position, company-wide, under the Finance Dashboard's own query key, so the
+ * two pages share one cached answer.
  */
 export function FinanceSummary({
   data,
@@ -756,8 +862,9 @@ export function FinanceSummary({
  * and out-of-stock products). Each tile says "…" while its request is in
  * flight and "—" if it failed, so one slow source never blanks the others.
  *
- * No profit tile: the report's `totalProfit` is sales less shop expenses only,
- * with no production cost behind it, and would read as the business's profit.
+ * The profit tile is the report's own `totalProfit` — sales less shop expenses,
+ * nothing else — and says so under the figure: there is no production cost
+ * behind it, so it must not read as the business's profit.
  */
 export function TodaySnapshot({
   businessDate,
@@ -792,7 +899,7 @@ export function TodaySnapshot({
           </Button>
         </div>
       )}
-      <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2 lg:grid-cols-3 min-[1760px]:grid-cols-4">
         <KpiTile
           label="Today's Sales"
           value={v(!!t, today.failed, () => format(t!.totalRevenue))}
@@ -806,6 +913,14 @@ export function TodaySnapshot({
           sub="Recorded by the branches today"
           icon={Receipt}
           tone="ledger"
+        />
+        <KpiTile
+          label="Today's Profit"
+          value={v(!!t, today.failed, () => format(t!.totalProfit))}
+          negative={!!t && t.totalProfit < 0}
+          sub="Sales less shop expenses · production cost not included"
+          icon={TrendingUp}
+          tone="received"
         />
         <KpiTile
           label="Pending Orders"
@@ -844,7 +959,7 @@ export function TodaySnapshot({
   );
 }
 
-/** The four headline tiles on the Overview tab. */
+/** The four headline tiles for the selected month. */
 export function HeadlineKpis({
   data,
   sales,

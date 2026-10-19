@@ -62,7 +62,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
   // Straight to the book: the Finance Dashboard's figures are the Admin
-  // Dashboard's Finance tab, so the old Finance Dashboard entry would be a
+  // Dashboard's Finance section, so the old Finance Dashboard entry would be a
   // second copy of them.
   { label: 'Finance Ledger',  href: ROUTES.FINANCE_LEDGER,   icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },

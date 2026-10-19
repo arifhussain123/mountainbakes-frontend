@@ -4,9 +4,11 @@ import {
   adminCsv,
   asSection,
   branchSummaryRows,
-  currentSaleRows,
+  liveSaleRows,
   dailyDemand,
   demandComparison,
+  salesPeriodLabel,
+  salesPeriodRange,
   weeklyReturnsDiscount,
 } from '../admin-model';
 
@@ -173,31 +175,79 @@ describe('demandComparison', () => {
   });
 });
 
-describe('currentSaleRows', () => {
+describe('liveSaleRows', () => {
   const branches = dashboard().branches;
-  const sold = [
-    { branchId: 'b2', branchName: 'Committee Chowk', totalOrders: 40, totalRevenue: 12520, averageOrderValue: 313 },
-    { branchId: 'b1', branchName: 'Alabad', totalOrders: 9, totalRevenue: 2220, averageOrderValue: 246.67 },
-  ];
+  const g = (branchId: string, branchName: string, sum: number, count: number) => ({
+    group: { branchId, branchName },
+    values: { 'sum:grandTotal': sum, count },
+  });
+  const sold = [g('b2', 'Committee Chowk', 12520, 40), g('b1', 'Alabad', 2220, 9)];
 
-  test('only branches that sold, largest sale first; a branch at 0 is left off', () => {
-    expect(currentSaleRows(branches, sold, null)).toEqual([
+  test('every active branch, a branch at Rs. 0 included, largest sale first', () => {
+    expect(liveSaleRows(branches, sold)).toEqual([
       { branchId: 'b2', branch: 'Committee Chowk', sales: 12520, orders: 40 },
       { branchId: 'b1', branch: 'Alabad', sales: 2220, orders: 9 },
+      { branchId: 'b3', branch: 'Commercial Market', sales: 0, orders: 0 },
     ]);
   });
 
-  test('the branch picked in the filter still shows at 0', () => {
-    expect(currentSaleRows(branches, sold, 'b3')).toEqual([{ branchId: 'b3', branch: 'Commercial Market', sales: 0, orders: 0 }]);
+  test('an inactive branch is left off unless it sold in the period', () => {
+    expect(liveSaleRows(branches, sold).some((r) => r.branchId === 'b4')).toBe(false);
+    expect(liveSaleRows(branches, [...sold, g('b4', 'Old Branch', 500, 2)]).find((r) => r.branchId === 'b4')).toMatchObject({
+      branch: 'Old Branch (inactive)',
+      sales: 500,
+    });
   });
 
-  test('the branch filter narrows it to that branch', () => {
-    expect(currentSaleRows(branches, sold, 'b1').map((r) => r.branchId)).toEqual(['b1']);
+  test('a renamed branch: its groups are merged by id, under the current name', () => {
+    const rows = liveSaleRows(branches, [...sold, g('b1', 'Alabad Old Name', 780, 1)]);
+    expect(rows.filter((r) => r.branchId === 'b1')).toEqual([{ branchId: 'b1', branch: 'Alabad', sales: 3000, orders: 10 }]);
   });
 
   test('sales from a branch the list does not know are kept, not dropped', () => {
-    const rows = currentSaleRows(branches, [...sold, { branchId: 'gone', branchName: 'DHA', totalOrders: 3, totalRevenue: 2300, averageOrderValue: 0 }], null);
+    const rows = liveSaleRows(branches, [...sold, g('gone', 'DHA', 2300, 3)]);
     expect(rows.find((r) => r.branchId === 'gone')).toMatchObject({ branch: 'DHA', sales: 2300 });
+  });
+
+  test('the cards add up to the server sums, nothing counted twice', () => {
+    const rows = liveSaleRows(branches, sold);
+    expect(rows.reduce((s, r) => s + r.sales, 0)).toBe(14740);
+    expect(rows.reduce((s, r) => s + r.orders, 0)).toBe(49);
+  });
+
+  test('no branch list (it failed): only the branches that sold', () => {
+    expect(liveSaleRows([], sold).map((r) => r.branchId)).toEqual(['b2', 'b1']);
+  });
+});
+
+describe('salesPeriodRange', () => {
+  // Wednesday 21 Oct 2026.
+  const today = '2026-10-21';
+  test('today and yesterday are single business dates', () => {
+    expect(salesPeriodRange('today', today)).toEqual({ from: today, to: today });
+    expect(salesPeriodRange('yesterday', today)).toEqual({ from: '2026-10-20', to: '2026-10-20' });
+    expect(salesPeriodRange('yesterday', '2026-11-01')).toEqual({ from: '2026-10-31', to: '2026-10-31' });
+  });
+  test('this week runs Monday to today; on a Monday it is just today; on Sunday it reaches back six days', () => {
+    expect(salesPeriodRange('week', today)).toEqual({ from: '2026-10-19', to: today });
+    expect(salesPeriodRange('week', '2026-10-19')).toEqual({ from: '2026-10-19', to: '2026-10-19' });
+    expect(salesPeriodRange('week', '2026-10-25')).toEqual({ from: '2026-10-19', to: '2026-10-25' });
+  });
+  test('this month runs from the 1st to today', () => {
+    expect(salesPeriodRange('month', today)).toEqual({ from: '2026-10-01', to: today });
+  });
+  test('a custom range is put in order and clamped to today', () => {
+    expect(salesPeriodRange('custom', today, { from: '2026-10-05', to: '2026-10-02' })).toEqual({ from: '2026-10-02', to: '2026-10-05' });
+    expect(salesPeriodRange('custom', today, { from: '2026-10-10', to: '2026-12-01' })).toEqual({ from: '2026-10-10', to: today });
+  });
+});
+
+describe('salesPeriodLabel', () => {
+  test('names the period', () => {
+    expect(salesPeriodLabel('today', '2026-10-21', '2026-10-21')).toBe("Today's Sales");
+    expect(salesPeriodLabel('month', '2026-10-01', '2026-10-21')).toBe("This Month's Sales");
+    expect(salesPeriodLabel('custom', '2026-10-02', '2026-10-05')).toBe('Sales · 02 Oct – 05 Oct 2026');
+    expect(salesPeriodLabel('custom', '2026-10-02', '2026-10-02')).toBe('Sales · 02 Oct 2026');
   });
 });
 
