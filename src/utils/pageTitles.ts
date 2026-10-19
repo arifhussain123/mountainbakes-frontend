@@ -7,7 +7,7 @@ import { ROUTES, normalizePath } from './routes';
  * could be handed a `title` prop. It now lives once in the dashboard layout and
  * reads the title from here, which is why this map exists rather than the titles
  * being derived from `NAV_MAP`: several deliberately differ from their nav label
- * ("Orders" → "All Orders", "Reports" → "Reports & Analytics"), and three routes
+ * ("Orders" → "Production Orders", "Reports" → "Reports & Analytics"), and three routes
  * (branch-orders, branch-customers, production-queue) have no nav entry at all.
  *
  * A route missing from this map renders no heading, which is the same thing the
@@ -16,7 +16,7 @@ import { ROUTES, normalizePath } from './routes';
 export const PAGE_TITLES: Record<string, string> = {
   // Admin
   [ROUTES.DASHBOARD]: 'Dashboard',
-  [ROUTES.ORDERS]: 'All Orders',
+  [ROUTES.ORDERS]: 'Production Orders',
   [ROUTES.PRODUCTS]: 'Products',
   [ROUTES.CATEGORIES]: 'Categories',
   [ROUTES.PRICE_LIST]: 'Price List',
