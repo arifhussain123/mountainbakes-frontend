@@ -219,13 +219,26 @@ export async function apiCall<T = unknown>(
   // leaves the rest to the network error below.
   const method = (options.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && typeof navigator !== 'undefined' && navigator.onLine === false) {
-    throw new ApiError(
-      "You're offline. This can't be saved until you reconnect — your entry is still on screen, so nothing is lost.",
-      0,
-    );
+    throw new ApiError(OFFLINE_WRITE_MESSAGE, 0);
   }
 
   return request<T>(endpoint, options, token, true);
+}
+
+const OFFLINE_WRITE_MESSAGE =
+  "You're offline. This can't be saved until you reconnect — your entry is still on screen, so nothing is lost.";
+
+/** fetch() rejected before any status came back — see request(). */
+function unreachableError(method: string, endpoint: string, cause: unknown): ApiError {
+  // Network-level failure: server unreachable, DNS failure, blocked by CORS,
+  // or mixed content. The request rejects before we ever get a status code.
+  console.error(`[api] ${method} ${API_URL}${endpoint} — network error:`, cause);
+  return new ApiError(
+    `Could not reach the API at ${API_URL}. It may be offline, or blocking this ` +
+      `origin via CORS. Check the Network tab and the API server's CORS_ORIGINS.`,
+    0,
+    cause
+  );
 }
 
 /**
@@ -265,15 +278,7 @@ async function request<T>(
   try {
     response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
   } catch (error) {
-    // Network-level failure: server unreachable, DNS failure, blocked by CORS,
-    // or mixed content. fetch() rejects before we ever get a status code.
-    console.error(`[api] ${options.method || 'GET'} ${API_URL}${endpoint} — network error:`, error);
-    throw new ApiError(
-      `Could not reach the API at ${API_URL}. It may be offline, or blocking this ` +
-        `origin via CORS. Check the Network tab and the API server's CORS_ORIGINS.`,
-      0,
-      error
-    );
+    throw unreachableError(options.method || 'GET', endpoint, error);
   }
 
   if (!response.ok) {
@@ -288,30 +293,7 @@ async function request<T>(
     // perfectly clear "Unauthorized: Invalid or expired token" gets logged and
     // thrown as an empty `{}`, which is exactly the wrong moment to lose detail.
     const raw = await response.text().catch(() => '');
-    let body: { error?: string; details?: unknown } = {};
-    if (raw) {
-      try {
-        body = JSON.parse(raw);
-      } catch {
-        body = { error: readableErrorText(raw, response.status) };
-      }
-    }
-    // The API's catch-all 404 (app.ts) names the route for the logs; the person
-    // gets the same sentence an HTML 404 produces.
-    if (response.status === 404 && body.error?.startsWith('No API route for ')) {
-      body.error = readableErrorText(`Cannot ${body.error.slice('No API route for '.length)}`, 404);
-    }
-    let message = body.error || `Request failed (HTTP ${response.status})`;
-    // A validation failure (middleware/validate.ts) carries per-field detail.
-    // Fold it into the message: on its own, "Validation error" tells the user
-    // nothing about WHICH field the server rejected, and callers only surface
-    // `message` in their toast.
-    if (Array.isArray(body.details) && body.details.length > 0) {
-      const fields = (body.details as { field?: string; message?: string }[])
-        .map((d) => (d.field ? `${d.field} — ${d.message ?? 'invalid'}` : d.message))
-        .filter(Boolean);
-      if (fields.length > 0) message = `${message}: ${fields.join('; ')}`;
-    }
+    const { message, details } = errorFromBody(raw, response.status);
 
     // An expired access token is a recoverable condition, not a failure to report:
     // refresh it and replay the request once. Without this the user sees a raw
@@ -336,8 +318,13 @@ async function request<T>(
       `[api] ${options.method || 'GET'} ${API_URL}${endpoint} → ${response.status}`,
       message
     );
-    throw new ApiError(message, response.status, body.details);
+    throw new ApiError(message, response.status, details);
   }
+
+  // No Content (DELETE /api/attachments/:id, for one) has no body to parse, and
+  // response.json() on an empty body throws — which turned every successful
+  // discard into a logged failure.
+  if (response.status === 204) return undefined as T;
 
   // Handle file downloads
   const contentType = response.headers.get('content-type') || '';
@@ -346,4 +333,134 @@ async function request<T>(
   }
 
   return response.json() as T;
+}
+
+/**
+ * An error response's body as the message (and details) ApiError carries.
+ *
+ * Shared by request() and apiUpload(), so a refusal reads the same whichever
+ * transport carried it.
+ */
+function errorFromBody(raw: string, status: number): { message: string; details: unknown } {
+  let body: { error?: string; details?: unknown } = {};
+  if (raw) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = { error: readableErrorText(raw, status) };
+    }
+  }
+  // The API's catch-all 404 (app.ts) names the route for the logs; the person
+  // gets the same sentence an HTML 404 produces.
+  if (status === 404 && body.error?.startsWith('No API route for ')) {
+    body.error = readableErrorText(`Cannot ${body.error.slice('No API route for '.length)}`, 404);
+  }
+  let message = body.error || `Request failed (HTTP ${status})`;
+  // A validation failure (middleware/validate.ts) carries per-field detail.
+  // Fold it into the message: on its own, "Validation error" tells the user
+  // nothing about WHICH field the server rejected, and callers only surface
+  // `message` in their toast.
+  if (Array.isArray(body.details) && body.details.length > 0) {
+    const fields = (body.details as { field?: string; message?: string }[])
+      .map((d) => (d.field ? `${d.field} — ${d.message ?? 'invalid'}` : d.message))
+      .filter(Boolean);
+    if (fields.length > 0) message = `${message}: ${fields.join('; ')}`;
+  }
+  return { message, details: body.details };
+}
+
+export interface UploadOptions {
+  /** Called with 0–1 as the request BODY goes out — the part a slow link waits on. */
+  onProgress?: (fraction: number) => void;
+  /** Aborting rejects with a DOMException named `AbortError`. */
+  signal?: AbortSignal;
+}
+
+/**
+ * POST a multipart body and report how much of it has been sent.
+ *
+ * XMLHttpRequest rather than fetch for one reason: fetch still has no upload
+ * progress in any browser a branch phone runs. A 200 KB return photo over a weak
+ * shop connection can take several seconds, and a row that just says "uploading"
+ * for that long reads as stuck.
+ *
+ * Everything else matches apiCall: the same base URL guard, the same offline
+ * refusal, the same headers (token + geo position), the same error messages,
+ * and the same one-shot refresh-and-replay on a 401.
+ */
+export async function apiUpload<T = unknown>(
+  endpoint: string,
+  body: FormData,
+  token: string | undefined,
+  options: UploadOptions = {}
+): Promise<T> {
+  assertApiReachable();
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError(OFFLINE_WRITE_MESSAGE, 0);
+  }
+  return uploadRequest<T>(endpoint, body, token, options, true);
+}
+
+async function uploadRequest<T>(
+  endpoint: string,
+  body: FormData,
+  token: string | undefined,
+  options: UploadOptions,
+  mayRetry: boolean
+): Promise<T> {
+  // No Content-Type: the browser writes the multipart boundary itself.
+  const headers: Record<string, string> = {
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...geoPositionHeader(),
+  };
+  const { status, raw } = await sendXhr(endpoint, body, headers, options);
+
+  if (status >= 200 && status < 300) return (raw ? JSON.parse(raw) : undefined) as T;
+
+  // The same recovery request() makes — see there.
+  if (status === 401 && token) {
+    if (mayRetry) {
+      const fresh = await refreshedAccessToken(token);
+      if (fresh.token !== null) return uploadRequest<T>(endpoint, body, fresh.token, options, false);
+      if (fresh.sessionGone) endDeadSession();
+    } else {
+      endDeadSession();
+    }
+  }
+
+  const { message, details } = errorFromBody(raw, status);
+  console.error(`[api] POST ${API_URL}${endpoint} → ${status}`, message);
+  throw new ApiError(message, status, details);
+}
+
+function sendXhr(
+  endpoint: string,
+  body: FormData,
+  headers: Record<string, string>,
+  { onProgress, signal }: UploadOptions
+): Promise<{ status: number; raw: string }> {
+  return new Promise((resolve, reject) => {
+    const aborted = () => new DOMException('The upload was cancelled', 'AbortError');
+    if (signal?.aborted) {
+      reject(aborted());
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}${endpoint}`);
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded / e.total);
+    };
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    xhr.onloadend = () => signal?.removeEventListener('abort', onAbort);
+
+    xhr.onload = () => resolve({ status: xhr.status, raw: xhr.responseText });
+    xhr.onerror = () => reject(unreachableError('POST', endpoint, new Error('XMLHttpRequest network error')));
+    xhr.onabort = () => reject(aborted());
+
+    xhr.send(body);
+  });
 }

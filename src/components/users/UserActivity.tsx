@@ -16,6 +16,8 @@ const ACTION_LABELS: Record<string, string> = {
   user_deleted: 'Deleted User',
   branch_location_updated: 'Updated Branch Location',
   branch_location_removed: 'Removed Branch Location',
+  return_created: 'Raised Return',
+  return_revised: 'Corrected Return',
 };
 
 function formatWhen(iso: string): string {

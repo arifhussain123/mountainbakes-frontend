@@ -203,6 +203,8 @@ export function PhotoSourceButtons({
   captureLabel = 'Take photo',
   galleryLabel,
   onPicked,
+  size,
+  subject,
 }: {
   disabled: boolean;
   busy?: boolean;
@@ -210,6 +212,14 @@ export function PhotoSourceButtons({
   /** Defaults to "Gallery" on a phone and "Upload" on a desktop. */
   galleryLabel?: string;
   onPicked: (source: Blob) => void;
+  /** Button size — `sm` where the buttons sit inside a list row. */
+  size?: 'sm' | 'default';
+  /**
+   * What the photo is OF, for screen readers, where a form repeats these
+   * buttons once per line ("Camera" five times names nothing). Read after the
+   * visible label, so the spoken name still starts with what is on screen.
+   */
+  subject?: string;
 }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -219,6 +229,8 @@ export function PhotoSourceButtons({
   // subscribeDeviceCamera for why this is a store subscription rather than
   // state set in an effect.
   const useDeviceCamera = useSyncExternalStore(subscribeDeviceCamera, prefersDeviceCamera, () => false);
+  const galleryText = galleryLabel ?? (useDeviceCamera ? 'Gallery' : 'Upload');
+  const named = (label: string) => (subject ? `${label}: photo of ${subject}` : undefined);
 
   // A phone goes straight to its camera app; a desktop opens the in-app preview.
   const takePhoto = useCallback(() => {
@@ -241,7 +253,14 @@ export function PhotoSourceButtons({
             live preview. Absent only where neither exists — an http desktop —
             where the gallery button below is the whole story. */}
         {(useDeviceCamera || canUseLiveCamera()) && (
-          <Button type="button" variant="outline" disabled={disabled} onClick={takePhoto}>
+          <Button
+            type="button"
+            variant="outline"
+            size={size}
+            disabled={disabled}
+            onClick={takePhoto}
+            aria-label={named(captureLabel)}
+          >
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Camera className="mr-1.5 h-4 w-4" />}
             {captureLabel}
           </Button>
@@ -249,11 +268,13 @@ export function PhotoSourceButtons({
         <Button
           type="button"
           variant="outline"
+          size={size}
           disabled={disabled}
           onClick={() => galleryInputRef.current?.click()}
+          aria-label={named(galleryText)}
         >
           <ImageUp className="mr-1.5 h-4 w-4" />
-          {galleryLabel ?? (useDeviceCamera ? 'Gallery' : 'Upload')}
+          {galleryText}
         </Button>
 
         {/* Camera. `capture` sends a phone straight to its camera app; a desktop
@@ -264,6 +285,7 @@ export function PhotoSourceButtons({
           accept="image/*"
           capture="environment"
           className="hidden"
+          aria-label={named(`${captureLabel} file`)}
           onChange={(e) => {
             const file = e.target.files?.[0];
             // Reset first: picking the SAME file twice fires no change event
@@ -281,6 +303,7 @@ export function PhotoSourceButtons({
           type="file"
           accept="image/*"
           className="hidden"
+          aria-label={named(`${galleryText} file`)}
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = '';

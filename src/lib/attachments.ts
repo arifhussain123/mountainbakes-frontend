@@ -12,6 +12,7 @@ import {
   type AttachmentEntity,
 } from '@mb/shared';
 import { apiCall } from '@/utils/api';
+import { apiUpload, type UploadOptions } from '@/lib/api/client';
 
 /**
  * Capturing a photo and getting it to the API at a size a branch phone can
@@ -185,6 +186,35 @@ export async function uploadAttachment(
   image: CompressedImage,
   token: string,
 ): Promise<Attachment> {
+  const { attachment } = await apiCall<{ attachment: Attachment }>(
+    '/api/attachments',
+    { method: 'POST', body: attachmentForm(entity, image) },
+    token,
+  );
+  return attachment;
+}
+
+/**
+ * `uploadAttachment` with progress and cancellation, for a form that uploads
+ * each photo the moment it is taken and shows it going (Return Items, one photo
+ * per product). Aborting rejects with an `AbortError` DOMException.
+ */
+export async function uploadAttachmentWithProgress(
+  entity: AttachmentEntity,
+  image: CompressedImage,
+  token: string,
+  options: UploadOptions = {},
+): Promise<Attachment> {
+  const { attachment } = await apiUpload<{ attachment: Attachment }>(
+    '/api/attachments',
+    attachmentForm(entity, image),
+    token,
+    options,
+  );
+  return attachment;
+}
+
+function attachmentForm(entity: AttachmentEntity, image: CompressedImage): FormData {
   const form = new FormData();
   form.append('entity', entity);
   form.append('width', String(image.width));
@@ -194,13 +224,7 @@ export async function uploadAttachment(
   // the encoder actually produced anyway, so a captured request is not
   // misleading to read.
   form.append('photo', image.blob, image.blob.type === 'image/webp' ? 'capture.webp' : 'capture.jpg');
-
-  const { attachment } = await apiCall<{ attachment: Attachment }>(
-    '/api/attachments',
-    { method: 'POST', body: form },
-    token,
-  );
-  return attachment;
+  return form;
 }
 
 /**
