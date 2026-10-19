@@ -1,12 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   BadgePercent,
   CalendarDays,
   ClipboardCheck,
@@ -45,12 +42,10 @@ import { BarList, Panel } from '@/components/finance/dashboard/FinanceCharts';
 import {
   dayLabel,
   monthLong,
-  sortRows,
   type DrillTarget,
   type Granularity,
-  type SortState,
 } from '@/components/finance/dashboard/dashboard-model';
-import { BranchPerformanceChart, DailyDemandChart, WeeklyReturnDiscountChart } from './AdminCharts';
+import { DailyDemandChart, WeeklyReturnDiscountChart } from './AdminCharts';
 
 // recharts is heavy; keep the sales graph out of the dashboard's first bundle.
 const DailySalesGraph = dynamic(
@@ -64,7 +59,6 @@ import {
   weeklyReturnsDiscount,
   SALES_PERIODS,
   salesPeriodLabel,
-  type BranchSummaryRow,
   type LiveSaleRow,
   type SalesPeriod,
 } from './admin-model';
@@ -314,8 +308,9 @@ function LiveStatus({ status, updatedAt, onRetry }: { status: LiveSalesStatus; u
 }
 
 /**
- * Live Sales — All Branches: one card per active branch with its paid sales
- * for the chosen period, and the combined total under them.
+ * Live Sales — All Branches: one card per branch that sold in the chosen
+ * period (a branch at Rs. 0 is left off — see liveSaleRows), and the combined
+ * total under them.
  *
  * Every figure is a per-branch sum from the server (useBranchSales); the total
  * is those branch figures added together, so it matches the cards exactly.
@@ -429,7 +424,7 @@ export function LiveBranchSales({
           </Button>
         </div>
       ) : !loading && !rows.length ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">There are no active branches to show.</p>
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">No branch has made a sale in this period.</p>
       ) : (
         <div className="flex flex-col gap-3 p-4" aria-busy={loading || undefined}>
           <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
@@ -450,209 +445,6 @@ export function LiveBranchSales({
             </div>
           )}
         </div>
-      )}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Branch summary
-// ---------------------------------------------------------------------------
-
-type BranchKey =
-  | 'branch'
-  | 'demand'
-  | 'companyShare'
-  | 'received'
-  | 'balance'
-  | 'lastMonthBalance'
-  | 'ledger'
-  | 'returns'
-  | 'discount';
-
-const BRANCH_COLS: { key: BranchKey; label: string; metric?: FinanceDashboardMetric; signed?: boolean }[] = [
-  { key: 'branch', label: 'Branch' },
-  { key: 'demand', label: 'Demand Amount', metric: 'demand' },
-  { key: 'companyShare', label: 'Company Share', metric: 'share' },
-  { key: 'received', label: 'Received', metric: 'received' },
-  { key: 'balance', label: 'Balance', signed: true },
-  { key: 'ledger', label: 'Ledger Expense', metric: 'ledger' },
-  { key: 'returns', label: 'Return', metric: 'return' },
-  { key: 'discount', label: 'Discount', metric: 'discount' },
-  { key: 'lastMonthBalance', label: 'Last Month Balance', signed: true },
-];
-
-function SortIcon({ active, dir }: { active: boolean; dir: 1 | -1 }) {
-  const Icon = !active ? ArrowUpDown : dir === 1 ? ArrowUp : ArrowDown;
-  return <Icon className={cn('size-3', !active && 'opacity-40')} aria-hidden />;
-}
-
-export function BranchSummary({
-  data,
-  scoped,
-  subtitle,
-  drillTo,
-  format,
-}: {
-  data: FinanceMonthlyDashboard;
-  scoped: boolean;
-  subtitle: string;
-  drillTo: DrillTo;
-  format: Format;
-}) {
-  const rows = useMemo(() => branchSummaryRows(data), [data]);
-  const [sort, setSort] = useState<SortState<BranchKey>>({ key: 'companyShare', dir: -1 });
-  const sorted = useMemo(
-    () => sortRows(rows, sort, (a, b) => a.branch.localeCompare(b.branch)),
-    [rows, sort],
-  );
-  const s = data.summary;
-  const month = monthLong(data.month);
-  const sub = (r: BranchSummaryRow, key: BranchKey): string | null => {
-    // Company expenses have no demand behind them — no count, no percentage.
-    if (key === 'demand') return r.orders ? plural(r.orders, 'demand') : null;
-    if (key === 'companyShare') return r.demand ? `${pct(r.companyShare, r.demand)} of demand` : null;
-    if (key === 'received') return r.companyShare ? `${pct(r.received, r.companyShare)} of share` : null;
-    return null;
-  };
-  const drillBranch = (metric: FinanceDashboardMetric, r: BranchSummaryRow) =>
-    drillTo(metric, { branchId: r.branchId, context: `${month} · ${r.branch}` });
-
-  const totals: Record<Exclude<BranchKey, 'branch'>, number | null> = {
-    demand: s.demand,
-    companyShare: s.companyShare,
-    received: s.received,
-    balance: s.balance,
-    lastMonthBalance: s.lastMonthBalance,
-    ledger: s.ledgerExpense,
-    returns: s.returns,
-    discount: s.discount,
-  };
-
-  return (
-    <section className="flex min-w-0 flex-col gap-4">
-      <SectionHeading
-        title="Branch Summary"
-        sub={`Production demand, finance receipts and expenses per branch · ${subtitle}`}
-      />
-      <div className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[68rem] border-collapse text-sm">
-            <thead>
-              <tr className="border-b">
-                {BRANCH_COLS.map((c) => {
-                  const active = sort.key === c.key;
-                  return (
-                    <th
-                      key={c.key}
-                      scope="col"
-                      aria-sort={active ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}
-                      className={cn(
-                        'px-3.5 py-3 text-xs font-bold whitespace-nowrap text-muted-foreground',
-                        c.key === 'branch' ? 'text-left' : 'text-right',
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-foreground"
-                        onClick={() =>
-                          setSort(
-                            active
-                              ? { key: c.key, dir: sort.dir === 1 ? -1 : 1 }
-                              : { key: c.key, dir: c.key === 'branch' ? 1 : -1 },
-                          )
-                        }
-                      >
-                        {c.label}
-                        <SortIcon active={active} dir={sort.dir} />
-                      </button>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r) => (
-                <tr key={r.branchId ?? '~unassigned'} className="border-b last:border-b-0 hover:bg-fin-row-hover">
-                  {BRANCH_COLS.map((c) => {
-                    if (c.key === 'branch') {
-                      return (
-                        <th key={c.key} scope="row" className="px-3.5 py-3 text-left font-semibold whitespace-nowrap">
-                          {r.branch}
-                        </th>
-                      );
-                    }
-                    const v = r[c.key];
-                    const negative = c.signed && v !== null && v < 0;
-                    const text = v === null ? 'No records' : format(v);
-                    const note = sub(r, c.key);
-                    // A zero has no source records to open.
-                    const canDrill = c.metric && v !== null && v !== 0;
-                    return (
-                      <td
-                        key={c.key}
-                        className={cn(
-                          'px-3.5 py-3 text-right whitespace-nowrap tabular-nums',
-                          c.key === 'balance' && 'font-bold',
-                          negative && 'text-destructive',
-                          v === null && 'text-muted-foreground',
-                        )}
-                      >
-                        {canDrill ? (
-                          <button
-                            type="button"
-                            title="View source records"
-                            onClick={() => drillBranch(c.metric!, r)}
-                            className="cursor-pointer border-b border-dotted border-muted-foreground/60 hover:border-primary hover:text-primary"
-                          >
-                            {text}
-                          </button>
-                        ) : (
-                          text
-                        )}
-                        {note && <span className="block text-[11.5px] font-medium text-muted-foreground">{note}</span>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-fin-soft font-extrabold">
-                <th scope="row" className="px-3.5 py-3 text-left">
-                  Total
-                </th>
-                {BRANCH_COLS.slice(1).map((c) => {
-                  const v = totals[c.key as Exclude<BranchKey, 'branch'>];
-                  return (
-                    <td
-                      key={c.key}
-                      className={cn(
-                        'px-3.5 py-3 text-right whitespace-nowrap tabular-nums',
-                        c.signed && v !== null && v < 0 && 'text-destructive',
-                      )}
-                    >
-                      {v === null ? 'No records' : format(v)}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
-          Balance = Company Share − Received. Last Month Balance is {monthLong(data.previousMonth)}’s, shown in the last column,
-          not carried into Balance. Company expenses carry no branch and sit under “Company / unassigned”.
-        </p>
-      </div>
-
-      {!scoped && (
-        <Panel
-          title="Branch Performance"
-          aside={<span className="text-[11px] text-muted-foreground">Tap a branch for its company share</span>}
-        >
-          <BranchPerformanceChart rows={rows} onBranch={(r) => drillBranch('share', r)} />
-        </Panel>
       )}
     </section>
   );

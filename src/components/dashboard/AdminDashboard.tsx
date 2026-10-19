@@ -37,7 +37,6 @@ import {
 import { LoginHistoryCard } from './LoginHistoryCard';
 import { adminCsv, asSection, liveSaleRows, salesPeriodRange, type SalesPeriod } from './admin/admin-model';
 import {
-  BranchSummary,
   FinanceSummary,
   HeadlineKpis,
   LiveBranchSales,
@@ -115,8 +114,8 @@ function WhenVisible({ children, placeholder }: { children: React.ReactNode; pla
 /**
  * Admin Dashboard — the admin's one dashboard. What used to be the Overview,
  * Sales, Branches, Production and Finance tabs is one page, top to bottom:
- * today's tiles, Live Sales — All Branches, the month's headline tiles, the
- * branch comparison, sales trends, production, finance and login history. The
+ * today's tiles, Live Sales — All Branches, the month's headline tiles, sales
+ * trends, production, finance and login history. The
  * Production and Finance Dashboards are not separate admin pages; RouteGuard
  * sends their old URLs to the matching part of this one (`?section=`).
  *
@@ -425,9 +424,6 @@ export function AdminDashboard() {
               format={format}
             />
           </section>
-          <div id="dash-branches" className="min-w-0 scroll-mt-20">
-            <BranchSummary data={data} scoped={!!branchId} subtitle={context} drillTo={drillTo} format={format} />
-          </div>
           <div id="dash-sales" className="min-w-0 scroll-mt-20">
             <SalesOverview
               sales={sales}

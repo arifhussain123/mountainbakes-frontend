@@ -127,9 +127,9 @@ describe('LiveBranchSales', () => {
     expect(screen.queryByTestId('live-sales-status')).toBeNull();
   });
 
-  test('no active branches is said, not left blank', () => {
+  test('no branch sold in the period is said, not left blank', () => {
     render(<LiveBranchSales {...base} rows={[]} />);
-    expect(screen.getByText('There are no active branches to show.')).toBeTruthy();
+    expect(screen.getByText('No branch has made a sale in this period.')).toBeTruthy();
   });
 
   test('a failed first load says so with a retry, and shows no figures', () => {

@@ -15,14 +15,13 @@ import {
 } from 'recharts';
 import { useMoney } from '@/components/finance/finance-ui';
 import { ChartEmpty, SERIES, compact } from '@/components/finance/dashboard/FinanceCharts';
-import type { BranchSummaryRow } from './admin-model';
 
 /**
  * Charts for the Admin Dashboard. Loaded lazily (recharts is heavy).
  *
  * Series colours are the `--fin-*` tokens, which `.admin-dash-theme` re-points
- * to the brand palette — so Company Share is the same orange here as on the
- * Company Share vs Received chart beside it. The single-series demand line
+ * to the brand palette — so a series is the same colour here as on the Finance
+ * Dashboard's charts. The single-series demand line
  * needs no identity colour and takes the accent (`--chart-1`).
  */
 
@@ -41,96 +40,6 @@ const legendText = (value: string) => <span style={{ color: 'var(--foreground)' 
 function useMoneyTooltip() {
   const { format } = useMoney();
   return (value: number | string, name: string) => [format(Number(value)), name] as [string, string];
-}
-
-/**
- * A category tick that wraps the branch name into the width its group of bars
- * gets — on a phone four names side by side otherwise run into each other.
- */
-function WrappedTick(props: {
-  x?: number;
-  y?: number;
-  payload?: { value?: string };
-  width?: number;
-  visibleTicksCount?: number;
-}) {
-  const { x = 0, y = 0, payload, width = 0, visibleTicksCount = 1 } = props;
-  const maxChars = Math.max(6, Math.floor(width / Math.max(1, visibleTicksCount) / 6.2));
-  const lines: string[] = [];
-  for (const word of String(payload?.value ?? '').split(/\s+/)) {
-    const last = lines[lines.length - 1];
-    if (last !== undefined && `${last} ${word}`.length <= maxChars) lines[lines.length - 1] = `${last} ${word}`;
-    else lines.push(word);
-  }
-  return (
-    <text x={x} y={y + 4} textAnchor="middle" fontSize={AXIS.fontSize} fill={AXIS.fill}>
-      {lines.slice(0, 3).map((l, i) => (
-        <tspan key={i} x={x} dy={i === 0 ? '0.71em' : '1.15em'}>
-          {l}
-        </tspan>
-      ))}
-    </text>
-  );
-}
-
-/** Company Share, Received and Ledger Expense, one group of bars per branch. */
-export function BranchPerformanceChart({
-  rows,
-  onBranch,
-}: {
-  rows: BranchSummaryRow[];
-  onBranch: (row: BranchSummaryRow) => void;
-}) {
-  const fmt = useMoneyTooltip();
-  const data = rows.filter((r) => r.companyShare || r.received || r.ledger);
-  if (!data.length) return <ChartEmpty message="No company share, receipts or ledger expense in this date range." />;
-  return (
-    <ResponsiveContainer width="100%" height={260}>
-      <BarChart
-        data={data}
-        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-        barGap={2}
-        barCategoryGap="22%"
-        onClick={(s) => {
-          const p = (s as { activePayload?: { payload?: BranchSummaryRow }[] } | null)?.activePayload?.[0]?.payload;
-          if (p) onBranch(p);
-        }}
-      >
-        <CartesianGrid stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="branch" tick={<WrappedTick />} tickLine={false} axisLine={false} interval={0} height={48} />
-        <YAxis tick={AXIS} tickLine={false} axisLine={false} tickFormatter={compact} width={44} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--fin-soft)' }} formatter={fmt} />
-        <Legend wrapperStyle={{ fontSize: 12 }} iconType="square" iconSize={10} formatter={legendText} />
-        <Bar
-          isAnimationActive={false}
-          dataKey="companyShare"
-          name="Company Share"
-          fill={SERIES.share}
-          radius={[4, 4, 0, 0]}
-          maxBarSize={56}
-          cursor="pointer"
-        />
-        <Bar
-          isAnimationActive={false}
-          dataKey="received"
-          name="Received"
-          fill={SERIES.received}
-          radius={[4, 4, 0, 0]}
-          maxBarSize={56}
-          cursor="pointer"
-        />
-        <Bar
-          isAnimationActive={false}
-          dataKey="ledger"
-          name="Ledger Expense"
-          fill={SERIES.ledger}
-          radius={[4, 4, 0, 0]}
-          maxBarSize={56}
-          cursor="pointer"
-        />
-      </BarChart>
-    </ResponsiveContainer>
-  );
 }
 
 /** Approved demand per business date. Tap a day for its demands. */
