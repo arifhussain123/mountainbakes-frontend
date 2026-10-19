@@ -348,7 +348,7 @@ export function FinanceMonthlyDashboard() {
             />
           ) : (
             <div className={cn('flex min-w-0 flex-col gap-4 transition-opacity', updating && 'opacity-60')}>
-              <DashboardBody
+              <FinanceDashboardBody
                 data={data}
                 context={context}
                 scoped={!!branchId}
@@ -370,7 +370,11 @@ export function FinanceMonthlyDashboard() {
 
 // ---------------------------------------------------------------------------
 
-function DashboardBody({
+/**
+ * Everything below the filters: cards, charts and tables for one response.
+ * Also the Admin Dashboard's Finance tab, which feeds it the same request.
+ */
+export function FinanceDashboardBody({
   data,
   context,
   scoped,
@@ -948,7 +952,8 @@ function Reconciliation({ data, format }: { data: Dashboard; format: Format }) {
   );
 }
 
-function CashStrip({
+/** Today's company-wide cash position. Also shown on the Admin Dashboard's Finance tab. */
+export function CashStrip({
   cash,
   loading,
   format,

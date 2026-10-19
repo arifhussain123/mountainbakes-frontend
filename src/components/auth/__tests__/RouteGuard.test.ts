@@ -9,8 +9,20 @@ import { redirectFor } from '../RouteGuard';
 const as = (role: string) => ({ role, mustChangePassword: false });
 
 describe('redirectFor — Production screens', () => {
-  test('an admin opening Production from the admin menu stays on the Production Dashboard', () => {
-    expect(redirectFor('/production-dashboard', as('super_admin'))).toBeNull();
+  test("an admin's old Production Dashboard link opens the Admin Dashboard's Production tab", () => {
+    expect(redirectFor('/production-dashboard', as('super_admin'))).toBe('/dashboard?section=production');
+  });
+
+  test("an admin's old Finance Dashboard link opens the Admin Dashboard's Finance tab", () => {
+    expect(redirectFor('/finance-dashboard', as('super_admin'))).toBe('/dashboard?section=finance');
+  });
+
+  test('an admin keeps the Finance Ledger screens', () => {
+    expect(redirectFor('/finance-ledger', as('super_admin'))).toBeNull();
+  });
+
+  test('finance roles keep their own Finance Dashboard', () => {
+    expect(redirectFor('/finance-dashboard', as('finance_admin'))).toBeNull();
   });
 
   test("Production's other screens still send an admin to the Admin Dashboard", () => {

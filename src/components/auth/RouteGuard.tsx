@@ -129,16 +129,19 @@ export function redirectFor(
     return `${ROUTES.SUPPORT_CENTER}?source=finance`;
   }
 
+  // The Production and Finance Dashboards are tabs of the Admin Dashboard for a
+  // super admin. Old menu links and bookmarks land on the matching tab.
+  if (user.role === 'super_admin' && pathname === ROUTES.PRODUCTION_DASHBOARD) {
+    return `${ROUTES.DASHBOARD}?section=production`;
+  }
+  if (user.role === 'super_admin' && pathname === ROUTES.FINANCE_DASHBOARD) {
+    return `${ROUTES.DASHBOARD}?section=finance`;
+  }
+
   const wrongRole =
     (ADMIN_PREFIXES.some((p) => pathname.startsWith(p)) && user.role !== 'super_admin') ||
     (pathname.startsWith('/branch-') && !isBranchRole(user.role)) ||
-    // Production's screens are Production's — except the Production Dashboard,
-    // which the admin menu links to ("Production") and whose API already admits
-    // super_admin (production.routes.ts). Without this an admin's click bounced
-    // straight back to the Admin Dashboard.
-    (pathname.startsWith('/production-') &&
-      user.role !== 'production_user' &&
-      !(user.role === 'super_admin' && pathname === ROUTES.PRODUCTION_DASHBOARD)) ||
+    (pathname.startsWith('/production-') && user.role !== 'production_user') ||
     // Finance Ledger. The only prefix rule that admits MORE than one role: all
     // four finance roles plus Super Admin, who the brief grants report access.
     // What each may actually do on those screens is decided per action by

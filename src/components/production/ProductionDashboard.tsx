@@ -215,7 +215,11 @@ function Recent({ rows }: { rows: ProductionWeek['recent'] }) {
   );
 }
 
-export function ProductionDashboard() {
+/**
+ * `embedded`: rendered as the Admin Dashboard's Production tab, which keeps a
+ * single Login History card of its own on its Overview tab.
+ */
+export function ProductionDashboard({ embedded = false }: { embedded?: boolean } = {}) {
   const { token } = useAuth();
   const qc = useQueryClient();
   const [branchId, setBranchId] = useBranchParam();
@@ -469,7 +473,7 @@ export function ProductionDashboard() {
           each: the API gives a super admin every account's sessions and pins
           every other role to its own. Last, because it is a record to consult
           rather than something to act on. */}
-      <LoginHistoryCard />
+      {!embedded && <LoginHistoryCard />}
     </div>
   );
 }

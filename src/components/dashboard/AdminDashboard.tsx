@@ -1,11 +1,19 @@
 ﻿'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useIsFetching, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { Download, Printer, RefreshCw } from 'lucide-react';
-import { businessDateStr, type FinanceDashboardMetric, type SalesTopProductLimit } from '@mb/shared';
+import { businessDateStr, type FinanceDashboardMetric, type ReportSummary, type SalesTopProductLimit } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useFinanceMonthlyDashboard } from '@/lib/finance';
-import { useReportSummary, useSalesAnalytics } from '@/lib/queries';
+import { qk } from '@/lib/queryKeys';
+import {
+  useProductionDashboardSection,
+  useProductionOverview,
+  useReportSummary,
+  useSalesAnalytics,
+} from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { printDocument } from '@/lib/print/browser/documentPrint';
@@ -24,7 +32,7 @@ import {
   type Granularity,
 } from '@/components/finance/dashboard/dashboard-model';
 import { LoginHistoryCard } from './LoginHistoryCard';
-import { SECTIONS, adminCsv, currentSaleRows, type Section } from './admin/admin-model';
+import { SECTIONS, adminCsv, asSection, currentSaleRows, type Section } from './admin/admin-model';
 import {
   BranchSummary,
   CurrentBranchSales,
@@ -32,23 +40,67 @@ import {
   HeadlineKpis,
   ProductionSummary,
   SalesOverview,
+  SectionHeading,
+  TodaySnapshot,
 } from './admin/sections';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** How far back the month picker reaches — the same as the Finance Dashboard's. */
 const MONTHS_BACK = 24;
 
+// The whole Production Dashboard, as the Production tab. Loaded — code and
+// requests alike — only when that tab is first opened.
+const ProductionDashboard = dynamic(
+  () => import('@/components/production/ProductionDashboard').then((m) => m.ProductionDashboard),
+  { ssr: false, loading: () => <Skeleton className="h-96 rounded-xl" /> },
+);
+
 /**
- * Admin Dashboard — sales, branches, production and finance for one month.
+ * The open tab lives in the address bar (`?section=finance`), so a refresh, a
+ * bookmark or an old `/finance-dashboard` link (RouteGuard) opens the right
+ * one. Read through `window.location`, not useSearchParams: the app is a static
+ * export and the query string only exists in the browser. Other parameters
+ * (the Production tab's `?branch=`) are left as they are.
+ */
+function useSectionParam(): [Section, (s: Section) => void] {
+  const [section, setSection] = useState<Section>('overview');
+  useEffect(() => {
+    const read = () => setSection(asSection(new URLSearchParams(window.location.search).get('section')));
+    read();
+    window.addEventListener('popstate', read);
+    return () => window.removeEventListener('popstate', read);
+  }, []);
+  const set = useCallback((s: Section) => {
+    setSection(s);
+    const url = new URL(window.location.href);
+    if (s === 'overview') url.searchParams.delete('section');
+    else url.searchParams.set('section', s);
+    window.history.replaceState(window.history.state, '', url);
+  }, []);
+  return [section, set];
+}
+
+/**
+ * Admin Dashboard — the admin's one dashboard: Overview, Sales, Branches,
+ * Production and Finance as tabs of a single page. The Production and Finance
+ * Dashboards are not separate admin pages; RouteGuard sends their old URLs to
+ * the matching tab.
  *
- * Two requests drive the page, and the month / branch / day range feed both,
- * so no section can show a different period from its neighbours:
+ * Two requests drive the month-scoped figures, and the month / branch / day
+ * range feed both, so no section can show a different period from its
+ * neighbours:
  *   - `/api/finance/dashboard/monthly` (migration 128) for everything that is
  *     Production demand or Finance Ledger — the same response, cards, tables
  *     and drill-down drawer the Finance Dashboard uses, so a figure here and
  *     there cannot disagree;
  *   - `/api/sales-analytics` (migration 100) for the point-of-sale figures.
  * Every figure is summed in Postgres; nothing is added up in the browser.
+ *
+ * Each tab asks only for what it shows, when it is opened: today's report
+ * summary on Overview and Sales, Production's overview and stock on Overview,
+ * the whole Production Dashboard (and its code) on Production, and the cash
+ * strip on Finance. React Query keeps each answer, so going back to a tab
+ * shows it at once and refreshes it in the background.
  *
  * The finance components paint with the `--fin-*` tokens, which the
  * `admin-dash-theme` class re-points to the brand palette (globals.css).
@@ -64,7 +116,7 @@ export function AdminDashboard() {
   const [dayFrom, setDayFrom] = useState(1);
   const [dayTo, setDayTo] = useState(31);
   const [branchId, setBranchId] = useState('');
-  const [section, setSection] = useState<Section>('overview');
+  const [section, setSection] = useSectionParam();
   const [incGran, setIncGran] = useState<Granularity>('monthly');
   const [expGran, setExpGran] = useState<Granularity>('monthly');
   const [topLimit, setTopLimit] = useState<SalesTopProductLimit>(5);
@@ -88,9 +140,14 @@ export function AdminDashboard() {
     { from, to, branchId: branchId || null, topLimit },
     { enabled: !!token, keepPrevious: true },
   );
-  // Current Sale by Branch: today's business day, whatever month is selected.
-  // Only the branch filter applies; the summary's `branchData` is per branch.
-  const todayQ = useReportSummary(token, 'daily', branchId || null, null, 'full', { keepPrevious: true });
+  // Today's business day, whatever month is selected: the Overview's today
+  // tiles and the Sales tab's Current Sale by Branch. Only the branch filter
+  // applies; the summary's `branchData` is per branch. Not asked for until one
+  // of those two tabs is open.
+  const todayQ = useReportSummary(token, 'daily', branchId || null, null, 'full', {
+    keepPrevious: true,
+    enabled: section === 'overview' || section === 'sales',
+  });
   const data = fin.data;
   const sales = salesQ.data ?? null;
   const currentRows = useMemo(
@@ -138,12 +195,21 @@ export function AdminDashboard() {
   // Dim only while a new month/branch/range stands on the previous figures —
   // never on a same-filter refresh.
   const updating = (fin.isPlaceholderData || salesQ.isPlaceholderData) && !!data;
-  const refreshing = fin.isFetching || salesQ.isFetching || todayQ.isFetching;
+  const qc = useQueryClient();
+  // Production's overview and sections all sit under this prefix (queryKeys.ts).
+  const productionFetching = useIsFetching({ queryKey: ['productionOverview'] }) > 0;
+  const refreshing = fin.isFetching || salesQ.isFetching || todayQ.isFetching || productionFetching;
 
+  // Refetches what the open tab shows; the others are refetched as stale when
+  // next opened.
   const refresh = () => {
     void fin.refetch();
     void salesQ.refetch();
-    void todayQ.refetch();
+    if (section === 'overview' || section === 'sales') void todayQ.refetch();
+    if (section === 'overview' || section === 'production') {
+      void qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    }
+    if (section === 'finance') void qc.invalidateQueries({ queryKey: qk.financeDashboard({ from: today, to: today }) });
   };
   const exportCsv = () => {
     if (!data) return;
@@ -296,6 +362,27 @@ export function AdminDashboard() {
         ))}
       </div>
 
+      {/* ---------------- Sections that do not wait for the month ---------------- */}
+      {section === 'overview' && (
+        <OverviewToday
+          token={token}
+          branchId={branchId}
+          todayQ={todayQ}
+          businessDate={today}
+          scope={scopeLabel}
+          format={format}
+        />
+      )}
+      {section === 'production' && (
+        <section className="flex min-w-0 flex-col gap-4">
+          <SectionHeading
+            title="Live Production"
+            sub="Orders, output and stock for today, this week or this month, with its own branch picker. The month and day filters above apply to the Production Summary below."
+          />
+          <ProductionDashboard embedded />
+        </section>
+      )}
+
       {/* ---------------- States ---------------- */}
       {!data && fin.isError ? (
         <StatePanel
@@ -333,7 +420,8 @@ export function AdminDashboard() {
           )}
 
           {section === 'overview' && (
-            <>
+            <section className="flex min-w-0 flex-col gap-4">
+              <SectionHeading title={monthLong(month)} sub={`Sales, Company Share and Finance Ledger · ${context}`} />
               <HeadlineKpis
                 data={data}
                 sales={sales}
@@ -341,16 +429,7 @@ export function AdminDashboard() {
                 drillTo={drillTo}
                 format={format}
               />
-              <CurrentBranchSales
-                rows={currentRows}
-                total={todayQ.data?.totalRevenue ?? null}
-                loading={!todayQ.data && !todayQ.isError}
-                failed={todayQ.isError}
-                onRetry={() => void todayQ.refetch()}
-                businessDate={today}
-                format={format}
-              />
-            </>
+            </section>
           )}
           {section === 'sales' && (
             <SalesOverview
@@ -364,6 +443,17 @@ export function AdminDashboard() {
               onTopLimit={setTopLimit}
               subtitle={context}
               format={format}
+              current={
+                <CurrentBranchSales
+                  rows={currentRows}
+                  total={todayQ.data?.totalRevenue ?? null}
+                  loading={!todayQ.data && !todayQ.isError}
+                  failed={todayQ.isError}
+                  onRetry={() => void todayQ.refetch()}
+                  businessDate={today}
+                  format={format}
+                />
+              }
             />
           )}
           {section === 'branches' && (
@@ -404,6 +494,45 @@ export function AdminDashboard() {
         className="admin-dash-theme"
       />
     </div>
+  );
+}
+
+/**
+ * The Overview's today tiles. Production's two requests live here so they are
+ * made only while the Overview is open; with no branch picked they share
+ * their cache with the Production tab's Today view and its stock section.
+ */
+function OverviewToday({
+  token,
+  branchId,
+  todayQ,
+  businessDate,
+  scope,
+  format,
+}: {
+  token: string;
+  branchId: string;
+  todayQ: UseQueryResult<ReportSummary>;
+  businessDate: string;
+  scope: string;
+  format: (v: number | null | undefined) => string;
+}) {
+  const prod = useProductionOverview(token, branchId || null, 'today');
+  const stock = useProductionDashboardSection('current-stock', token, 'today', branchId || null);
+  return (
+    <TodaySnapshot
+      businessDate={businessDate}
+      scope={scope}
+      today={{ data: todayQ.data, failed: todayQ.isError }}
+      production={{ data: prod.data, failed: prod.isError }}
+      stock={{ data: stock.data, failed: stock.isError }}
+      format={format}
+      onRetry={() => {
+        if (todayQ.isError) void todayQ.refetch();
+        if (prod.isError) void prod.refetch();
+        if (stock.isError) void stock.refetch();
+      }}
+    />
   );
 }
 

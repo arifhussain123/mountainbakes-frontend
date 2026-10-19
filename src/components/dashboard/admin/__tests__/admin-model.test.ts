@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { FinanceDashboardDay, FinanceMonthlyDashboard } from '@mb/shared';
 import {
   adminCsv,
+  asSection,
   branchSummaryRows,
   currentSaleRows,
   dailyDemand,
@@ -214,5 +215,18 @@ describe('adminCsv', () => {
     expect(csv).toContain('Last Month Balance (September 2026)');
     expect(csv).toContain('Total,1700,1190,640,550,400,30,20,90');
     expect(csv).not.toContain('PAYMENT METHODS');
+  });
+});
+
+describe('asSection', () => {
+  test('opens the tab the address bar names', () => {
+    for (const key of ['overview', 'sales', 'branches', 'production', 'finance']) expect(asSection(key)).toBe(key);
+  });
+
+  test('falls back to the Overview for a missing or unknown value', () => {
+    expect(asSection(null)).toBe('overview');
+    expect(asSection('')).toBe('overview');
+    expect(asSection('Finance')).toBe('overview');
+    expect(asSection('reports')).toBe('overview');
   });
 });
