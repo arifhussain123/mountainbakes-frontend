@@ -21,12 +21,11 @@ import {
  * for the branch table, the demand line and the weekly bars, and nothing else.
  */
 
-export type Section = 'overview' | 'sales' | 'branches' | 'production' | 'finance';
+export type Section = 'overview' | 'sales' | 'production' | 'finance';
 
 export const SECTIONS: { key: Section; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'sales', label: 'Sales' },
-  { key: 'branches', label: 'Branches' },
   { key: 'production', label: 'Production' },
   { key: 'finance', label: 'Finance' },
 ];
@@ -165,10 +164,11 @@ export interface LiveSaleRow {
 }
 
 /**
- * One card per ACTIVE branch, a branch at Rs. 0 included, from the orders
- * aggregate grouped by branch (`sum:grandTotal` and `count` per branch, summed
- * in Postgres over paid, non-cancelled, non-staff orders — the Sales Analytics
- * definition of a sale).
+ * One card per branch that sold in the period, from the orders aggregate
+ * grouped by branch (`sum:grandTotal` and `count` per branch, summed in
+ * Postgres over paid, non-cancelled, non-staff orders — the Sales Analytics
+ * definition of a sale). A branch at Rs. 0 gets no card; it would add nothing
+ * to the total.
  *
  * An inactive or deleted branch that still sold in the period keeps its money
  * on the board, under the name its orders carry. A branch's orders can carry
@@ -191,7 +191,7 @@ export function liveSaleRows(
   for (const b of branches) {
     const s = sold.get(b.id);
     sold.delete(b.id);
-    if (!b.isActive && !s?.sales) continue;
+    if (!s?.sales) continue;
     rows.push({
       branchId: b.id,
       branch: b.isActive ? b.name : `${b.name} (inactive)`,

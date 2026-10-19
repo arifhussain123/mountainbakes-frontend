@@ -183,12 +183,19 @@ describe('liveSaleRows', () => {
   });
   const sold = [g('b2', 'Committee Chowk', 12520, 40), g('b1', 'Alabad', 2220, 9)];
 
-  test('every active branch, a branch at Rs. 0 included, largest sale first', () => {
+  test('the branches that sold, largest sale first; a branch at Rs. 0 is left off', () => {
     expect(liveSaleRows(branches, sold)).toEqual([
       { branchId: 'b2', branch: 'Committee Chowk', sales: 12520, orders: 40 },
       { branchId: 'b1', branch: 'Alabad', sales: 2220, orders: 9 },
-      { branchId: 'b3', branch: 'Commercial Market', sales: 0, orders: 0 },
     ]);
+  });
+
+  test('a branch whose group sums to Rs. 0 is left off too', () => {
+    expect(liveSaleRows(branches, [...sold, g('b3', 'Commercial Market', 0, 0)]).some((r) => r.branchId === 'b3')).toBe(false);
+  });
+
+  test('nothing sold anywhere: no cards', () => {
+    expect(liveSaleRows(branches, [])).toEqual([]);
   });
 
   test('an inactive branch is left off unless it sold in the period', () => {
@@ -270,7 +277,7 @@ describe('adminCsv', () => {
 
 describe('asSection', () => {
   test('opens the tab the address bar names', () => {
-    for (const key of ['overview', 'sales', 'branches', 'production', 'finance']) expect(asSection(key)).toBe(key);
+    for (const key of ['overview', 'sales', 'production', 'finance']) expect(asSection(key)).toBe(key);
   });
 
   test('falls back to the Overview for a missing or unknown value', () => {
@@ -278,5 +285,7 @@ describe('asSection', () => {
     expect(asSection('')).toBe('overview');
     expect(asSection('Finance')).toBe('overview');
     expect(asSection('reports')).toBe('overview');
+    // The Branches part is gone from the page; an old link opens the top.
+    expect(asSection('branches')).toBe('overview');
   });
 });
