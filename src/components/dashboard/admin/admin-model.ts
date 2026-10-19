@@ -1,4 +1,4 @@
-import type { BranchSalesData, FinanceMonthlyDashboard, SalesAnalytics } from '@mb/shared';
+import type { AggregateRow, FinanceMonthlyDashboard, SalesAnalytics } from '@mb/shared';
 import {
   branchTotals,
   bucketRange,
@@ -95,10 +95,69 @@ export function branchSummaryRows(data: FinanceMonthlyDashboard): BranchSummaryR
 }
 
 // ---------------------------------------------------------------------------
-// Current sale — today's paid sales per branch
+// Live sales — paid sales per branch for a chosen period
 // ---------------------------------------------------------------------------
 
-export interface CurrentSaleRow {
+export type SalesPeriod = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
+
+export const SALES_PERIODS: { key: SalesPeriod; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: 'week', label: 'This Week' },
+  { key: 'month', label: 'This Month' },
+  { key: 'custom', label: 'Custom Date' },
+];
+
+function shiftDay(date: string, n: number): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The business dates a period covers, `today` being today's BUSINESS date (the
+ * day rolls at 02:00 Karachi — businessDateStr). The week starts on Monday, as
+ * businessRange('weekly') does. Week and month run to today, not to their end:
+ * the days after it have not happened. A custom range is put in order and
+ * clamped to today.
+ */
+export function salesPeriodRange(
+  period: SalesPeriod,
+  today: string,
+  custom?: { from: string; to: string },
+): { from: string; to: string } {
+  switch (period) {
+    case 'today':
+      return { from: today, to: today };
+    case 'yesterday': {
+      const y = shiftDay(today, -1);
+      return { from: y, to: y };
+    }
+    case 'week': {
+      const dow = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+      return { from: shiftDay(today, -((dow + 6) % 7)), to: today };
+    }
+    case 'month':
+      return { from: `${today.slice(0, 7)}-01`, to: today };
+    case 'custom': {
+      const a = custom?.from || today;
+      const b = custom?.to || a;
+      const [from, to] = a <= b ? [a, b] : [b, a];
+      return { from: from > today ? today : from, to: to > today ? today : to };
+    }
+  }
+}
+
+/** "Today's Sales", "This Week's Sales", "Sales · 3 Oct – 9 Oct 2026". */
+export function salesPeriodLabel(period: SalesPeriod, from: string, to: string): string {
+  if (period === 'today') return "Today's Sales";
+  if (period === 'yesterday') return "Yesterday's Sales";
+  if (period === 'week') return "This Week's Sales";
+  if (period === 'month') return "This Month's Sales";
+  return from === to
+    ? `Sales · ${dayLabel(from)} ${from.slice(0, 4)}`
+    : `Sales · ${dayLabel(from)} – ${dayLabel(to)} ${to.slice(0, 4)}`;
+}
+
+export interface LiveSaleRow {
   branchId: string;
   branch: string;
   sales: number;
@@ -106,37 +165,43 @@ export interface CurrentSaleRow {
 }
 
 /**
- * Today's sales per branch, from `/api/reports/summary?period=daily`'s
- * `branchData` (paid orders; cancelled and staff sales excluded).
+ * One card per ACTIVE branch, a branch at Rs. 0 included, from the orders
+ * aggregate grouped by branch (`sum:grandTotal` and `count` per branch, summed
+ * in Postgres over paid, non-cancelled, non-staff orders — the Sales Analytics
+ * definition of a sale).
  *
- * Only branches that sold something today are listed — a branch at Rs. 0 is
- * left out, except the one picked in the branch filter, which still shows its
- * Rs. 0. Largest first.
+ * An inactive or deleted branch that still sold in the period keeps its money
+ * on the board, under the name its orders carry. A branch's orders can carry
+ * an old name after a rename, so the groups are merged by id. Largest first.
  */
-export function currentSaleRows(
+export function liveSaleRows(
   branches: { id: string; name: string; isActive: boolean }[],
-  branchData: BranchSalesData[],
-  branchId: string | null,
-): CurrentSaleRow[] {
-  const sold = new Map(branchData.map((b) => [b.branchId, b]));
-  const rows: CurrentSaleRow[] = [];
+  groups: AggregateRow[],
+): LiveSaleRow[] {
+  const sold = new Map<string, { name: string; sales: number; orders: number }>();
+  for (const g of groups) {
+    const id = String(g.group?.branchId ?? '');
+    if (!id) continue;
+    const prev = sold.get(id) ?? { name: String(g.group?.branchName ?? ''), sales: 0, orders: 0 };
+    prev.sales += Number(g.values['sum:grandTotal'] ?? 0);
+    prev.orders += Number(g.values.count ?? 0);
+    sold.set(id, prev);
+  }
+  const rows: LiveSaleRow[] = [];
   for (const b of branches) {
-    if (branchId && b.id !== branchId) continue;
     const s = sold.get(b.id);
     sold.delete(b.id);
-    if (!s?.totalRevenue && b.id !== branchId) continue;
+    if (!b.isActive && !s?.sales) continue;
     rows.push({
       branchId: b.id,
       branch: b.isActive ? b.name : `${b.name} (inactive)`,
-      sales: round2(s?.totalRevenue ?? 0),
-      orders: s?.totalOrders ?? 0,
+      sales: round2(s?.sales ?? 0),
+      orders: s?.orders ?? 0,
     });
   }
-  // A branch the list does not know (deleted since) still sold — keep its money in.
-  for (const s of sold.values()) {
-    if (branchId && s.branchId !== branchId) continue;
-    if (!s.totalRevenue) continue;
-    rows.push({ branchId: s.branchId, branch: s.branchName || 'Unknown branch', sales: round2(s.totalRevenue), orders: s.totalOrders });
+  for (const [id, s] of sold) {
+    if (!s.sales) continue;
+    rows.push({ branchId: id, branch: s.name || 'Unknown branch', sales: round2(s.sales), orders: s.orders });
   }
   return rows.sort((a, b) => b.sales - a.sales || a.branch.localeCompare(b.branch));
 }

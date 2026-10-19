@@ -16,6 +16,7 @@ import { qk } from './queryKeys';
 // date into the UTC instants /api/orders filters created_at on.
 import { businessDayBounds, businessDateStr } from '@mb/shared';
 import type {
+  AggregateResponse,
   BackupDownloadUrlResponse,
   BackupHistoryResponse,
   BackupRestoreTest,
@@ -420,6 +421,35 @@ export function useReportSummary(
       ),
     enabled: !!token && (opts?.enabled ?? true),
     placeholderData: opts?.keepPrevious ? keepPreviousData : undefined,
+  });
+}
+
+/**
+ * Paid sales per branch over business dates `from`–`to`, summed in Postgres by
+ * the Data Engine's orders aggregate (migration 108): `sum:grandTotal` and
+ * `count`, grouped by branch, over the Sales Analytics definition of a sale —
+ * stored `business_date` in range, not cancelled, not a staff sale. One small
+ * request whatever the period; no order rows come to the browser.
+ *
+ * The API scopes `orders` from the JWT (branchScope), so only a super admin
+ * gets every branch back. Keyed under the orders resource, so anything that
+ * invalidates `orders` (a sale saved on this device) refreshes it too.
+ */
+export function useBranchSales(token: string, range: { from: string; to: string }, opts?: { enabled?: boolean }) {
+  const params = new URLSearchParams();
+  params.set('metrics', 'sum:grandTotal,count');
+  params.set('groupBy', 'branchId,branchName');
+  params.append('businessDate.between', range.from);
+  params.append('businessDate.between', range.to);
+  params.set('status.neq', 'cancelled');
+  params.set('paymentMethod.neq', 'staff');
+  const query = params.toString();
+  return useQuery({
+    queryKey: qk.dataAggregate('orders', query),
+    queryFn: ({ signal }) => apiCall<AggregateResponse>(`/api/data/orders/aggregate?${query}`, { signal }, token),
+    enabled: !!token && (opts?.enabled ?? true),
+    // No placeholder: a new period must not show the last one's figures under its label.
+    staleTime: LIVE_STALE_TIME,
   });
 }
 

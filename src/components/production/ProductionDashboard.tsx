@@ -216,8 +216,8 @@ function Recent({ rows }: { rows: ProductionWeek['recent'] }) {
 }
 
 /**
- * `embedded`: rendered as the Admin Dashboard's Production tab, which keeps a
- * single Login History card of its own on its Overview tab.
+ * `embedded`: rendered as the Admin Dashboard's Live Production section, which
+ * keeps a single Login History card of its own at the foot of the page.
  */
 export function ProductionDashboard({ embedded = false }: { embedded?: boolean } = {}) {
   const { token } = useAuth();

@@ -372,7 +372,7 @@ export function FinanceMonthlyDashboard() {
 
 /**
  * Everything below the filters: cards, charts and tables for one response.
- * Also the Admin Dashboard's Finance tab, which feeds it the same request.
+ * Also the Admin Dashboard's Finance section, which feeds it the same request.
  */
 export function FinanceDashboardBody({
   data,
@@ -952,7 +952,7 @@ function Reconciliation({ data, format }: { data: Dashboard; format: Format }) {
   );
 }
 
-/** Today's company-wide cash position. Also shown on the Admin Dashboard's Finance tab. */
+/** Today's company-wide cash position. Also shown on the Admin Dashboard's Finance section. */
 export function CashStrip({
   cash,
   loading,

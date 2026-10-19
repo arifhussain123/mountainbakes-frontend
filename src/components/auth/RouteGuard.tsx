@@ -129,8 +129,8 @@ export function redirectFor(
     return `${ROUTES.SUPPORT_CENTER}?source=finance`;
   }
 
-  // The Production and Finance Dashboards are tabs of the Admin Dashboard for a
-  // super admin. Old menu links and bookmarks land on the matching tab.
+  // The Production and Finance Dashboards are sections of the Admin Dashboard for
+  // a super admin. Old menu links and bookmarks scroll to the matching section.
   if (user.role === 'super_admin' && pathname === ROUTES.PRODUCTION_DASHBOARD) {
     return `${ROUTES.DASHBOARD}?section=production`;
   }

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { WifiOff } from 'lucide-react';
 import { businessDateStr, type ReportSummary, type SalesAnalytics } from '@mb/shared';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useOnline } from '@/hooks/useOnline';
 import { useSettings } from '@/hooks/useSettings';
 import { useReportSummary, useSalesAnalytics } from '@/lib/queries';
 import { formatTime } from '@/utils/date';
@@ -51,23 +52,6 @@ import {
  *
  * `docs/branch-dashboard-v2-api-map.md` has the full account.
  */
-
-/** `navigator.onLine`, subscribed — so the "Offline" note appears and clears on its own. */
-function subscribeOnline(onChange: () => void) {
-  window.addEventListener('online', onChange);
-  window.addEventListener('offline', onChange);
-  return () => {
-    window.removeEventListener('online', onChange);
-    window.removeEventListener('offline', onChange);
-  };
-}
-function useOnline(): boolean {
-  return useSyncExternalStore(
-    subscribeOnline,
-    () => navigator.onLine,
-    () => true,
-  );
-}
 
 export function BranchDashboard() {
   const { token, user } = useAuth();
