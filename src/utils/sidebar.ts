@@ -54,7 +54,6 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Branches',        href: ROUTES.BRANCHES,         icon: Store },
   { label: 'Branch Locations', href: ROUTES.BRANCH_LOCATIONS, icon: MapPin },
   { label: 'Branch Stock',    href: ROUTES.STOCK_CONTROL,   icon: Boxes },
-  { label: 'Production',      href: ROUTES.PRODUCTION_DASHBOARD, icon: Factory },
   { label: 'Special Events',  href: ROUTES.SPECIAL_EVENTS,   icon: CalendarDays },
   { label: 'Reports',         href: ROUTES.REPORTS,          icon: BarChart3 },
   // Next to Reports rather than beside Branches: it is opened while looking at
@@ -62,7 +61,10 @@ export const ADMIN_NAV: NavItem[] = [
   { label: 'Daily Sale Records', href: ROUTES.DAILY_SALE_RECORDS, icon: Scale },
   { label: 'Support Center',  href: ROUTES.SUPPORT_CENTER,   icon: LifeBuoy },
   { label: 'Recipients',      href: ROUTES.NOTIFICATION_RECIPIENTS, icon: Send },
-  { label: 'Finance Ledger',  href: ROUTES.FINANCE_DASHBOARD, icon: BookOpenCheck },
+  // Straight to the book: the Finance Dashboard's figures are the Admin
+  // Dashboard's Finance tab, so the old Finance Dashboard entry would be a
+  // second copy of them.
+  { label: 'Finance Ledger',  href: ROUTES.FINANCE_LEDGER,   icon: BookOpenCheck },
   { label: 'Users',           href: ROUTES.USERS,            icon: Users },
   // Next to Users rather than beside Settings: it is read while thinking about
   // an account, not while configuring the app.

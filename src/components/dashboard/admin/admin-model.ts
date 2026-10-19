@@ -31,6 +31,11 @@ export const SECTIONS: { key: Section; label: string }[] = [
   { key: 'finance', label: 'Finance' },
 ];
 
+/** `?section=` from the address bar; anything unknown opens the Overview. */
+export function asSection(value: string | null | undefined): Section {
+  return SECTIONS.find((x) => x.key === value)?.key ?? 'overview';
+}
+
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 function datesBetween(from: string, to: string): string[] {

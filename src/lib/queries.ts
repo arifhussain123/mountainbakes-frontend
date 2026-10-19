@@ -402,7 +402,8 @@ export function useReportSummary(
   fields?: 'basic' | 'full',
   // Opt-in: keep the last answer on screen while a new period loads, instead of
   // dropping to a skeleton. The caller must mark it as stale (`isPlaceholderData`).
-  opts?: { keepPrevious?: boolean },
+  // `enabled: false` holds the request until the screen showing it is open.
+  opts?: { keepPrevious?: boolean; enabled?: boolean },
 ) {
   const effectivePeriod = range ? 'custom' : period;
   const rangeParams = range
@@ -417,7 +418,7 @@ export function useReportSummary(
         {},
         token,
       ),
-    enabled: !!token,
+    enabled: !!token && (opts?.enabled ?? true),
     placeholderData: opts?.keepPrevious ? keepPreviousData : undefined,
   });
 }

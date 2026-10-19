@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import {
   AlertTriangle,
   ArrowDown,
@@ -12,36 +13,37 @@ import {
   Coins,
   Factory,
   Inbox,
+  PackageX,
   Receipt,
   RotateCcw,
   Scale,
   ShoppingCart,
+  Store,
   TrendingUp,
   Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
-import type {
-  FinanceDashboardMetric,
-  FinanceMonthlyDashboard,
-  SalesAnalytics,
-  SalesTopProductLimit,
+import {
+  businessDateStr,
+  type CurrentStockSection,
+  type FinanceDashboardMetric,
+  type FinanceMonthlyDashboard,
+  type ReportSummary,
+  type SalesAnalytics,
+  type SalesTopProductLimit,
 } from '@mb/shared';
+import { useFinanceDashboard } from '@/lib/finance';
+import type { ProductionOverview } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PaymentMethodSummary } from '@/components/dashboard/daily-sales/PaymentMethodSummary';
 import { TopSellingProducts } from '@/components/dashboard/daily-sales/TopSellingProducts';
-import { financeOverviewGroups, OverviewCard } from '@/components/finance/dashboard/FinanceMonthlyDashboard';
-import { BarList, DailyShareReceivedChart, Panel, SERIES } from '@/components/finance/dashboard/FinanceCharts';
-import { ExpenseTable, IncomeTable } from '@/components/finance/dashboard/FinanceTables';
+import { CashStrip, FinanceDashboardBody } from '@/components/finance/dashboard/FinanceMonthlyDashboard';
+import { BarList, Panel } from '@/components/finance/dashboard/FinanceCharts';
 import {
-  bucketRange,
-  dailySeries,
   dayLabel,
-  expenseRows,
-  incomeRows,
-  ledgerHeadTotals,
   monthLong,
   sortRows,
   type DrillTarget,
@@ -49,6 +51,12 @@ import {
   type SortState,
 } from '@/components/finance/dashboard/dashboard-model';
 import { BranchPerformanceChart, DailyDemandChart, WeeklyReturnDiscountChart } from './AdminCharts';
+
+// recharts is heavy; keep the sales graph out of the dashboard's first bundle.
+const DailySalesGraph = dynamic(
+  () => import('@/components/dashboard/daily-sales/DailySalesGraph').then((m) => m.DailySalesGraph),
+  { ssr: false, loading: () => <Skeleton className="h-[300px] w-full" /> },
+);
 import {
   branchSummaryRows,
   dailyDemand,
@@ -150,6 +158,7 @@ export function SalesOverview({
   onTopLimit,
   subtitle,
   format,
+  current,
 }: {
   sales: SalesAnalytics | null;
   loading: boolean;
@@ -160,18 +169,23 @@ export function SalesOverview({
   onTopLimit: (l: SalesTopProductLimit) => void;
   subtitle: string;
   format: Format;
+  /** Today's sale per branch — its own request, so it shows even if the range's sales fail. */
+  current: React.ReactNode;
 }) {
   const s = sales;
   return (
     <section className="flex min-w-0 flex-col gap-4">
       <SectionHeading title="Sales Overview" sub={`Point-of-sale orders · ${subtitle}`} />
       {failed && !s ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
-          <span>The sales figures could not be loaded. The other tabs are unaffected.</span>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
-        </div>
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
+            <span>The sales figures could not be loaded. The other tabs are unaffected.</span>
+            <Button size="sm" variant="outline" onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+          {current}
+        </>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
@@ -210,6 +224,10 @@ export function SalesOverview({
               tone="neutral"
             />
           </div>
+          <Panel title="Daily Sales" aside={<span className="text-[11px] text-muted-foreground">{subtitle}</span>}>
+            {s ? <DailySalesGraph data={s.daily} currency={currency} /> : <Skeleton className="h-[300px] w-full" />}
+          </Panel>
+          {current}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <PaymentMethodSummary analytics={s} loading={loading} currency={currency} />
             <TopSellingProducts
@@ -674,6 +692,13 @@ export function ProductionSummary({
 // Finance
 // ---------------------------------------------------------------------------
 
+/**
+ * The Finance Dashboard's own body — every card, chart and table it shows —
+ * fed the Admin Dashboard's request, so the two pages cannot disagree and the
+ * admin needs no separate Finance Dashboard. The cash strip is today's
+ * position, company-wide, under the Finance Dashboard's own query key; it is
+ * asked for only once this tab opens.
+ */
 export function FinanceSummary({
   data,
   scoped,
@@ -697,81 +722,124 @@ export function FinanceSummary({
   drillTo: DrillTo;
   format: Format;
 }) {
-  const s = data.summary;
-  const daily = useMemo(() => dailySeries(data), [data]);
-  const heads = useMemo(() => ledgerHeadTotals(data), [data]);
-  const inc = useMemo(() => incomeRows(data, incGran), [data, incGran]);
-  const exp = useMemo(() => expenseRows(data, expGran), [data, expGran]);
-  const overview = financeOverviewGroups(data, scoped, drillTo);
-  const scopeOnly = context.split(' · ').slice(1).join(' · ');
-
+  const today = businessDateStr();
+  const cash = useFinanceDashboard({ from: today, to: today });
   return (
     <section className="flex min-w-0 flex-col gap-4">
       <SectionHeading
         title="Finance Summary"
         sub={`Company Share, Finance Ledger receipts and company expenses · ${subtitle}`}
       />
-      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">
-        {overview.map((g) => (
-          <OverviewCard key={g.title} group={g} format={format} />
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-        <Panel
-          title="Company Share vs Received"
-          aside={<span className="text-[11px] text-muted-foreground">Tap a day for its demands</span>}
-        >
-          <DailyShareReceivedChart
-            data={daily}
-            onDay={(d) => drillTo('share', { from: d, to: d, context: `${dayLabel(d)} ${d.slice(0, 4)} · ${scopeOnly}` })}
-          />
-        </Panel>
-        <Panel title="Ledger Head Breakdown" bodyClassName="max-h-[19rem] overflow-y-auto">
-          <BarList
-            emptyMessage={
-              scoped
-                ? 'No ledger expense is recorded against this branch — company expenses carry no branch.'
-                : 'No ledger expense in this period.'
-            }
-            rows={heads.map((h) => ({
-              key: h.ledgerHeadId,
-              label: h.name,
-              sub: `${plural(h.entries, 'entry', 'entries')} · ${pct(h.amount, s.ledgerExpense)}`,
-              value: h.amount,
-              color: SERIES.ledger,
-              onClick: () => drillTo('ledger', { ledgerHeadId: h.ledgerHeadId, context: `${context} · ${h.name}` }),
-            }))}
-          />
-        </Panel>
-      </div>
-
-      <IncomeTable
-        rows={inc}
-        gran={incGran}
-        onGran={setIncGran}
-        onDrill={(metric, r) =>
-          drillTo(metric, {
-            ...bucketRange(incGran, r.bucket, data.from, data.to),
-            branchId: r.branchId,
-            context: `${r.period} · ${r.branch}`,
-          })
-        }
+      <CashStrip cash={cash.data} loading={cash.isLoading} format={format} />
+      <FinanceDashboardBody
+        data={data}
+        context={context}
+        scoped={scoped}
+        incGran={incGran}
+        setIncGran={setIncGran}
+        expGran={expGran}
+        setExpGran={setExpGran}
+        drillTo={drillTo}
       />
-      <ExpenseTable
-        rows={exp}
-        gran={expGran}
-        onGran={setExpGran}
-        heads={heads}
-        onDrill={(metric, r) =>
-          drillTo(metric, {
-            ...bucketRange(expGran, r.bucket, data.from, data.to),
-            branchId: r.branchId,
-            ledgerHeadId: r.ledgerHeadId ?? undefined,
-            context: `${r.period} · ${r.branch}${r.kind === 'ledger' ? ` · ${r.ledgerHead}` : ''}`,
-          })
-        }
-      />
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Overview
+// ---------------------------------------------------------------------------
+
+/**
+ * Today at a glance, from three requests the app already makes — none summed
+ * here: the daily report summary (sales, orders, shop expenses), Production's
+ * overview (orders waiting, active branches) and its live stock section (low
+ * and out-of-stock products). Each tile says "…" while its request is in
+ * flight and "—" if it failed, so one slow source never blanks the others.
+ *
+ * No profit tile: the report's `totalProfit` is sales less shop expenses only,
+ * with no production cost behind it, and would read as the business's profit.
+ */
+export function TodaySnapshot({
+  businessDate,
+  scope,
+  today,
+  production,
+  stock,
+  format,
+  onRetry,
+}: {
+  businessDate: string;
+  scope: string;
+  today: { data: ReportSummary | undefined; failed: boolean };
+  production: { data: ProductionOverview | undefined; failed: boolean };
+  stock: { data: CurrentStockSection | undefined; failed: boolean };
+  format: Format;
+  onRetry: () => void;
+}) {
+  const t = today.data;
+  const c = production.data?.cards;
+  const k = stock.data?.kpis;
+  const v = (ok: boolean, failed: boolean, value: () => string) => (ok ? value() : failed ? '—' : '…');
+  const anyFailed = (today.failed && !t) || (production.failed && !c) || (stock.failed && !k);
+  return (
+    <section className="flex min-w-0 flex-col gap-4">
+      <SectionHeading title="Today" sub={`Business day ${dayLabel(businessDate)} ${businessDate.slice(0, 4)} · ${scope}`} />
+      {anyFailed && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2.5 text-sm">
+          <span>Some of today&apos;s figures could not be loaded and show as —.</span>
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2 lg:grid-cols-3">
+        <KpiTile
+          label="Today's Sales"
+          value={v(!!t, today.failed, () => format(t!.totalRevenue))}
+          sub={t ? `${plural(t.totalOrders, 'order')} · staff sales excluded` : 'Point-of-sale orders'}
+          icon={Inbox}
+          tone="accent"
+        />
+        <KpiTile
+          label="Today's Shop Expenses"
+          value={v(!!t, today.failed, () => format(t!.totalExpenses))}
+          sub="Recorded by the branches today"
+          icon={Receipt}
+          tone="ledger"
+        />
+        <KpiTile
+          label="Pending Orders"
+          value={v(!!t, today.failed, () => t!.totalPending.toLocaleString())}
+          sub="Point-of-sale orders still pending today"
+          icon={ShoppingCart}
+          tone="neutral"
+        />
+        <KpiTile
+          label="Waiting Production Orders"
+          value={v(!!c, production.failed, () => c!.waitingOrders.toLocaleString())}
+          sub="Branch demands not yet taken up by Production"
+          icon={Factory}
+          tone="share"
+        />
+        <KpiTile
+          label="Active Branches"
+          value={v(!!c, production.failed, () => c!.totalBranches.toLocaleString())}
+          sub="Branches open for orders"
+          icon={Store}
+          tone="received"
+        />
+        <KpiTile
+          label="Low-Stock Products"
+          value={v(!!k, stock.failed, () => k!.low.toLocaleString())}
+          sub={
+            k
+              ? `${plural(k.out, 'product')} out of stock · under ${stock.data!.breakdown.threshold} units`
+              : 'Production plus branch stock'
+          }
+          icon={PackageX}
+          tone="returns"
+        />
+      </div>
     </section>
   );
 }
