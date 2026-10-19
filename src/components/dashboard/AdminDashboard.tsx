@@ -160,7 +160,6 @@ export function AdminDashboard() {
     );
   };
 
-  const show = (key: Exclude<Section, 'overview'>) => section === 'overview' || section === key;
   const selectCls =
     'h-10 rounded-lg border bg-card px-3 text-base text-foreground disabled:opacity-60 md:h-9 md:text-sm';
 
@@ -333,15 +332,27 @@ export function AdminDashboard() {
             </div>
           )}
 
-          <HeadlineKpis
-            data={data}
-            sales={sales}
-            salesFailed={salesQ.isError && !sales}
-            drillTo={drillTo}
-            format={format}
-          />
-
-          {show('sales') && (
+          {section === 'overview' && (
+            <>
+              <HeadlineKpis
+                data={data}
+                sales={sales}
+                salesFailed={salesQ.isError && !sales}
+                drillTo={drillTo}
+                format={format}
+              />
+              <CurrentBranchSales
+                rows={currentRows}
+                total={todayQ.data?.totalRevenue ?? null}
+                loading={!todayQ.data && !todayQ.isError}
+                failed={todayQ.isError}
+                onRetry={() => void todayQ.refetch()}
+                businessDate={today}
+                format={format}
+              />
+            </>
+          )}
+          {section === 'sales' && (
             <SalesOverview
               sales={sales}
               loading={salesQ.isPending}
@@ -353,26 +364,15 @@ export function AdminDashboard() {
               onTopLimit={setTopLimit}
               subtitle={context}
               format={format}
-              current={
-                <CurrentBranchSales
-                  rows={currentRows}
-                  total={todayQ.data?.totalRevenue ?? null}
-                  loading={!todayQ.data && !todayQ.isError}
-                  failed={todayQ.isError}
-                  onRetry={() => void todayQ.refetch()}
-                  businessDate={today}
-                  format={format}
-                />
-              }
             />
           )}
-          {show('branches') && (
+          {section === 'branches' && (
             <BranchSummary data={data} scoped={!!branchId} subtitle={context} drillTo={drillTo} format={format} />
           )}
-          {show('production') && (
+          {section === 'production' && (
             <ProductionSummary data={data} subtitle={context} context={context} drillTo={drillTo} format={format} />
           )}
-          {show('finance') && (
+          {section === 'finance' && (
             <FinanceSummary
               data={data}
               scoped={!!branchId}

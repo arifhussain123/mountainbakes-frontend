@@ -150,7 +150,6 @@ export function SalesOverview({
   onTopLimit,
   subtitle,
   format,
-  current,
 }: {
   sales: SalesAnalytics | null;
   loading: boolean;
@@ -161,24 +160,28 @@ export function SalesOverview({
   onTopLimit: (l: SalesTopProductLimit) => void;
   subtitle: string;
   format: Format;
-  current: React.ReactNode;
 }) {
   const s = sales;
   return (
     <section className="flex min-w-0 flex-col gap-4">
       <SectionHeading title="Sales Overview" sub={`Point-of-sale orders · ${subtitle}`} />
-      {current}
       {failed && !s ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
-          <span>The sales figures could not be loaded. The finance figures below are unaffected.</span>
+          <span>The sales figures could not be loaded. The other tabs are unaffected.</span>
           <Button size="sm" variant="outline" onClick={onRetry}>
             Retry
           </Button>
         </div>
       ) : (
         <>
-          {/* Total Sales itself is the first headline tile above. */}
-          <div className={KPI_GRID}>
+          <div className="grid grid-cols-1 gap-3.5 min-[480px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+            <KpiTile
+              label="Total Sales"
+              value={s ? format(s.totalSales) : '…'}
+              sub="Paid orders at the counter"
+              icon={Inbox}
+              tone="accent"
+            />
             <KpiTile
               label="Transactions"
               value={s ? s.totalTransactions.toLocaleString() : '…'}
@@ -773,7 +776,7 @@ export function FinanceSummary({
   );
 }
 
-/** The four headline tiles above the sections. */
+/** The four headline tiles on the Overview tab. */
 export function HeadlineKpis({
   data,
   sales,
