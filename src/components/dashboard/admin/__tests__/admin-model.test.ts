@@ -179,12 +179,15 @@ describe('currentSaleRows', () => {
     { branchId: 'b1', branchName: 'Alabad', totalOrders: 9, totalRevenue: 2220, averageOrderValue: 246.67 },
   ];
 
-  test('every active branch, largest sale first; a quiet branch shows 0, an inactive one is left off', () => {
+  test('only branches that sold, largest sale first; a branch at 0 is left off', () => {
     expect(currentSaleRows(branches, sold, null)).toEqual([
       { branchId: 'b2', branch: 'Committee Chowk', sales: 12520, orders: 40 },
       { branchId: 'b1', branch: 'Alabad', sales: 2220, orders: 9 },
-      { branchId: 'b3', branch: 'Commercial Market', sales: 0, orders: 0 },
     ]);
+  });
+
+  test('the branch picked in the filter still shows at 0', () => {
+    expect(currentSaleRows(branches, sold, 'b3')).toEqual([{ branchId: 'b3', branch: 'Commercial Market', sales: 0, orders: 0 }]);
   });
 
   test('the branch filter narrows it to that branch', () => {
@@ -209,7 +212,7 @@ describe('adminCsv', () => {
     });
     expect(csv).toContain('BRANCH SUMMARY');
     expect(csv).toContain('Last Month Balance (September 2026)');
-    expect(csv).toContain('Total,1700,1190,640,550,90,400,30,20');
+    expect(csv).toContain('Total,1700,1190,640,550,400,30,20,90');
     expect(csv).not.toContain('PAYMENT METHODS');
   });
 });

@@ -308,7 +308,7 @@ export function CurrentBranchSales({
           </Button>
         </div>
       ) : !loading && !rows.length ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">No active branches.</p>
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">No branch has sold anything yet today.</p>
       ) : (
         <div className="flex flex-col gap-3 p-4" aria-busy={loading || undefined}>
           <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
@@ -349,10 +349,10 @@ const BRANCH_COLS: { key: BranchKey; label: string; metric?: FinanceDashboardMet
   { key: 'companyShare', label: 'Company Share', metric: 'share' },
   { key: 'received', label: 'Received', metric: 'received' },
   { key: 'balance', label: 'Balance', signed: true },
-  { key: 'lastMonthBalance', label: 'Last Month Balance', signed: true },
   { key: 'ledger', label: 'Ledger Expense', metric: 'ledger' },
   { key: 'returns', label: 'Return', metric: 'return' },
   { key: 'discount', label: 'Discount', metric: 'discount' },
+  { key: 'lastMonthBalance', label: 'Last Month Balance', signed: true },
 ];
 
 function SortIcon({ active, dir }: { active: boolean; dir: 1 | -1 }) {
@@ -514,8 +514,8 @@ export function BranchSummary({
           </table>
         </div>
         <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
-          Balance = Company Share − Received. Last Month Balance is {monthLong(data.previousMonth)}’s, shown beside it,
-          not carried into it. Company expenses carry no branch and sit under “Company / unassigned”.
+          Balance = Company Share − Received. Last Month Balance is {monthLong(data.previousMonth)}’s, shown in the last column,
+          not carried into Balance. Company expenses carry no branch and sit under “Company / unassigned”.
         </p>
       </div>
 

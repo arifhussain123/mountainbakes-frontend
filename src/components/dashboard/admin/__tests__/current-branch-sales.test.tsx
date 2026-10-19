@@ -77,9 +77,9 @@ describe('CurrentBranchSales', () => {
     expect(screen.queryByText('Total today')).toBeNull();
   });
 
-  test('no active branches is said, not left blank', () => {
+  test('no branch selling yet is said, not left blank', () => {
     render(<CurrentBranchSales {...base} rows={[]} total={0} />);
-    expect(screen.getByText('No active branches.')).toBeTruthy();
+    expect(screen.getByText('No branch has sold anything yet today.')).toBeTruthy();
   });
 
   test('a failed load says so with a retry', () => {

@@ -104,10 +104,9 @@ export interface CurrentSaleRow {
  * Today's sales per branch, from `/api/reports/summary?period=daily`'s
  * `branchData` (paid orders; cancelled and staff sales excluded).
  *
- * The API only reports branches that sold something, so every active branch is
- * listed and a quiet one shows Rs. 0 — a branch missing from "current sale"
- * reads as "not loaded", not as "has not sold yet". An inactive branch appears
- * only if it somehow sold today. Largest first.
+ * Only branches that sold something today are listed — a branch at Rs. 0 is
+ * left out, except the one picked in the branch filter, which still shows its
+ * Rs. 0. Largest first.
  */
 export function currentSaleRows(
   branches: { id: string; name: string; isActive: boolean }[],
@@ -120,7 +119,7 @@ export function currentSaleRows(
     if (branchId && b.id !== branchId) continue;
     const s = sold.get(b.id);
     sold.delete(b.id);
-    if (!b.isActive && !s) continue;
+    if (!s?.totalRevenue && b.id !== branchId) continue;
     rows.push({
       branchId: b.id,
       branch: b.isActive ? b.name : `${b.name} (inactive)`,
@@ -131,6 +130,7 @@ export function currentSaleRows(
   // A branch the list does not know (deleted since) still sold — keep its money in.
   for (const s of sold.values()) {
     if (branchId && s.branchId !== branchId) continue;
+    if (!s.totalRevenue) continue;
     rows.push({ branchId: s.branchId, branch: s.branchName || 'Unknown branch', sales: round2(s.totalRevenue), orders: s.totalOrders });
   }
   return rows.sort((a, b) => b.sales - a.sales || a.branch.localeCompare(b.branch));
@@ -279,10 +279,10 @@ export function adminCsv({
         'Company Share',
         'Received Amount',
         'Balance',
-        `Last Month Balance (${monthLong(finance.previousMonth)})`,
         'Ledger Expense',
         'Return',
         'Discount',
+        `Last Month Balance (${monthLong(finance.previousMonth)})`,
       ],
       [
         ...branchSummaryRows(finance).map((r) => [
@@ -291,12 +291,12 @@ export function adminCsv({
           r.companyShare,
           r.received,
           r.balance,
-          r.lastMonthBalance,
           r.ledger,
           r.returns,
           r.discount,
+          r.lastMonthBalance,
         ]),
-        ['Total', s.demand, s.companyShare, s.received, s.balance, s.lastMonthBalance, s.ledgerExpense, s.returns, s.discount],
+        ['Total', s.demand, s.companyShare, s.received, s.balance, s.ledgerExpense, s.returns, s.discount, s.lastMonthBalance],
       ],
     ),
     'INCOME',
