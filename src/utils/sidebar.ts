@@ -33,6 +33,8 @@ import {
   Scale,
   DatabaseBackup,
   Banknote,
+  MessageCircle,
+  Truck,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -100,6 +102,10 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Partner Transactions', href: ROUTES.FINANCE_PARTNER_TRANSACTIONS, icon: HandCoins },
   { label: 'Company Transaction Details', href: ROUTES.FINANCE_PARTNER_EXPENSES,  icon: Landmark },
   { label: 'Ledger Heads',     href: ROUTES.FINANCE_HEADS,             icon: ListTree },
+  // Beside Cash Transfers in spirit — another queue of money waiting for a
+  // Finance decision — but after the books themselves, since it is opened when
+  // Production has paid a supplier, not every day.
+  { label: 'Supplier Payments', href: ROUTES.FINANCE_SUPPLIER_PAYMENTS, icon: Truck },
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
   { label: 'Audit Trail',      href: ROUTES.FINANCE_AUDIT,             icon: ShieldCheck },
@@ -133,6 +139,7 @@ export const PRODUCTION_NAV: NavItem[] = [
   { label: 'Branch Stock',      href: ROUTES.PRODUCTION_BRANCH_STOCK,  icon: Boxes },
   { label: 'Returns',           href: ROUTES.PRODUCTION_RETURNS,       icon: Undo2 },
   { label: 'Discounts',         href: ROUTES.PRODUCTION_DISCOUNTS,     icon: BadgePercent },
+  { label: 'WhatsApp Purchasing', href: ROUTES.PRODUCTION_WHATSAPP,    icon: MessageCircle },
   { label: 'Events',            href: ROUTES.PRODUCTION_EVENTS,        icon: CalendarDays },
   { label: 'Reports',           href: ROUTES.PRODUCTION_REPORTS,       icon: BarChart3 },
   { label: 'Help Desk',         href: ROUTES.PRODUCTION_HELP_DESK,     icon: Headset },

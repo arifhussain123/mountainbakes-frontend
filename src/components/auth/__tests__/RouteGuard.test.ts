@@ -50,3 +50,25 @@ describe('redirectFor — Production screens', () => {
     expect(redirectFor('/production-dashboard', null)).toBe('/login');
   });
 });
+
+describe('redirectFor — the supplier portal', () => {
+  test('is public: a signed-out supplier is not sent to login', () => {
+    expect(redirectFor('/supplier-portal', null)).toBeNull();
+    // `trailingSlash: true` serves it as /supplier-portal/; RouteGuard normalises first.
+    expect(redirectFor('/supplier-portal/', null)).toBeNull();
+  });
+
+  test('stays open to a signed-in staff user instead of bouncing them to their dashboard', () => {
+    for (const role of ['super_admin', 'production_user', 'branch_manager', 'finance_admin', 'accountant']) {
+      expect(redirectFor('/supplier-portal', as(role))).toBeNull();
+    }
+  });
+
+  test('is not held behind a pending password change', () => {
+    expect(redirectFor('/supplier-portal', { role: 'production_user', mustChangePassword: true })).toBeNull();
+  });
+
+  test('does not open a look-alike path', () => {
+    expect(redirectFor('/supplier-portal-admin', null)).toBe('/login');
+  });
+});

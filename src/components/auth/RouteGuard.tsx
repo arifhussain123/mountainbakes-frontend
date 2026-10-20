@@ -35,7 +35,24 @@ const PUBLIC_PATHS = [
   // link (`?token=…`) and is posted to the API along with the new password — no
   // session is involved, so the visitor is legitimately signed out when they arrive.
   '/reset-password',
+  // WhatsApp Purchasing's supplier page. The visitor is an outside supplier
+  // with no Mountain Bakes account: the link's own token (in the URL fragment,
+  // sent to the API as X-Supplier-Token) is the only authorization, and the API
+  // re-decides it on every request. See SUPPLIER_PORTAL_PATH below for why a
+  // signed-in visitor is let through as well.
+  ROUTES.SUPPLIER_PORTAL,
 ];
+
+/**
+ * The supplier portal is reachable whoever is signed in — and whether or not
+ * that account still owes a password change. A staff member who opens a
+ * supplier's link on their own phone (to check what the supplier sees, or
+ * because the supplier forwarded it) must land on the portal, not be bounced to
+ * their dashboard: the page never uses the staff session (lib/supplierPortal.ts
+ * sends no Authorization header), so the account in this browser is irrelevant
+ * to it.
+ */
+const SUPPLIER_PORTAL_PATH = ROUTES.SUPPLIER_PORTAL;
 
 /**
  * Admin-only routes.
@@ -101,6 +118,10 @@ export function redirectFor(
     // Not authenticated — everything except the public pages goes to /login.
     return isPublic(pathname) ? null : '/login';
   }
+
+  // Before every signed-in rule, including the forced password change: see
+  // SUPPLIER_PORTAL_PATH.
+  if (pathname === SUPPLIER_PORTAL_PATH || pathname.startsWith(`${SUPPLIER_PORTAL_PATH}/`)) return null;
 
   const home = getRoleHome(user.role);
 

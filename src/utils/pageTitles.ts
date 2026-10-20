@@ -66,6 +66,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRODUCTION_HELP_DESK]: 'Help Desk',
   [ROUTES.PRODUCTION_EVENTS]: 'Special Events',
   [ROUTES.PRODUCTION_QUEUE]: 'Production Queue',
+  [ROUTES.PRODUCTION_WHATSAPP]: 'WhatsApp Purchasing',
 
   // Finance Ledger. Several deliberately differ from their nav label — the nav
   // has a column of finance items and does not need to say "Finance" eleven
@@ -83,6 +84,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.FINANCE_AUDIT]: 'Audit Trail',
   [ROUTES.FINANCE_HELP_DESK]: 'Finance Help Desk',
   [ROUTES.FINANCE_SETTINGS]: 'Finance Settings',
+  [ROUTES.FINANCE_SUPPLIER_PAYMENTS]: 'Supplier Payments',
 };
 
 export function getPageTitle(pathname: string): string | undefined {

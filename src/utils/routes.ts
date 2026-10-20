@@ -89,6 +89,17 @@ export const ROUTES = {
   PRODUCTION_REPORTS: '/production-reports',
   PRODUCTION_HELP_DESK: '/production-help-desk',
   PRODUCTION_EVENTS: '/production-events',
+  /**
+   * Production → WhatsApp Purchasing. Demands sent to suppliers over WhatsApp,
+   * their quotations, bills, deliveries, receipts and payments, and the
+   * conversations behind them.
+   *
+   * The '/production-' prefix is load-bearing: RouteGuard maps it to
+   * production_user, which is the only thing keeping the page off other roles
+   * (the API enforces the same roles independently). The push-notification map
+   * already links here, so the path must not move.
+   */
+  PRODUCTION_WHATSAPP: '/production-whatsapp',
   USERS: '/users',
   SETTINGS: '/settings',
   /**
@@ -184,6 +195,20 @@ export const ROUTES = {
   FINANCE_AUDIT: '/finance-audit',
   FINANCE_HELP_DESK: '/finance-help-desk',
   FINANCE_SETTINGS: '/finance-settings',
+  /**
+   * Finance → Supplier Payments. The approval queue for payments Production
+   * records against WhatsApp purchase demands; nothing is posted to the ledger
+   * until Finance approves it here. Same '/finance-' prefix rule as above.
+   */
+  FINANCE_SUPPLIER_PAYMENTS: '/finance-supplier-payments',
+
+  /**
+   * Supplier Portal. The page a supplier reaches from the tokenised WhatsApp
+   * link to quote, bill and confirm. Suppliers have no account, so the token in
+   * the link is the credential and the page sits outside the dashboard and its
+   * role guard — never put it under a role prefix.
+   */
+  SUPPLIER_PORTAL: '/supplier-portal',
 } as const;
 
 

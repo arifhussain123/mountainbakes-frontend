@@ -322,6 +322,15 @@ export const qk = {
     ['finance', 'dailySales', 'day', branchId, businessDate] as const,
   financeSettings: () => ['finance', 'settings'] as const,
   financeAudit: (filters: Record<string, unknown>) => ['finance', 'audit', filters] as const,
+  // Supplier Payments (WhatsApp Purchasing). Under the finance root, so an
+  // approval refreshes the ledger and dashboard it just posted into.
+  financeSupplierPayments: (filters: Record<string, unknown>) =>
+    ['finance', 'supplierPayments', 'list', filters] as const,
+  financeSupplierCredits: (filters: Record<string, unknown>) =>
+    ['finance', 'supplierPayments', 'credits', filters] as const,
+  financeSupplierBalances: (supplierId?: string) =>
+    ['finance', 'supplierPayments', 'balances', supplierId ?? 'all'] as const,
+  financeSupplierPaymentHeads: () => ['finance', 'supplierPayments', 'heads'] as const,
   financeReport: (query: Record<string, unknown>) => ['finance', 'report', query] as const,
   // Help Desk. The queue key carries its filters for the same reason the ledger's
   // does; the lookup is keyed by the reference number so typing a second one does
@@ -373,6 +382,22 @@ export const qk = {
   restrictionMonitor: () => ['restrictions', 'monitor'] as const,
   restrictionEvents: (ruleCode: string | null) => ['restrictions', 'events', ruleCode] as const,
   restrictionCheck: (kind: string, params: Record<string, unknown>) => ['restrictionCheck', kind, params] as const,
+
+  // Production → WhatsApp Purchasing. One root for the whole page: every write
+  // there (a decision, a receipt, a reply) can move a demand between tabs,
+  // change the summary counts and add a message to a conversation, so the
+  // mutations invalidate ['purchasing'] rather than reasoning about which of
+  // the views below one write touched. Finance's Supplier Payments keys live
+  // under ['finance'] on purpose — see financeSupplierPayments above.
+  purchasingStatus: () => ['purchasing', 'status'] as const,
+  purchasingSummary: () => ['purchasing', 'summary'] as const,
+  purchaseDemands: (params: Record<string, unknown>) => ['purchasing', 'demands', params] as const,
+  purchaseDemand: (id: string) => ['purchasing', 'demand', id] as const,
+  purchaseSuppliers: (search: string | null) => ['purchasing', 'suppliers', search ?? ''] as const,
+  purchaseSupplierBalance: (supplierId: string) => ['purchasing', 'supplierBalance', supplierId] as const,
+  purchaseItems: () => ['purchasing', 'items'] as const,
+  purchaseConversations: (search: string | null) => ['purchasing', 'conversations', search ?? ''] as const,
+  purchaseMessages: (params: Record<string, unknown>) => ['purchasing', 'messages', params] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */
