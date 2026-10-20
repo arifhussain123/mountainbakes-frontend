@@ -21,7 +21,7 @@ import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { GeofenceGate } from '@/components/geofence/GeofenceGate';
 import { ReturnPhoto } from '@/components/stock/ReturnPhoto';
 import { MonthlyReturnsSummary } from '@/components/stock/MonthlyReturnsSummary';
-import { createdByColumn, returnValueColumns } from '@/components/stock/returnColumns';
+import { returnValueColumns } from '@/components/stock/returnColumns';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -284,14 +284,13 @@ export function BranchReturnStockPage() {
       meta: { align: 'center' },
       cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span>,
     }),
-    ...returnValueColumns(col),
+    ...returnValueColumns(col).filter((c) => c.id !== 'productCode'),
     col.accessor('reason', {
       header: 'Reason',
       enableSorting: false,
       meta: { mobileFull: true },
       cell: (i) => <ExpandableText text={i.getValue()} className="text-muted-foreground" />,
     }),
-    createdByColumn(col),
     // Not sortable — there is nothing to order a picture by. A small fixed
     // thumbnail; the full photo opens from it. Rows without one show a dash.
     col.display({

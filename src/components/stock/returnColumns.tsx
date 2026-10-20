@@ -40,14 +40,3 @@ export function returnValueColumns(col: ColumnHelper<ProductionReturn>) {
     }),
   ];
 }
-
-/** Who raised the row — the email the server stamps on `created_by_name`. */
-export function createdByColumn(col: ColumnHelper<ProductionReturn>) {
-  return col.accessor((r) => r.createdByName ?? '', {
-    id: 'createdBy',
-    header: 'Created By',
-    enableSorting: false,
-    meta: { mobileLabel: 'Created by' },
-    cell: (i) => <span className="text-xs text-muted-foreground">{i.getValue() || '—'}</span>,
-  });
-}
