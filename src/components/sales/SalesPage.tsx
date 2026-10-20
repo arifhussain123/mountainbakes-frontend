@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { apiCall } from '@/utils/api';
@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Separator } from '@/components/ui/separator';
 import { GenericDataTable } from '@/components/data-engine';
 import { useInvalidateResource } from '@/lib/data-engine/useResource';
+import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Fab } from '@/components/shared/Fab';
 import { PrintButton } from '@/components/shared/PrintButton';
@@ -49,6 +50,8 @@ import {
 import type { SaleReceiptDoc } from '@/lib/print/receipt/types';
 
 const col = createColumnHelper<Order>();
+// Matches `paymentFilters` below — the only filter the sales table offers.
+const PAYMENT_FILTER_KEYS = ['paymentMethod'] as const;
 
 /**
  * An invoice as the thermal receipt document.
@@ -425,6 +428,31 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
     [methods],
   );
 
+  // The table's list state lives here rather than inside the table, so the
+  // Daily Summary tiles can drive the same Payment filter the filter bar does.
+  const list = useListQueryState({
+    syncUrl: true,
+    namespace: isProduction ? 'production-sales' : 'branch-sales',
+    filterKeys: PAYMENT_FILTER_KEYS,
+  });
+  const activeMethod = list.getFilter('paymentMethod', 'eq')?.value;
+  // Pressing the tile that is already active clears it again, like choosing
+  // "All methods" in the filter.
+  const toggleMethodFilter = (m: string) => {
+    if (activeMethod === m) list.clearFilter('paymentMethod', 'eq');
+    else list.setFilter('paymentMethod', 'eq', m);
+  };
+
+  // A page number belongs to one day's result set. `key={date}` used to reset
+  // it by remounting the table; with the state owned here, reset it directly.
+  const setPage = list.setPage;
+  const prevDate = useRef(date);
+  useEffect(() => {
+    if (prevDate.current === date) return;
+    prevDate.current = date;
+    setPage(1);
+  }, [date, setPage]);
+
   const columns = [
     col.accessor('orderNumber', { header: 'ID', meta: { mobile: 'subtitle' }, cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
     col.accessor('createdAt', { header: 'Time', cell: (i) => <span className="text-sm">{i.getValue() ? karachiTimeStr(new Date(i.getValue())) : ''}</span> }),
@@ -540,7 +568,17 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {methods.filter((m) => m !== UNPAID_PAYMENT_METHOD).map((m) => (
-              <div key={m} className="rounded-lg border bg-muted/30 p-3">
+              <button
+                key={m}
+                type="button"
+                aria-pressed={activeMethod === m}
+                title={activeMethod === m ? 'Show all payment methods' : `Show only ${PAYMENT_METHOD_LABELS[m] ?? m} sales`}
+                onClick={() => toggleMethodFilter(m)}
+                className={cn(
+                  'rounded-lg border p-3 text-left transition-colors hover:bg-muted/60',
+                  activeMethod === m ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'bg-muted/30',
+                )}
+              >
                 <p className="text-xs text-muted-foreground">{PAYMENT_METHOD_LABELS[m]}</p>
                 <p className="text-lg font-bold">{cur}{summary.totals[m]!.toLocaleString()}</p>
                 {/* The gross behind the charged figure. Shown only when the two
@@ -551,7 +589,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
                     Gross {cur}{summary.grossTotals[m]!.toLocaleString()}
                   </p>
                 )}
-              </div>
+              </button>
             ))}
             <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
               <p className="text-xs text-primary">Total Sales</p>
@@ -591,9 +629,11 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           </div>
 
           {/* Items sold — the goods side of the same day, under the money side.
+              Production counter only: the branch page leaves it out.
               Quantities only, deliberately: the production counter hides the
               per-sale Amount column so a figure is not misread as takings, and
               pricing this breakdown would put that number straight back. */}
+          {isProduction && (
           <div className="mt-4 border-t pt-4">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -637,6 +677,7 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
               </>
             )}
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -648,15 +689,14 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
           "orders") — the browser downloads one page of this business day's
           sales, not the whole thing, unlike the Daily Summary above which
           deliberately still fetches every sale of the day so it reconciles
-          with the drawer and the closing report. `key={date}` remounts on a
-          date change so a page number from one day is never carried into a
-          different day's (possibly shorter) result set.
+          with the drawer and the closing report. The list state is the page's
+          own (see `list` above), shared with the Daily Summary tiles.
           Search covers customer, phone and order # — not product name, which
           the generic engine has no join for; the old client-side table could
           match a product because everything was already downloaded. */}
       <GenericDataTable<Order>
-        key={date}
         resource="sales"
+        list={list}
         columns={columns}
         fixedFilters={[
           { key: 'status', op: 'eq', value: 'delivered' },
@@ -664,7 +704,6 @@ export function SalesPage({ mode = 'branch' }: { mode?: 'branch' | 'production' 
         ]}
         filters={paymentFilters}
         searchPlaceholder="Search customer, phone, order #…"
-        namespace={isProduction ? 'production-sales' : 'branch-sales'}
         emptyTitle="No sales recorded"
       />
 
