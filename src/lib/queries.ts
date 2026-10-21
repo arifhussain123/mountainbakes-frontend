@@ -1405,6 +1405,22 @@ export function useAddProductionOrderItem(token: string) {
   });
 }
 
+/** Production adding a packing material line to a still-'pending' demand. */
+export function useAddProductionOrderPackingItem(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, packingMaterialId, qty }: { id: string; packingMaterialId: string; qty: number }) =>
+      apiCall(
+        `/api/production-orders/${id}/packing-items`,
+        { method: 'POST', body: JSON.stringify({ packingMaterialId, qty }) },
+        token,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+    },
+  });
+}
+
 export interface VerifyOrderPayload {
   id: string;
   verifiedItems: { productId: string; verifiedQty: number }[];

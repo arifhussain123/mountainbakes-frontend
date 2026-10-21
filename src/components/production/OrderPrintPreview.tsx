@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { cashTransferChannelsLabel, rateOf, type AppSettings, type Branch, type BranchProductionOrder, type BranchProductionOrderItem, type PaymentReceivedItem } from '@mb/shared';
 import type { ReviewOrderPayload } from '@/lib/queries';
-import { useProducts, useBranches, useAddProductionOrderItem, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
+import { useProducts, useBranches, useAddProductionOrderItem, useAddProductionOrderPackingItem, usePackingMaterials, usePreviousOrderBalance, useCreateReturn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -167,6 +167,9 @@ function PreviewBody({
   // Production Check sheet (branch, product, qty, amount only).
   const [printMode, setPrintMode] = useState<'slip' | 'check'>('slip');
   const [addingProduct, setAddingProduct] = useState(false);
+  // The add panel takes a product or a packing material — one panel, one Add
+  // button, so Production does not hunt for a second control.
+  const [addKind, setAddKind] = useState<'product' | 'packing'>('product');
   const [addProductId, setAddProductId] = useState('');
   const [addQty, setAddQty] = useState('');
   const [returning, setReturning] = useState(false);
@@ -185,6 +188,10 @@ function PreviewBody({
   const productsQ = useProducts(token);
   const branchesQ = useBranches(token);
   const addItemMut = useAddProductionOrderItem(token);
+  const addPackingMut = useAddProductionOrderPackingItem(token);
+  // Active materials only (the server refuses an inactive one anyway). Fetched
+  // only once the add panel is open — most reviews never add anything.
+  const packingMaterialsQ = usePackingMaterials(token, { enabled: addingProduct && !readOnly });
   const createReturnMut = useCreateReturn(token);
   const prevBalanceQ = usePreviousOrderBalance(token, order.id);
 
@@ -342,16 +349,22 @@ function PreviewBody({
   async function addProduct() {
     const qty = parseInt(addQty, 10);
     if (!addProductId || !qty || qty <= 0) return;
+    const isPacking = addKind === 'packing';
     try {
-      await addItemMut.mutateAsync({ id: order.id, productId: addProductId, qty });
-      toast.success('Product added to the demand');
+      if (isPacking) {
+        await addPackingMut.mutateAsync({ id: order.id, packingMaterialId: addProductId, qty });
+      } else {
+        await addItemMut.mutateAsync({ id: order.id, productId: addProductId, qty });
+      }
+      toast.success(isPacking ? 'Packing material added to the demand' : 'Product added to the demand');
       setAddingProduct(false);
       setAddProductId('');
       setAddQty('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add product');
+      toast.error(err instanceof Error ? err.message : isPacking ? 'Failed to add packing material' : 'Failed to add product');
     }
   }
+  const adding = addItemMut.isPending || addPackingMut.isPending;
 
   // Closing sign-off on an order the branch has already verified. Status only —
   // the stock moved at verification, which is why there is no reject beside it.
@@ -605,25 +618,68 @@ function PreviewBody({
             </div>
           )}
 
-          {/* Add a product not on the original demand — before submission only;
-              once submitted the branch's own verify step is where extra items
-              that arrived unrequested get added. */}
+          {/* Add a product or packing material not on the original demand —
+              before submission only; once submitted the branch's own verify
+              step is where extra items that arrived unrequested get added. */}
           {addingProduct && !readOnly && (
             <div className="mt-4 flex flex-col gap-2 rounded-lg border border-neutral-300 bg-neutral-50 p-3 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1 space-y-1">
-                <label className="text-xs font-medium text-neutral-600">Product</label>
-                <Select value={addProductId} onValueChange={(v) => v && setAddProductId(v)}>
+              <div className="space-y-1 sm:w-44">
+                <label className="text-xs font-medium text-neutral-600">Type</label>
+                <Select
+                  value={addKind}
+                  onValueChange={(v) => {
+                    if (v !== 'product' && v !== 'packing') return;
+                    setAddKind(v);
+                    // The id belongs to the other catalogue — never carry it over.
+                    setAddProductId('');
+                  }}
+                >
                   <SelectTrigger className="h-9 w-full bg-white">
-                    <SelectValue placeholder={productsQ.isLoading ? 'Loading…' : 'Select a product'} />
+                    <SelectValue>{(v: string) => (v === 'packing' ? 'Packing Material' : 'Product')}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {(productsQ.data ?? [])
-                      .filter((p) => !order.items.some((it) => it.productId === p.id))
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
+                    <SelectItem value="product">Product</SelectItem>
+                    <SelectItem value="packing">Packing Material</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <label className="text-xs font-medium text-neutral-600">
+                  {addKind === 'packing' ? 'Packing Material' : 'Product'}
+                </label>
+                {addKind === 'packing' ? (
+                  <Select value={addProductId} onValueChange={(v) => v && setAddProductId(v)}>
+                    <SelectTrigger className="h-9 w-full bg-white">
+                      <SelectValue placeholder={packingMaterialsQ.isLoading ? 'Loading…' : 'Select a packing material'}>
+                        {(v: string | null) =>
+                          (packingMaterialsQ.data ?? []).find((m) => m.id === v)?.materialName
+                          ?? (packingMaterialsQ.isLoading ? 'Loading…' : 'Select a packing material')}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(packingMaterialsQ.data ?? [])
+                        // One line per material per demand — an existing one is
+                        // changed with Change Quantity, not added twice.
+                        .filter((m) => !packingItems.some((it) => it.packingMaterialId === m.id))
+                        .map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.materialName}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Select value={addProductId} onValueChange={(v) => v && setAddProductId(v)}>
+                    <SelectTrigger className="h-9 w-full bg-white">
+                      <SelectValue placeholder={productsQ.isLoading ? 'Loading…' : 'Select a product'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(productsQ.data ?? [])
+                        .filter((p) => !order.items.some((it) => it.productId === p.id))
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="space-y-1 sm:w-28">
                 <label className="text-xs font-medium text-neutral-600">Qty</label>
@@ -637,10 +693,10 @@ function PreviewBody({
               </div>
               <Button
                 className="h-9"
-                disabled={!addProductId || !addQty || addItemMut.isPending}
+                disabled={!addProductId || !addQty || adding}
                 onClick={addProduct}
               >
-                {addItemMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null} Add
+                {adding ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null} Add
               </Button>
             </div>
           )}
@@ -1050,7 +1106,7 @@ function PreviewBody({
         {!readOnly && (
           <>
             <Button variant="outline" onClick={() => setAddingProduct((a) => !a)} disabled={reviewing}>
-              <Plus className="mr-1.5 h-4 w-4" /> Add Product
+              <Plus className="mr-1.5 h-4 w-4" /> Add Item
             </Button>
             <Button variant="outline" onClick={() => setEditing((e) => !e)} disabled={reviewing}>
               <Pencil className="mr-1.5 h-4 w-4" /> {editing ? 'Done' : 'Change Quantity'}
