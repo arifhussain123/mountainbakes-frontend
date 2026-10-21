@@ -92,6 +92,9 @@ const laterOf = (a: string, b: string) => (a > b ? a : b);
  */
 const BRANCH_ONLY_COLUMNS = new Set(['time', 'cashExpense', 'difference', 'status', 'source']);
 
+/** How the Deposit Difference column says a row's deposit was found. */
+const MATCH_LABELS = { amount: 'same amount', nearest: 'nearest amount', same_day: 'same day' } as const;
+
 /** How many unmatched deposits the notice lists before it says "and N more". */
 const UNMATCHED_SHOWN = 8;
 
@@ -121,7 +124,8 @@ const UNMATCHED_SHOWN = 8;
  * day's Company Share, and it hands it over as a cash deposit — usually the day
  * after, so the deposit carries a later date than the sales it pays for. The API
  * finds each day's deposit by AMOUNT, among the branch's deposits dated that day
- * or the two days after it, and each deposit is used once. Received is what was
+ * or the two days after it — the same amount, else the nearest within 999, else
+ * the one dated that day — and each deposit is used once. Received is what was
  * found and approved; Deposit Difference is Company Share less Received.
  *
   * ─── What Finance cannot do here ─────────────────────────────────────────────
@@ -270,10 +274,10 @@ export function BranchSalesTab() {
             <div className="flex flex-col items-end gap-0.5">
               <DepositDifferenceBadge difference={r.difference} symbol={symbol} />
               {/* Which deposit, and how sure the pairing is: one of the same
-                  amount, or only the nearest one in date. */}
+                  amount, one within 999 of it, or only the one dated that day. */}
               {r.match !== 'none' && (
                 <span className="text-xs text-muted-foreground">
-                  {r.match === 'amount' ? 'same amount' : 'nearest deposit'} · {dates}
+                  {MATCH_LABELS[r.match]} · {dates}
                 </span>
               )}
             </div>
@@ -421,7 +425,8 @@ export function BranchSalesTab() {
                     <span>
                       {recon.counts.discrepancy}{' '}
                       {recon.counts.discrepancy === 1 ? 'branch day has' : 'branch days have'} no deposit of
-                      the same amount as the Company Share; the nearest deposit is shown instead. Open
+                      the same amount as the Company Share; the nearest one within {symbol} 999 is shown
+                      instead, or else the one deposited that day. Open
                       the deposit check and review it — nothing is corrected automatically.
                     </span>
                   </p>
