@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DataTable } from '@/components/shared/DataTable';
 import { ExpandableText } from '@/components/shared/ExpandableText';
-import { Eye, Package, Plus, Trash2 } from 'lucide-react';
+import { Eye, Package, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   fulfilledTotals,
   isVerified,
@@ -108,6 +108,8 @@ export function BranchNewOrders() {
   const [openedOnce, setOpenedOnce] = useState(false);
   const [viewOrder, setViewOrder] = useState<BranchProductionOrder | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  /** Whether the detail opens straight into edit mode (the row's Edit button). */
+  const [viewEditing, setViewEditing] = useState(false);
   const [deleting, setDeleting] = useState<BranchProductionOrder | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   /** The demand whose total is on screen. Null when the box is closed. */
@@ -203,8 +205,9 @@ export function BranchNewOrders() {
   const [tab, setTab] = useState<'active' | 'history'>('active');
   const rows = tab === 'active' ? activeRows : historyRows;
 
-  function openView(order: BranchProductionOrder) {
+  function openView(order: BranchProductionOrder, edit = false) {
     setViewOrder(order);
+    setViewEditing(edit);
     setViewOpen(true);
   }
 
@@ -230,8 +233,8 @@ export function BranchNewOrders() {
 
   // One row per demand submission (matching how Production sees the same list) —
   // items are shown via the View dialog, not flattened into extra rows. Once a
-  // demand is approved its items are locked (Production owns quantity edits), so
-  // there is nothing here for the branch to change, only to inspect.
+  // demand is reviewed its items are locked (Production owns quantity edits), so
+  // only a 'pending' one can still be edited here.
   const columns = [
     col.accessor('date', {
       header: 'Date',
@@ -396,9 +399,15 @@ export function BranchNewOrders() {
             <Button variant="ghost" size="sm" onClick={() => setDemandFor(o)}>
               <Package className="mr-1.5 h-4 w-4" /> Demand
             </Button>
-            {/* Only while Production has not reviewed it. Past 'pending' the
-                goods are out of the door — and past verification stock has
-                already moved — so there is nothing left to take back. */}
+            {/* Edit and Delete only while Production has not reviewed it.
+                Past 'pending' the goods are out of the door — and past
+                verification stock has already moved — so there is nothing
+                left to change or take back. */}
+            {o.status === 'pending' && (
+              <Button variant="ghost" size="sm" onClick={() => openView(o, true)}>
+                <Pencil className="mr-1.5 h-4 w-4" /> Edit
+              </Button>
+            )}
             {o.status === 'pending' && (
               <Button
                 variant="ghost"
@@ -502,9 +511,16 @@ export function BranchNewOrders() {
         }
       />
 
-      {/* Demand detail — read-only, except an 'awaiting_verification' order,
-          where the branch checks physical items and verifies. */}
-      <BranchOrderDetail open={viewOpen} onOpenChange={setViewOpen} order={viewOrder} token={token} />
+      {/* Demand detail — editable while 'pending' (before Production sends it);
+          on an 'awaiting_verification' order the branch checks physical items
+          and verifies; read-only otherwise. */}
+      <BranchOrderDetail
+        open={viewOpen}
+        onOpenChange={setViewOpen}
+        order={viewOrder}
+        token={token}
+        startEditing={viewEditing}
+      />
 
       {/* Order-entry popup */}
       <NewOrderModal

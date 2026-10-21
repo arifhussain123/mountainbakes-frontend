@@ -1042,6 +1042,32 @@ export function useCancelProductionOrder(token: string) {
   });
 }
 
+/**
+ * The branch editing its own still-'pending' demand. Sends the whole of the
+ * branch's side as it now wants it — a line left out is removed.
+ */
+export function useEditProductionOrder(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: {
+      id: string;
+      items: { productId: string; qty: number }[];
+      packingItems: { packingMaterialId: string; qty: number }[];
+    }) =>
+      apiCall(
+        `/api/production-orders/${v.id}/items`,
+        { method: 'PUT', body: JSON.stringify({ items: v.items, packingItems: v.packingItems }) },
+        token,
+      ),
+    // Settled, not only success: a 409 means Production reviewed it meanwhile,
+    // and the list should repaint out of 'pending' straight away.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['productionOrders'] });
+      qc.invalidateQueries({ queryKey: ['productionOverview'] });
+    },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Production module
 // ─────────────────────────────────────────────────────────────────────────────

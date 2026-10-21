@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { useProducts, useVerifyProductionOrder } from '@/lib/queries';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Loader2, Pencil, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { BranchOrderEditor } from './BranchOrderEditor';
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400',
@@ -40,8 +41,10 @@ function digits(raw: string): string {
 }
 
 /**
- * Branch demand detail. Read-only for 'pending'/'approved'/'rejected' — Production
- * owns quantity edits before submission (see OrderPrintPreview). For
+ * Branch demand detail. While a demand is 'pending' — before Production sends it
+ * for verification — the branch can switch it into edit mode (BranchOrderEditor)
+ * to change quantities, remove lines and add items. Read-only for
+ * 'approved'/'rejected'. For
  * 'awaiting_verification' this becomes interactive: the branch checks what
  * physically arrived against what Production recorded, corrects any
  * shortage/overage, and can add items that showed up unrequested, then clicks
@@ -53,13 +56,24 @@ export function BranchOrderDetail({
   onOpenChange,
   order,
   token,
+  startEditing = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: BranchProductionOrder | null;
   token: string;
+  /** Open straight into edit mode — the list's Edit button. */
+  startEditing?: boolean;
 }) {
   const awaitingVerification = order?.status === 'awaiting_verification';
+  const canEdit = order?.status === 'pending';
+  const [editing, setEditing] = useState(startEditing);
+  // Reset on every open, so View after Edit opens read-only and vice versa.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setEditing(startEditing);
+  }
   // Loaded whenever a demand is open, not only while verifying: the live price
   // list is the fallback rate for lines that carry no snapshot (see `rateFor`).
   const productsQ = useProducts(token, { enabled: !!order });
@@ -189,6 +203,7 @@ export function BranchOrderDetail({
     setNewProductId('');
     setNewQty('');
     setPhotos([]);
+    setEditing(false);
   }
 
   function addStagedItem() {
@@ -249,6 +264,18 @@ export function BranchOrderDetail({
               </p>
             </DialogHeader>
 
+            {editing && canEdit ? (
+              <BranchOrderEditor
+                order={order}
+                token={token}
+                onCancel={() => setEditing(false)}
+                onSaved={() => {
+                  resetLocalState();
+                  onOpenChange(false);
+                }}
+              />
+            ) : (
+            <>
             <div className="max-h-[70dvh] space-y-4 overflow-y-auto">
               {awaitingVerification && (
                 <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
@@ -679,6 +706,11 @@ export function BranchOrderDetail({
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={verifyMut.isPending}>
                 Close
               </Button>
+              {canEdit && (
+                <Button onClick={() => setEditing(true)}>
+                  <Pencil className="mr-1.5 h-4 w-4" /> Edit
+                </Button>
+              )}
               {awaitingVerification && (
                 // Disabled without a photo rather than letting the API 400 after
                 // the user has already committed to the count.
@@ -687,6 +719,8 @@ export function BranchOrderDetail({
                 </Button>
               )}
             </div>
+            </>
+            )}
           </>
         )}
       </DialogContent>
