@@ -5,7 +5,11 @@ import { Lock, LockOpen, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DAILY_SALE_MANUAL_METHODS,
+  bankRequired,
+  reconcileMethod,
+  verifyMethods,
   type DailySaleManualMethod,
+  type ReconMethodKey,
   type DailySaleRecord,
 } from '@mb/shared';
 import { useDailySaleLocks, useFeedDailySale } from '@/lib/queries';
@@ -15,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { cn } from '@/lib/utils';
-import { DifferenceBadge, exactMoney, money } from './parts';
+import { MethodDiffBadge, VerificationBadge, exactMoney, money } from './parts';
 
 /**
  * Manual Daily Sale Feed (§7, §8).
@@ -108,6 +112,18 @@ const EXPECTED_BY_METHOD: Record<DailySaleManualMethod, keyof DailySaleRecord> =
   bank_account: 'autoBank',
 };
 
+const RECON_KEY: Record<DailySaleManualMethod, ReconMethodKey> = {
+  cash: 'cash',
+  easypaisa: 'easypaisa',
+  bank_account: 'bank',
+};
+
+const SAVED_COUNT: Record<DailySaleManualMethod, keyof DailySaleRecord> = {
+  cash: 'manualCash',
+  easypaisa: 'manualEasypaisa',
+  bank_account: 'manualBank',
+};
+
 /** The label above each expected figure — cash's is not the raw takings. */
 const EXPECTED_LABEL: Record<DailySaleManualMethod, string> = {
   cash: 'Cash on table',
@@ -161,13 +177,6 @@ function FeedForm({
     return Number(record[EXPECTED_BY_METHOD[method]] ?? 0);
   }
 
-  /** The live difference for a field, or null while it is empty or unparseable. */
-  function liveDifference(method: DailySaleManualMethod): number | null {
-    const raw = values[method].trim();
-    if (raw === '') return null;
-    const n = Number(raw);
-    return Number.isFinite(n) ? Math.round((n - expectedOf(method)) * 100) / 100 : null;
-  }
 
   async function submit() {
     const payload: { cash?: number; easypaisa?: number; bank?: number } = {};
@@ -227,7 +236,9 @@ function FeedForm({
           // whose entry is then audited as an override.
           const disabled = locked && !isAdmin;
           const expected = expectedOf(method);
-          const diff = liveDifference(method);
+          // Live, as the field is typed: "Not entered" while it is empty or not
+          // a number, "Rs. 0" only on an exact match to the paisa.
+          const recon = reconcileMethod(RECON_KEY[method], expected, values[method]);
 
           return (
             <div
@@ -266,8 +277,8 @@ function FeedForm({
                   onChange={(e) => setValues((v) => ({ ...v, [method]: e.target.value }))}
                   className="tabular-nums"
                 />
-                <div className="w-32 shrink-0 text-right">
-                  <DifferenceBadge difference={diff} symbol={currencySymbol} />
+                <div className="w-40 shrink-0 text-right">
+                  <MethodDiffBadge recon={recon} symbol={currencySymbol} />
                 </div>
               </div>
 
@@ -298,6 +309,8 @@ function FeedForm({
         })}
       </div>
 
+      <LiveVerification record={record} values={values} expectedOf={expectedOf} symbol={currencySymbol} />
+
       <p className="text-xs text-muted-foreground">
         Leave a field blank to leave that figure as it is. Foodpanda is settled by the
         aggregator and is not counted here.
@@ -311,6 +324,39 @@ function FeedForm({
           {feed.isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the day will read once saved: a blank field keeps its saved figure, as the
+ * save itself does, so the preview never claims VERIFIED on a count that is not
+ * going to be there.
+ */
+function LiveVerification({
+  record,
+  values,
+  expectedOf,
+  symbol,
+}: {
+  record: DailySaleRecord;
+  values: Record<DailySaleManualMethod, string>;
+  expectedOf: (method: DailySaleManualMethod) => number;
+  symbol: string;
+}) {
+  const effective = (method: DailySaleManualMethod) =>
+    values[method].trim() === '' ? (record[SAVED_COUNT[method]] as number | null) : values[method];
+  const recon = (method: DailySaleManualMethod) => reconcileMethod(RECON_KEY[method], expectedOf(method), effective(method));
+  const v = verifyMethods(
+    recon('cash'),
+    recon('easypaisa'),
+    bankRequired(record.autoBank, effective('bank_account')) ? recon('bank_account') : null,
+    symbol,
+  );
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-xs" data-testid="live-verification">
+      <VerificationBadge verified={v.verified} />
+      <span className="text-muted-foreground">{v.verified ? 'Every counted figure matches the table.' : v.problems.join(' · ')}</span>
     </div>
   );
 }

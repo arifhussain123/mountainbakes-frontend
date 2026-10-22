@@ -20,6 +20,7 @@ import {
   DAILY_SALE_MAX_WINDOW_DAYS,
   businessDateStr,
   isDailySaleRecordOpen,
+  verifyDailySale,
   type DailySaleRecord,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
@@ -48,6 +49,7 @@ import { ALL_BRANCHES, DailySaleFilters, DailySaleNotices, DailySaleSummaryCards
 import { dailySaleRecordColumns, daysBetween } from './columns';
 import { DailySaleViewDialog } from './DailySaleViewDialog';
 import { ManualFeedDialog } from './ManualFeedDialog';
+import { MethodDiffBadge, VerificationBadge, money } from './parts';
 import { PaymentLockPanel } from './PaymentLockPanel';
 import { UnlockDialog } from './UnlockDialog';
 
@@ -188,6 +190,43 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
   const columns = useMemo<ColumnDef<DailySaleRecord>[]>(
     () => [
       ...dailySaleRecordColumns({ symbol, showBranch: !effectiveBranchId }),
+      // Counted money against the table: Cash on Table vs counted cash, and
+      // Easypaisa on table vs received, each with its signed difference (the
+      // database's own), then the day — VERIFIED only when every required figure
+      // matches exactly. The Difference column above adds all methods together.
+      ...(['cash', 'easypaisa'] as const).map<ColumnDef<DailySaleRecord>>((method) => ({
+        id: `${method}Check`,
+        accessorFn: (r) => verifyDailySale(r)[method].difference,
+        header: method === 'cash' ? 'Counted Cash' : 'Received Easypaisa',
+        enableSorting: false,
+        meta: { align: 'center' },
+        cell: ({ row }) => {
+          const m = verifyDailySale(row.original, symbol)[method];
+          return (
+            <div className="flex flex-col items-center gap-0.5">
+              <MethodDiffBadge recon={m} symbol={symbol} />
+              <span className="whitespace-nowrap text-[11px] text-muted-foreground tabular-nums">
+                {m.counted === null ? '—' : money(m.counted, symbol)} of {m.tableAmount === null ? '—' : money(m.tableAmount, symbol)}
+              </span>
+            </div>
+          );
+        },
+      })),
+      {
+        id: 'verification',
+        accessorFn: (r) => verifyDailySale(r).verified,
+        header: 'Check',
+        enableSorting: false,
+        meta: { align: 'center', mobile: 'badge' },
+        cell: ({ row }) => {
+          const v = verifyDailySale(row.original, symbol);
+          return (
+            <span title={v.verified ? 'Every counted figure matches the table' : v.problems.join(' · ')}>
+              <VerificationBadge verified={v.verified} />
+            </span>
+          );
+        },
+      },
       {
         id: 'actions',
         header: '',

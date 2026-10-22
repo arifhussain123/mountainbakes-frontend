@@ -19,8 +19,9 @@ import { PrintButton } from '@/components/shared/PrintButton';
 import { PrintPortal } from '@/components/shared/PrintPortal';
 import { PAYMENT_METHOD_LABELS } from '@/utils/constants';
 import { useDocumentPrint } from '@/hooks/useDocumentPrint';
+import { ReconciliationPanel } from './ReconciliationPanel';
 import { DailySalePrintSheet } from './DailySalePrintSheet';
-import { DifferenceBadge, Row, Section, StatusBadge, exactMoney, money, orDash } from './parts';
+import { DifferenceBadge, Row, Section, StatusBadge, exactMoney, money } from './parts';
 
 /**
  * View a Daily Sale Record in full (§21), with its history (§17) and the Print
@@ -232,26 +233,19 @@ function ViewBody({
             <Row label="Orders" value={String(record.orderCount)} muted />
           </Section>
 
-          <Section title="Counted / Received">
-            <Row label="Cash" value={orDash(record.manualCash, (v) => money(v, symbol))} />
-            <Row label="Easypaisa" value={orDash(record.manualEasypaisa, (v) => money(v, symbol))} />
-            <Row label="Bank" value={orDash(record.manualBank, (v) => money(v, symbol))} />
+          {/* Each counted method against its table, with the signed difference,
+              and VERIFIED only when every required figure matches exactly. */}
+          <ReconciliationPanel record={record} symbol={symbol} />
+
+          <Section title="Overall">
+            {/* All three counted methods added, an uncounted one as 0 — the
+                figure the table's Difference column shows. */}
+            <DiffRow label="Cash + Easypaisa + Bank" value={record.overallDifference} symbol={symbol} strong />
             {/* Foodpanda has no counted row, and its absence is explained rather
                 than left looking like an omission. */}
             <p className="pt-1 text-xs text-muted-foreground">
               Foodpanda is settled by the aggregator and is not counted at the shop.
             </p>
-          </Section>
-
-          <Section title="Difference">
-            {/* The basis is named on the row, not left to be inferred: cash is
-                checked against Cash on Table and the other two against their
-                gross settlement, and a reader chasing a discrepancy needs to
-                know which without opening the code. */}
-            <DiffRow label="Cash (vs Cash on Table)" value={record.cashDifference} symbol={symbol} />
-            <DiffRow label="Easypaisa" value={record.easypaisaDifference} symbol={symbol} />
-            <DiffRow label="Bank" value={record.bankDifference} symbol={symbol} />
-            <DiffRow label="Overall" value={record.overallDifference} symbol={symbol} strong />
           </Section>
 
           <Section title="Sign-off">
