@@ -74,6 +74,8 @@ export const ROUTES = {
   PRODUCTION_STOCK: '/production-stock',
   PRODUCTION_BRANCH_STOCK: '/production-branch-stock',
   PRODUCTION_RETURNS: '/production-returns',
+  /** Product Returns → Return Summary: one month consolidated per branch, item and reason. */
+  PRODUCTION_RETURNS_SUMMARY: '/production-returns/summary',
   /**
    * Production → Discounts. The board of money branches are claiming back
    * against demands, reviewed exactly as returns are.
