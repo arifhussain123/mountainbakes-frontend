@@ -5,14 +5,12 @@ import {
   DEPOSIT_RECON_STATUS_LABELS,
   DIFFERENCE_STATUS_LABELS,
   differenceStatus,
-  formatSignedRupees,
   type DailySaleRecordStatus,
   type DepositReconStatus,
-  type MethodReconciliation,
 } from '@mb/shared';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, CheckCircle2, MinusCircle, TrendingDown, TrendingUp } from 'lucide-react';
+import { CheckCircle2, MinusCircle, TrendingDown, TrendingUp } from 'lucide-react';
 
 /**
  * The small presentational pieces the Daily Sale Record surfaces share.
@@ -110,50 +108,6 @@ export function DifferenceBadge({
         // makes the reader work out the direction from the label; "-500" says it.
         ? `${difference! > 0 ? '+' : ''}${exactMoney(difference!, symbol)}`
         : DIFFERENCE_STATUS_LABELS[state]}
-    </Badge>
-  );
-}
-
-const RECON_STYLES = {
-  missing: DIFF_STYLES.uncounted,
-  match: DIFF_STYLES.matched,
-  short: DIFF_STYLES.short,
-  over: DIFF_STYLES.over,
-} as const;
-
-const RECON_ICONS = {
-  missing: MinusCircle,
-  match: CheckCircle2,
-  short: TrendingDown,
-  over: TrendingUp,
-} as const;
-
-/**
- * One payment method's difference: "− Rs. 500" (short, red), "+ Rs. 200" (over,
- * amber), "Rs. 0" (exact, green) — or "Not entered", never a confident zero.
- */
-export function MethodDiffBadge({
-  recon,
-  symbol = 'Rs.',
-}: {
-  recon: Pick<MethodReconciliation, 'status' | 'difference'>;
-  symbol?: string;
-}) {
-  const Icon = RECON_ICONS[recon.status];
-  return (
-    <Badge className={cn('border-0 gap-1 tabular-nums', RECON_STYLES[recon.status])}>
-      <Icon />
-      {recon.status === 'missing' || recon.difference === null ? 'Not entered' : formatSignedRupees(recon.difference, symbol)}
-    </Badge>
-  );
-}
-
-/** The day's Cash & Easypaisa check: VERIFIED only when every required figure matches exactly. */
-export function VerificationBadge({ verified }: { verified: boolean }) {
-  return (
-    <Badge className={cn('border-0 gap-1 font-semibold tracking-wide', verified ? DIFF_STYLES.matched : DIFF_STYLES.short)}>
-      {verified ? <CheckCircle2 /> : <AlertTriangle />}
-      {verified ? 'VERIFIED' : 'NOT VERIFIED'}
     </Badge>
   );
 }
