@@ -395,7 +395,7 @@ export function ProductionOrdersPage() {
             <Button
               size="sm"
               variant="outline"
-              className="h-8 shrink-0"
+              className="h-8 shrink-0 border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary dark:border-primary/40 dark:bg-primary/15 dark:hover:bg-primary/25"
               onClick={() => setPrintSummaryOpen(true)}
               disabled={demand.rows.length === 0 && demand.packingRows.length === 0}
             >
