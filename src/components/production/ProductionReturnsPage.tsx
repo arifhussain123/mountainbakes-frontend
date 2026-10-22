@@ -29,7 +29,9 @@ import {
 import { formatDate, formatDateTime } from '@/utils/date';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Check, Eye, Plus, Undo2, X } from 'lucide-react';
+import { Check, ClipboardList, Eye, Plus, Undo2, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ROUTES } from '@/utils/routes';
 import { toast } from 'sonner';
 
 /**
@@ -149,6 +151,7 @@ const col = createColumnHelper<ProductionReturn>();
 
 export function ProductionReturnsPage() {
   const { token } = useAuth();
+  const router = useRouter();
 
   // The row open in the dialog, and — once one is picked — the action awaiting
   // confirmation. `pendingAction` null means the dialog is showing the record;
@@ -316,11 +319,16 @@ export function ProductionReturnsPage() {
             Last 30 days by default · open a return to approve it, reject it, or send it back to the branch to correct
           </p>
         </div>
-        {/* Full width under the heading on a phone, where it is the one thing to
+        {/* Full width under the heading on a phone, where they are the things to
             tap; beside it from `sm` up. */}
-        <Button className="h-11 w-full shrink-0 sm:h-9 sm:w-auto" onClick={() => setRecording(true)}>
-          <Plus className="mr-1.5 h-4 w-4" /> Record Return
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0">
+          <Button variant="outline" className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => router.push(ROUTES.PRODUCTION_RETURNS_SUMMARY)}>
+            <ClipboardList className="mr-1.5 h-4 w-4" /> Return Summary
+          </Button>
+          <Button className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => setRecording(true)}>
+            <Plus className="mr-1.5 h-4 w-4" /> Record Return
+          </Button>
+        </div>
       </div>
 
       <MonthlyReturnsSummary

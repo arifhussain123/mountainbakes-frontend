@@ -39,6 +39,7 @@ import type {
   ProductionReturn,
   ProductionReturnStatus,
   MonthlyReturnsSummary,
+  ProductionReturnMonthSummary,
   MonthlyCashTransferSummary,
   BranchDiscount,
   BranchDiscountStatus,
@@ -1841,6 +1842,27 @@ export function useBranchReturnsSummary(token: string) {
   return useQuery({
     queryKey: qk.branchReturnsSummary(today),
     queryFn: () => apiCall<MonthlyReturnsSummary>('/api/stock/returns/summary', {}, token),
+    enabled: !!token,
+    staleTime: LIVE_STALE_TIME,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Production → Product Returns → Return Summary: one business month, every
+ * branch, consolidated per branch × item × reason. `month` null is the current
+ * business month, decided by the server.
+ */
+export function useProductionReturnMonthSummary(token: string, month: string | null) {
+  const today = businessDateStr();
+  return useQuery({
+    queryKey: qk.productionReturnMonthSummary(month, today),
+    queryFn: () =>
+      apiCall<ProductionReturnMonthSummary>(
+        `/api/production-returns/month-summary${month ? `?month=${encodeURIComponent(month)}` : ''}`,
+        {},
+        token,
+      ),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
     placeholderData: keepPreviousData,

@@ -192,6 +192,11 @@ export const qk = {
   // `branchReturnsSummary`.
   productionReturnsSummary: (branchId: string | null, businessDate: string) =>
     ['productionReturns', 'summary', branchId, businessDate] as const,
+  // Return Summary: one whole month. Under ['productionReturns'] for the same
+  // refresh-on-review reason; keyed by today's business date too, so "current
+  // month" is asked again once the month rolls over.
+  productionReturnMonthSummary: (month: string | null, businessDate: string) =>
+    ['productionReturns', 'month-summary', month, businessDate] as const,
   // Discounts, keyed as their own family rather than under ['stock'] the way
   // `branchReturns` is — and the difference is not cosmetic. A return moves units,
   // so it belongs under the prefix `useStockRealtime` invalidates; a discount
