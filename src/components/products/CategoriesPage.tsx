@@ -69,7 +69,7 @@ export function CategoriesPage() {
       {/* Add new */}
       <div className="flex gap-2">
         <Input
-          placeholder="New category nameâ€¦"
+          placeholder="New category name…"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}

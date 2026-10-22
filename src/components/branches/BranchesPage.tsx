@@ -204,7 +204,7 @@ export function BranchesPage() {
         <Button onClick={() => { setEditBranch(null); form.reset(); setSharePct(INHERIT); setShowForm(true); }}>+ Add Branch</Button>
       </div>
 
-      <DataTable columns={columns} data={branches} loading={loading} searchPlaceholder="Search branchesâ€¦" sortable />
+      <DataTable columns={columns} data={branches} loading={loading} searchPlaceholder="Search branches…" sortable />
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="md:max-w-md">
@@ -282,7 +282,7 @@ export function BranchesPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Savingâ€¦' : editBranch ? 'Update Branch' : 'Add Branch'}
+              {submitting ? 'Saving…' : editBranch ? 'Update Branch' : 'Add Branch'}
             </Button>
           </form>
         </DialogContent>

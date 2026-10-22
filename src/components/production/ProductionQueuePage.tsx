@@ -107,7 +107,7 @@ export function ProductionQueuePage() {
                       <div className="space-y-0.5">
                         {order.items.map((item, i) => (
                           <p key={i} className="text-xs text-muted-foreground">
-                            {item.qty}Ã— {item.productName}
+                            {item.qty}× {item.productName}
                           </p>
                         ))}
                       </div>
@@ -122,7 +122,7 @@ export function ProductionQueuePage() {
                           disabled={updating === order.id}
                           variant={order.status === 'ready' ? 'default' : 'outline'}
                         >
-                          {updating === order.id ? 'Updatingâ€¦' : `Mark ${STATUS_NEXT[order.status]}`}
+                          {updating === order.id ? 'Updating…' : `Mark ${STATUS_NEXT[order.status]}`}
                         </Button>
                       )}
                     </CardContent>

@@ -61,12 +61,12 @@ export function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChan
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput
-        placeholder="Search orders, products, customersâ€¦"
+        placeholder="Search orders, products, customers…"
         value={search}
         onValueChange={setSearch}
       />
       <CommandList>
-        {loading && <CommandEmpty>Searchingâ€¦</CommandEmpty>}
+        {loading && <CommandEmpty>Searching…</CommandEmpty>}
         {!loading && debouncedSearch.length >= 2 && displayResults.length === 0 && (
           <CommandEmpty>No results found for &quot;{debouncedSearch}&quot;</CommandEmpty>
         )}

@@ -170,7 +170,7 @@ export function UsersPage() {
         </span>
       ),
     }),
-    col.accessor('branchName', { header: 'Branch', cell: (info) => info.getValue() || <span className="text-muted-foreground">â€”</span> }),
+    col.accessor('branchName', { header: 'Branch', cell: (info) => info.getValue() || <span className="text-muted-foreground">—</span> }),
     col.accessor('phone', { header: 'Phone', enableSorting: false }),
     col.accessor('status', {
       header: 'Status',
@@ -333,7 +333,7 @@ export function UsersPage() {
               )}
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Creatingâ€¦' : 'Create User'}
+              {submitting ? 'Creating…' : 'Create User'}
             </Button>
           </form>
         </DialogContent>

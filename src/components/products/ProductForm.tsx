@@ -82,9 +82,9 @@ export function ProductForm({ product, onSuccess }: { product?: Product | null; 
             <SelectTrigger className="w-full"><SelectValue placeholder="Select category" /></SelectTrigger>
             <SelectContent>
               {catLoading ? (
-                <SelectItem value="__loading" disabled>Loadingâ€¦</SelectItem>
+                <SelectItem value="__loading" disabled>Loading…</SelectItem>
               ) : categories.length === 0 ? (
-                <SelectItem value="__empty" disabled>No categories yet â€” add one under Categories</SelectItem>
+                <SelectItem value="__empty" disabled>No categories yet — add one under Categories</SelectItem>
               ) : (
                 categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)
               )}
@@ -116,7 +116,7 @@ export function ProductForm({ product, onSuccess }: { product?: Product | null; 
 
         <div className="col-span-2 space-y-1">
           <Label>Description</Label>
-          <Input {...form.register('description')} placeholder="Optional descriptionâ€¦" />
+          <Input {...form.register('description')} placeholder="Optional description…" />
         </div>
 
         {product && (
@@ -134,7 +134,7 @@ export function ProductForm({ product, onSuccess }: { product?: Product | null; 
       </div>
 
       <Button type="submit" className="w-full" disabled={submitting}>
-        {submitting ? 'Savingâ€¦' : product ? 'Update Product' : 'Add Product'}
+        {submitting ? 'Saving…' : product ? 'Update Product' : 'Add Product'}
       </Button>
     </form>
   );

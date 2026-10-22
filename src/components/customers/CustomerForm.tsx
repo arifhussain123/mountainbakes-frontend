@@ -100,7 +100,7 @@ export function CustomerForm({ customer, onSuccess }: { customer?: Customer | nu
       )}
 
       <Button type="submit" className="w-full" disabled={submitting}>
-        {submitting ? 'Savingâ€¦' : customer ? 'Update Customer' : 'Add Customer'}
+        {submitting ? 'Saving…' : customer ? 'Update Customer' : 'Add Customer'}
       </Button>
     </form>
   );

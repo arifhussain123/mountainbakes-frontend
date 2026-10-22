@@ -82,21 +82,21 @@ export function ReportsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           title="Total Orders"
-          value={loading ? 'â€¦' : (summary?.totalOrders ?? 0).toLocaleString()}
+          value={loading ? '…' : (summary?.totalOrders ?? 0).toLocaleString()}
           icon={ShoppingCart}
           color="orange"
           loading={loading}
         />
         <StatCard
           title="Revenue"
-          value={loading ? 'â€¦' : `Rs.${(summary?.totalRevenue ?? 0).toLocaleString()}`}
+          value={loading ? '…' : `Rs.${(summary?.totalRevenue ?? 0).toLocaleString()}`}
           icon={DollarSign}
           color="green"
           loading={loading}
         />
         <StatCard
           title="Avg. Order Value"
-          value={loading ? 'â€¦' : `Rs.${Math.round(summary?.averageOrderValue ?? 0).toLocaleString()}`}
+          value={loading ? '…' : `Rs.${Math.round(summary?.averageOrderValue ?? 0).toLocaleString()}`}
           icon={BarChart3}
           color="brown"
           loading={loading}

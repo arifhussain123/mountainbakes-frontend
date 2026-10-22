@@ -75,7 +75,7 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
         { method: 'POST', body: JSON.stringify(data) },
         token
       );
-      toast.success(`Order ${result.orderNumber} created â€” Rs.${result.grandTotal.toLocaleString()}`);
+      toast.success(`Order ${result.orderNumber} created — Rs.${result.grandTotal.toLocaleString()}`);
       form.reset();
       onSuccess?.();
     } catch (err) {
@@ -98,12 +98,12 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
             onValueChange={(v) => form.setValue('customerId', (v as string) ?? '', { shouldValidate: true })}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select customerâ€¦" />
+              <SelectValue placeholder="Select customer…" />
             </SelectTrigger>
             <SelectContent>
               {customers.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
-                  {c.name} â€” {c.phone}
+                  {c.name} — {c.phone}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -143,12 +143,12 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
                     onValueChange={(v) => form.setValue(`items.${i}.productId`, (v as string) ?? '')}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select productâ€¦" />
+                      <SelectValue placeholder="Select product…" />
                     </SelectTrigger>
                     <SelectContent>
                       {products.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
-                          {p.name} â€” Rs.{p.price}
+                          {p.name} — Rs.{p.price}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -176,7 +176,7 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
                 <div className="col-span-2">
                   {i === 0 && <Label className="text-xs">Price</Label>}
                   <div className="h-9 flex items-center px-2 bg-muted rounded-md text-sm font-medium">
-                    Rs.{selectedProduct ? selectedProduct.price : 'â€”'}
+                    Rs.{selectedProduct ? selectedProduct.price : '—'}
                   </div>
                 </div>
                 <div className="col-span-1 flex justify-center">
@@ -230,7 +230,7 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
 
       <div className="space-y-1">
         <Label>Notes (optional)</Label>
-        <Input placeholder="Special instructionsâ€¦" {...form.register('notes')} />
+        <Input placeholder="Special instructions…" {...form.register('notes')} />
       </div>
 
       {/* Totals */}
@@ -251,7 +251,7 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void }) {
       </div>
 
       <Button type="submit" className="w-full" disabled={submitting} size="lg">
-        {submitting ? 'Creating Orderâ€¦' : 'Create Order'}
+        {submitting ? 'Creating Order…' : 'Create Order'}
       </Button>
     </form>
   );
