@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useAppStore } from '@/stores/useAppStore';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, LogOut } from '@/utils/icons';
+import { ChevronLeft, ChevronRight, LogOut } from '@/utils/icons';
 import { getNavItems, isNavItemActive } from '@/utils/sidebar';
 import { COMPANY_NAME } from '@/utils/constants';
 import { IMAGES } from '@/utils/images';
@@ -67,6 +67,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 
   if (!user) return null;
   const navItems = getNavItems(user.role);
+  // Only the phone drawer passes onNavigate. It lists screens as full-width
+  // rows with dividers and a chevron; the desktop aside keeps its rounded pills.
+  const drawer = Boolean(onNavigate);
 
   async function handleLogout() {
     await logout();
@@ -140,23 +143,25 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <div className="space-y-1">
+      <nav className={cn('flex-1 overflow-y-auto', drawer ? 'py-2' : 'px-3 py-4')}>
+        <div className={drawer ? 'divide-y divide-sidebar-border' : 'space-y-1'}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = isNavItemActive(pathname, item.href);
             return (
-              <Link key={item.href} href={item.href} onClick={onNavigate}>
+              <Link key={item.href} href={item.href} onClick={onNavigate} className="block">
                 <div
                   className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 text-sm font-medium transition-colors',
+                    drawer ? 'px-6 py-3' : 'rounded-lg px-3 py-2.5',
                     isActive
                       ? 'bg-primary text-white'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   )}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" />
-                  {item.label}
+                  <span className={drawer ? 'min-w-0 flex-1 truncate' : undefined}>{item.label}</span>
+                  {drawer && <ChevronRight aria-hidden className="h-4 w-4 flex-shrink-0 opacity-60" />}
                 </div>
               </Link>
             );
