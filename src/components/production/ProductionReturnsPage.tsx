@@ -322,7 +322,11 @@ export function ProductionReturnsPage() {
         {/* Full width under the heading on a phone, where they are the things to
             tap; beside it from `sm` up. */}
         <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0">
-          <Button variant="outline" className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => router.push(ROUTES.PRODUCTION_RETURNS_SUMMARY)}>
+          <Button
+            variant="outline"
+            className="h-11 w-full border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary sm:h-9 sm:w-auto dark:border-primary/40 dark:bg-primary/15 dark:hover:bg-primary/25"
+            onClick={() => router.push(ROUTES.PRODUCTION_RETURNS_SUMMARY)}
+          >
             <ClipboardList className="mr-1.5 h-4 w-4" /> Return Summary
           </Button>
           <Button className="h-11 w-full sm:h-9 sm:w-auto" onClick={() => setRecording(true)}>
