@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { createColumnHelper } from '@tanstack/react-table';
-import { AlertTriangle, ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Search, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, ClipboardList, Search, X } from 'lucide-react';
 import {
   RETURN_REASONS,
   RETURN_REASON_LABELS,
@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useProductionReturnMonthSummary } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,7 +36,8 @@ import { cn } from '@/lib/utils';
  *
  * One business month of returns from every branch, in two views of the same
  * figures: a branch-wise table (one line per branch × item × reason) and an
- * item-wise box (each item once, every branch added up). Both come from one
+ * item-wise box (a square per item, every branch added up; tapping one lists
+ * its branches). Both come from one
  * server aggregate — GET /api/production-returns/month-summary — so the cards,
  * the table and the box can never disagree; see
  * `shared/utils/return-month-summary.ts` for which returns count (everything
@@ -72,51 +74,57 @@ function ReasonPill({ reason }: { reason: ReturnReason }) {
 }
 
 function ItemWiseBox({ items }: { items: ReturnMonthItem[] }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = items.find((i) => i.productId === openId) ?? null;
   return (
     <section aria-labelledby="item-wise-heading" className="rounded-lg border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-1 border-b px-4 py-3">
         <h3 id="item-wise-heading" className="text-sm font-semibold">All Branches — Item-Wise Total Returns</h3>
         <span className="text-xs text-muted-foreground">Tap an item for its branches</span>
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 border-b px-4 py-2 text-xs font-medium text-muted-foreground">
-        <span>Item Name</span>
-        <span className="text-right">Total Quantity</span>
-        <span className="w-28 text-right">Total Amount</span>
-      </div>
-      <ul className="divide-y">
-        {items.map((item) => {
-          const expanded = open === item.productId;
-          return (
-            <li key={item.productId}>
-              <button
-                type="button"
-                aria-expanded={expanded}
-                onClick={() => setOpen(expanded ? null : item.productId)}
-                className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 px-4 py-2.5 text-left text-sm transition-colors hover:bg-accent"
-              >
-                <span className="flex min-w-0 items-center gap-1.5 font-medium">
-                  <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', !expanded && '-rotate-90')} />
-                  <span className="truncate">{item.productName}</span>
-                </span>
-                <span className="text-right font-semibold tabular-nums">{qtyText(item.qty)}</span>
-                <span className="w-28 text-right tabular-nums">{formatCurrency(item.amount)}</span>
-              </button>
-              {expanded && (
-                <ul className="space-y-1 bg-muted/40 py-2 pl-10 pr-4">
-                  {item.branches.map((b) => (
-                    <li key={b.branchId} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 text-xs text-muted-foreground">
-                      <span className="truncate">{shortBranch(b.branchName)}</span>
-                      <span className="text-right tabular-nums">{qtyText(b.qty)}</span>
-                      <span className="w-28 text-right tabular-nums">{formatCurrency(b.amount)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
+      <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        {items.map((item) => (
+          <li key={item.productId}>
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={openId === item.productId}
+              onClick={() => setOpenId(item.productId)}
+              className="flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-lg border bg-background p-3 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="line-clamp-3 text-sm font-medium leading-snug">{item.productName}</span>
+              <span className="text-2xl font-semibold tabular-nums">{qtyText(item.qty)}</span>
+            </button>
+          </li>
+        ))}
       </ul>
+      <Dialog open={!!open} onOpenChange={(o) => !o && setOpenId(null)}>
+        <DialogContent className="md:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{open?.productName}</DialogTitle>
+          </DialogHeader>
+          {open && (
+            <div className="text-sm">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b pb-2 text-xs font-medium text-muted-foreground">
+                <span>Branch Name</span>
+                <span className="text-right">Quantity</span>
+              </div>
+              <ul className="divide-y">
+                {open.branches.map((b) => (
+                  <li key={b.branchId} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 py-2">
+                    <span className="truncate">{shortBranch(b.branchName)}</span>
+                    <span className="text-right tabular-nums">{qtyText(b.qty)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-t pt-2 font-semibold">
+                <span>Total</span>
+                <span className="text-right tabular-nums">{qtyText(open.qty)}</span>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
