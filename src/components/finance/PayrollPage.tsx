@@ -178,6 +178,13 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     salaryCol.accessor('designation', { header: 'Designation', cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue()}</span> }),
     salaryCol.accessor('salaryMonth', { header: 'Month', cell: (i) => <span className="text-sm tabular-nums">{i.getValue()}</span> }),
     salaryCol.accessor('grossSalary', { header: 'Salary', cell: (i) => <Money value={i.getValue()} /> }),
+    // Derived from the advance rows, so the server cannot sort by it.
+    salaryCol.accessor((r) => r.advancesRecovered ?? 0, {
+      id: 'advancesRecovered',
+      header: 'Advances',
+      enableSorting: false,
+      cell: (i) => <Money value={i.getValue()} blankZero />,
+    }),
     salaryCol.accessor('bonus', { header: 'Bonus', cell: (i) => <Money value={i.getValue()} blankZero className="text-emerald-600 dark:text-emerald-400" /> }),
     salaryCol.accessor('deductions', { header: 'Deduction', cell: (i) => <Money value={i.getValue()} blankZero className="text-red-600 dark:text-red-400" /> }),
     salaryCol.accessor('netSalary', { header: 'Net Salary', cell: (i) => <Money value={i.getValue()} className="font-semibold" /> }),
