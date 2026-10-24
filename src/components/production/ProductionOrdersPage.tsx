@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
+import { format, parseISO } from 'date-fns';
 import type { BranchProductionOrder, FilterConfig } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -12,20 +13,17 @@ import {
   useReviewProductionOrder,
   useMarkPrinted,
   useFinalApproveProductionOrder,
+  useDemandRecordFigures,
+  type DemandRecordFigures,
 } from '@/lib/queries';
+import { formatCurrency } from '@/utils/currency';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GenericDataTable } from '@/components/data-engine';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { Eye, FileSpreadsheet, Printer, Sparkles } from 'lucide-react';
-import {
-  effectivePackingQty,
-  effectiveQty,
-  fulfilledTotals,
-  isWaitingOrder,
-  requestedTotals,
-} from '@/utils/demandLines';
-import { OrderPrintPreview, slipReference } from './OrderPrintPreview';
+import { effectivePackingQty, effectiveQty, isWaitingOrder } from '@/utils/demandLines';
+import { OrderPrintPreview } from './OrderPrintPreview';
 import { DemandSummaryPrintModal } from './DemandSummaryPrintModal';
 import { CollectionsExportModal } from './CollectionsExportModal';
 import { SpecialOrdersPanel } from '@/components/special-orders/SpecialOrdersPanel';
@@ -48,6 +46,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const short = (name: string) => name.replace('Mountain Bakes ', '');
+/** "2026-10-01" → "01 Oct 2026", the Demand Record's own date style. */
+const dayLabel = (ymd: string) => (/^\d{4}-\d{2}-\d{2}$/.test(ymd) ? format(parseISO(ymd), 'dd MMM yyyy') : ymd);
 const col = createColumnHelper<BranchProductionOrder>();
 
 const STATUS_OPTIONS = ['pending', 'awaiting_verification', 'verified', 'approved', 'rejected', 'cancelled']
@@ -66,6 +66,7 @@ export function ProductionOrdersPage() {
   const reviewMut = useReviewProductionOrder(token);
   const printedMut = useMarkPrinted(token);
   const finalApproveMut = useFinalApproveProductionOrder(token);
+  const figuresQ = useDemandRecordFigures(token);
 
   // Orders list below: Production sees every branch's demand (production_user
   // is not a branch role, so the resource's branchScope() doesn't restrict it —
@@ -284,96 +285,111 @@ export function ProductionOrdersPage() {
     setModalOpen(true);
   }
 
-  const columns = [
-    col.accessor('demandNumber', { header: 'ID', cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span> }),
-    col.display({ id: 'ref', header: 'Order #', meta: { mobile: 'subtitle' }, cell: ({ row }) => <span className="font-mono text-xs">{slipReference(row.original)}</span> }),
-    // `date`/`time` are the display-renamed `businessDate`/`submittedTime`
-    // (see the registry's `transform`) — the column `id` is set back to the
-    // real registered field so a click sorts against a column the Data
-    // Engine actually knows, instead of 400ing on a display-only key.
-    col.accessor('date', { id: 'businessDate', header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
-    // `submittedTime` (the displayed text) isn't itself a registered field —
-    // it's a freeform "as captured by the branch" string that would also
-    // sort lexically wrong. `submittedAt`, the real timestamp stamped at the
-    // same moment, is sortable and gives the correct order.
-    col.accessor('time', { id: 'submittedAt', header: 'Time', cell: (i) => <span className="text-sm tabular-nums text-muted-foreground">{i.getValue()}</span> }),
-    // What the branch is committing Production to. Emphasised over the raised
-    // date beside it — this is the one Production plans against. Blank on
-    // demands raised before the field existed; never defaulted to `date`.
-    col.accessor((o) => o.requiredDate ?? '', {
-      id: 'requiredDate',
-      header: 'Required Date',
-      cell: (i) => {
-        const v = i.getValue<string>();
-        return v ? (
-          <span className="text-sm font-medium tabular-nums">{v}</span>
+  // The Orders table, laid out as the Demand Record (demanShreRule.md): one row
+  // per demand with its money on the same rules as Finance → Demand Record and
+  // the Collections sheet —
+  //   G. Total = Delivered − Return − Discount; Company Share = G. Total × %;
+  //   Closing  = Previous + Company Share − Share Received, carried to the
+  //              branch's next demand (a negative closing is a credit).
+  // Read from /api/production-reports/demand-record and matched by order id,
+  // so the table keeps its server paging, filters and View. A demand that is
+  // not delivered yet (pending, rejected, deleted) has no money and shows "—".
+  // The POS slip's previous-order block is a separate calculation and is not
+  // changed by this.
+  const fig = (o: BranchProductionOrder) => figuresQ.data?.byOrder.get(o.id);
+  // Two-word headings break onto two lines: eleven money-and-identity columns
+  // only fit beside the sidebar on a laptop when no heading is wider than its
+  // figures. `mobileLabel` keeps the card label a plain string.
+  const twoLine = (label: string) => {
+    const [a, ...rest] = label.split(' ');
+    return label.length > 8 && rest.length ? () => <span className="inline-block leading-tight">{a}<br />{rest.join(' ')}</span> : label;
+  };
+  const moneyCol = (id: string, header: string, pick: (f: DemandRecordFigures) => number, strong = false) =>
+    col.display({
+      id,
+      header: twoLine(header),
+      meta: { align: 'right', mobileLabel: header },
+      cell: ({ row }) => {
+        const f = fig(row.original);
+        return f ? (
+          <span className={`whitespace-nowrap text-sm tabular-nums ${strong ? 'font-semibold' : ''}`}>{formatCurrency(pick(f))}</span>
         ) : (
           <span className="text-sm text-muted-foreground">—</span>
         );
       },
+    });
+
+  const columns = [
+    col.accessor('date', {
+      id: 'businessDate',
+      header: 'Date',
+      cell: (i) => <span className="whitespace-nowrap text-sm">{dayLabel(i.getValue())}</span>,
+    }),
+    col.accessor('demandNumber', {
+      header: twoLine('Demand Number'),
+      meta: { mobile: 'subtitle', mobileLabel: 'Demand Number' },
+      cell: ({ row }) => (
+        <div className="flex flex-col items-start gap-1">
+          {/* The demand number opens the order (review, print) — it is the
+              table's View, kept in this column so the money columns fit. */}
+          <button
+            type="button"
+            onClick={() => openOrder(row.original)}
+            className="inline-flex items-center gap-1 rounded font-mono text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Eye className="h-3.5 w-3.5" /> {row.original.demandNumber}
+          </button>
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${STATUS_STYLES[row.original.status] ?? 'bg-muted text-muted-foreground'}`}>
+            {STATUS_LABELS[row.original.status] ?? row.original.status}
+          </span>
+          {/* A deleted demand's reason stays with it — the only thing that says
+              why planned work was pulled. */}
+          {row.original.cancelReason && (
+            <ExpandableText text={row.original.cancelReason} className="max-w-40 text-xs text-muted-foreground" />
+          )}
+        </div>
+      ),
     }),
     col.accessor('branchName', { header: 'Branch', meta: { mobile: 'title' }, cell: (i) => <span className="font-medium">{short(i.getValue())}</span> }),
-    // How big this demand is, in one figure, so the size of an order is legible
-    // from the list instead of only after opening it.
-    //
-    // The headline is what the BRANCH asked for (`requestedTotals` — the raised
-    // request, excluding lines Production added itself), because that is what
-    // "demand" names. When review has since moved the figure, what is actually
-    // going out is shown under it rather than quietly replacing the ask: on this
-    // screen the gap between the two IS the review, and one number cannot say it.
+    moneyCol('delivered', 'Delivered Amount', (f) => f.delivered),
+    moneyCol('returns', 'Return', (f) => f.returns),
+    moneyCol('discount', 'Discount', (f) => f.discount),
+    moneyCol('gTotal', 'G. Total', (f) => f.gTotal, true),
     col.display({
-      id: 'demandQty',
-      header: 'Demand Qty',
-      meta: { align: 'center' },
+      id: 'companyShare',
+      header: twoLine('Company Share'),
+      meta: { align: 'right', mobileLabel: 'Company Share' },
       cell: ({ row }) => {
-        const asked = requestedTotals(row.original).qty;
-        const moving = fulfilledTotals(row.original).qty;
+        const f = fig(row.original);
+        if (!f) return <span className="text-sm text-muted-foreground">—</span>;
         return (
-          <div className="flex flex-col items-center leading-tight">
-            <span className="font-medium tabular-nums">{asked.toLocaleString()}</span>
-            {moving !== asked && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                &rarr; {moving.toLocaleString()}
-              </span>
-            )}
-          </div>
+          <span className="inline-flex flex-col items-end leading-tight">
+            <span className="whitespace-nowrap text-sm tabular-nums">{formatCurrency(f.companyShare)}</span>
+            <span className="text-[11px] text-muted-foreground">{f.sharePct}%</span>
+          </span>
         );
       },
-      // No footer total here any more: the table is now server-paginated
-      // (GenericDataTable), so `getFilteredRowModel()` would only see the
-      // current page's rows — exactly the "changes as you page through and
-      // reads like a bug" failure DataTable's own footer comment warns about,
-      // just triggered by pagination instead of search. productionOrders has
-      // no aggregatableFields (the qty lives on the embedded items table, not
-      // a top-level column), so there's no honest whole-filtered-set total to
-      // show without new backend aggregate work.
     }),
-    col.accessor('status', {
-      header: 'Status',
-      meta: { mobile: 'badge' },
-      cell: (i) => (
-        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[i.getValue()] ?? 'bg-muted text-muted-foreground'}`}>
-          {STATUS_LABELS[i.getValue()] ?? i.getValue()}
-        </span>
-      ),
-    }),
-    // Why a demand disappeared from the summary above. The branch is required to
-    // give one, so on a 'cancelled' row this is never empty — and it is the only
-    // thing on this screen that explains work that was planned and then pulled.
-    col.accessor((o) => o.cancelReason ?? '', {
-      id: 'cancelReason',
-      header: 'Reason',
-      meta: { mobileFull: true },
-      cell: (i) => <ExpandableText text={i.getValue()} className="text-sm text-muted-foreground" />,
-    }),
+    moneyCol('received', 'Share Received', (f) => f.received),
+    moneyCol('previousBalance', 'Previous Balance', (f) => f.previousBalance),
     col.display({
-      id: 'actions',
-      header: '',
-      cell: ({ row }) => (
-        <Button size="sm" variant="outline" className="h-8" onClick={() => openOrder(row.original)}>
-          <Eye className="mr-1 h-3.5 w-3.5" /> View
-        </Button>
-      ),
+      id: 'closingBalance',
+      header: twoLine('Closing Balance'),
+      meta: { align: 'right', mobileLabel: 'Closing Balance' },
+      cell: ({ row }) => {
+        const f = fig(row.original);
+        if (!f) return <span className="text-sm text-muted-foreground">—</span>;
+        const credit = f.closingBalance < 0;
+        const note = [credit ? 'credit' : f.closingBalance === 0 ? 'settled' : '', f.open ? 'open' : ''].filter(Boolean).join(' · ');
+        return (
+          <span className="inline-flex flex-col items-end leading-tight">
+            <span className={`whitespace-nowrap text-sm font-semibold tabular-nums ${credit ? 'text-emerald-700 dark:text-emerald-400' : ''}`}>
+              {formatCurrency(credit ? -f.closingBalance : f.closingBalance)}
+            </span>
+            {note && <span className="text-[11px] text-muted-foreground">{note}</span>}
+          </span>
+        );
+      },
     }),
   ];
 
@@ -702,7 +718,18 @@ export function ProductionOrdersPage() {
           table the generic search can't reach. */}
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Orders</h2>
+          <div>
+            <h2 className="text-lg font-semibold">Orders</h2>
+            {figuresQ.data && !figuresQ.data.switchedOn && figuresQ.data.start && (
+              <p className="text-xs text-muted-foreground">
+                Finance has not switched the Demand Record on yet, so balances count from the first
+                demand ({dayLabel(figuresQ.data.start)}) at today&apos;s share %.
+              </p>
+            )}
+            {figuresQ.isError && (
+              <p className="text-xs text-destructive">Could not load the amounts. They will show once the page reloads.</p>
+            )}
+          </div>
           {/* Not wired to the table's own export: that exports the table you are
               looking at, and this is a different question — a window of
               deliveries and what is owed on them, which needs its own branch and
