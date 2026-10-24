@@ -48,6 +48,11 @@ import { DemandRecordEntriesDialog } from './DemandRecordEntriesDialog';
  */
 
 const col = createColumnHelper<DemandRecordRow>();
+
+/** A header over two lines — the table has eleven figures to fit on a laptop. */
+const twoLine = (a: string, b: string) => function TwoLineHeader() {
+  return <span className="inline-block leading-tight">{a}<br />{b}</span>;
+};
 const ALL = 'all';
 
 function shortBranch(name: string) {
@@ -55,11 +60,11 @@ function shortBranch(name: string) {
 }
 
 /** Closing balance with what it means: owed, settled, or paid ahead (a credit). */
-function BalanceCell({ value, strong }: { value: number; strong?: boolean }) {
+function BalanceCell({ value, strong, align = 'end', noSymbol }: { value: number; strong?: boolean; align?: 'start' | 'end'; noSymbol?: boolean }) {
   const standing = balanceStanding(value);
   return (
-    <span className={cn('inline-flex flex-col items-end leading-tight', strong && 'font-semibold')}>
-      <Money value={standing === 'credit' ? -value : value} className={cn(standing === 'credit' && 'text-emerald-700 dark:text-emerald-400')} />
+    <span className={cn('inline-flex flex-col leading-tight', align === 'end' ? 'items-end' : 'items-start', strong && 'font-semibold')}>
+      <Money value={standing === 'credit' ? -value : value} noSymbol={noSymbol} className={cn(standing === 'credit' && 'text-emerald-700 dark:text-emerald-400')} />
       {standing !== 'owed' && (
         <span className="text-[11px] font-normal text-muted-foreground">{standing === 'credit' ? 'credit' : 'settled'}</span>
       )}
@@ -109,6 +114,16 @@ export function DemandRecordPage() {
   const resetPage = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   const columns = [
+    col.display({
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row }) => (
+        <Button variant="ghost" size="icon-sm" aria-label="View details" title="View details" onClick={() => setDetail(row.original)}>
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
+    }),
     col.accessor('at', {
       id: 'date',
       header: 'Date',
@@ -116,7 +131,7 @@ export function DemandRecordPage() {
     }),
     col.accessor((r) => r.demandNumber ?? 'Opening', {
       id: 'demand',
-      header: 'Demand Number',
+      header: twoLine('Demand', 'Number'),
       enableSorting: false,
       meta: { mobile: 'title' },
       cell: ({ row }) =>
@@ -136,90 +151,83 @@ export function DemandRecordPage() {
       header: 'Delivered',
       enableSorting: false,
       meta: { align: 'right' },
-      cell: (i) => <Money value={i.getValue()} blankZero />,
-    }),
-    col.accessor('sales', {
-      header: 'Actual Sales',
-      enableSorting: false,
-      meta: { align: 'right', mobile: 'hidden' },
-      cell: (i) => <Money value={i.getValue()} blankZero className="text-muted-foreground" />,
+      cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('returns', {
       header: 'Return',
       enableSorting: false,
       meta: { align: 'right' },
-      cell: (i) => <Money value={i.getValue()} blankZero />,
+      cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('discount', {
       header: 'Discount',
       enableSorting: false,
       meta: { align: 'right' },
-      cell: (i) => <Money value={i.getValue()} blankZero />,
+      cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('gTotal', {
       header: 'G. Total',
       enableSorting: false,
       meta: { align: 'right' },
-      cell: (i) => <Money value={i.getValue()} className="font-medium" />,
+      cell: (i) => <Money value={i.getValue()} className="font-medium" noSymbol />,
     }),
-    col.accessor('sharePct', {
-      header: 'Share %',
+    col.accessor('companyShare', {
+      header: twoLine('Company', 'Share'),
       enableSorting: false,
-      meta: { align: 'right', mobileLabel: 'Share %' },
+      meta: { align: 'right', mobileLabel: 'Company Share' },
       cell: ({ row }) => (
-        <span className="tabular-nums" title={row.original.pctFrozen ? 'Frozen when delivered' : "Today's % — nothing was frozen for this row"}>
-          {row.original.sharePct}%{!row.original.pctFrozen && <span className="text-amber-600">*</span>}
+        <span className="inline-flex flex-col items-end leading-tight">
+          <Money value={row.original.companyShare} className="font-medium" noSymbol />
+          <span
+            className="text-[11px] text-muted-foreground"
+            title={row.original.pctFrozen ? 'Frozen when delivered' : "Today's % — nothing was frozen for this row"}
+          >
+            at {row.original.sharePct}%{!row.original.pctFrozen && <span className="text-amber-600">*</span>}
+          </span>
         </span>
       ),
     }),
-    col.accessor('companyShare', {
-      header: 'Company Share',
-      enableSorting: false,
-      meta: { align: 'right' },
-      cell: (i) => <Money value={i.getValue()} className="font-medium" />,
-    }),
     col.accessor('received', {
-      header: 'Share Received',
+      header: twoLine('Share', 'Received'),
       enableSorting: false,
       meta: { align: 'right', mobileLabel: 'Received' },
-      cell: (i) => <Money value={i.getValue()} blankZero className="text-emerald-700 dark:text-emerald-400" />,
+      cell: (i) => <Money value={i.getValue()} blankZero noSymbol className="text-emerald-700 dark:text-emerald-400" />,
     }),
     col.accessor('adjustments', {
-      header: 'Adjustments',
+      header: twoLine('Adjust-', 'ments'),
       enableSorting: false,
-      meta: { align: 'right' },
-      cell: (i) => <Money value={i.getValue()} blankZero />,
+      meta: { align: 'right', mobileLabel: 'Adjustments' },
+      cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('previousBalance', {
-      header: 'Previous Balance',
+      header: twoLine('Previous', 'Balance'),
       enableSorting: false,
       meta: { align: 'right', mobileLabel: 'Previous' },
-      cell: (i) => <BalanceCell value={i.getValue()} />,
+      cell: (i) => <BalanceCell value={i.getValue()} noSymbol />,
     }),
     col.accessor('closingBalance', {
-      header: 'Closing Balance',
+      header: twoLine('Closing', 'Balance'),
       enableSorting: false,
       meta: { align: 'right', mobile: 'badge' },
-      cell: (i) => <BalanceCell value={i.getValue()} strong />,
-    }),
-    col.display({
-      id: 'actions',
-      header: 'Action',
-      enableSorting: false,
       cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setDetail(row.original)}>
-            <Eye className="mr-1.5 h-4 w-4" /> View
-          </Button>
+        <span className="inline-flex flex-col items-end gap-0.5">
+          <BalanceCell value={row.original.closingBalance} strong noSymbol />
           {row.original.open && (
-            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="No later demand yet: returns and deposits can still land here">
+            <Badge variant="secondary" className="h-4 bg-amber-100 px-1.5 text-[10px] text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="No later demand yet: returns and deposits can still land here">
               Open
             </Badge>
           )}
-        </div>
+        </span>
       ),
     }),
-  ];
+  ].filter((c) => {
+    // A column of dashes only costs width: Branch when one branch is chosen,
+    // Adjustments when nothing on the page has one.
+    const key = c.id ?? ('accessorKey' in c ? String(c.accessorKey) : '');
+    if (key === 'branchName') return branchId === ALL;
+    if (key === 'adjustments') return rows.some((r) => r.adjustments !== 0);
+    return true;
+  });
 
   async function exportCsv() {
     if (!data) return;
@@ -331,10 +339,10 @@ export function DemandRecordPage() {
         <>
           <section className="space-y-3">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Figure label="Opening Balance" hint={data ? `on ${formatDate(data.from)}` : undefined} loading={!t} value={t && <BalanceCell value={t.openingBalance} />} />
+              <Figure label="Opening Balance" hint={data ? `on ${formatDate(data.from)}` : undefined} loading={!t} value={t && <BalanceCell value={t.openingBalance} align="start" />} />
               <Figure label="Company Share" hint="this period" loading={!t} value={t && <Money value={t.companyShare} />} />
               <Figure label="Share Received" hint="approved cash transfers" loading={!t} value={t && <Money value={t.received} className="text-emerald-700 dark:text-emerald-400" />} />
-              <Figure label="Closing Balance" hint={data ? `after ${formatDate(data.to)}` : undefined} loading={!t} value={t && <BalanceCell value={t.closingBalance} strong />} emphasis />
+              <Figure label="Closing Balance" hint={data ? `after ${formatDate(data.to)}` : undefined} loading={!t} value={t && <BalanceCell value={t.closingBalance} strong align="start" />} emphasis />
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
               <Figure small label="Delivered" loading={!t} value={t && <Money value={t.delivered} />} />
@@ -354,6 +362,8 @@ export function DemandRecordPage() {
             )}
           </section>
 
+          <div className="space-y-1.5">
+          <p className="text-right text-xs text-muted-foreground">All amounts in Rs.</p>
           <DataTable
             columns={columns}
             data={rows}
@@ -380,6 +390,7 @@ export function DemandRecordPage() {
               </div>
             }
           />
+          </div>
           <Pagination
             page={page}
             pageSize={pageSize}

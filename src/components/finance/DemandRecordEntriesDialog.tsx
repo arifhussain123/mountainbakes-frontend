@@ -27,6 +27,20 @@ import { Money, type FinanceAbilities } from './finance-ui';
 
 type BranchItem = { value: string; label: string };
 
+/**
+ * A v4 UUID — the API requires one. `crypto.randomUUID` needs a secure context,
+ * which the deployed app has and a plain-HTTP dev host on a LAN IP does not;
+ * `getRandomValues` works on both.
+ */
+function newRequestId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 const KIND_LABELS: Record<BranchAccountAdjustment['kind'], string> = {
   opening: 'Opening balance',
   adjustment: 'Adjustment',
@@ -127,7 +141,7 @@ function NewEntryDialog({
 }) {
   const today = businessDateStr();
   // One id per opened form: a retry of THIS submission reuses it and posts once.
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [requestId] = useState(newRequestId);
   const [branchId, setBranchId] = useState('');
   const [kind, setKind] = useState<'opening' | 'adjustment'>('opening');
   const [direction, setDirection] = useState<'owes' | 'credit'>('owes');
@@ -244,7 +258,7 @@ function NewEntryDialog({
 
 function ReverseDialog({ entry, onClose }: { entry: BranchAccountAdjustment; onClose: () => void }) {
   const [reason, setReason] = useState('');
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [requestId] = useState(newRequestId);
   const mut = useFinanceMutation<{ entry: BranchAccountAdjustment; replayed: boolean }>();
 
   async function submit() {
