@@ -775,6 +775,43 @@ export function useProductionOrder(token: string, id: string | null) {
   });
 }
 
+/** One delivered demand's money on the Demand Record's rules (GET /api/production-reports/demand-record). */
+export interface DemandRecordFigures {
+  orderId: string;
+  delivered: number;
+  returns: number;
+  discount: number;
+  gTotal: number;
+  sharePct: number;
+  companyShare: number;
+  received: number;
+  adjustments: number;
+  previousBalance: number;
+  closingBalance: number;
+  /** The branch has no later demand yet: returns and deposits can still land on it. */
+  open: boolean;
+}
+
+/**
+ * The Demand Record's figures for every delivered demand, keyed by order id —
+ * what the Production Orders table shows beside each order. Under the
+ * 'productionOrders' key so every invalidation that refreshes the orders
+ * refreshes their money too.
+ */
+export function useDemandRecordFigures(token: string) {
+  return useQuery({
+    queryKey: ['productionOrders', 'demandRecord'] as const,
+    queryFn: () =>
+      apiCall<{ start: string | null; switchedOn: boolean; rows: DemandRecordFigures[] }>(
+        '/api/production-reports/demand-record',
+        {},
+        token,
+      ),
+    select: (r) => ({ ...r, byOrder: new Map(r.rows.map((x) => [x.orderId, x])) }),
+    enabled: !!token,
+  });
+}
+
 /**
  * Live outstanding pending balances per product for a branch, keyed by productId.
  *
