@@ -24,7 +24,9 @@ import { cn } from '@/lib/utils';
  * review is a separate line under it, never added in.
  *
  * The period line is the server's window, so it always names the month the
- * figures actually cover. On a phone the cards are one row that scrolls
+ * figures actually cover. A branch with nothing this month — no approved
+ * discount and nothing awaiting review — gets no card, unless it is the branch
+ * the page is filtered to. On a phone the cards are one row that scrolls
  * sideways rather than squeezing a card until its name or amount is cut off;
  * from tablet width they form a grid — one row when the screen is wide enough —
  * so every branch is in view at once.
@@ -207,7 +209,11 @@ export function MonthlyDiscountSummary({
     return <SectionError what="the monthly discount summary" onRetry={onRetry} retrying={isFetching} />;
   }
 
-  const branches = summary?.branches ?? [];
+  // Rs. 0 branches add nothing to read; a branch with only claims awaiting
+  // review still shows, so that line is not lost.
+  const branches = (summary?.branches ?? []).filter(
+    (b) => b.approved.amount !== 0 || b.pending.count > 0 || b.branchId === highlightBranchId,
+  );
   // A failed refresh keeps the last figures on screen, but says they are not current.
   const stale = isError && !!summary;
 
@@ -238,7 +244,9 @@ export function MonthlyDiscountSummary({
             <Skeleton key={i} data-testid="discount-summary-skeleton" className="h-[118px] min-w-[11rem] flex-1 basis-0 rounded-lg md:min-w-0" />
           ))
         ) : branches.length === 0 ? (
-          <p className="w-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground md:col-span-full">No active branches.</p>
+          <p className="w-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground md:col-span-full">
+            {summary.branches.length === 0 ? 'No active branches.' : 'No branch discounts this month.'}
+          </p>
         ) : (
           <>
             {branches.map((b) => (

@@ -90,7 +90,8 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             One row per delivery — delivered value, company share, returns, discount and
-            the amount to collect.
+            the amount to collect — plus a tab for each branch with its own deliveries
+            and total.
           </p>
         </div>
 

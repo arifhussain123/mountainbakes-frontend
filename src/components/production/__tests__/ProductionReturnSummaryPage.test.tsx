@@ -61,8 +61,9 @@ describe('ProductionReturnSummaryPage', () => {
     expect(choc.textContent).toContain('12');
     expect(within(box).getAllByRole('button')).toHaveLength(2);
     fireEvent.click(choc);
-    expect(choc.getAttribute('aria-expanded')).toBe('true');
-    expect(within(box).getByText('North Nazimabad Branch')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Chocolate Pastry' });
+    expect(within(dialog).getByText('North Nazimabad Branch')).toBeTruthy();
+    expect(within(dialog).getByText('DHA Branch')).toBeTruthy();
   });
 
   test('searching narrows the branch-wise table only — the cards and item box keep the whole month', () => {

@@ -313,6 +313,14 @@ export const qk = {
   /** What each branch is still owed, derived from the ledger rather than stored. */
   financeBranchShareBalances: (branchId?: string) =>
     ['finance', 'branchShareBalances', branchId ?? 'all'] as const,
+  // Demand Record. Under the finance root, so approving a cash transfer (Share
+  // Received) or posting an adjustment refreshes it with everything else.
+  financeDemandRecord: (filters: Record<string, unknown>) => ['finance', 'demandRecord', filters] as const,
+  financeDemandRecordDetail: (branchId: string, orderId: string | null) =>
+    ['finance', 'demandRecordDetail', branchId, orderId ?? 'opening'] as const,
+  financeDemandRecordSettings: () => ['finance', 'demandRecordSettings'] as const,
+  financeDemandRecordAdjustments: (branchId?: string) =>
+    ['finance', 'demandRecordAdjustments', branchId ?? 'all'] as const,
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,

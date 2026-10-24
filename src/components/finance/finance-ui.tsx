@@ -100,11 +100,12 @@ export function useMoney() {
   const symbol = settings?.currencySymbol || 'Rs.';
 
   return useMemo(() => {
-    const format = (value: number | null | undefined, opts?: { blankZero?: boolean }) => {
+    const format = (value: number | null | undefined, opts?: { blankZero?: boolean; noSymbol?: boolean }) => {
       const n = Number(value ?? 0);
       if (!Number.isFinite(n)) return '—';
       if (opts?.blankZero && n === 0) return '—';
-      return `${symbol} ${n.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const digits = n.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return opts?.noSymbol ? digits : `${symbol} ${digits}`;
     };
     return { symbol, format };
   }, [symbol]);
@@ -122,11 +123,14 @@ export function Money({
   className,
   blankZero,
   signed,
+  noSymbol,
 }: {
   value: number | null | undefined;
   className?: string;
   /** Render a zero as an em dash — a cash book leaves the unused side empty. */
   blankZero?: boolean;
+  /** Digits only, for a wide table that states its currency once above it. */
+  noSymbol?: boolean;
   /** Colour by sign. For net figures, never for a debit/credit column. */
   signed?: boolean;
 }) {
@@ -142,7 +146,7 @@ export function Money({
         className,
       )}
     >
-      {format(value, { blankZero })}
+      {format(value, { blankZero, noSymbol })}
     </span>
   );
 }

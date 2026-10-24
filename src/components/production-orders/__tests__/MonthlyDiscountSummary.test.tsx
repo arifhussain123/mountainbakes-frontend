@@ -42,9 +42,7 @@ afterEach(() => {
 describe('MonthlyDiscountSummary', () => {
   test('one card per branch in the server order, each with its name and the approved Total Discount', () => {
     render(<MonthlyDiscountSummary {...base} summary={SUMMARY} showBranches />);
-    // Sorted on the full name, so "Mountain Bakes DHA Branch" follows Gulshan.
     expect(cards().map((c) => c.firstElementChild?.textContent)).toEqual([
-      'Gulshan Branch',
       'DHA Branch',
       'North Nazimabad Branch',
       'All Branches',
@@ -53,9 +51,33 @@ describe('MonthlyDiscountSummary', () => {
     expect(card('North Nazimabad Branch').textContent).toContain('Rs. 8,750.5');
   });
 
-  test('a branch with no claims shows Rs. 0 rather than being left out', () => {
+  test('a branch with nothing this month gets no card', () => {
     render(<MonthlyDiscountSummary {...base} summary={SUMMARY} showBranches />);
+    expect(card('Gulshan Branch')).toBeUndefined();
+  });
+
+  test('a branch with only claims awaiting review keeps its card, at Rs. 0 approved', () => {
+    const pendingOnly = buildDiscountSummary(
+      [{ branchId: C, branchName: 'Gulshan Branch', status: 'pending', count: 2, amount: 400 }],
+      [{ id: C, name: 'Gulshan Branch' }],
+      RANGE,
+    );
+    render(<MonthlyDiscountSummary {...base} summary={pendingOnly} showBranches />);
     expect(card('Gulshan Branch').textContent).toContain('Total DiscountRs. 0');
+    expect(card('Gulshan Branch').textContent).toContain('Rs. 400 awaiting review');
+  });
+
+  test('the branch the page is filtered to stays, even at Rs. 0', () => {
+    render(<MonthlyDiscountSummary {...base} summary={SUMMARY} showBranches highlightBranchId={C} />);
+    expect(card('Gulshan Branch').getAttribute('aria-current')).toBe('true');
+    expect(cards()).toHaveLength(4);
+  });
+
+  test('a month with no discounts at any branch says so', () => {
+    const empty = buildDiscountSummary([], [{ id: C, name: 'Gulshan Branch' }], RANGE);
+    render(<MonthlyDiscountSummary {...base} summary={empty} showBranches />);
+    expect(screen.getByText('No branch discounts this month.')).toBeTruthy();
+    expect(screen.queryAllByTestId('discount-summary-card')).toHaveLength(0);
   });
 
   test('pending is its own line, not added in; rejected is in no figure', () => {
@@ -72,7 +94,7 @@ describe('MonthlyDiscountSummary', () => {
 
   test('the filtered branch is marked and every other card stays', () => {
     render(<MonthlyDiscountSummary {...base} summary={SUMMARY} showBranches highlightBranchId={B} />);
-    expect(cards()).toHaveLength(4);
+    expect(cards()).toHaveLength(3);
     expect(card('North Nazimabad Branch').getAttribute('aria-current')).toBe('true');
     expect(card('DHA Branch').getAttribute('aria-current')).toBeNull();
   });
@@ -105,7 +127,7 @@ describe('MonthlyDiscountSummary', () => {
       <MonthlyDiscountSummary {...base} summary={SUMMARY} isError error={new Error('offline')} onRetry={onRetry} updatedAt={loadedAt} showBranches />,
     );
     expect(screen.getByRole('status').textContent).toContain('Could not refresh — showing the figures loaded at 9:15 AM, 18 Oct');
-    expect(cards()).toHaveLength(4);
+    expect(cards()).toHaveLength(3);
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledOnce();
   });

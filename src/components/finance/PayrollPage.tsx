@@ -163,6 +163,20 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
   // than silently including rows from other pages if that ever stops holding.
   const monthTotal = rows.reduce((sum, r) => sum + r.netSalary, 0);
 
+  // The Advance column: the advance part (not bonus or loan) of what each
+  // payslip recovered, summed off the latest 1000 advances — the list's cap.
+  // A payslip whose advances are older than that shows blank.
+  const advancesQ = useEmployeeAdvances({ limit: 1000 });
+  const advanceBySalary = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const a of advancesQ.data?.advances ?? []) {
+      if (a.recoveredBySalaryId) {
+        totals.set(a.recoveredBySalaryId, (totals.get(a.recoveredBySalaryId) ?? 0) + a.advanceAmount);
+      }
+    }
+    return totals;
+  }, [advancesQ.data]);
+
   const columns = [
     salaryCol.accessor('salaryNo', {
       header: 'Payslip No',
@@ -178,6 +192,13 @@ function SalariesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAbi
     salaryCol.accessor('designation', { header: 'Designation', cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue()}</span> }),
     salaryCol.accessor('salaryMonth', { header: 'Month', cell: (i) => <span className="text-sm tabular-nums">{i.getValue()}</span> }),
     salaryCol.accessor('grossSalary', { header: 'Salary', cell: (i) => <Money value={i.getValue()} /> }),
+    // Derived from the advance rows, so the server cannot sort by it.
+    salaryCol.accessor((r) => advanceBySalary.get(r.id) ?? 0, {
+      id: 'advance',
+      header: 'Advance',
+      enableSorting: false,
+      cell: (i) => <Money value={i.getValue()} blankZero />,
+    }),
     salaryCol.accessor('bonus', { header: 'Bonus', cell: (i) => <Money value={i.getValue()} blankZero className="text-emerald-600 dark:text-emerald-400" /> }),
     salaryCol.accessor('deductions', { header: 'Deduction', cell: (i) => <Money value={i.getValue()} blankZero className="text-red-600 dark:text-red-400" /> }),
     salaryCol.accessor('netSalary', { header: 'Net Salary', cell: (i) => <Money value={i.getValue()} className="font-semibold" /> }),

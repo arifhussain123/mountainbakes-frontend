@@ -6,8 +6,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
+  BranchAccountAdjustment,
   BranchShareBalance,
   CashTransfer,
+  DemandRecordDetail,
+  DemandRecordResult,
   DailySaleRecordDetail,
   EmployeeAdvance,
   EmployeeAdvanceSummary,
@@ -574,6 +577,92 @@ export function useBranchShareBalances(branchId?: string) {
         token,
       )).balances,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Demand Record — each branch's running balance with the company
+// ---------------------------------------------------------------------------
+
+export type DemandRecordFilters = {
+  branchId?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+  sortDir?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+};
+
+/**
+ * The Demand Record's go-live date. `null` until Finance switches it on, which
+ * is the one state the page has to explain rather than show.
+ */
+export function useDemandRecordSettings() {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeDemandRecordSettings(),
+    enabled: Boolean(token),
+    queryFn: () => apiCall<{ startDate: string | null }>('/api/finance/branch-account/settings', {}, token),
+  });
+}
+
+export function useDemandRecord(filters: DemandRecordFilters, opts?: { enabled?: boolean }) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeDemandRecord(filters as Record<string, unknown>),
+    enabled: Boolean(token) && (opts?.enabled ?? true),
+    staleTime: 15_000,
+    placeholderData: (previous) => previous,
+    queryFn: () => apiCall<DemandRecordResult>(`/api/finance/branch-account${toQuery(filters)}`, {}, token),
+  });
+}
+
+/** One row with every record behind it. `orderId` null: the branch's opening row. */
+export function useDemandRecordDetail(branchId: string | null, orderId: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeDemandRecordDetail(branchId ?? '', orderId),
+    enabled: Boolean(token) && Boolean(branchId),
+    queryFn: () =>
+      apiCall<DemandRecordDetail>(
+        `/api/finance/branch-account/detail${toQuery({ branchId, orderId })}`,
+        {},
+        token,
+      ),
+  });
+}
+
+export function useDemandRecordAdjustments(branchId?: string, opts?: { enabled?: boolean }) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeDemandRecordAdjustments(branchId),
+    enabled: Boolean(token) && (opts?.enabled ?? true),
+    queryFn: async () =>
+      (await apiCall<{ adjustments: BranchAccountAdjustment[] }>(
+        `/api/finance/branch-account/adjustments${toQuery({ branchId })}`,
+        {},
+        token,
+      )).adjustments,
+  });
+}
+
+/**
+ * Every row of the current filter, page by page, for the export. The API caps a
+ * page at 500; a year of every branch is a few thousand rows.
+ */
+export async function fetchAllDemandRecordRows(
+  filters: Omit<DemandRecordFilters, 'page' | 'pageSize'>,
+  token: Parameters<typeof apiCall>[2],
+): Promise<DemandRecordResult> {
+  const first = await apiCall<DemandRecordResult>(
+    `/api/finance/branch-account${toQuery({ ...filters, page: 1, pageSize: 500 })}`, {}, token);
+  const rows = [...first.rows];
+  for (let page = 2; page <= first.pagination.totalPages; page++) {
+    const next = await apiCall<DemandRecordResult>(
+      `/api/finance/branch-account${toQuery({ ...filters, page, pageSize: 500 })}`, {}, token);
+    rows.push(...next.rows);
+  }
+  return { ...first, rows };
 }
 
 // ---------------------------------------------------------------------------

@@ -74,6 +74,7 @@ export const PAGE_TITLES: Record<string, string> = {
   // times, whereas the page heading is read on its own.
   [ROUTES.FINANCE_DASHBOARD]: 'Finance Dashboard',
   [ROUTES.FINANCE_LEDGER]: 'Daily Ledger',
+  [ROUTES.FINANCE_DEMAND_RECORD]: 'Demand Record',
   [ROUTES.FINANCE_ENTRIES]: 'Income & Expense Entries',
   [ROUTES.FINANCE_SALARIES]: 'Salary Ledger',
   [ROUTES.FINANCE_PAYROLL]: 'Payroll',
