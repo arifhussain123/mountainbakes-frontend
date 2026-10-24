@@ -718,7 +718,7 @@ export function ProductionOrdersPage() {
           filters={filters}
           filterOptions={filterOptions}
           searchPlaceholder="Search demand #, branch, raised by…"
-          exportFileName="production-orders"
+          exportable={false}
           emptyTitle="No orders found"
         />
       </div>
