@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { workerHandoverRequested } from '@/utils/pwa';
 
 /**
  * Registers the offline/caching service worker. Registered only in production
@@ -11,7 +12,9 @@ import { useEffect } from 'react';
  * AppRefreshProvider (hooks/useAppRefresh.tsx), which knows whether anyone is
  * mid-entry; the indefinite "new version available" toast this used to raise is
  * now the Topbar's Refresh button lighting up. All that is left here is
- * registration, plus the reload that completes a handover the app asked for.
+ * registration, plus the reload that completes a handover THIS tab asked for.
+ * Another tab's "Update" hands every tab to the new worker at once; reloading
+ * them all would throw away whatever they had open, so they stay as they are.
  */
 export function ServiceWorkerRegister() {
   useEffect(() => {
@@ -26,7 +29,7 @@ export function ServiceWorkerRegister() {
     const hadController = !!navigator.serviceWorker.controller;
 
     const onControllerChange = () => {
-      if (!hadController || reloading) return;
+      if (!hadController || reloading || !workerHandoverRequested()) return;
       reloading = true;
       window.location.reload();
     };

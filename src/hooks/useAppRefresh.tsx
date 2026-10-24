@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { pingLoginSession } from '@/lib/loginHistory';
+import { requestWorkerHandover } from '@/utils/pwa';
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
@@ -16,7 +17,14 @@ import type { QueryClient } from '@tanstack/react-query';
  *              Cheap and non-destructive, so it runs on nearly every tick.
  *   Frontend — can only be applied by reloading the page, which destroys
  *              everything unsaved. So a new build is DETECTED in the background
- *              but never applied while somebody is working (see `isBusy`).
+ *              and NEVER applied by it: the Refresh button turns into "Update",
+ *              and only a press of "Update" (or opening the app afresh) loads it.
+ *
+ * NEVER BY ITSELF, BY DECISION (2026-10-24). The background used to apply a new
+ * build to any tab left alone for 30 seconds. With deploys several times a day
+ * that reloaded tills and admin screens mid-task — unsaved entries gone, and a
+ * restart that showed the sign-in screen, which staff took for being logged
+ * out. The owner's rule: an open app is never interrupted, busy or idle.
  *
  * This replaces the bare `setInterval` that used to live in QueryProvider —
  * still exactly one interval, now with the build check on the same tick and a
@@ -24,10 +32,9 @@ import type { QueryClient } from '@tanstack/react-query';
  *
  * The tick fires every 30 SECONDS, but ONLY the data half runs that often. The
  * two pieces of work that touch the user's session — the Login History ping and
- * the new-build check that can reload the page — stay on their original 2-minute
- * cadence, measured by the clock rather than by counting ticks. Making the
- * screen live must not mean pinging the session 120 times as often, and must
- * not mean a reload lands on somebody who has just paused.
+ * the new-build check — stay on their original 2-minute cadence, measured by the
+ * clock rather than by counting ticks. Making the screen live must not mean
+ * pinging the session 120 times as often.
  *
  * At this cadence the data half is no longer obviously cheap, so it carries
  * guards a slower tick did not need — see `shouldRefetch`. Every one of them
@@ -60,13 +67,6 @@ const REFRESH_INTERVAL_MS = 30 * 1000;
  */
 const SESSION_INTERVAL_MS = 2 * 60 * 1000;
 
-/**
- * How long the app must have been left alone before a new build is applied on
- * its own. Someone who never pauses simply never gets interrupted — they take
- * the update from the button, or on their next natural page load.
- */
-const IDLE_BEFORE_AUTO_APPLY_MS = 30 * 1000;
-
 /** Written fresh by scripts/generate-version.mjs on every build. */
 const VERSION_URL = '/version.json';
 
@@ -77,7 +77,7 @@ type AppRefreshValue = {
   updateReady: boolean;
   /** Epoch ms of the last successful data refresh, or null before the first. */
   lastRefreshedAt: number | null;
-  /** Refetch now, and apply a waiting build if there is one. What the button calls. */
+  /** Refetch now, and apply a waiting build if the button was offering it. What the button calls. */
   refreshNow: () => Promise<void>;
 };
 
@@ -114,28 +114,6 @@ function shouldRefetch(queryClient: QueryClient) {
   return true;
 }
 
-/**
- * Is the user in the middle of something a reload would throw away?
- *
- * Deliberately generous — a missed update costs two minutes, an update applied
- * over a half-typed sale costs the sale.
- */
-function isBusy(queryClient: QueryClient, lastInteractionAt: number) {
-  if (dialogOpen()) return true;
-
-  // Focus sits in something editable: they are typing right now.
-  const el = document.activeElement as HTMLElement | null;
-  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) {
-    return true;
-  }
-
-  // A save is in flight. Reloading here loses the user's confirmation of a write
-  // that may well have landed — the worst possible moment.
-  if (queryClient.isMutating() > 0) return true;
-
-  return Date.now() - lastInteractionAt < IDLE_BEFORE_AUTO_APPLY_MS;
-}
-
 /** The live build stamp, or null if it cannot be read (dev, offline, 404). */
 async function readDeployedVersion(): Promise<string | null> {
   try {
@@ -151,7 +129,7 @@ async function readDeployedVersion(): Promise<string | null> {
 }
 
 /**
- * Reload onto the new build.
+ * Reload onto the new build. Only ever from a press of "Update".
  *
  * The service worker only needs telling when a new *worker* is waiting, which is
  * rare — `sw.js` rarely changes. The reload alone is what picks up new JS: the
@@ -162,6 +140,9 @@ async function applyUpdate() {
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
     if (reg?.waiting) {
+      // Only THIS tab reloads on the handover; every other open tab keeps what
+      // is on its screen and offers "Update" itself (ServiceWorkerRegister).
+      requestWorkerHandover();
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       // ServiceWorkerRegister reloads on `controllerchange`; give it a moment to
       // take over so we do not reload out from under the handover.
@@ -182,10 +163,6 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
   // The build this tab booted on. Every check compares against it, so a reload
   // always resets the baseline — there is no way to get stuck in a reload loop.
   const bootVersion = useRef<string | null>(null);
-  // Stamped on mount, not in the initialiser — `Date.now()` during render is
-  // impure. 0 until then, which reads as "idle"; harmless, because the only
-  // thing that reads it is the build check, which is a full 2 minutes out.
-  const lastInteractionAt = useRef<number>(0);
 
   /**
    * One refetch at a time.
@@ -201,19 +178,6 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     readDeployedVersion().then((v) => { bootVersion.current = v; });
-  }, []);
-
-  // Cheap passive listeners; `pointerdown`/`keydown` are enough to tell working
-  // from idle without watching every mousemove.
-  useEffect(() => {
-    const touch = () => { lastInteractionAt.current = Date.now(); };
-    touch(); // opening a screen counts as having just used it
-    window.addEventListener('pointerdown', touch, { passive: true });
-    window.addEventListener('keydown', touch, { passive: true });
-    return () => {
-      window.removeEventListener('pointerdown', touch);
-      window.removeEventListener('keydown', touch);
-    };
   }, []);
 
   /** True when a newer build is live. Records it for the button either way. */
@@ -240,14 +204,16 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
       await queryClient.refetchQueries({ type: 'active' });
       setLastRefreshedAt(Date.now());
 
-      // An explicit click is consent to be interrupted — apply straight away
-      // rather than waiting for the idle window the background tick respects.
-      if (await checkForNewBuild()) await applyUpdate();
+      // Pressing "Update" is consent to the reload. Pressing plain "Refresh" is
+      // not — it asked for fresh data — so a build found just now only turns
+      // the button into "Update" for a later press.
+      const found = await checkForNewBuild();
+      if (found && updateReady) await applyUpdate();
     } finally {
       refetching.current = false;
       setRefreshing(false);
     }
-  }, [queryClient, checkForNewBuild]);
+  }, [queryClient, checkForNewBuild, updateReady]);
 
   const refetchData = useCallback(async () => {
     if (refetching.current || !shouldRefetch(queryClient)) return;
@@ -303,17 +269,9 @@ export function AppRefreshProvider({ children }: { children: React.ReactNode }) 
       // data tick does not multiply writes to that row.
       void pingLoginSession();
 
-      // Frontend: also held at 2 minutes. Applying a build means reloading, which
-      // ends the session on screen — noticing a deploy sooner is worth nothing
-      // next to the risk of that reload firing on the data tick's fuse.
-      // Detected always, applied only when nothing is at stake; when it is not
-      // applied the flag stays up, the button lights, and the next session tick
-      // tries again.
-      void (async () => {
-        if (await checkForNewBuild()) {
-          if (!isBusy(queryClient, lastInteractionAt.current)) await applyUpdate();
-        }
-      })();
+      // Frontend: also held at 2 minutes. Detected only — the button lights up
+      // as "Update" and the reload waits for someone to press it.
+      void checkForNewBuild();
     }, REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [queryClient, checkForNewBuild, refetchData]);
