@@ -147,6 +147,13 @@ function DepositCheckBody({
                 : 'No deposit within 1,000 of the share — the one deposited that day is shown.'}
           </span>
         )}
+        {r.extraCount > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {r.extraCount === 1
+              ? '1 deposit handed over this day paid no day by amount, so it is added here as received this day.'
+              : `${r.extraCount} deposits handed over this day paid no day by amount, so they are added here as received this day.`}
+          </span>
+        )}
       </div>
 
       <div className="space-y-1.5 rounded-lg border bg-muted/40 p-3 text-sm">
