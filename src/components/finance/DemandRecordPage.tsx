@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { createColumnHelper, type SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { format, parseISO } from 'date-fns';
 import { balanceStanding, businessDateStr, type DemandRecordRow, type PageSize } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
@@ -127,7 +128,16 @@ export function DemandRecordPage() {
     col.accessor('at', {
       id: 'date',
       header: 'Date',
-      cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.businessDate)}</span>,
+      // Day and month over the year: a narrower column leaves room for the balances.
+      cell: ({ row }) => {
+        const d = parseISO(row.original.businessDate);
+        return (
+          <span className="inline-flex flex-col leading-tight">
+            <span className="whitespace-nowrap">{format(d, 'dd MMM')}</span>
+            <span className="text-[11px] text-muted-foreground">{format(d, 'yyyy')}</span>
+          </span>
+        );
+      },
     }),
     col.accessor((r) => r.demandNumber ?? 'Opening', {
       id: 'demand',
