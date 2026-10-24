@@ -17,7 +17,7 @@
  * below rejects the case outright rather than letting it masquerade as a missing
  * route.
  *
- * The server-side loopback fallback below is a leftover from the retired single-dyno
+ * The server-side loopback fallback below is a leftover from the retired single-host
  * deploy, where the API shared this host behind an /api/* rewrite. It survives only
  * because this module is still imported during the static prerender, which never
  * issues a request.

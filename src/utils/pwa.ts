@@ -61,3 +61,22 @@ export function clearInstallDismissal(): void {
     /* ignore */
   }
 }
+
+// ── Service worker handover ─────────────────────────────────────────────────
+
+/**
+ * Set by the one tab whose "Update" press activates a waiting service worker.
+ * The new worker takes control of EVERY open tab at once (`clients.claim()`),
+ * and each of them sees `controllerchange`; only the tab that asked should
+ * reload. The others keep what is on screen and offer "Update" themselves.
+ * Per tab by construction: a module variable, never storage.
+ */
+let handoverRequested = false;
+
+export function requestWorkerHandover(): void {
+  handoverRequested = true;
+}
+
+export function workerHandoverRequested(): boolean {
+  return handoverRequested;
+}

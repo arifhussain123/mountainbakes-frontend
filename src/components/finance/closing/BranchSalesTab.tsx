@@ -274,10 +274,12 @@ export function BranchSalesTab() {
             <div className="flex flex-col items-end gap-0.5">
               <DepositDifferenceBadge difference={r.difference} symbol={symbol} />
               {/* Which deposit, and how sure the pairing is: one of the same
-                  amount, one within 999 of it, or only the one dated that day. */}
+                  amount, one within 999 of it, or only the one dated that day;
+                  plus any that paid no day and were handed over this day. */}
               {r.match !== 'none' && (
                 <span className="text-xs text-muted-foreground">
-                  {MATCH_LABELS[r.match]} · {dates}
+                  {MATCH_LABELS[r.match]}
+                  {r.extraCount > 0 && r.match !== 'same_day' ? ` + ${r.extraCount} more that day` : ''} · {dates}
                 </span>
               )}
             </div>
@@ -457,8 +459,8 @@ export function BranchSalesTab() {
                     <div className="space-y-1">
                       <p>
                         {unmatched.length === 1 ? 'A deposit in this window is' : `${unmatched.length} deposits in this window are`}{' '}
-                        not set against any day: no day within two days before {unmatched.length === 1 ? 'it' : 'them'} is
-                        still waiting for a deposit.
+                        not set against any day: {unmatched.length === 1 ? 'it pays' : 'they pay'} no day by amount, and
+                        there is no row for the day {unmatched.length === 1 ? 'it was' : 'they were'} handed over.
                       </p>
                       <ul className="space-y-0.5">
                         {unmatched.slice(0, UNMATCHED_SHOWN).map((d) => (

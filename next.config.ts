@@ -8,7 +8,7 @@ loadEnvConfig(process.cwd());
 
 // This app deploys independently of the Express API — they are separate hosts.
 // The browser calls the API directly at NEXT_PUBLIC_API_URL (baked in at build
-// time), so there is no same-dyno loopback proxy any more. The API's own CORS
+// time), so there is no same-host loopback proxy any more. The API's own CORS
 // allowlist (CORS_ORIGINS, server/src/app.ts) is what permits those requests.
 //
 // This app is now a pure CLIENT-SIDE app: `next build` writes a static bundle to
