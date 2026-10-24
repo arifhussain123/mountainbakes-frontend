@@ -36,7 +36,7 @@ import { cn } from '@/lib/utils';
  *
  * One business month of returns from every branch, in two views of the same
  * figures: a branch-wise table (one line per branch × item × reason) and an
- * item-wise box (a square per item, every branch added up; tapping one lists
+ * item-wise box (a small box per item, every branch added up; tapping one lists
  * its branches). Both come from one
  * server aggregate — GET /api/production-returns/month-summary — so the cards,
  * the table and the box can never disagree; see
@@ -82,7 +82,7 @@ function ItemWiseBox({ items }: { items: ReturnMonthItem[] }) {
         <h3 id="item-wise-heading" className="text-sm font-semibold">All Branches — Item-Wise Total Returns</h3>
         <span className="text-xs text-muted-foreground">Tap an item for its branches</span>
       </div>
-      <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <ul className="flex flex-wrap gap-2 p-4">
         {items.map((item) => (
           <li key={item.productId}>
             <button
@@ -90,10 +90,10 @@ function ItemWiseBox({ items }: { items: ReturnMonthItem[] }) {
               aria-haspopup="dialog"
               aria-expanded={openId === item.productId}
               onClick={() => setOpenId(item.productId)}
-              className="flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-lg border bg-background p-3 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex max-w-56 flex-col items-center gap-0.5 rounded-lg border bg-background px-3 py-2 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="line-clamp-3 text-sm font-medium leading-snug">{item.productName}</span>
-              <span className="text-2xl font-semibold tabular-nums">{qtyText(item.qty)}</span>
+              <span className="line-clamp-2 text-sm font-medium leading-snug">{item.productName}</span>
+              <span className="text-lg font-semibold tabular-nums">{qtyText(item.qty)}</span>
             </button>
           </li>
         ))}
