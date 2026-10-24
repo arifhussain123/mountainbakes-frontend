@@ -22,13 +22,18 @@ export interface CollectionsExportModalProps {
 }
 
 /**
- * Pulls the Collections workbook — one row per demand with what the branch owes,
- * on the Demand Record's rules (Finance → Demand Record): Company Share on
- * G. Total, and a Previous → Closing balance carried from each demand to the
- * branch's next. Then a By Branch summary and one tab per branch.
+ * Pulls the Collections sheet — one row per delivery, carrying what the branch
+ * owes for it.
  *
- * Until Finance switches the Demand Record on, the server falls back to the
- * delivery-slip figures and the sheet says so.
+ * The figures are the ones the company copy of the next slip prints, read from
+ * the same `getPreviousOrderBalance` the slip itself uses, so a rider's paper and
+ * this spreadsheet cannot disagree about an amount.
+ *
+ * Worth knowing before reading a short sheet: a delivery is billed against the
+ * one that FOLLOWS it, because that pair is what fixes the window its returns and
+ * discounts are counted in. So a branch's most recent delivery has no figure yet
+ * and is not a row here. The sheet's last line says how many were held back for
+ * that reason rather than leaving the gap silent.
  */
 export function CollectionsExportModal({ open, onOpenChange, token }: CollectionsExportModalProps) {
   const today = businessDateStr();
@@ -84,8 +89,8 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
             <FileSpreadsheet className="h-5 w-5 text-primary" /> Collections
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            One row per demand — delivered, return, discount, G. Total, company share,
-            share received and the running balance — plus a tab for each branch.
+            One row per delivery — delivered value, company share, returns, discount and
+            the amount to collect.
           </p>
         </div>
 
@@ -126,11 +131,12 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
             </div>
           </div>
 
-          {/* Said here rather than discovered in the sheet: the rule is the
-              Demand Record's, so its figures match that page. */}
+          {/* Said here rather than discovered in the sheet: a range ending today
+              will usually be one delivery per branch short, and that is correct
+              rather than missing data. */}
           <p className="text-xs text-muted-foreground">
-            Company Share = (Delivered − Return − Discount) × share %. Closing Balance =
-            Previous Balance + Company Share − Share Received, carried to the next demand.
+            A delivery is billed against the one after it, so each branch&apos;s most recent
+            delivery has no amount yet. The sheet&apos;s last line counts any held back.
           </p>
         </div>
 
