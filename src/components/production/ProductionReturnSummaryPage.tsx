@@ -36,10 +36,10 @@ import { cn } from '@/lib/utils';
  *
  * One business month of returns from every branch, in two views of the same
  * figures: a branch-wise table (one line per branch × item × reason) and an
- * item-wise box (a small box per item, every branch added up; tapping one lists
- * its branches). Both come from one
- * server aggregate — GET /api/production-returns/month-summary — so the cards,
- * the table and the box can never disagree; see
+ * item-wise box (an even grid of boxes, one per item, every branch added up;
+ * tapping one lists its branches). Both come from one server aggregate —
+ * GET /api/production-returns/month-summary — so the cards, the table and
+ * the box can never disagree; see
  * `shared/utils/return-month-summary.ts` for which returns count (everything
  * but rejected) and how each is priced (at its own day's price).
  *
@@ -82,17 +82,19 @@ function ItemWiseBox({ items }: { items: ReturnMonthItem[] }) {
         <h3 id="item-wise-heading" className="text-sm font-semibold">All Branches — Item-Wise Total Returns</h3>
         <span className="text-xs text-muted-foreground">Tap an item for its branches</span>
       </div>
-      <ul className="flex flex-wrap gap-2 p-4">
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2 p-4">
         {items.map((item) => (
-          <li key={item.productId}>
+          <li key={item.productId} className="flex">
             <button
               type="button"
               aria-haspopup="dialog"
               aria-expanded={openId === item.productId}
               onClick={() => setOpenId(item.productId)}
-              className="flex max-w-56 flex-col items-center gap-0.5 rounded-lg border bg-background px-3 py-2 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex w-full flex-col items-center justify-between gap-1 rounded-lg border bg-background px-3 py-2 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="line-clamp-2 text-sm font-medium leading-snug">{item.productName}</span>
+              <span className="flex h-10 items-center">
+                <span className="line-clamp-2 text-sm font-medium leading-snug">{item.productName}</span>
+              </span>
               <span className="text-lg font-semibold tabular-nums">{qtyText(item.qty)}</span>
             </button>
           </li>
