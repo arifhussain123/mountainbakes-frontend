@@ -184,6 +184,8 @@ export const ROUTES = {
   FINANCE_DASHBOARD: '/finance-dashboard',
   FINANCE_LEDGER: '/finance-ledger',
   FINANCE_CASH_TRANSFERS: '/finance-cash-transfers',
+  /** Each branch's running balance with the company, demand by demand. */
+  FINANCE_DEMAND_RECORD: '/finance-demand-record',
   FINANCE_ENTRIES: '/finance-entries',
   /** Read-only year ledger. Payslips are raised and approved on FINANCE_PAYROLL. */
   FINANCE_SALARIES: '/finance-salaries',

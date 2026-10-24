@@ -35,6 +35,7 @@ import {
   Banknote,
   MessageCircle,
   Truck,
+  ScrollText,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -94,6 +95,8 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Dashboard',        href: ROUTES.FINANCE_DASHBOARD,         icon: LayoutDashboard },
   { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
   { label: 'Cash Transfers',   href: ROUTES.FINANCE_CASH_TRANSFERS,    icon: Banknote },
+  // What each branch owes: the cash transfers above are its Share Received.
+  { label: 'Demand Record',    href: ROUTES.FINANCE_DEMAND_RECORD,     icon: ScrollText },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
   // Each subject has two screens: the one where its records are raised and
   // approved, and the read-only year ledger those approvals add up to.
