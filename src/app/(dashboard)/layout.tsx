@@ -3,7 +3,6 @@ import { Topbar } from '@/components/layout/Topbar';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { RealtimeBridge } from '@/components/layout/RealtimeBridge';
 import { LoginHistoryBridge } from '@/components/layout/LoginHistoryBridge';
-import { IdleSignOut } from '@/components/layout/IdleSignOut';
 import { PushNotifications } from '@/components/pwa/PushNotifications';
 import { RealtimeProvider } from '@/providers/RealtimeProvider';
 import { GeofenceProvider } from '@/providers/GeofenceProvider';
@@ -42,8 +41,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex h-screen overflow-hidden bg-background supports-[height:100dvh]:h-dvh">
             <RealtimeBridge />
             <LoginHistoryBridge />
-            {/* Phones and tablets only: 3 minutes untouched signs out. */}
-            <IdleSignOut />
             <PushNotifications />
             <Sidebar />
             <div className="flex flex-1 flex-col overflow-hidden">
