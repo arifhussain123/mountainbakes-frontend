@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, ChevronDown, Loader2, PackageCheck, Sparkles } from 'lucide-react';
+import { CheckCircle2, Loader2, PackageCheck, Sparkles } from 'lucide-react';
 import {
   SPECIAL_ORDER_STATUS_LABELS,
   type Attachment,
@@ -180,7 +180,7 @@ function SpecialOrderCard({ order, mode, token }: { order: SpecialOrder; mode: '
         setQtyById({});
         setConfirmOpen(false);
       },
-      'Verified & approved — added to your stock',
+      'Verified — added to your stock and removed from Orders',
       'Could not verify this Special Order',
     );
 
@@ -403,19 +403,18 @@ function SpecialOrderCard({ order, mode, token }: { order: SpecialOrder; mode: '
 
 export function SpecialOrdersPanel({ mode, token }: { mode: 'branch' | 'production'; token: string }) {
   const ordersQ = useSpecialOrders(token);
-  const [showDone, setShowDone] = useState(false);
 
-  // Production is finished with an order the moment the branch verifies it — the
-  // units have left Production Stock and there is nothing left to do — so it
-  // drops off this screen then. Only the branch keeps the last week's history.
-  const orders = (ordersQ.data ?? []).filter((o) => mode === 'branch' || o.status !== 'approved');
+  // An order leaves this page the moment the branch verifies it: verification
+  // books what was received into the branch's stock (verify_special_order), so
+  // there is nothing left to do on either side — the units are on the Stock
+  // page from then on. The API still returns the last week's finished orders
+  // for the screens that show history; this page does not.
+  const orders = (ordersQ.data ?? []).filter((o) => o.status !== 'approved');
   // Nothing raised, nothing shown: most days most branches have no Special
   // Order, and an empty card above the demand table would only be in the way.
   if (orders.length === 0) return null;
 
-  const open = orders.filter((o) => o.status !== 'approved');
-  const done = orders.filter((o) => o.status === 'approved');
-  const needsAction = open.filter((o) => NEEDS_ACTION[mode].includes(o.status)).length;
+  const needsAction = orders.filter((o) => NEEDS_ACTION[mode].includes(o.status)).length;
 
   return (
     <Card>
@@ -434,31 +433,9 @@ export function SpecialOrdersPanel({ mode, token }: { mode: 'branch' | 'producti
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {open.length === 0 && <p className="text-sm text-muted-foreground">No open Special Orders.</p>}
-        {open.map((o) => (
+        {orders.map((o) => (
           <SpecialOrderCard key={o.id} order={o} mode={mode} token={token} />
         ))}
-
-        {done.length > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowDone((s) => !s)}
-              aria-expanded={showDone}
-              className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              <ChevronDown className={cn('h-4 w-4 transition-transform', showDone && 'rotate-180')} />
-              Verified &amp; approved in the last 7 days ({done.length})
-            </button>
-            {showDone && (
-              <div className="mt-3 space-y-3">
-                {done.map((o) => (
-                  <SpecialOrderCard key={o.id} order={o} mode={mode} token={token} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
