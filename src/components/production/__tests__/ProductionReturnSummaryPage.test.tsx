@@ -59,11 +59,22 @@ describe('ProductionReturnSummaryPage', () => {
     const box = screen.getByRole('region', { name: 'All Branches — Item-Wise Total Returns' });
     const choc = within(box).getByRole('button', { name: /Chocolate Pastry/ });
     expect(choc.textContent).toContain('12');
-    expect(within(box).getAllByRole('button')).toHaveLength(2);
+    expect(within(box).getAllByRole('listitem')).toHaveLength(2);
     fireEvent.click(choc);
     const dialog = screen.getByRole('dialog', { name: 'Chocolate Pastry' });
     expect(within(dialog).getByText('North Nazimabad Branch')).toBeTruthy();
     expect(within(dialog).getByText('DHA Branch')).toBeTruthy();
+  });
+
+  test('the item-wise box sorts A–Z by default and by quantity either way', () => {
+    render(<ProductionReturnSummaryPage />);
+    const box = screen.getByRole('region', { name: 'All Branches — Item-Wise Total Returns' });
+    const order = () => within(box).getAllByRole('listitem').map((li) => li.querySelector('.line-clamp-2')?.textContent);
+    expect(order()).toEqual(['Chocolate Pastry', 'Cream Puff']);
+    fireEvent.click(within(box).getByRole('button', { name: 'Sort by quantity, lowest first' }));
+    expect(order()).toEqual(['Cream Puff', 'Chocolate Pastry']);
+    fireEvent.click(within(box).getByRole('button', { name: 'Sort by quantity, highest first' }));
+    expect(order()).toEqual(['Chocolate Pastry', 'Cream Puff']);
   });
 
   test('searching narrows the branch-wise table only — the cards and item box keep the whole month', () => {
