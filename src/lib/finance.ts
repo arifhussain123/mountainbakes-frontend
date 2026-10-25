@@ -973,19 +973,3 @@ export async function downloadFinanceReport(
 
   saveBlob(blob, filename);
 }
-
-/**
- * The Daily Ledger's Excel button: General Entries, Ledger, Trial Balance,
- * Income Statement and Balance Sheet in one workbook. Every figure is worked out
- * on the server and lives only in the file — nothing here reads it.
- */
-export async function downloadLedgerWorkbook(
-  query: { from?: string; to?: string; branchId?: string },
-  token: string,
-): Promise<void> {
-  const blob = await apiCall<Blob>(`/api/finance/reports/accounting-workbook${toQuery(query)}`, {}, token);
-  const from = query.from ?? query.to;
-  const to = query.to ?? query.from;
-  const range = from && to && from !== to ? `${from}_to_${to}` : (from ?? 'today');
-  saveBlob(blob, `Mountain_Bakes_Daily_Ledger_${range}.xlsx`);
-}

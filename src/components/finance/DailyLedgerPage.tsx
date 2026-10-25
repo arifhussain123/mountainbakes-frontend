@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { businessDateStr, FINANCE_ACCOUNT_LABELS, type FilterConfig, type LedgerEntry } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
-import { downloadFinanceReport, downloadLedgerWorkbook, useLedger, useLedgerHeads, type LedgerFilters } from '@/lib/finance';
+import { downloadFinanceReport, useLedger, useLedgerHeads, type LedgerFilters } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -240,18 +240,11 @@ export function DailyLedgerPage() {
     if (!token) return;
     setDownloading(format);
     try {
-      // Excel is the accounting workbook (journal, ledger, trial balance,
-      // income statement, balance sheet); PDF stays the printed cash book.
-      // Both take only the period and branch.
-      if (format === 'excel') {
-        await downloadLedgerWorkbook({ from: query.from, to: query.to, branchId: query.branchId }, token);
-      } else {
-        await downloadFinanceReport(
-          { type: 'daily_cash_book', from: query.from, to: query.to, branchId: query.branchId },
-          format,
-          token,
-        );
-      }
+      await downloadFinanceReport(
+        { type: 'daily_cash_book', from: query.from, to: query.to, branchId: query.branchId },
+        format,
+        token,
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not export the ledger');
     } finally {
