@@ -134,13 +134,16 @@ export function DailyLedgerPage() {
   // buttons back for roles that hold the `adjust` ability.
   const canAdjust = SHOW_ROW_EDIT_DELETE && abilities.adjust;
   const today = businessDateStr();
+  // Month to date: the 1st of the current business month through today. On the
+  // 1st of a new month it starts again from that day (owner's rule, 2026-10-25).
+  const monthStart = `${today.slice(0, 7)}-01`;
 
   const list = useListQueryState({
     syncUrl: true,
     filterKeys: ['businessDate', 'branchId', 'ledgerHeadId', 'type', 'account', 'status', 'amount'],
     defaults: {
       filters: [
-        { key: 'businessDate', op: 'gte', value: today },
+        { key: 'businessDate', op: 'gte', value: monthStart },
         { key: 'businessDate', op: 'lte', value: today },
       ],
     },
