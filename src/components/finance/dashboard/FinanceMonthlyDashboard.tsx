@@ -396,6 +396,7 @@ export function FinanceDashboardBody({
   const { format } = useMoney();
   const s = data.summary;
   const prevLabel = monthLong(data.previousMonth);
+  const isCurrentMonth = data.month === businessDateStr().slice(0, 7);
   const daily = useMemo(() => dailySeries(data), [data]);
   const branches = useMemo(() => branchTotals(data), [data]);
   const heads = useMemo(() => ledgerHeadTotals(data), [data]);
@@ -480,7 +481,12 @@ export function FinanceDashboardBody({
           <h2 className="text-[13px] font-extrabold tracking-[0.12em]">INCOME</h2>
           <span className="text-xs text-fin-ink-muted">{context}</span>
         </header>
-        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 bg-fin-row-hover p-3.5 sm:grid-cols-3 xl:grid-cols-5">
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 bg-fin-row-hover p-3.5 sm:grid-cols-3',
+            isCurrentMonth ? 'xl:grid-cols-5' : 'xl:grid-cols-4',
+          )}
+        >
           <StatCard
             label="Demand Amount"
             value={s.demand}
@@ -513,14 +519,16 @@ export function FinanceDashboardBody({
             signed
             format={format}
           />
-          <StatCard
-            label="Last Month Balance"
-            value={s.lastMonthBalance}
-            sub={s.lastMonthBalance === null ? `No records in ${prevLabel}` : prevLabel}
-            color={SERIES.demand}
-            signed
-            format={format}
-          />
+          {isCurrentMonth && (
+            <StatCard
+              label="Last Month Balance"
+              value={s.lastMonthBalance}
+              sub={s.lastMonthBalance === null ? `No records in ${prevLabel}` : prevLabel}
+              color={SERIES.demand}
+              signed
+              format={format}
+            />
+          )}
         </div>
       </section>
 
@@ -689,6 +697,8 @@ export function financeOverviewGroups(
 ): OverviewGroup[] {
   const s = data.summary;
   const prevLabel = monthLong(data.previousMonth);
+  // Last Month Balance is only shown while the current month is selected.
+  const isCurrentMonth = data.month === businessDateStr().slice(0, 7);
   return [
     {
       title: 'INCOME',
@@ -713,12 +723,16 @@ export function financeOverviewGroups(
           signed: true,
           strong: true,
         },
-        {
-          label: 'Last Month Balance',
-          value: s.lastMonthBalance,
-          sub: s.lastMonthBalance === null ? `No records in ${prevLabel}` : `${prevLabel} · Share − Received`,
-          signed: true,
-        },
+        ...(isCurrentMonth
+          ? [
+              {
+                label: 'Last Month Balance',
+                value: s.lastMonthBalance,
+                sub: s.lastMonthBalance === null ? `No records in ${prevLabel}` : `${prevLabel} · Share − Received`,
+                signed: true,
+              },
+            ]
+          : []),
       ],
     },
     {
