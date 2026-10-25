@@ -95,8 +95,6 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Dashboard',        href: ROUTES.FINANCE_DASHBOARD,         icon: LayoutDashboard },
   { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
   { label: 'Cash Transfers',   href: ROUTES.FINANCE_CASH_TRANSFERS,    icon: Banknote },
-  // What each branch owes: the cash transfers above are its Share Received.
-  { label: 'Demand Record',    href: ROUTES.FINANCE_DEMAND_RECORD,     icon: ScrollText },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
   // Each subject has two screens: the one where its records are raised and
   // approved, and the read-only year ledger those approvals add up to.
@@ -110,6 +108,9 @@ export const FINANCE_NAV: NavItem[] = [
   // Production has paid a supplier, not every day.
   { label: 'Supplier Payments', href: ROUTES.FINANCE_SUPPLIER_PAYMENTS, icon: Truck },
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
+  // What each branch owes (its Share Received is the Cash Transfers). After
+  // Daily Closing by the owner's order, 2026-10-25.
+  { label: 'Demand Record',    href: ROUTES.FINANCE_DEMAND_RECORD,     icon: ScrollText },
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
   { label: 'Audit Trail',      href: ROUTES.FINANCE_AUDIT,             icon: ShieldCheck },
   { label: 'Help Desk',        href: ROUTES.FINANCE_HELP_DESK,         icon: Headset },
