@@ -73,17 +73,49 @@ function ReasonPill({ reason }: { reason: ReturnReason }) {
   );
 }
 
+type ItemSort = 'name' | 'qtyDesc' | 'qtyAsc';
+const ITEM_SORTS: { value: ItemSort; label: string; aria: string }[] = [
+  { value: 'name', label: 'A–Z', aria: 'Sort by item name' },
+  { value: 'qtyDesc', label: 'Qty ↓', aria: 'Sort by quantity, highest first' },
+  { value: 'qtyAsc', label: 'Qty ↑', aria: 'Sort by quantity, lowest first' },
+];
+
 function ItemWiseBox({ items }: { items: ReturnMonthItem[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sort, setSort] = useState<ItemSort>('name');
   const open = items.find((i) => i.productId === openId) ?? null;
+  // The server sends items A–Z; equal quantities keep that order.
+  const sorted = useMemo(
+    () => (sort === 'name' ? items : [...items].sort((a, b) => (sort === 'qtyDesc' ? b.qty - a.qty : a.qty - b.qty))),
+    [items, sort],
+  );
   return (
     <section aria-labelledby="item-wise-heading" className="rounded-lg border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-1 border-b px-4 py-3">
         <h3 id="item-wise-heading" className="text-sm font-semibold">All Branches — Item-Wise Total Returns</h3>
-        <span className="text-xs text-muted-foreground">Tap an item for its branches</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Tap an item for its branches</span>
+          <div className="flex rounded-md border p-0.5" role="group" aria-label="Sort items">
+            {ITEM_SORTS.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                aria-pressed={sort === s.value}
+                aria-label={s.aria}
+                onClick={() => setSort(s.value)}
+                className={cn(
+                  'h-8 rounded px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-7',
+                  sort === s.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent',
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2 p-4">
-        {items.map((item) => (
+        {sorted.map((item) => (
           <li key={item.productId} className="flex">
             <button
               type="button"
