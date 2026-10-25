@@ -32,8 +32,23 @@ export interface CollectionsExportModalProps {
  */
 export function CollectionsExportModal({ open, onOpenChange, token }: CollectionsExportModalProps) {
   const today = businessDateStr();
-  const [from, setFrom] = useState(today);
+  // The month to date, by request date (each demand's business date): the 1st
+  // of the current month through today, starting again on the 1st of the next
+  // (owner's rule, 2026-10-25). Today alone was often an empty file — the
+  // day's demands are not delivered yet when most people export.
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
+  // Each time the dialog opens it starts from this month again, so a page left
+  // open across the 1st does not keep last month's window.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setFrom(monthStart);
+      setTo(today);
+    }
+  }
   const [branchId, setBranchId] = useState(ALL_BRANCHES);
   const [busy, setBusy] = useState(false);
 
@@ -109,7 +124,7 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
                 type="date"
                 value={from}
                 max={to || today}
-                onChange={(e) => setFrom(e.target.value || today)}
+                onChange={(e) => setFrom(e.target.value || monthStart)}
                 className="h-9 w-full"
               />
             </div>
@@ -129,7 +144,7 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
           {/* Said here rather than discovered in the sheet: the rule is the
               Demand Record's, so its figures match that page. */}
           <p className="text-xs text-muted-foreground">
-            Demand = Total Demand Amount − Return − Discount. Company Share = Demand × share %.
+            Rows are by request date. Demand = Total Demand Amount − Return − Discount. Company Share = Demand × share %.
             Remaining = Previous Balance + Company Share − Payment Received, carried to the next demand.
           </p>
         </div>
