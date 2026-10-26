@@ -125,6 +125,8 @@ export const BRANCH_NAV: NavItem[] = [
   { label: 'Return Stock',  href: ROUTES.BRANCH_RETURN_STOCK, icon: Undo2 },
   { label: 'Discounts',     href: ROUTES.BRANCH_DISCOUNTS,    icon: BadgePercent },
   { label: 'Cash Deposits', href: ROUTES.BRANCH_CASH_TRANSFERS, icon: Banknote },
+  // What the branch owes, demand by demand: next to the deposits that pay it.
+  { label: 'Demand Record', href: ROUTES.BRANCH_DEMAND_RECORD, icon: ScrollText },
   { label: 'Shop Expenses', href: ROUTES.BRANCH_EXPENSES,    icon: Receipt },
   { label: 'Events',        href: ROUTES.BRANCH_EVENTS,      icon: CalendarDays },
   { label: 'Branch Closing',href: ROUTES.BRANCH_CLOSING,     icon: CalendarCheck },

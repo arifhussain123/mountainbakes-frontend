@@ -1,7 +1,7 @@
 'use client';
 
 import type { DemandRecordRow } from '@mb/shared';
-import { useDemandRecordDetail } from '@/lib/finance';
+import { useDemandRecordDetail, type DemandRecordScope } from '@/lib/finance';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatDateTime } from '@/utils/date';
@@ -13,8 +13,16 @@ import { Money } from './finance-ui';
  * behind it. The lists come from the same rules the row was computed with
  * (services/branch-account.service.ts), so each section adds up to its figure.
  */
-export function DemandRecordDetailDialog({ row, onClose }: { row: DemandRecordRow | null; onClose: () => void }) {
-  const q = useDemandRecordDetail(row?.branchId ?? null, row?.orderId ?? null);
+export function DemandRecordDetailDialog({
+  row,
+  onClose,
+  scope = 'finance',
+}: {
+  row: DemandRecordRow | null;
+  onClose: () => void;
+  scope?: DemandRecordScope;
+}) {
+  const q = useDemandRecordDetail(row?.branchId ?? null, row?.orderId ?? null, scope);
   const d = q.data;
   const r = d?.row ?? row;
 

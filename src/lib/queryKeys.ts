@@ -324,6 +324,11 @@ export const qk = {
   financeDemandRecordSettings: () => ['finance', 'demandRecordSettings'] as const,
   financeDemandRecordAdjustments: (branchId?: string) =>
     ['finance', 'demandRecordAdjustments', branchId ?? 'all'] as const,
+  // A branch's own Demand Record (/api/branch-account): the same rows, read by
+  // a branch account, so kept apart from Finance's cache.
+  branchDemandRecord: (filters: Record<string, unknown>) => ['branchDemandRecord', 'rows', filters] as const,
+  branchDemandRecordDetail: (orderId: string | null) => ['branchDemandRecord', 'detail', orderId ?? 'opening'] as const,
+  branchDemandRecordSettings: () => ['branchDemandRecord', 'settings'] as const,
   financeClosing: (businessDate?: string | null) =>
     ['finance', 'closing', businessDate ?? 'today'] as const,
   financeClosingHistory: (days?: number) => ['finance', 'closingHistory', days ?? 30] as const,

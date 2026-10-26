@@ -13,6 +13,7 @@ import {
   useDemandRecordSettings,
   useFinanceMutation,
   type DemandRecordFilters,
+  type DemandRecordScope,
 } from '@/lib/finance';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
@@ -25,7 +26,7 @@ import { formatDate } from '@/utils/date';
 import { saveBlob } from '@/utils/saveBlob';
 import { cn } from '@/lib/utils';
 import { Download, Eye, NotebookPen, RotateCcw, ScrollText } from 'lucide-react';
-import { FinancePageHeader, Money, ReadOnlyNotice, useFinanceAbilities, useMoney } from './finance-ui';
+import { FinancePageHeader, Money, ReadOnlyNotice, useFinanceAbilities, useMoney, type FinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField } from './finance-actions';
 import { DemandRecordDetailDialog } from './DemandRecordDetailDialog';
 import { DemandRecordEntriesDialog } from './DemandRecordEntriesDialog';
@@ -46,6 +47,9 @@ import { DemandRecordEntriesDialog } from './DemandRecordEntriesDialog';
  * A branch's last row stays open until its next demand: returns and deposits
  * made after it still land there. That is what makes one month's closing equal
  * the next month's opening.
+ *
+ * Branch → Demand Record is the same view of the branch's own rows, read-only
+ * (BranchDemandRecordPage): no branch filter, and none of Finance's controls.
  */
 
 const col = createColumnHelper<DemandRecordRow>();
@@ -74,11 +78,22 @@ function BalanceCell({ value, strong, align = 'end', noSymbol }: { value: number
 }
 
 export function DemandRecordPage() {
-  const { token } = useAuth();
   const abilities = useFinanceAbilities();
-  const settingsQ = useDemandRecordSettings();
+  return <DemandRecordView scope="finance" abilities={abilities} />;
+}
+
+/** Branch → Demand Record: the branch's own record, read-only. */
+export function BranchDemandRecordPage() {
+  return <DemandRecordView scope="branch" abilities={null} />;
+}
+
+/** `abilities` is null for a branch account, which holds no finance permission. */
+function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abilities: FinanceAbilities | null }) {
+  const { token, user } = useAuth();
+  const isBranch = scope === 'branch';
+  const settingsQ = useDemandRecordSettings(scope);
   const startDate = settingsQ.data?.startDate ?? null;
-  const branchesQ = useBranches(token);
+  const branchesQ = useBranches(token, { enabled: !isBranch });
   const today = businessDateStr();
 
   const [branchId, setBranchId] = useState(ALL);
@@ -101,7 +116,7 @@ export function DemandRecordPage() {
     page,
     pageSize,
   };
-  const recordQ = useDemandRecord(filters, { enabled: Boolean(startDate) });
+  const recordQ = useDemandRecord(filters, { enabled: Boolean(startDate), scope });
   const data = recordQ.data;
   const rows = data?.rows ?? [];
 
@@ -234,7 +249,7 @@ export function DemandRecordPage() {
     // A column of dashes only costs width: Branch when one branch is chosen,
     // Adjustments when nothing on the page has one.
     const key = c.id ?? ('accessorKey' in c ? String(c.accessorKey) : '');
-    if (key === 'branchName') return branchId === ALL;
+    if (key === 'branchName') return !isBranch && branchId === ALL;
     if (key === 'adjustments') return rows.some((r) => r.adjustments !== 0);
     return true;
   });
@@ -244,7 +259,7 @@ export function DemandRecordPage() {
     setExporting(true);
     try {
       const { page: _p, pageSize: _s, ...rest } = filters;
-      const all = await fetchAllDemandRecordRows(rest, token);
+      const all = await fetchAllDemandRecordRows(rest, token, scope);
       const header = [
         'Date', 'Demand Number', 'Branch', 'Delivered', 'Actual Sales', 'Return', 'Discount', 'G. Total',
         'Share %', 'Share % Frozen', 'Company Share', 'Share on Sales', 'Share Received', 'Adjustments',
@@ -263,7 +278,10 @@ export function DemandRecordPage() {
       const csv = [header, ...lines]
         .map((row) => row.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
         .join('\n');
-      const who = branchId === ALL ? 'all-branches' : shortBranch(branchItems.find((b) => b.value === branchId)?.label ?? 'branch').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const name = isBranch
+        ? (user?.branchName ?? 'branch')
+        : branchId === ALL ? 'all-branches' : (branchItems.find((b) => b.value === branchId)?.label ?? 'branch');
+      const who = shortBranch(name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
       saveBlob(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }), `demand-record-${who}-${all.from}_to_${all.to}.csv`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Export failed');
@@ -284,19 +302,34 @@ export function DemandRecordPage() {
       />
     );
   }
-  if (!startDate) return <GoLive canConfigure={abilities.configure} />;
+  if (!startDate) {
+    return isBranch ? (
+      <div className="space-y-6">
+        <FinancePageHeader title="Demand Record" description="What your branch owes the company, demand by demand, carried forward." />
+        <EmptyState title="Not switched on yet" description="Finance has not started the Demand Record. It appears here once they do." />
+      </div>
+    ) : (
+      <GoLive canConfigure={abilities?.configure ?? false} />
+    );
+  }
 
   const t = data?.totals;
   return (
     <div className="space-y-6">
       <FinancePageHeader
         title="Demand Record"
-        description={`What each branch owes the company, demand by demand, carried forward. Counting from ${formatDate(startDate)}; everything before is in each branch's opening balance.`}
+        description={
+          isBranch
+            ? `What your branch owes the company, demand by demand, carried forward. Counting from ${formatDate(startDate)}; everything before is in your opening balance.`
+            : `What each branch owes the company, demand by demand, carried forward. Counting from ${formatDate(startDate)}; everything before is in each branch's opening balance.`
+        }
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => setEntriesOpen(true)}>
-              <NotebookPen className="h-3.5 w-3.5" /> Opening & adjustments
-            </Button>
+            {!isBranch && (
+              <Button variant="outline" size="sm" onClick={() => setEntriesOpen(true)}>
+                <NotebookPen className="h-3.5 w-3.5" /> Opening & adjustments
+              </Button>
+            )}
             <Button variant="outline" size="sm" disabled={!data || exporting} onClick={() => void exportCsv()}>
               <Download className="h-3.5 w-3.5" /> {exporting ? 'Exporting…' : 'Export'}
             </Button>
@@ -307,17 +340,19 @@ export function DemandRecordPage() {
         }
       />
 
-      <ReadOnlyNotice abilities={abilities} />
+      {abilities && <ReadOnlyNotice abilities={abilities} />}
 
       <FilterBar>
-        <FilterField label="Branch" className="min-w-[12rem] flex-1 space-y-1 sm:flex-none">
-          <Select items={branchItems} value={branchId} onValueChange={(v) => v && resetPage(setBranchId)(v as string)}>
-            <SelectTrigger className="h-11 w-full md:h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {branchItems.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </FilterField>
+        {!isBranch && (
+          <FilterField label="Branch" className="min-w-[12rem] flex-1 space-y-1 sm:flex-none">
+            <Select items={branchItems} value={branchId} onValueChange={(v) => v && resetPage(setBranchId)(v as string)}>
+              <SelectTrigger className="h-11 w-full md:h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {branchItems.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FilterField>
+        )}
         <FilterField label="From">
           <DateFilter value={from} max={to || today} onChange={resetPage(setFrom)} />
         </FilterField>
@@ -328,7 +363,7 @@ export function DemandRecordPage() {
           <Input
             value={search}
             onChange={(e) => resetPage(setSearch)(e.target.value)}
-            placeholder="Demand number or branch…"
+            placeholder={isBranch ? 'Demand number…' : 'Demand number or branch…'}
             className="h-11 md:h-9"
           />
         </FilterField>
@@ -420,14 +455,16 @@ export function DemandRecordPage() {
         </>
       )}
 
-      <DemandRecordDetailDialog row={detail} onClose={() => setDetail(null)} />
-      <DemandRecordEntriesDialog
-        open={entriesOpen}
-        onOpenChange={setEntriesOpen}
-        branchItems={branchItems.filter((b) => b.value !== ALL)}
-        startDate={startDate}
-        abilities={abilities}
-      />
+      <DemandRecordDetailDialog row={detail} onClose={() => setDetail(null)} scope={scope} />
+      {abilities && (
+        <DemandRecordEntriesDialog
+          open={entriesOpen}
+          onOpenChange={setEntriesOpen}
+          branchItems={branchItems.filter((b) => b.value !== ALL)}
+          startDate={startDate}
+          abilities={abilities}
+        />
+      )}
     </div>
   );
 }

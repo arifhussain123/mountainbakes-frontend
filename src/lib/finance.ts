@@ -619,38 +619,51 @@ export type DemandRecordFilters = {
 };
 
 /**
+ * Whose Demand Record a screen reads. Finance reads every branch's; a branch
+ * account reads its own at /api/branch-account, where the API takes the branch
+ * from the token and ignores any `branchId` sent.
+ */
+export type DemandRecordScope = 'finance' | 'branch';
+
+const demandRecordPath = (scope: DemandRecordScope) =>
+  scope === 'branch' ? '/api/branch-account' : '/api/finance/branch-account';
+
+/**
  * The Demand Record's go-live date. `null` until Finance switches it on, which
  * is the one state the page has to explain rather than show.
  */
-export function useDemandRecordSettings() {
+export function useDemandRecordSettings(scope: DemandRecordScope = 'finance') {
   const token = useToken();
   return useQuery({
-    queryKey: qk.financeDemandRecordSettings(),
+    queryKey: scope === 'branch' ? qk.branchDemandRecordSettings() : qk.financeDemandRecordSettings(),
     enabled: Boolean(token),
-    queryFn: () => apiCall<{ startDate: string | null }>('/api/finance/branch-account/settings', {}, token),
+    queryFn: () => apiCall<{ startDate: string | null }>(`${demandRecordPath(scope)}/settings`, {}, token),
   });
 }
 
-export function useDemandRecord(filters: DemandRecordFilters, opts?: { enabled?: boolean }) {
+export function useDemandRecord(filters: DemandRecordFilters, opts?: { enabled?: boolean; scope?: DemandRecordScope }) {
   const token = useToken();
+  const scope = opts?.scope ?? 'finance';
   return useQuery({
-    queryKey: qk.financeDemandRecord(filters as Record<string, unknown>),
+    queryKey: scope === 'branch'
+      ? qk.branchDemandRecord(filters as Record<string, unknown>)
+      : qk.financeDemandRecord(filters as Record<string, unknown>),
     enabled: Boolean(token) && (opts?.enabled ?? true),
     staleTime: 15_000,
     placeholderData: (previous) => previous,
-    queryFn: () => apiCall<DemandRecordResult>(`/api/finance/branch-account${toQuery(filters)}`, {}, token),
+    queryFn: () => apiCall<DemandRecordResult>(`${demandRecordPath(scope)}${toQuery(filters)}`, {}, token),
   });
 }
 
 /** One row with every record behind it. `orderId` null: the branch's opening row. */
-export function useDemandRecordDetail(branchId: string | null, orderId: string | null) {
+export function useDemandRecordDetail(branchId: string | null, orderId: string | null, scope: DemandRecordScope = 'finance') {
   const token = useToken();
   return useQuery({
-    queryKey: qk.financeDemandRecordDetail(branchId ?? '', orderId),
+    queryKey: scope === 'branch' ? qk.branchDemandRecordDetail(orderId) : qk.financeDemandRecordDetail(branchId ?? '', orderId),
     enabled: Boolean(token) && Boolean(branchId),
     queryFn: () =>
       apiCall<DemandRecordDetail>(
-        `/api/finance/branch-account/detail${toQuery({ branchId, orderId })}`,
+        `${demandRecordPath(scope)}/detail${toQuery(scope === 'branch' ? { orderId } : { branchId, orderId })}`,
         {},
         token,
       ),
@@ -678,13 +691,15 @@ export function useDemandRecordAdjustments(branchId?: string, opts?: { enabled?:
 export async function fetchAllDemandRecordRows(
   filters: Omit<DemandRecordFilters, 'page' | 'pageSize'>,
   token: Parameters<typeof apiCall>[2],
+  scope: DemandRecordScope = 'finance',
 ): Promise<DemandRecordResult> {
+  const path = demandRecordPath(scope);
   const first = await apiCall<DemandRecordResult>(
-    `/api/finance/branch-account${toQuery({ ...filters, page: 1, pageSize: 500 })}`, {}, token);
+    `${path}${toQuery({ ...filters, page: 1, pageSize: 500 })}`, {}, token);
   const rows = [...first.rows];
   for (let page = 2; page <= first.pagination.totalPages; page++) {
     const next = await apiCall<DemandRecordResult>(
-      `/api/finance/branch-account${toQuery({ ...filters, page, pageSize: 500 })}`, {}, token);
+      `${path}${toQuery({ ...filters, page, pageSize: 500 })}`, {}, token);
     rows.push(...next.rows);
   }
   return { ...first, rows };

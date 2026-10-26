@@ -145,6 +145,12 @@ export const ROUTES = {
    * FINANCE_CASH_TRANSFERS below and reads the same table.
    */
   BRANCH_CASH_TRANSFERS: '/branch-cash-transfers',
+  /**
+   * Branch → Demand Record: the branch's own running balance with the company,
+   * read-only (/api/branch-account). Finance's view of every branch is
+   * FINANCE_DEMAND_RECORD below; same '/branch-' prefix rule as above.
+   */
+  BRANCH_DEMAND_RECORD: '/branch-demand-record',
   BRANCH_EXPENSES: '/branch-expenses',
   BRANCH_ORDERS: '/branch-orders',
   BRANCH_CUSTOMERS: '/branch-customers',
