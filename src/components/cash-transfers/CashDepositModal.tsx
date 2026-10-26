@@ -132,7 +132,7 @@ export function CashDepositModal({
   const dirty =
     Object.values(draft).some((v) => v !== '') || note !== '' || photos.length > 0 || date !== today;
   const draftError = depositDraftError(draft, photos.length);
-  const dateError = date > today ? 'The date cannot be in the future.' : date < earliest ? 'A deposit can be dated today or yesterday only.' : null;
+  const dateError = date > today ? 'The date cannot be in the future.' : date < earliest ? `Pick a date from ${formatDate(earliest)} onwards.` : null;
   const valid = !draftError && !dateError && preflight.allowed;
   const photoNeeded = figures.total > 0;
   const photoError = photoTouched && photoNeeded && photos.length === 0 ? 'Payment proof photo is required.' : undefined;
@@ -484,11 +484,11 @@ export function CashDepositModal({
 }
 
 /**
- * How far back a deposit may be dated: today or yesterday only (the server's
- * CASH_DEPOSIT_BACKDATE_DAYS, the owner's rule of 2026-10-27). The server is
- * the authority; this only keeps the picker from offering a refused day.
+ * How far back a deposit may be dated: the server's sync window
+ * (resolveClientBusinessDate — 7 business days including today). The server
+ * is the authority; this only keeps the picker from offering a refused day.
  */
-const DEPOSIT_BACKDATE_DAYS = 1;
+const DEPOSIT_BACKDATE_DAYS = 6;
 
 /** A number as the amount inputs hold it: no grouping, at most 2 decimals, '' for 0. */
 function amountText(n: number): string {
