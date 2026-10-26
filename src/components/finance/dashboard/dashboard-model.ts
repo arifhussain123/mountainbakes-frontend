@@ -441,10 +441,10 @@ export const METRIC_INFO: Record<
   },
   received: {
     title: 'Received Amount',
-    source: 'Finance Ledger income on the Company Share and Fuel heads, plus approved Cash Deposit postings',
-    rule: 'Σ debit − credit, so a reversal nets out; deleted entries excluded',
-    status: 'Posted to the ledger (entries exist only once approved)',
-    date: 'Ledger entry date',
+    source: 'Cash Transfer Details — Total Amount of each cash transfer',
+    rule: 'Σ Total Amount (Cash + Easypaisa + Bank); Fuel Charges are not included; deleted transfers excluded',
+    status: 'Approved by Finance only — pending and rejected transfers excluded',
+    date: 'Transfer business date',
     refLabel: 'Voucher',
   },
   ledger: {
