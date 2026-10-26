@@ -203,12 +203,15 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
       cell: ({ row }) => (
         <span className="inline-flex flex-col items-end leading-tight">
           <Money value={row.original.companyShare} className="font-medium" noSymbol />
-          <span
-            className="text-[11px] text-muted-foreground"
-            title={row.original.pctFrozen ? 'Frozen when delivered' : "Today's % — nothing was frozen for this row"}
-          >
-            at {row.original.sharePct}%{!row.original.pctFrozen && <span className="text-amber-600">*</span>}
-          </span>
+          {/* The share % is Finance's to read; a branch sees the amount only. */}
+          {!isBranch && (
+            <span
+              className="text-[11px] text-muted-foreground"
+              title={row.original.pctFrozen ? 'Frozen when delivered' : "Today's % — nothing was frozen for this row"}
+            >
+              at {row.original.sharePct}%{!row.original.pctFrozen && <span className="text-amber-600">*</span>}
+            </span>
+          )}
         </span>
       ),
     }),
@@ -448,9 +451,14 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
           {data && data.branches.length > 1 && <BranchBalances branches={data.branches} />}
 
           <p className="text-xs text-muted-foreground">
-            <span className="text-amber-600">*</span> today&apos;s share % — nothing was frozen for that row (an opening row, or a
-            demand delivered before the record was switched on and not caught by it). A demand&apos;s row runs until the
-            branch&apos;s next demand; <span className="font-medium">Open</span> rows can still change.
+            {!isBranch && (
+              <>
+                <span className="text-amber-600">*</span> today&apos;s share % — nothing was frozen for that row (an opening row, or a
+                demand delivered before the record was switched on and not caught by it).{' '}
+              </>
+            )}
+            A demand&apos;s row runs until the branch&apos;s next demand; <span className="font-medium">Open</span> rows can
+            still change.
           </p>
         </>
       )}
