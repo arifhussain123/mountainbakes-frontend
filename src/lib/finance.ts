@@ -9,6 +9,7 @@ import type {
   BranchAccountAdjustment,
   BranchShareBalance,
   CashTransfer,
+  DailyTransferCheck,
   DemandRecordDetail,
   DemandRecordResult,
   DailySaleRecordDetail,
@@ -248,6 +249,30 @@ export function useFinanceCashTransfers(filters: CashTransferFilters, opts?: { e
         {},
         token,
       ).then(normalizeCashTransferList),
+  });
+}
+
+export type MissingCashTransferFilters = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+};
+
+/**
+ * Which active branches have not handed over each due business date
+ * (GET /api/finance/cash-transfers/missing). A branch's deposit reaches this
+ * page by no push, so it looks again every minute while the page is open; a
+ * Finance decision refreshes it at once through the finance root key.
+ */
+export function useFinanceMissingCashTransfers(filters: MissingCashTransferFilters) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeMissingCashTransfers(filters as Record<string, unknown>),
+    enabled: Boolean(token),
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+    placeholderData: (previous) => previous,
+    queryFn: () => apiCall<DailyTransferCheck>(`/api/finance/cash-transfers/missing${toQuery(filters)}`, {}, token),
   });
 }
 
