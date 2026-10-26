@@ -713,7 +713,7 @@ export function financeOverviewGroups(
         {
           label: 'Received Amount',
           value: s.received,
-          sub: `${s.receipts} cash transfer${s.receipts === 1 ? '' : 's'} · Total Amount`,
+          sub: `${s.receipts} Company Share entr${s.receipts === 1 ? 'y' : 'ies'} · no fuel`,
           onClick: () => drillTo('received'),
         },
         {
