@@ -7,6 +7,7 @@ import {
   evalCashLimit,
   evalCompanyShare,
   evalHourlySales,
+  evalCashBackdate,
   evalLedgerBackdate,
   evalLowSales,
   evalPendingDemand,
@@ -106,6 +107,14 @@ const SCENARIOS: Scenario[] = [
       evalCashLimit(s.rules.cash.dailyLimit, {
         transferNos: Array.from({ length: s.rules.cash.dailyLimit.limit }, (_, i) => `CT-00017${i + 1}`),
         businessDate: s.businessDate, today: s.businessDate, request: null,
+      }),
+  },
+  {
+    key: 'cashBack', popup: 'Cash Deposit', label: 'Back-dated deposit', endpoint: '/api/cash-transfers', submit: 'Save',
+    fields: (t) => [['Branch', 'DHA Phase 5'], ['Date', `${t} − 1 day over the limit`]],
+    build: (s) =>
+      evalCashBackdate(s.rules.cash.backdate, {
+        businessDate: back(s, s.rules.cash.backdate.allowedDays + 1), today: s.businessDate,
       }),
   },
   ...(['none', 'rejected'] as const).map((st): Scenario => ({

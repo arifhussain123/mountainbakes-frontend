@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import {
   addDaysToDateStr,
   restrictionDmy,
+  CASH_DEPOSIT_MAX_BACKDATE_DAYS,
   RestrictionGroupSchemas,
   type RestrictionGroup,
   type RestrictionRules,
@@ -273,6 +274,7 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
   const hs = draft.sales.hourly;
   const ps = draft.production.stockShortage;
   const cd = draft.cash.dailyLimit;
+  const cb = draft.cash.backdate;
   const lg = draft.ledger.backdate;
   const co = draft.company.shareIncome;
 
@@ -281,6 +283,7 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
   const csErr = !(n(cs.minSoldPercent) >= 1 && n(cs.minSoldPercent) <= 100);
   const closes = time12(state.closingTime);
   const lgFrom = restrictionDmy(addDaysToDateStr(state.businessDate, -n(lg.allowedDays)));
+  const cbFrom = restrictionDmy(addDaysToDateStr(state.businessDate, -n(cb.allowedDays)));
   const today = restrictionDmy(state.businessDate);
 
   return (
@@ -427,6 +430,20 @@ export function RulesTab({ state }: { state: RestrictionRulesState }) {
             <OptionSwitch checked={cd.allowExceptions} onChange={(v) => patch('cash', 'dailyLimit', { allowExceptions: v })}>
               Allow one-time Admin exceptions
             </OptionSwitch>
+          </CardRule>
+          <CardRule
+            name="Back-date entries"
+            code="CASH_DEPOSIT_BACKDATE"
+            description="How many days before the business date a deposit may be dated. 0 allows today only. Older deposits are refused."
+            enabled={cb.enabled}
+            onEnabled={(v) => patch('cash', 'backdate', { enabled: v })}
+            summary={cb.enabled ? (n(cb.allowedDays) === 0 ? 'Today only' : `Up to ${n(cb.allowedDays)} ${n(cb.allowedDays) === 1 ? 'day' : 'days'} back`) : 'Disabled — the 7-day sync window applies'}
+          >
+            <NumberField label="Back-date entries" unit="days" min={0} max={CASH_DEPOSIT_MAX_BACKDATE_DAYS} value={cb.allowedDays} onChange={(v) => patch('cash', 'backdate', { allowedDays: v })} />
+            <div className="flex flex-col gap-1 rounded-lg bg-muted/60 px-3 py-2.5 text-xs">
+              <span className="text-muted-foreground">With business date {today}</span>
+              <span><span className="font-semibold">Allowed:</span> <span className="font-mono">{cbFrom} → {today}</span></span>
+            </div>
           </CardRule>
         </Section>
 

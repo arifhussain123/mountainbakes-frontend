@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
+  CASH_DEPOSIT_MAX_BACKDATE_DAYS,
   businessDateStr,
   businessDaysAgoStr,
   type Attachment,
@@ -484,11 +485,12 @@ export function CashDepositModal({
 }
 
 /**
- * How far back a deposit may be dated: the server's sync window
- * (resolveClientBusinessDate — 7 business days including today). The server
- * is the authority; this only keeps the picker from offering a refused day.
+ * How far back the picker reaches: the most Admin can set the deposit back-date
+ * period to (Restriction Rules → Cash Deposit). The period itself is not known
+ * here; a date past it is explained by the preflight popup, and the server is
+ * the authority either way.
  */
-const DEPOSIT_BACKDATE_DAYS = 6;
+const DEPOSIT_BACKDATE_DAYS = CASH_DEPOSIT_MAX_BACKDATE_DAYS;
 
 /** A number as the amount inputs hold it: no grouping, at most 2 decimals, '' for 0. */
 function amountText(n: number): string {
