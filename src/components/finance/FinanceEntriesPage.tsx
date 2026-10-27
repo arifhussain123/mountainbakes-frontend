@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
-  EDITABLE_DOC_STATUSES,
   FINANCE_PAYMENT_METHODS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type FilterConfig,
@@ -21,11 +20,11 @@ import { FilterBar, ActiveFilters } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
 import { ExpandableText } from '@/components/shared/ExpandableText';
+import { formatDate } from '@/utils/date';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
-import { DocumentActions } from './finance-actions';
 import { FinanceEntryForm } from './FinanceEntryForm';
 import { FinanceEntryDetails } from './FinanceEntryDetails';
-import { Eye, Pencil, Plus } from 'lucide-react';
+import { Eye, Plus } from 'lucide-react';
 
 /**
  * Manual income and expense entries — everything that does not arrive from a
@@ -38,7 +37,6 @@ import { Eye, Pencil, Plus } from 'lucide-react';
  */
 
 const col = createColumnHelper<FinanceTransaction>();
-const BASE_PATH = '/api/finance/income/entries';
 
 export function FinanceEntriesPage() {
   const { token } = useAuth();
@@ -63,8 +61,8 @@ export function FinanceEntriesPage() {
       {
         key: 'status', label: 'Status', type: 'select', placement: 'bar',
         options: [
-          { value: 'pending', label: 'Pending Approval' },
           { value: 'draft', label: 'Draft' },
+          { value: 'pending_approval', label: 'Pending Approval' },
           { value: 'posted', label: 'Posted' },
           { value: 'locked', label: 'Locked' },
           { value: 'rejected', label: 'Rejected' },
@@ -117,23 +115,50 @@ export function FinanceEntriesPage() {
   const total = data?.total ?? 0;
 
   const columns = [
-    col.accessor('txnNo', {
-      header: 'Entry No',
-      meta: { mobile: 'subtitle' },
-      cell: (i) => <span className="font-mono text-xs text-muted-foreground">{i.getValue()}</span>,
+    // View first, as on Pending Approvals, and the row's only action: Edit,
+    // Submit, Edit and Correct, Resubmit, Approve and Reject all live behind it,
+    // each with its confirmation. First, so it stays on screen however narrow
+    // the laptop, rather than past a horizontal scroll.
+    col.display({
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: (i) => (
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
     }),
-    col.accessor('businessDate', { header: 'Date', cell: (i) => <span className="text-sm">{i.getValue()}</span> }),
+    // The PV-/RV- sits under the entry number once approval issues it.
+    col.accessor('txnNo', {
+      header: 'Entry No / Voucher',
+      meta: { mobile: 'subtitle' },
+      cell: (i) => (
+        <span className="block">
+          <span className="font-mono text-xs text-muted-foreground">
+            {i.getValue()}
+            {i.row.original.revision > 1 && <span className="ml-1 font-sans">· rev. {i.row.original.revision}</span>}
+          </span>
+          {i.row.original.voucherNo && (
+            <span className="block font-mono text-xs font-semibold">{i.row.original.voucherNo}</span>
+          )}
+        </span>
+      ),
+    }),
+    col.accessor('businessDate', { header: 'Date', cell: (i) => <span className="text-sm whitespace-nowrap">{i.getValue()}</span> }),
     col.accessor('ledgerHeadName', {
       header: 'Ledger Head',
       meta: { mobile: 'title' },
       cell: (i) => (
-        <span className="font-medium">
+        <span className="block font-medium">
           {i.getValue()}
           <span
             className={
               i.row.original.txnType === 'income'
-                ? 'ml-2 text-xs font-normal text-emerald-600 dark:text-emerald-400'
-                : 'ml-2 text-xs font-normal text-red-600 dark:text-red-400'
+                ? 'block text-xs font-normal capitalize text-emerald-600 dark:text-emerald-400'
+                : 'block text-xs font-normal capitalize text-red-600 dark:text-red-400'
             }
           >
             {i.row.original.txnType}
@@ -143,68 +168,82 @@ export function FinanceEntriesPage() {
     }),
     // Free text, so it is capped and clipped rather than left to widen the
     // row. TableCell is `whitespace-nowrap`: without a ceiling a long entry is
-    // laid out as one unbroken line, table-auto takes the width it needs off
-    // the columns beside it, and the outer wrapper is `overflow-hidden` — so
-    // the text reads as though it has spilled across Amount / Method / Status.
+    // laid out as one unbroken line and takes the width off the columns beside
+    // it. The note, the longest free text on the page, reads under it.
     col.accessor('description', {
-      header: 'Description',
+      header: 'Description / Notes',
       meta: { mobileFull: true },
-      cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm md:max-w-[18rem]" />,
+      cell: (i) => (
+        <span className="block md:max-w-[13rem]">
+          <ExpandableText text={i.getValue()} lines={2} className="block whitespace-normal break-words text-sm" />
+          {i.row.original.notes?.trim() && (
+            <ExpandableText
+              text={i.row.original.notes.trim()}
+              lines={1}
+              className="block whitespace-normal break-words text-xs text-muted-foreground"
+            />
+          )}
+        </span>
+      ),
     }),
     col.accessor('branchName', {
       header: 'Branch',
       cell: (i) => <span className="text-sm text-muted-foreground">{i.getValue() ?? 'Company-wide'}</span>,
     }),
-    // Capped and clipped for the same reason as Description above — this is the
-    // column that actually broke the row, because a note is the longest free
-    // text on the page.
-    col.accessor('notes', {
-      header: 'Notes',
-      meta: { mobileFull: true },
-      cell: (i) => <ExpandableText text={i.getValue()} lines={2} className="text-sm text-muted-foreground md:max-w-[16rem]" />,
-    }),
     col.accessor('amount', {
-      header: 'Amount',
+      header: 'Amount / Method',
       cell: (i) => (
-        <Money
-          value={i.getValue()}
-          className={
-            i.row.original.txnType === 'income'
-              ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-              : 'font-semibold text-red-600 dark:text-red-400'
-          }
-        />
+        <span className="block">
+          <Money
+            value={i.getValue()}
+            className={
+              i.row.original.txnType === 'income'
+                ? 'font-semibold text-emerald-600 dark:text-emerald-400'
+                : 'font-semibold text-red-600 dark:text-red-400'
+            }
+          />
+          <span className="block text-xs text-muted-foreground">
+            {FINANCE_PAYMENT_METHOD_LABELS[i.row.original.paymentMethod] ?? i.row.original.paymentMethod}
+          </span>
+        </span>
       ),
     }),
-    col.accessor('paymentMethod', {
-      header: 'Method',
-      cell: (i) => <span className="text-sm">{FINANCE_PAYMENT_METHOD_LABELS[i.getValue()] ?? i.getValue()}</span>,
-    }),
+    // The badge, and under it what the accountant needs from it: Finance
+    // Admin's remarks on a rejected entry, when a pending one was sent.
     col.accessor('status', {
-      header: 'Status',
+      header: 'Status / Remarks',
       meta: { mobile: 'badge' },
-      cell: (i) => <StatusBadge status={i.getValue()} />,
-    }),
-    col.display({
-      id: 'actions',
-      header: '',
-      enableSorting: false,
       cell: (i) => {
         const row = i.row.original;
         return (
-          <div className="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(row)}>
-              <Eye className="h-3.5 w-3.5" />
-            </Button>
-            {EDITABLE_DOC_STATUSES.includes(row.status) && abilities.create && (
-              <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => setEditing(row)}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
+          <span className="block space-y-1">
+            <StatusBadge status={i.getValue()} />
+            {row.status === 'rejected' && row.rejectionReason && (
+              <ExpandableText
+                text={row.rejectionReason}
+                lines={2}
+                className="block whitespace-normal break-words text-xs text-red-700 dark:text-red-300 md:max-w-[11rem]"
+              />
             )}
-            <DocumentActions doc={row} basePath={BASE_PATH} abilities={abilities} label={row.txnNo} />
-          </div>
+            {row.status === 'pending_approval' && row.submittedAt && (
+              <span className="block text-xs text-muted-foreground">
+                Sent {formatDate(row.submittedAt)}
+              </span>
+            )}
+          </span>
         );
       },
+    }),
+    col.accessor('createdByName', {
+      header: 'Created By',
+      cell: (i) => (
+        <span className="block text-sm">
+          {i.getValue() ?? '—'}
+          <span className="block whitespace-nowrap text-xs text-muted-foreground">
+            {formatDate(i.row.original.createdAt)}
+          </span>
+        </span>
+      ),
     }),
   ];
 
@@ -242,6 +281,7 @@ export function FinanceEntriesPage() {
         loading={isLoading}
         searchPlaceholder="Search entries…"
         pager={false}
+        dense
         sortable
         manual={{
           page: list.state.page,
