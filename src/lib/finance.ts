@@ -12,6 +12,7 @@ import type {
   DailyTransferCheck,
   DemandRecordDetail,
   DemandRecordResult,
+  MonthStatement,
   DailySaleRecordDetail,
   EmployeeAdvance,
   EmployeeAdvanceSummary,
@@ -667,6 +668,17 @@ export function useDemandRecordDetail(branchId: string | null, orderId: string |
         {},
         token,
       ),
+  });
+}
+
+/** The month-end statement: each branch's month of payment and stock. `month` is 'YYYY-MM'. */
+export function useMonthStatement(month: string, scope: DemandRecordScope = 'finance', opts?: { enabled?: boolean }) {
+  const token = useToken();
+  return useQuery({
+    queryKey: scope === 'branch' ? qk.branchMonthStatement(month) : qk.financeMonthStatement(month),
+    enabled: Boolean(token) && Boolean(month) && (opts?.enabled ?? true),
+    staleTime: 15_000,
+    queryFn: () => apiCall<MonthStatement>(`${demandRecordPath(scope)}/statement${toQuery({ month })}`, {}, token),
   });
 }
 

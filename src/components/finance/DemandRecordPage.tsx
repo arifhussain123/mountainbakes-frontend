@@ -25,11 +25,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatDate } from '@/utils/date';
 import { saveBlob } from '@/utils/saveBlob';
 import { cn } from '@/lib/utils';
-import { Download, Eye, NotebookPen, RotateCcw, ScrollText } from 'lucide-react';
+import { CalendarCheck, Download, Eye, NotebookPen, RotateCcw, ScrollText } from 'lucide-react';
 import { FinancePageHeader, Money, ReadOnlyNotice, useFinanceAbilities, useMoney, type FinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField } from './finance-actions';
 import { DemandRecordDetailDialog } from './DemandRecordDetailDialog';
 import { DemandRecordEntriesDialog } from './DemandRecordEntriesDialog';
+import { MonthStatementDialog } from './MonthStatementDialog';
 
 /**
  * Finance → Demand Record: what each branch owes the company, demand by demand,
@@ -105,6 +106,7 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
   const [pageSize, setPageSize] = useState<PageSize>(50 as PageSize);
   const [detail, setDetail] = useState<DemandRecordRow | null>(null);
   const [entriesOpen, setEntriesOpen] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const filters: DemandRecordFilters = {
@@ -325,6 +327,9 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
                 <NotebookPen className="h-3.5 w-3.5" /> Opening & adjustments
               </Button>
             )}
+            <Button variant="outline" size="sm" onClick={() => setStatementOpen(true)}>
+              <CalendarCheck className="h-3.5 w-3.5" /> Month-end statement
+            </Button>
             <Button variant="outline" size="sm" disabled={!data || exporting} onClick={() => void exportCsv()}>
               <Download className="h-3.5 w-3.5" /> {exporting ? 'Exporting…' : 'Export'}
             </Button>
@@ -456,6 +461,7 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
       )}
 
       <DemandRecordDetailDialog row={detail} onClose={() => setDetail(null)} scope={scope} />
+      <MonthStatementDialog open={statementOpen} onOpenChange={setStatementOpen} scope={scope} startDate={startDate} />
       {abilities && (
         <DemandRecordEntriesDialog
           open={entriesOpen}
