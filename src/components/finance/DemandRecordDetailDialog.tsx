@@ -182,7 +182,7 @@ function SourceTable({ headers, rows }: { headers: string[]; rows: React.ReactNo
         <tbody className="divide-y">
           {rows.map((cells, i) => (
             <tr key={i}>
-              {cells.map((c, j) => <td key={j} className={cn('px-2 py-1.5 align-top', j === cells.length - 1 && 'text-right')}>{c}</td>)}
+              {cells.map((c, j) => <td key={j} className={cn('px-2 py-1.5 align-top', headers[j] === 'Date' && 'whitespace-nowrap', j === cells.length - 1 && 'text-right')}>{c}</td>)}
             </tr>
           ))}
         </tbody>
