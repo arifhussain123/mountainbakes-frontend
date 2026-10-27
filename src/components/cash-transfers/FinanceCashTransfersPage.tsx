@@ -257,8 +257,6 @@ export function FinanceCashTransfersPage() {
             columns={columns}
             data={rows}
             loading={isLoading}
-            // The FilterBar above owns search; the table's own box would be a second one.
-            toolbar={false}
             pager={false}
             sortable
             manual={{

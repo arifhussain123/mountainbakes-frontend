@@ -102,8 +102,7 @@ export function parseQueryParams(input: string | URLSearchParams, opts: ParseOpt
 
   // Filters: if the URL carries ANY filter for this list, it replaces the
   // defaults wholesale — a person who cleared the default status filter and
-  // shared the link expects the recipient to see it cleared too. An empty one
-  // (`status=`) counts: it is how serializeQueryParams writes a removed default.
+  // shared the link expects the recipient to see it cleared too.
   const filters = new Map<string, FilterValue>();
   let sawFilter = false;
   for (const rawKey of new Set(params.keys())) {
@@ -130,12 +129,8 @@ export function parseQueryParams(input: string | URLSearchParams, opts: ParseOpt
   return state;
 }
 
-function paramName(prefix: string, f: Pick<FilterValue, 'key' | 'op'>): string {
-  return f.op === 'eq' ? `${prefix}${f.key}` : `${prefix}${f.key}.${f.op}`;
-}
-
 function appendFilter(params: URLSearchParams, prefix: string, f: FilterValue) {
-  const name = paramName(prefix, f);
+  const name = f.op === 'eq' ? `${prefix}${f.key}` : `${prefix}${f.key}.${f.op}`;
   if (f.value === null) {
     params.append(name, '1');
   } else if (Array.isArray(f.value)) {
@@ -179,16 +174,10 @@ export function serializeQueryParams(
     params.set(`${ns}sort`, `${state.sort.key}:${state.sort.direction}`);
   }
   if (!sameFilters(state.filters, defaults.filters)) {
+    // An explicitly emptied filter set must be distinguishable from "never
+    // touched", or the defaults would come back on reload.
+    if (state.filters.length === 0 && defaults.filters.length > 0) params.set(`${ns}page`, String(state.page));
     for (const f of state.filters) appendFilter(params, ns, f);
-    // A default the person removed ("All" on a status that defaults to
-    // pending) is written as an empty parameter, `status=`. "Removed" must be
-    // distinguishable from "never touched", or the default would come back on
-    // reload — and the page number cannot carry it: `page=3` is also what the
-    // untouched default view writes on its third page.
-    const kept = new Set(state.filters.map(filterId));
-    for (const d of defaults.filters) {
-      if (!kept.has(filterId(d))) params.append(paramName(ns, d), '');
-    }
   }
   return params;
 }
@@ -231,17 +220,11 @@ export function scopeKey(state: ListQueryState, extra: FilterValue[] = []): stri
 // Small immutable helpers for the setters
 // ---------------------------------------------------------------------------
 
-/**
- * Set one (field, operator)'s value; an empty value removes it. Null is a value
- * only for the unary operators (`null` / `notnull`) — on any other it means
- * "no filter", so a control that clears itself with null cannot leave a filter
- * behind that matches nothing on the server and `key=1` in the URL.
- */
 export function upsertFilter(filters: FilterValue[], next: FilterValue): FilterValue[] {
   const id = filterId(next);
   const empty =
     next.value === undefined ||
-    ((next.value === '' || next.value === null) && !UNARY_OPERATORS.has(next.op)) ||
+    (next.value === '' && !UNARY_OPERATORS.has(next.op)) ||
     (Array.isArray(next.value) && next.value.length === 0);
   const rest = filters.filter((f) => filterId(f) !== id);
   return empty ? rest : [...rest, next];

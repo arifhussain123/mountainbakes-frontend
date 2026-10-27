@@ -27,26 +27,8 @@ import {
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 
-/**
- * Base UI's Select cannot hold an empty-string item value; "all" travels as
- * this, and picking it REMOVES the filter (`''`) — the same mapping as
- * finance-actions' FilterSelect. It must never become a null `eq`: that stays
- * in the list state as a filter of its own, counts as active against a
- * defaulted key, shows a bare chip and writes `key=1` to the URL.
- */
+/** Base UI's Select cannot hold an empty-string item value; "all" travels as this. */
 const ALL = '__all__';
-
-const fromSelect = (v: unknown): string => (v === ALL || v == null ? '' : String(v));
-
-/**
- * What the trigger shows for `value`. Base UI renders the raw value — the
- * sentinel, or a branch's id — until the list has been opened once, so the
- * label is looked up here (as the Daily Sale board's branch picker does).
- */
-function selectLabel(value: unknown, allLabel: string, choices: readonly FilterOption[]): string {
-  if (value === ALL || value == null || value === '') return allLabel;
-  return choices.find((o) => o.value === value)?.label ?? '…';
-}
 
 export interface FilterControlProps {
   config: FilterConfig;
@@ -172,16 +154,18 @@ export function GenericTextFilter({ config, getFilter, setFilter, className }: F
 export function GenericSelectFilter({ config, getFilter, setFilter, options, className }: FilterControlProps) {
   const choices = options ?? config.options ?? [];
   const current = scalar(getFilter(config.key, 'eq'));
-  const allLabel = config.placeholder ?? 'All';
   return (
     <div className={cn(FIELD_CLASS, className)}>
       <Label className="text-xs text-muted-foreground">{config.label}</Label>
-      <Select value={current === '' ? ALL : current} onValueChange={(v) => setFilter(config.key, 'eq', fromSelect(v))}>
-        <SelectTrigger className={cn('w-full', INPUT_CLASS)} aria-label={config.label}>
-          <SelectValue placeholder={allLabel}>{(value: unknown) => selectLabel(value, allLabel, choices)}</SelectValue>
+      <Select
+        value={current === '' ? ALL : current}
+        onValueChange={(v) => setFilter(config.key, 'eq', v === ALL || v == null ? null : String(v))}
+      >
+        <SelectTrigger className={cn('w-full', INPUT_CLASS)}>
+          <SelectValue placeholder={config.placeholder ?? `All`} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>{allLabel}</SelectItem>
+          <SelectItem value={ALL}>{config.placeholder ?? 'All'}</SelectItem>
           {choices.map((o) => (
             <SelectItem key={o.value} value={o.value}>
               {o.label}
@@ -250,11 +234,9 @@ export function GenericBooleanFilter({ config, getFilter, setFilter, className }
   return (
     <div className={cn(FIELD_CLASS, className)}>
       <Label className="text-xs text-muted-foreground">{config.label}</Label>
-      <Select value={current === '' ? ALL : current} onValueChange={(v) => setFilter(config.key, 'eq', fromSelect(v))}>
-        <SelectTrigger className={cn('w-full', INPUT_CLASS)} aria-label={config.label}>
-          <SelectValue placeholder="All">
-            {(value: unknown) => selectLabel(value, 'All', [{ value: 'true', label: yes.label }, { value: 'false', label: no.label }])}
-          </SelectValue>
+      <Select value={current === '' ? ALL : current} onValueChange={(v) => setFilter(config.key, 'eq', v === ALL || v == null ? null : String(v))}>
+        <SelectTrigger className={cn('w-full', INPUT_CLASS)}>
+          <SelectValue placeholder="All" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All</SelectItem>
