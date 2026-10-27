@@ -48,6 +48,7 @@ import type {
   CashTransferSortKey,
   CashTransferStatus,
   CreateCashTransferInput,
+  ResubmitCashTransferInput,
   PaymentReceivedItem,
   LoginSession,
   LoginAttemptReason,
@@ -2207,6 +2208,30 @@ export function useCreateCashTransfer(token: string) {
         token,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cashTransfers'] }),
+  });
+}
+
+/**
+ * Correct a REJECTED deposit and send the same CT- back to Finance. The branch
+ * and the business date are not sent — the server keeps the original ones.
+ */
+export function useResubmitCashTransfer(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, clientOperationId, ...body }: ResubmitCashTransferInput & { id: string; clientOperationId: string }) =>
+      apiCall<CashTransfer>(
+        `/api/cash-transfers/${id}/resubmit`,
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': clientOperationId },
+          body: JSON.stringify(body),
+        },
+        token,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cashTransfers'] });
+      void qc.invalidateQueries({ queryKey: ['finance', 'history', 'cash_transfer'] });
+    },
   });
 }
 

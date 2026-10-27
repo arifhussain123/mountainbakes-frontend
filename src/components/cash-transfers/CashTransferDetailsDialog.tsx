@@ -14,6 +14,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { formatDate, formatDateTime, formatTime } from '@/utils/date';
+import { DocumentHistory } from '@/components/finance/DocumentHistory';
 import { CashDepositBreakdown, CashTransferStatusBadge, shortBranch } from './cashTransferShared';
 
 /**
@@ -25,6 +26,11 @@ import { CashDepositBreakdown, CashTransferStatusBadge, shortBranch } from './ca
  * The photo is shown at the larger gallery size on purpose. Finance's whole
  * decision is whether the slip says what the form says, and a thumbnail is
  * not something a figure can be read off.
+ *
+ * A deposit that has been rejected or corrected and resubmitted also shows its
+ * history — each rejection's remarks and what the correction changed — so the
+ * branch knows what to fix and Finance reviews the latest figures knowingly.
+ * One that went straight through reads exactly as before.
  */
 export function CashTransferDetailsDialog({
   transfer,
@@ -32,6 +38,7 @@ export function CashTransferDetailsDialog({
   open,
   onClose,
   footer,
+  scope = 'finance',
 }: {
   transfer: CashTransfer | null | undefined;
   /** True while a by-id fetch is in flight (the Daily Ledger opens by sourceId). */
@@ -40,7 +47,13 @@ export function CashTransferDetailsDialog({
   onClose: () => void;
   /** Extra actions rendered before Close. */
   footer?: ReactNode;
+  /** Whose API reads the history: Finance's, or the branch's own (scoped to it). */
+  scope?: 'finance' | 'branch';
 }) {
+  const hasHistory = !!transfer && (transfer.status === 'rejected' || (transfer.revision ?? 1) > 1);
+  const historyPath = transfer
+    ? `${scope === 'branch' ? '/api/cash-transfers' : '/api/finance/cash-transfers'}/${transfer.id}`
+    : '';
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="overflow-y-auto md:max-w-lg">
@@ -90,6 +103,16 @@ export function CashTransferDetailsDialog({
             <dd className="text-right">
               <CashTransferStatusBadge status={transfer.status} />
             </dd>
+
+            {(transfer.revision ?? 1) > 1 && (
+              <>
+                <dt className="text-muted-foreground">Revision</dt>
+                <dd className="text-right">
+                  {transfer.revision}
+                  {transfer.resubmittedAt ? ` · resubmitted ${formatDateTime(transfer.resubmittedAt)}` : ''}
+                </dd>
+              </>
+            )}
 
             <dt className="text-muted-foreground">Submitted by</dt>
             <dd className="truncate text-right">{transfer.createdByName || '—'}</dd>
@@ -141,6 +164,12 @@ export function CashTransferDetailsDialog({
                 emptyText="No picture on this transfer."
               />
             </dd>
+
+            {hasHistory && (
+              <dd className="col-span-2 border-t pt-3">
+                <DocumentHistory type="cash_transfer" id={transfer.id} path={historyPath} />
+              </dd>
+            )}
           </dl>
         ) : (
           <p className="py-4 text-center text-sm text-muted-foreground">This transfer could not be loaded.</p>

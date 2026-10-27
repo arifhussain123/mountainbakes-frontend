@@ -23,10 +23,11 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
-import { Banknote, Eye, Plus } from 'lucide-react';
+import { Banknote, Eye, Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { CashDepositModal } from './CashDepositModal';
 import { CashTransferDetailsDialog } from './CashTransferDetailsDialog';
+import { ResubmitCashDepositDialog } from './ResubmitCashDepositDialog';
 import { MonthlyCashTransferSummary } from './MonthlyCashTransferSummary';
 import {
   CashTransferStatusBadge,
@@ -87,6 +88,8 @@ export function BranchCashTransfersPage() {
   const summaryQ = useBranchCashTransferSummary(token);
 
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
+  // A rejected deposit being corrected and sent back (same CT-, same branch and date).
+  const [correcting, setCorrecting] = useState<CashTransfer | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositOpenedOnce, setDepositOpenedOnce] = useState(false);
 
@@ -255,7 +258,26 @@ export function BranchCashTransfersPage() {
         loading={transfersQ.isLoading}
       />
 
-      <CashTransferDetailsDialog transfer={viewRow} open={!!viewRow} onClose={() => setViewRow(null)} />
+      <CashTransferDetailsDialog
+        transfer={viewRow}
+        open={!!viewRow}
+        onClose={() => setViewRow(null)}
+        scope="branch"
+        footer={
+          viewRow?.status === 'rejected' && !viewRow.deletedAt ? (
+            <Button
+              onClick={() => {
+                setCorrecting(viewRow);
+                setViewRow(null);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Correct &amp; resubmit
+            </Button>
+          ) : null
+        }
+      />
+      <ResubmitCashDepositDialog transfer={correcting} onClose={() => setCorrecting(null)} />
 
       <CashDepositModal open={depositOpen} onOpenChange={setDepositOpen} openedOnce={depositOpenedOnce} />
     </div>

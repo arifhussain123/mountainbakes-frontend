@@ -37,6 +37,8 @@ import type {
   FinanceTicketReferenceLookup,
   FinanceTicketStats,
   FinanceTicketVersion,
+  FinanceDocumentEvent,
+  FinanceDocumentType,
   FinanceTransaction,
   LedgerEntry,
   LedgerHead,
@@ -329,6 +331,44 @@ export function useFinanceEntries(filters: Record<string, unknown>) {
         {},
         token,
       ),
+  });
+}
+
+/** One entry, fresh — what the details popup shows, voucher number included once posted. */
+export function useFinanceEntry(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeEntry(id ?? ''),
+    enabled: Boolean(token && id),
+    queryFn: () => apiCall<{ entry: FinanceTransaction }>(`/api/finance/income/entries/${id}`, {}, token),
+    select: (r) => r.entry,
+  });
+}
+
+/** Everyone who has sent an entry for approval — the queue's "Submitted by" filter. */
+export function useFinanceEntrySubmitters() {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeEntrySubmitters(),
+    enabled: Boolean(token),
+    staleTime: 5 * 60_000,
+    queryFn: () => apiCall<{ submitters: { id: string; name: string }[] }>(`/api/finance/income/entries/submitters`, {}, token),
+    select: (r) => r.submitters,
+  });
+}
+
+/**
+ * An entry's or a deposit's workflow history (create, edit, submit, reject,
+ * resubmit, approve), oldest first. `path` is the document's own URL — the
+ * finance or the branch one — and `/history` is appended.
+ */
+export function useDocumentHistory(type: FinanceDocumentType, id: string | null, path: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeDocumentHistory(type, id ?? ''),
+    enabled: Boolean(token && id),
+    queryFn: () => apiCall<{ events: FinanceDocumentEvent[] }>(`${path}/history`, {}, token),
+    select: (r) => r.events,
   });
 }
 

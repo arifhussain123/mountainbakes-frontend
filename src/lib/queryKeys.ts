@@ -287,6 +287,10 @@ export const qk = {
   financeCashTransfers: (filters: Record<string, unknown>) => ['finance', 'cashTransfers', filters] as const,
   financeCashTransfer: (id: string) => ['finance', 'cashTransfer', id] as const,
   financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,
+  financeEntry: (id: string) => ['finance', 'entry', id] as const,
+  financeEntrySubmitters: () => ['finance', 'entrySubmitters'] as const,
+  // Under the finance root, so any finance write refreshes an open history.
+  financeDocumentHistory: (type: string, id: string) => ['finance', 'history', type, id] as const,
   financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
   financeEmployees: (includeInactive?: boolean) =>
     ['finance', 'employees', { includeInactive: includeInactive ?? false }] as const,

@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   EDITABLE_DOC_STATUSES,
-  FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHODS,
   FINANCE_PAYMENT_METHOD_LABELS,
   type FilterConfig,
@@ -21,11 +20,11 @@ import { Pagination } from '@/components/data-engine/Pagination';
 import { FilterBar, ActiveFilters } from '@/components/data-engine';
 import { sortStateToTanstack, tanstackToSortState } from '@/lib/data-engine/sortConversion';
 import { useListQueryState } from '@/lib/data-engine/useListQueryState';
-import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { ExpandableText } from '@/components/shared/ExpandableText';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { DocumentActions } from './finance-actions';
 import { FinanceEntryForm } from './FinanceEntryForm';
+import { FinanceEntryDetails } from './FinanceEntryDetails';
 import { Eye, Pencil, Plus } from 'lucide-react';
 
 /**
@@ -280,7 +279,9 @@ export function FinanceEntriesPage() {
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit {editing?.txnNo}</DialogTitle>
+            <DialogTitle>
+              {editing?.status === 'rejected' ? `Correct ${editing.txnNo}` : `Edit ${editing?.txnNo}`}
+            </DialogTitle>
           </DialogHeader>
           {editing && <FinanceEntryForm entry={editing} onSuccess={() => setEditing(null)} />}
         </DialogContent>
@@ -292,92 +293,15 @@ export function FinanceEntriesPage() {
             <DialogTitle>{viewing?.txnNo}</DialogTitle>
           </DialogHeader>
           {viewing && (
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <StatusBadge status={viewing.status} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Date</p>
-                  <p className="font-medium">{viewing.businessDate}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Type</p>
-                  <p className="font-medium capitalize">{viewing.txnType}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Ledger Head</p>
-                  <p className="font-medium">{viewing.ledgerHeadName}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-xs text-muted-foreground">Description</p>
-                  <p className="font-medium">{viewing.description}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Amount</p>
-                  <Money
-                    value={viewing.amount}
-                    className={
-                      viewing.txnType === 'income'
-                        ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-                        : 'font-semibold text-red-600 dark:text-red-400'
-                    }
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Payment Method</p>
-                  <p className="font-medium">{FINANCE_PAYMENT_METHOD_LABELS[viewing.paymentMethod] ?? viewing.paymentMethod}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Account</p>
-                  <p className="font-medium">{FINANCE_ACCOUNT_LABELS[viewing.account]}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Branch</p>
-                  <p className="font-medium">{viewing.branchName ?? 'Company-wide'}</p>
-                </div>
-                {viewing.referenceNo && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Reference</p>
-                    <p className="font-medium">{viewing.referenceNo}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs text-muted-foreground">Created By</p>
-                  <p className="font-medium">{viewing.createdByName ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Approved By</p>
-                  <p className="font-medium">{viewing.approvedByName ?? '—'}</p>
-                </div>
-                {viewing.status === 'rejected' && viewing.rejectionReason && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Rejection Reason</p>
-                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.rejectionReason}</p>
-                  </div>
-                )}
-                {viewing.notes?.trim() && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Notes</p>
-                    <p className="font-medium whitespace-pre-wrap break-words">{viewing.notes.trim()}</p>
-                  </div>
-                )}
-                <div className="col-span-2">
-                  <p className="text-xs text-muted-foreground">Photo</p>
-                  <AttachmentGallery
-                    attachments={viewing.attachments}
-                    title={`${viewing.txnNo} receipt`}
-                    emptyText="No photo — this entry predates the requirement."
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
-              <Button variant="outline" className="w-full" onClick={() => setViewing(null)}>
-                Close
-              </Button>
-            </div>
+            <FinanceEntryDetails
+              entry={viewing}
+              abilities={abilities}
+              onEdit={(e) => {
+                setViewing(null);
+                setEditing(e);
+              }}
+              onClose={() => setViewing(null)}
+            />
           )}
         </DialogContent>
       </Dialog>

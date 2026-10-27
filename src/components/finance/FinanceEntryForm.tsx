@@ -30,7 +30,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { cn } from '@/lib/utils';
-import { TriangleAlert } from 'lucide-react';
+import { formatDateTime } from '@/utils/date';
+import { TriangleAlert, XCircle } from 'lucide-react';
+
+/** What the server says back for a submission — the wording the brief asks for. */
+export const SUBMITTED_MESSAGE = 'Transaction submitted for Finance Admin approval.';
 
 /**
  * Raise a manual income or expense document.
@@ -44,7 +48,12 @@ import { TriangleAlert } from 'lucide-react';
  * Two submit buttons rather than a "save as draft" checkbox: an accountant
  * filling this in either wants it in front of an approver now or wants to come
  * back to it, and that is a decision made at the moment of pressing, not while
- * reading the form.
+ * reading the form. Editing keeps the same pair: save the draft or correction
+ * and come back, or save and send it for approval in one request (`resubmit`),
+ * so the approver never sees the entry before its correction.
+ *
+ * A rejected entry opens with the approver's remarks at the top — they are what
+ * the correction answers.
  */
 
 interface DuplicateIncomeMatch {
@@ -192,19 +201,21 @@ export function FinanceEntryForm({
         // has no update path at all, by design.
         // attachmentIds is stripped alongside asDraft: an edit revises the
         // figures, and the photos bound at creation stay bound (see the note on
-        // UpdateFinanceTransactionSchema).
+        // UpdateFinanceTransactionSchema). `asDraft` here means "save only".
         await mut.mutateAsync({
           path: `/api/finance/income/entries/${entry.id}`,
           method: 'PUT',
-          body: { ...data, asDraft: undefined, attachmentIds: undefined },
+          body: { ...data, asDraft: undefined, attachmentIds: undefined, resubmit: !asDraft },
         });
-        toast.success('Entry updated');
+        toast.success(
+          asDraft ? (entry.status === 'rejected' ? 'Correction saved — resubmit it when ready' : 'Draft saved') : SUBMITTED_MESSAGE,
+        );
       } else {
         await mut.mutateAsync({
           path: '/api/finance/income/entries',
           body: { ...data, asDraft },
         });
-        toast.success(asDraft ? 'Saved as a draft' : 'Submitted for approval');
+        toast.success(asDraft ? 'Saved as a draft' : SUBMITTED_MESSAGE);
       }
       onSuccess?.();
     } catch (err) {
@@ -242,6 +253,21 @@ export function FinanceEntryForm({
 
   return (
     <form onSubmit={form.handleSubmit((d) => save(d, false))} className="space-y-4">
+      {entry?.status === 'rejected' && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
+          <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600 dark:text-red-400" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold text-red-900 dark:text-red-200">Rejected — correct it and resubmit</p>
+            <p className="whitespace-pre-wrap break-words text-red-900 dark:text-red-200">
+              {entry.rejectionReason ?? 'No remarks were given.'}
+            </p>
+            <p className="text-xs text-red-800/80 dark:text-red-300/80">
+              {entry.rejectedByName ?? 'Finance Admin'}
+              {entry.rejectedAt ? ` · ${formatDateTime(entry.rejectedAt)}` : ''}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Which side of the books. Disabled while editing: changing it would mean
           a different head, and the document's type is what an approver already
           saw when it was submitted. */}
@@ -459,20 +485,24 @@ export function FinanceEntryForm({
       )}
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        {!entry && (
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="flex-1"
-            disabled={mut.isPending || restricted}
-            onClick={() => void form.handleSubmit((d) => save(d, true))()}
-          >
-            Save as draft
-          </Button>
-        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          className="flex-1"
+          disabled={mut.isPending || restricted}
+          onClick={() => void form.handleSubmit((d) => save(d, true))()}
+        >
+          {!entry ? 'Save as draft' : entry.status === 'rejected' ? 'Save correction' : 'Save draft'}
+        </Button>
         <Button type="submit" size="lg" className="flex-1" disabled={mut.isPending || restricted}>
-          {mut.isPending ? 'Saving…' : entry ? 'Save changes' : 'Submit for approval'}
+          {mut.isPending
+            ? 'Saving…'
+            : entry?.status === 'rejected'
+              ? 'Save & resubmit for approval'
+              : entry
+                ? 'Save & submit for approval'
+                : 'Submit for approval'}
         </Button>
       </div>
     </form>
