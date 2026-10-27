@@ -286,9 +286,6 @@ export const qk = {
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
   financeCashTransfers: (filters: Record<string, unknown>) => ['finance', 'cashTransfers', filters] as const,
   financeCashTransfer: (id: string) => ['finance', 'cashTransfer', id] as const,
-  // Under the finance root, so an approval, rejection or any other finance
-  // write refreshes the missing-transfer check with the list.
-  financeMissingCashTransfers: (params: Record<string, unknown>) => ['finance', 'cashTransfersMissing', params] as const,
   financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,
   financeSalaries: (filters: Record<string, unknown>) => ['finance', 'salaries', filters] as const,
   financeEmployees: (includeInactive?: boolean) =>

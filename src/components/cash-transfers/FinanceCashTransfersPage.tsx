@@ -1,17 +1,16 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   CASH_TRANSFER_METHODS,
   CASH_TRANSFER_STATUSES,
   type CashTransfer,
-  type DailyTransferCheckRow,
   type FilterConfig,
 } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
-import { useFinanceCashTransfers, useFinanceMissingCashTransfers } from '@/lib/finance';
+import { useFinanceCashTransfers } from '@/lib/finance';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
@@ -27,7 +26,6 @@ import { Banknote, Check, Eye, RotateCcw, X } from 'lucide-react';
 import { FinancePageHeader, ReadOnlyNotice, useFinanceAbilities } from '@/components/finance/finance-ui';
 import { CashTransferDetailsDialog } from './CashTransferDetailsDialog';
 import { ApproveCashTransferDialog, RejectCashTransferDialog } from './CashTransferDecisionDialogs';
-import { MissingCashTransfersPanel } from './MissingCashTransfersPanel';
 import {
   CashTransferStatusBadge,
   cashTransferStatusLabel,
@@ -52,10 +50,6 @@ import {
  * Server-filtered and server-paginated: the query narrows to the chosen
  * branch, status, method and date range, and pages what is left. A pending
  * queue is fetched WHOLE (no date window) so an old handover is not missed.
- *
- * Above it all, Missing Daily Cash Transfers: which active branches have not
- * handed over each due business date. It follows the Branch and Date filters;
- * its View points this table at that branch and date.
  */
 
 const col = createColumnHelper<CashTransfer>();
@@ -103,16 +97,6 @@ export function FinanceCashTransfersPage() {
     offset: (list.state.page - 1) * list.state.pageSize,
   };
   const { data, isLoading, isError, error, refetch } = useFinanceCashTransfers(query);
-  const missing = useFinanceMissingCashTransfers({ from: query.from, to: query.to, branchId: query.branchId });
-
-  const tableRef = useRef<HTMLDivElement>(null);
-  const viewDay = (r: DailyTransferCheckRow) => {
-    list.clearFilter('status');
-    list.setFilter('branchId', 'eq', r.branchId);
-    list.setFilter('businessDate', 'gte', r.date);
-    list.setFilter('businessDate', 'lte', r.date);
-    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
   const [approving, setApproving] = useState<CashTransfer | null>(null);
@@ -231,7 +215,7 @@ export function FinanceCashTransfersPage() {
         title="Cash Transfer Details"
         description="Money branches handed to the company, with the photo of each slip. Approving posts an RV- receipt to the Daily Ledger."
         actions={
-          <Button variant="outline" size="sm" onClick={() => { void refetch(); void missing.refetch(); }}>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
             <RotateCcw className="h-3.5 w-3.5" />
             Refresh
           </Button>
@@ -240,16 +224,6 @@ export function FinanceCashTransfersPage() {
 
       <ReadOnlyNotice abilities={abilities} />
 
-      <MissingCashTransfersPanel
-        check={missing.data}
-        isLoading={missing.isLoading}
-        isError={missing.isError}
-        isFetching={missing.isFetching}
-        onRetry={() => void missing.refetch()}
-        onView={viewDay}
-      />
-
-      <div ref={tableRef} className="scroll-mt-4" />
       <FilterBar
         list={list}
         filters={filters}
