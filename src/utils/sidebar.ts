@@ -82,7 +82,8 @@ export const ADMIN_NAV: NavItem[] = [
 /**
  * Finance Ledger navigation.
  *
- * ONE list for all four finance roles. They see the same screens and differ only
+ * ONE list for the finance roles (an Accountant's drops the Daily Ledger — see
+ * ACCOUNTANT_NAV). They see the same screens and differ only
  * in which actions are offered once inside — hiding Reports from an Accountant
  * or Settings from an Auditor would leave them staring at a nav that changes
  * shape depending on who is logged in, with no way to tell whether a screen is
@@ -120,6 +121,9 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Help Desk',        href: ROUTES.FINANCE_HELP_DESK,         icon: Headset },
   { label: 'Settings',         href: ROUTES.FINANCE_SETTINGS,          icon: Settings },
 ];
+
+/** An Accountant does not get the Daily Ledger, by the owner's order, 2026-10-28. RouteGuard keeps them off it too. */
+export const ACCOUNTANT_NAV: NavItem[] = FINANCE_NAV.filter((item) => item.href !== ROUTES.FINANCE_LEDGER);
 
 export const BRANCH_NAV: NavItem[] = [
   { label: 'Dashboard',     href: ROUTES.BRANCH_DASHBOARD,   icon: LayoutDashboard },
@@ -161,7 +165,7 @@ export const NAV_MAP: Record<UserRole, NavItem[]> = {
   production_user: PRODUCTION_NAV,
   finance_admin:   FINANCE_NAV,
   finance_manager: FINANCE_NAV,
-  accountant:      FINANCE_NAV,
+  accountant:      ACCOUNTANT_NAV,
   finance_auditor: FINANCE_NAV,
 };
 
@@ -206,7 +210,7 @@ export const PRIMARY_NAV: Record<UserRole, string[]> = {
   // audit, settings — is configuration or investigation and lives behind More.
   finance_admin:   FINANCE_PRIMARY,
   finance_manager: FINANCE_PRIMARY,
-  accountant:      FINANCE_PRIMARY,
+  accountant:      FINANCE_PRIMARY.filter((href) => href !== ROUTES.FINANCE_LEDGER),
   finance_auditor: FINANCE_PRIMARY,
 };
 

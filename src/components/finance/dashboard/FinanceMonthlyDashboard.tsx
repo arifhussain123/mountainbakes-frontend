@@ -8,6 +8,7 @@ import { useFinanceDashboard, useFinanceMonthlyDashboard } from '@/lib/finance';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ROUTES } from '@/utils/routes';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { useMoney } from '../finance-ui';
 import {
@@ -983,6 +984,7 @@ export function CashStrip({
   loading: boolean;
   format: Format;
 }) {
+  const { user } = useAuth();
   if (loading) return <Skeleton className="h-11 w-full print:hidden" />;
   if (!cash) return null;
   return (
@@ -997,7 +999,8 @@ export function CashStrip({
         Bank <strong className="tabular-nums">{format(cash.bankBalance)}</strong>
       </span>
       <Link
-        href={ROUTES.FINANCE_LEDGER}
+        // An Accountant has no Daily Ledger; the queue is where those entries wait.
+        href={user?.role === 'accountant' ? ROUTES.FINANCE_APPROVALS : ROUTES.FINANCE_LEDGER}
         className="ml-auto font-semibold text-fin-share underline-offset-2 hover:underline"
       >
         {cash.pendingExpenseApprovals} pending approval

@@ -159,6 +159,10 @@ export function redirectFor(
     return `${ROUTES.DASHBOARD}?section=finance`;
   }
 
+  // An Accountant has no Daily Ledger (see ACCOUNTANT_NAV); an old link or
+  // bookmark lands on their dashboard.
+  if (user.role === 'accountant' && pathname.startsWith(ROUTES.FINANCE_LEDGER)) return home;
+
   const wrongRole =
     (ADMIN_PREFIXES.some((p) => pathname.startsWith(p)) && user.role !== 'super_admin') ||
     (pathname.startsWith('/branch-') && !isBranchRole(user.role)) ||

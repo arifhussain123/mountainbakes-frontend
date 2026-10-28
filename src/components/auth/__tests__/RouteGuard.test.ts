@@ -21,6 +21,15 @@ describe('redirectFor — Production screens', () => {
     expect(redirectFor('/finance-ledger', as('super_admin'))).toBeNull();
   });
 
+  test('an accountant is kept off the Daily Ledger; the other finance roles keep it', () => {
+    expect(redirectFor('/finance-ledger', as('accountant'))).toBe('/finance-dashboard');
+    expect(redirectFor('/finance-ledger/', as('accountant'))).toBe('/finance-dashboard');
+    expect(redirectFor('/finance-entries', as('accountant'))).toBeNull();
+    for (const role of ['finance_admin', 'finance_manager', 'finance_auditor']) {
+      expect(redirectFor('/finance-ledger', as(role))).toBeNull();
+    }
+  });
+
   test('finance roles keep their own Finance Dashboard', () => {
     expect(redirectFor('/finance-dashboard', as('finance_admin'))).toBeNull();
   });
