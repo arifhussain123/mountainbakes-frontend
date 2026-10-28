@@ -8,6 +8,7 @@ import {
   type CashTransfer,
   type CashTransferChannels,
   type CashTransferMethod,
+  type CashTransferQueue,
   type CashTransferStatus,
 } from '@mb/shared';
 import { Input } from '@/components/ui/input';
@@ -45,7 +46,26 @@ const STATUS_LABELS: Record<CashTransferStatus, string> = {
 };
 
 export const cashTransferStatusLabel = (s: CashTransferStatus | string) =>
-  STATUS_LABELS[s as CashTransferStatus] ?? s;
+  STATUS_LABELS[s as CashTransferStatus] ?? QUEUE_LABELS[s as CashTransferQueue] ?? s;
+
+/**
+ * The two halves of a pending deposit: with Accounts until the Accountant
+ * submits it for approval, then with Finance Admin. Finance's board filters by
+ * these too.
+ */
+const QUEUE_LABELS: Record<CashTransferQueue, string> = {
+  with_accounts: 'With Accounts',
+  awaiting_approval: 'Awaiting Approval',
+};
+
+const QUEUE_STYLES: Record<CashTransferQueue, string> = {
+  with_accounts: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400',
+  awaiting_approval: CASH_TRANSFER_STATUS_STYLES.pending,
+};
+
+/** Which half of pending a deposit is in; null once it is decided. */
+export const cashTransferQueue = (t: Pick<CashTransfer, 'status' | 'forwardedAt'>): CashTransferQueue | null =>
+  t.status !== 'pending' ? null : t.forwardedAt ? 'awaiting_approval' : 'with_accounts';
 
 export const methodLabel = (m: CashTransferMethod | string) =>
   CASH_TRANSFER_METHOD_LABELS[m as CashTransferMethod] ?? m;
@@ -56,16 +76,27 @@ export const channelsLabel = (t: CashTransferChannels & { fuelCharges?: number }
 /** Branch names read "Mountain Bakes X" in the table; the prefix is noise on a row. */
 export const shortBranch = (name: string | null | undefined) => (name ?? '').replace('Mountain Bakes ', '') || '—';
 
-export function CashTransferStatusBadge({ status, className }: { status: CashTransferStatus; className?: string }) {
+/**
+ * The deposit's status; a pending one says whether it is with Accounts or
+ * awaiting Finance Admin's approval.
+ */
+export function CashTransferStatusBadge({
+  transfer,
+  className,
+}: {
+  transfer: Pick<CashTransfer, 'status' | 'forwardedAt'>;
+  className?: string;
+}) {
+  const queue = cashTransferQueue(transfer);
   return (
     <span
       className={cn(
         'inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium',
-        CASH_TRANSFER_STATUS_STYLES[status] ?? 'bg-muted',
+        (queue ? QUEUE_STYLES[queue] : CASH_TRANSFER_STATUS_STYLES[transfer.status]) ?? 'bg-muted',
         className,
       )}
     >
-      {cashTransferStatusLabel(status)}
+      {cashTransferStatusLabel(queue ?? transfer.status)}
     </span>
   );
 }
@@ -74,7 +105,7 @@ export function CashTransferStatusBadge({ status, className }: { status: CashTra
 export function lockReason(t: CashTransfer): string {
   if (t.status === 'approved') return `Finance approved this transfer and booked receipt ${t.voucherNo ?? ''}. It can no longer be changed.`.trim();
   if (t.status === 'rejected') return 'Finance rejected this transfer. Record a new one if the handover still stands.';
-  return 'Finance has not decided yet. A transfer cannot be edited once submitted — the photo is evidence of one specific handover.';
+  return 'Finance has not decided yet. Accounts checks it first, then Finance Admin approves or rejects it. A branch cannot edit a transfer once submitted — the photo is evidence of one specific handover.';
 }
 
 /** The typed figures of a deposit, as strings straight off the inputs. */

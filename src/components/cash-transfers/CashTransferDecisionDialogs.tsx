@@ -19,7 +19,8 @@ import { formatCurrency } from '@/utils/currency';
 import { CashDepositBreakdown, shortBranch } from './cashTransferShared';
 
 /**
- * Finance's two decisions on a pending transfer. Shared by the Cash Transfers
+ * Finance's two decisions on a pending transfer, and the step before them:
+ * Accounts submitting it for approval (ForwardCashTransferDialog). Shared by the Cash Transfers
  * board and the Daily Ledger's pending panel, so the two never word the same
  * decision differently.
  *
@@ -183,6 +184,70 @@ export function RejectCashTransferDialog({
           </Button>
           <Button variant="destructive" onClick={submit} disabled={mut.isPending || reasonMissing || !transfer}>
             {mut.isPending ? 'Rejecting…' : 'Reject'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Accounts sends a deposit it has checked on to Finance Admin. After this the
+ * deposit can no longer be edited here — Finance Admin approves or rejects it
+ * as it stands.
+ */
+export function ForwardCashTransferDialog({
+  transfer,
+  onClose,
+}: {
+  transfer: CashTransfer | null;
+  onClose: () => void;
+}) {
+  const mut = useFinanceMutation<{ transfer: CashTransfer }>();
+
+  function close() {
+    if (mut.isPending) return;
+    onClose();
+  }
+
+  async function submit() {
+    if (!transfer) return;
+    try {
+      await mut.mutateAsync({ path: `/api/finance/cash-transfers/${transfer.id}/forward`, method: 'PUT' });
+      toast.success(`${transfer.transferNo} submitted for Finance Admin approval`);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not submit this transfer');
+    }
+  }
+
+  return (
+    <Dialog open={transfer !== null} onOpenChange={(o) => !o && close()}>
+      <DialogContent className="md:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Submit for approval?</DialogTitle>
+          <DialogDescription>
+            Finance Admin will approve or reject this deposit as it stands. It can no longer be edited once
+            submitted.
+          </DialogDescription>
+        </DialogHeader>
+
+        {transfer && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-md bg-muted/40 p-3 text-sm">
+            <dt className="text-muted-foreground">Branch</dt>
+            <dd className="text-right font-medium">{shortBranch(transfer.branchName)}</dd>
+            <CashDepositBreakdown transfer={transfer} className="col-span-2 border-y py-1.5" />
+            <dt className="text-muted-foreground">Transfer ID</dt>
+            <dd className="text-right font-mono">{transfer.transferNo}</dd>
+          </dl>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={close} disabled={mut.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={mut.isPending || !transfer}>
+            {mut.isPending ? 'Submitting…' : 'Submit for Approval'}
           </Button>
         </DialogFooter>
       </DialogContent>

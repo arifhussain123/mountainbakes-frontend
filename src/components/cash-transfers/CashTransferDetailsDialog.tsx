@@ -101,7 +101,7 @@ export function CashTransferDetailsDialog({
 
             <dt className="text-muted-foreground">Status</dt>
             <dd className="text-right">
-              <CashTransferStatusBadge status={transfer.status} />
+              <CashTransferStatusBadge transfer={transfer} />
             </dd>
 
             {(transfer.revision ?? 1) > 1 && (

@@ -175,7 +175,7 @@ export function BranchCashTransfersPage() {
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
-      cell: (i) => <CashTransferStatusBadge status={i.getValue()} />,
+      cell: ({ row }) => <CashTransferStatusBadge transfer={row.original} />,
     }),
     col.display({
       id: 'actions',

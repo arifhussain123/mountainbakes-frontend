@@ -45,12 +45,11 @@ export const SUBMITTED_MESSAGE = 'Transaction submitted for Finance Admin approv
  * the note at the top of finance.schemas.ts). Here it only filters which heads
  * the dropdown offers.
  *
- * Two submit buttons rather than a "save as draft" checkbox: an accountant
- * filling this in either wants it in front of an approver now or wants to come
- * back to it, and that is a decision made at the moment of pressing, not while
- * reading the form. Editing keeps the same pair: save the draft or correction
- * and come back, or save and send it for approval in one request (`resubmit`),
- * so the approver never sees the entry before its correction.
+ * SAVE ONLY — NOTHING GOES STRAIGHT TO FINANCE ADMIN (the owner's order,
+ * 2026-10-28). A new entry is saved as a draft and a rejected one's correction
+ * is saved as it stands; either then shows in the list, where View offers Edit
+ * and Submit for Approval (FinanceEntryDetails). Cash deposits follow the same
+ * path: with Accounts first, then submitted to Finance Admin.
  *
  * A rejected entry opens with the approver's remarks at the top — they are what
  * the correction answers.
@@ -110,7 +109,6 @@ export function FinanceEntryForm({
   const [duplicateWarning, setDuplicateWarning] = useState<{
     match: DuplicateIncomeMatch;
     data: CreateFinanceTransactionInput;
-    asDraft: boolean;
   } | null>(null);
 
   const form = useForm<CreateFinanceTransactionInput>({
@@ -125,7 +123,7 @@ export function FinanceEntryForm({
       businessDate: entry?.businessDate ?? businessDateStr(),
       referenceNo: entry?.referenceNo ?? '',
       notes: entry?.notes ?? '',
-      asDraft: false,
+      asDraft: true,
       attachmentIds: (entry?.attachments ?? []).map((a) => a.id),
     },
   });
@@ -191,7 +189,7 @@ export function FinanceEntryForm({
       ? (branchesQ.data ?? []).filter((b) => EXPENSE_BRANCH_NAMES.includes(b.name.trim().toLowerCase()))
       : (branchesQ.data ?? []);
 
-  async function save(data: CreateFinanceTransactionInput, asDraft: boolean) {
+  async function save(data: CreateFinanceTransactionInput) {
     setDuplicateWarning(null);
     setRefused(null);
     if (restricted) return;
@@ -201,21 +199,24 @@ export function FinanceEntryForm({
         // has no update path at all, by design.
         // attachmentIds is stripped alongside asDraft: an edit revises the
         // figures, and the photos bound at creation stay bound (see the note on
-        // UpdateFinanceTransactionSchema). `asDraft` here means "save only".
+        // UpdateFinanceTransactionSchema). No `resubmit`: a rejected entry's
+        // correction is saved and resubmitted from View.
         await mut.mutateAsync({
           path: `/api/finance/income/entries/${entry.id}`,
           method: 'PUT',
-          body: { ...data, asDraft: undefined, attachmentIds: undefined, resubmit: !asDraft },
+          body: { ...data, asDraft: undefined, attachmentIds: undefined },
         });
         toast.success(
-          asDraft ? (entry.status === 'rejected' ? 'Correction saved — resubmit it when ready' : 'Draft saved') : SUBMITTED_MESSAGE,
+          entry.status === 'rejected'
+            ? 'Correction saved — open it with View to resubmit it for approval'
+            : 'Draft saved — open it with View to submit it for approval',
         );
       } else {
         await mut.mutateAsync({
           path: '/api/finance/income/entries',
-          body: { ...data, asDraft },
+          body: { ...data, asDraft: true },
         });
-        toast.success(asDraft ? 'Saved as a draft' : SUBMITTED_MESSAGE);
+        toast.success('Saved — open it with View to submit it for approval');
       }
       onSuccess?.();
     } catch (err) {
@@ -228,7 +229,7 @@ export function FinanceEntryForm({
           ? err.details.existing
           : null;
       if (duplicate) {
-        setDuplicateWarning({ match: duplicate, data, asDraft });
+        setDuplicateWarning({ match: duplicate, data });
         return;
       }
       // A restriction is explained by the notice in this form, not a toast.
@@ -244,15 +245,15 @@ export function FinanceEntryForm({
 
   async function createAnyway() {
     if (!duplicateWarning) return;
-    const { data, asDraft } = duplicateWarning;
+    const { data } = duplicateWarning;
     setDuplicateWarning(null);
-    await save({ ...data, confirmDuplicate: true }, asDraft);
+    await save({ ...data, confirmDuplicate: true });
   }
 
   const errors = form.formState.errors;
 
   return (
-    <form onSubmit={form.handleSubmit((d) => save(d, false))} className="space-y-4">
+    <form onSubmit={form.handleSubmit((d) => save(d))} className="space-y-4">
       {entry?.status === 'rejected' && (
         <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
           <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600 dark:text-red-400" />
@@ -484,27 +485,9 @@ export function FinanceEntryForm({
         refused && <RestrictionNotice restriction={refused} />
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className="flex-1"
-          disabled={mut.isPending || restricted}
-          onClick={() => void form.handleSubmit((d) => save(d, true))()}
-        >
-          {!entry ? 'Save as draft' : entry.status === 'rejected' ? 'Save correction' : 'Save draft'}
-        </Button>
-        <Button type="submit" size="lg" className="flex-1" disabled={mut.isPending || restricted}>
-          {mut.isPending
-            ? 'Saving…'
-            : entry?.status === 'rejected'
-              ? 'Save & resubmit for approval'
-              : entry
-                ? 'Save & submit for approval'
-                : 'Submit for approval'}
-        </Button>
-      </div>
+      <Button type="submit" size="lg" className="w-full" disabled={mut.isPending || restricted}>
+        {mut.isPending ? 'Saving…' : entry?.status === 'rejected' ? 'Save correction' : 'Save'}
+      </Button>
     </form>
   );
 }

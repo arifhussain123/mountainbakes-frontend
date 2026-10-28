@@ -19,7 +19,8 @@ import { channelsLabel, shortBranch } from './cashTransferShared';
  *
  * The ledger itself holds only posted vouchers — a pending transfer has no
  * RV- number yet and cannot be a row in it. This panel sits above the book
- * and lists the handovers Finance has not decided, with the same View /
+ * and lists the handovers Accounts has submitted and Finance Admin has not
+ * decided (one still with Accounts is not ready to decide), with the same View /
  * Approve / Reject the Cash Transfers page offers, so the person reading the
  * cash book can clear the queue without leaving it. Renders nothing when the
  * queue is empty; a permanently visible empty box would be noise on the one
@@ -28,7 +29,7 @@ import { channelsLabel, shortBranch } from './cashTransferShared';
 const PANEL_LIMIT = 10;
 
 export function PendingCashTransfersPanel({ canDecide }: { canDecide: boolean }) {
-  const { data, isLoading } = useFinanceCashTransfers({ status: 'pending', limit: PANEL_LIMIT, sortBy: 'createdAt', sortDir: 'asc' });
+  const { data, isLoading } = useFinanceCashTransfers({ status: 'awaiting_approval', limit: PANEL_LIMIT, sortBy: 'createdAt', sortDir: 'asc' });
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
   const [approving, setApproving] = useState<CashTransfer | null>(null);
   const [rejecting, setRejecting] = useState<CashTransfer | null>(null);

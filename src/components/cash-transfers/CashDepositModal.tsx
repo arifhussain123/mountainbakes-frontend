@@ -222,7 +222,7 @@ export function CashDepositModal({
         attachmentIds: photos.map((p) => p.id),
         businessDate: date,
       });
-      toast.success(`Cash Deposit submitted successfully (${created.transferNo}). Waiting for Finance approval.`);
+      toast.success(`Cash Deposit submitted successfully (${created.transferNo}). Accounts will check it and send it for approval.`);
       resetForm();
     } catch (err) {
       // The server's sentence names the cause — a closed day, a deposit that
@@ -514,7 +514,7 @@ function RecentTransfer({ transfer: t }: { transfer: CashTransfer }) {
           {t.fuelCharges > 0 && (
             <p className="text-xs tabular-nums text-muted-foreground">+ Fuel {formatCurrency(t.fuelCharges)}</p>
           )}
-          <CashTransferStatusBadge status={t.status} className="mt-0.5" />
+          <CashTransferStatusBadge transfer={t} className="mt-0.5" />
         </div>
       </div>
       {t.note && <ExpandableText text={t.note} className="mt-1.5 text-xs text-muted-foreground" />}

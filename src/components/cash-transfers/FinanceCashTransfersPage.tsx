@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import {
   CASH_TRANSFER_METHODS,
-  CASH_TRANSFER_STATUSES,
+  CASH_TRANSFER_QUEUES,
   type CashTransfer,
   type FilterConfig,
 } from '@mb/shared';
@@ -22,12 +22,18 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
-import { Banknote, Check, Eye, RotateCcw, X } from 'lucide-react';
+import { Banknote, Check, Eye, Pencil, RotateCcw, Send, X } from 'lucide-react';
 import { FinancePageHeader, ReadOnlyNotice, useFinanceAbilities } from '@/components/finance/finance-ui';
 import { CashTransferDetailsDialog } from './CashTransferDetailsDialog';
-import { ApproveCashTransferDialog, RejectCashTransferDialog } from './CashTransferDecisionDialogs';
+import {
+  ApproveCashTransferDialog,
+  ForwardCashTransferDialog,
+  RejectCashTransferDialog,
+} from './CashTransferDecisionDialogs';
+import { EditCashDepositDialog } from './EditCashDepositDialog';
 import {
   CashTransferStatusBadge,
+  cashTransferQueue,
   cashTransferStatusLabel,
   methodLabel,
   shortBranch,
@@ -47,6 +53,11 @@ import {
  * row is not something a figure can be read off. Approve / Reject are also
  * offered on a pending row for the operator who has already looked.
  *
+ * ACCOUNTS FIRST. A branch's deposit is not Finance Admin's yet: it lands
+ * "With Accounts", where the Accountant may Edit it and Submit it for
+ * Approval. Only a submitted deposit offers Approve / Reject. Each role opens
+ * on its own half of the queue.
+ *
  * Server-filtered and server-paginated: the query narrows to the chosen
  * branch, status, method and date range, and pages what is left. A pending
  * queue is fetched WHOLE (no date window) so an old handover is not missed.
@@ -54,13 +65,18 @@ import {
 
 const col = createColumnHelper<CashTransfer>();
 
+/** The Status filter: the two halves of pending, then the decided. */
+const STATUS_OPTIONS = [...CASH_TRANSFER_QUEUES, 'approved', 'rejected'] as const;
+
 export function FinanceCashTransfersPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const abilities = useFinanceAbilities();
   const list = useListQueryState({
     syncUrl: true,
     filterKeys: ['status', 'branchId', 'paymentMethod', 'businessDate'],
-    defaults: { filters: [{ key: 'status', op: 'eq', value: 'pending' }] },
+    defaults: {
+      filters: [{ key: 'status', op: 'eq', value: user?.role === 'accountant' ? 'with_accounts' : 'awaiting_approval' }],
+    },
   });
   const branchesQ = useBranches(token);
 
@@ -68,7 +84,7 @@ export function FinanceCashTransfersPage() {
     () => [
       {
         key: 'status', label: 'Status', type: 'select', placement: 'bar',
-        options: CASH_TRANSFER_STATUSES.map((s) => ({ value: s, label: cashTransferStatusLabel(s) })),
+        options: STATUS_OPTIONS.map((s) => ({ value: s, label: cashTransferStatusLabel(s) })),
       },
       { key: 'branchId', label: 'Branch', type: 'select', placement: 'bar' },
       {
@@ -101,10 +117,14 @@ export function FinanceCashTransfersPage() {
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
   const [approving, setApproving] = useState<CashTransfer | null>(null);
   const [rejecting, setRejecting] = useState<CashTransfer | null>(null);
+  const [editing, setEditing] = useState<CashTransfer | null>(null);
+  const [forwarding, setForwarding] = useState<CashTransfer | null>(null);
 
   const rows = data?.transfers ?? [];
   const total = data?.total ?? 0;
-  const canDecide = abilities.approve;
+  /** Accounts' step on a deposit still with it; Finance Admin's on a submitted one. */
+  const canReview = (t: CashTransfer | null) => !!t && abilities.create && cashTransferQueue(t) === 'with_accounts';
+  const canDecide = (t: CashTransfer | null) => !!t && abilities.approve && cashTransferQueue(t) === 'awaiting_approval';
 
   const columns = [
     col.accessor('transferNo', {
@@ -175,7 +195,7 @@ export function FinanceCashTransfersPage() {
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
-      cell: (i) => <CashTransferStatusBadge status={i.getValue()} />,
+      cell: ({ row }) => <CashTransferStatusBadge transfer={row.original} />,
     }),
     col.accessor('createdAt', {
       header: 'Submitted',
@@ -193,7 +213,17 @@ export function FinanceCashTransfersPage() {
             <Button variant="ghost" size="sm" onClick={() => setViewRow(t)}>
               <Eye className="mr-1.5 h-4 w-4" /> View
             </Button>
-            {t.status === 'pending' && canDecide && (
+            {canReview(t) && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setEditing(t)}>
+                  <Pencil className="mr-1.5 h-4 w-4" /> Edit
+                </Button>
+                <Button variant="ghost" size="sm" className="text-emerald-700 hover:text-emerald-700" onClick={() => setForwarding(t)}>
+                  <Send className="mr-1.5 h-4 w-4" /> Submit for Approval
+                </Button>
+              </>
+            )}
+            {canDecide(t) && (
               <>
                 <Button variant="ghost" size="sm" className="text-emerald-700 hover:text-emerald-700" onClick={() => setApproving(t)}>
                   <Check className="mr-1.5 h-4 w-4" /> Approve
@@ -213,7 +243,7 @@ export function FinanceCashTransfersPage() {
     <div className="space-y-6">
       <FinancePageHeader
         title="Cash Transfer Details"
-        description="Money branches handed to the company, with the photo of each slip. Approving posts an RV- receipt to the Daily Ledger."
+        description="Money branches handed to the company, with the photo of each slip. Accounts checks each deposit and submits it for approval; Finance Admin's approval posts an RV- receipt to the Daily Ledger."
         actions={
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
             <RotateCcw className="h-3.5 w-3.5" />
@@ -293,7 +323,16 @@ export function FinanceCashTransfersPage() {
         open={!!viewRow}
         onClose={() => setViewRow(null)}
         footer={
-          viewRow?.status === 'pending' && canDecide ? (
+          canReview(viewRow) ? (
+            <>
+              <Button variant="outline" onClick={() => { setEditing(viewRow); setViewRow(null); }}>
+                <Pencil className="mr-1.5 h-4 w-4" /> Edit
+              </Button>
+              <Button onClick={() => { setForwarding(viewRow); setViewRow(null); }}>
+                <Send className="mr-1.5 h-4 w-4" /> Submit for Approval
+              </Button>
+            </>
+          ) : canDecide(viewRow) ? (
             <>
               <Button
                 variant="outline"
@@ -311,6 +350,8 @@ export function FinanceCashTransfersPage() {
       />
       <ApproveCashTransferDialog transfer={approving} onClose={() => setApproving(null)} />
       <RejectCashTransferDialog transfer={rejecting} onClose={() => setRejecting(null)} />
+      <EditCashDepositDialog transfer={editing} onClose={() => setEditing(null)} />
+      <ForwardCashTransferDialog transfer={forwarding} onClose={() => setForwarding(null)} />
     </div>
   );
 }

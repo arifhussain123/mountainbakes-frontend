@@ -88,7 +88,7 @@ function ResubmitForm({ transfer, onClose }: { transfer: CashTransfer; onClose: 
         note: note.trim() || undefined,
         attachmentIds: photos.map((p) => p.id),
       });
-      toast.success(`${transfer.transferNo} resubmitted for Finance approval.`);
+      toast.success(`${transfer.transferNo} sent back to Accounts for checking.`);
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not resubmit this deposit');
