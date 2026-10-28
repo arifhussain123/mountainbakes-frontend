@@ -20,7 +20,7 @@ import { ExpandableText } from '@/components/shared/ExpandableText';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
-import { formatDate, formatDateTime } from '@/utils/date';
+import { formatDate } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { Banknote, Check, Eye, Pencil, RotateCcw, Send, X } from 'lucide-react';
 import { FinancePageHeader, ReadOnlyNotice, useFinanceAbilities } from '@/components/finance/finance-ui';
@@ -123,7 +123,7 @@ export function FinanceCashTransfersPage() {
   const rows = data?.transfers ?? [];
   const total = data?.total ?? 0;
   /** Accounts' step on a deposit still with it; Finance Admin's on a submitted one. */
-  const canReview = (t: CashTransfer | null) => !!t && abilities.create && cashTransferQueue(t) === 'with_accounts';
+  const canReview = (t: CashTransfer | null) => !!t && abilities.review && cashTransferQueue(t) === 'with_accounts';
   const canDecide = (t: CashTransfer | null) => !!t && abilities.approve && cashTransferQueue(t) === 'awaiting_approval';
 
   const columns = [
@@ -196,11 +196,6 @@ export function FinanceCashTransfersPage() {
       header: 'Status',
       meta: { mobile: 'badge' },
       cell: ({ row }) => <CashTransferStatusBadge transfer={row.original} />,
-    }),
-    col.accessor('createdAt', {
-      header: 'Submitted',
-      meta: { mobileLabel: 'Submitted' },
-      cell: (i) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(i.getValue())}</span>,
     }),
     col.display({
       id: 'actions',

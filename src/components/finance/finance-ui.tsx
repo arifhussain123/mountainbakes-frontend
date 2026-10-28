@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   financeCan,
+  financeCanReview,
   FINANCE_DOC_STATUS_LABELS,
   FINANCE_ROLE_LABELS,
   isFinanceRole,
@@ -35,6 +36,8 @@ export interface FinanceAbilities {
   approve: boolean;
   adjust: boolean;
   configure: boolean;
+  /** Edit and Submit for Approval on Income & Expense entries and cash deposits — the Accountant only. */
+  review: boolean;
   /** True while the finance settings are still loading. */
   loading: boolean;
   roleLabel: string;
@@ -72,6 +75,7 @@ export function useFinanceAbilities(): FinanceAbilities {
       approve: can('approve'),
       adjust: can('adjust'),
       configure: can('configure'),
+      review: financeCanReview(role),
       loading: isLoading,
       roleLabel: isFinanceRole(role)
         ? FINANCE_ROLE_LABELS[role]

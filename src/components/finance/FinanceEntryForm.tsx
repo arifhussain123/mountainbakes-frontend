@@ -10,6 +10,7 @@ import {
   FINANCE_ACCOUNT_LABELS,
   FINANCE_PAYMENT_METHOD_LABELS,
   FINANCE_PAYMENT_METHODS,
+  financeCanReview,
   type Attachment,
   type CreateFinanceTransactionInput,
   type FinanceTransaction,
@@ -91,7 +92,7 @@ export function FinanceEntryForm({
   entry?: FinanceTransaction;
   onSuccess?: () => void;
 }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const branchesQ = useBranches(token ?? '');
   const headsQ = useLedgerHeads();
   const mut = useFinanceMutation();
@@ -216,7 +217,11 @@ export function FinanceEntryForm({
           path: '/api/finance/income/entries',
           body: { ...data, asDraft: true },
         });
-        toast.success('Saved — open it with View to submit it for approval');
+        toast.success(
+          financeCanReview(user?.role)
+            ? 'Saved — open it with View to submit it for approval'
+            : 'Saved — the Accountant will check it and submit it for approval',
+        );
       }
       onSuccess?.();
     } catch (err) {

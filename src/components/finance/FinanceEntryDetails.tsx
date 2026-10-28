@@ -24,10 +24,10 @@ import { Check, CheckCircle2, Clock, Pencil, Send, X, XCircle } from 'lucide-rea
  * One Income & Expense entry, and what can be done with it now.
  *
  * The actions follow the status, and the server enforces the same rules:
- *   draft            — Edit, Submit for Approval (its author's side)
+ *   draft            — Edit, Submit for Approval (the Accountant only)
  *   pending_approval — locked to edits; Approve / Reject sit on the table row
  *                      (EntryDecisionButtons), not here
- *   rejected         — the remarks first, then Edit and Correct, Resubmit
+ *   rejected         — the remarks first, then Edit and Correct, Resubmit (the Accountant only)
  *   posted / locked  — who approved it, the voucher, the ledger posting
  *
  * Reads the entry fresh by id, so a decision taken in another tab shows here
@@ -186,7 +186,7 @@ export function FinanceEntryDetails({
       <DocumentHistory type="finance_transaction" id={entry.id} path={`${BASE}/${entry.id}`} className="border-t pt-3" />
 
       <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:flex-wrap">
-        {entry.status === 'draft' && abilities.create && (
+        {entry.status === 'draft' && abilities.review && (
           <>
             <Button variant="outline" className="flex-1" onClick={() => onEdit(entry)}>
               <Pencil className="h-3.5 w-3.5" />
@@ -198,7 +198,7 @@ export function FinanceEntryDetails({
             </Button>
           </>
         )}
-        {entry.status === 'rejected' && abilities.create && (
+        {entry.status === 'rejected' && abilities.review && (
           <>
             <Button variant="outline" className="flex-1" onClick={() => onEdit(entry)}>
               <Pencil className="h-3.5 w-3.5" />
