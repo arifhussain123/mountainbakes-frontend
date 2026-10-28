@@ -25,7 +25,8 @@ import { Check, CheckCircle2, Clock, Pencil, Send, X, XCircle } from 'lucide-rea
  *
  * The actions follow the status, and the server enforces the same rules:
  *   draft            — Edit, Submit for Approval (its author's side)
- *   pending_approval — locked to edits; an approver may Approve or Reject
+ *   pending_approval — locked to edits; Approve / Reject sit on the table row
+ *                      (EntryDecisionButtons), not here
  *   rejected         — the remarks first, then Edit and Correct, Resubmit
  *   posted / locked  — who approved it, the voucher, the ledger posting
  *
@@ -60,10 +61,7 @@ export function FinanceEntryDetails({
   const entry = fresh.data ?? initial;
 
   const submitMut = useFinanceMutation();
-  const approveMut = useFinanceMutation();
-  const [confirm, setConfirm] = useState<'submit' | 'approve' | null>(null);
-  const [rejecting, setRejecting] = useState(false);
-  const [approvalNote, setApprovalNote] = useState('');
+  const [confirm, setConfirm] = useState<'submit' | null>(null);
 
   const isIncome = entry.txnType === 'income';
   const posted = entry.status === 'posted' || entry.status === 'locked' || entry.status === 'approved';
@@ -75,20 +73,6 @@ export function FinanceEntryDetails({
       setConfirm(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not submit this entry');
-    }
-  }
-
-  async function approve() {
-    try {
-      await approveMut.mutateAsync({
-        path: `${BASE}/${entry.id}/approve`,
-        body: { notes: approvalNote.trim() || undefined },
-      });
-      toast.success(`${entry.txnNo} approved and posted to the Daily Ledger`);
-      setConfirm(null);
-      setApprovalNote('');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not approve this entry');
     }
   }
 
@@ -226,18 +210,6 @@ export function FinanceEntryDetails({
             </Button>
           </>
         )}
-        {entry.status === 'pending_approval' && abilities.approve && (
-          <>
-            <Button variant="destructive" className="flex-1" onClick={() => setRejecting(true)}>
-              <X className="h-3.5 w-3.5" />
-              Reject
-            </Button>
-            <Button className="flex-1" onClick={() => setConfirm('approve')}>
-              <Check className="h-3.5 w-3.5" />
-              Approve
-            </Button>
-          </>
-        )}
         <Button variant="outline" className="flex-1" onClick={onClose}>
           Close
         </Button>
@@ -256,10 +228,59 @@ export function FinanceEntryDetails({
         pending={submitMut.isPending}
         onConfirm={() => void submit()}
       />
+    </div>
+  );
+}
+
+/**
+ * Approve / Reject for a pending entry, on its table row beside View. The same
+ * confirmations the details dialog used to carry: approving asks first (with
+ * an optional note) because it posts to the ledger, rejecting asks for remarks.
+ */
+export function EntryDecisionButtons({
+  entry,
+  abilities,
+}: {
+  entry: FinanceTransaction;
+  abilities: FinanceAbilities;
+}) {
+  const approveMut = useFinanceMutation();
+  const [confirming, setConfirming] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [approvalNote, setApprovalNote] = useState('');
+
+  if (entry.status !== 'pending_approval' || !abilities.approve) return null;
+
+  const isIncome = entry.txnType === 'income';
+
+  async function approve() {
+    try {
+      await approveMut.mutateAsync({
+        path: `${BASE}/${entry.id}/approve`,
+        body: { notes: approvalNote.trim() || undefined },
+      });
+      toast.success(`${entry.txnNo} approved and posted to the Daily Ledger`);
+      setConfirming(false);
+      setApprovalNote('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not approve this entry');
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" onClick={() => setConfirming(true)}>
+        <Check className="h-3.5 w-3.5" />
+        Approve
+      </Button>
+      <Button variant="destructive" size="sm" onClick={() => setRejecting(true)}>
+        <X className="h-3.5 w-3.5" />
+        Reject
+      </Button>
 
       <ConfirmDialog
-        open={confirm === 'approve'}
-        onOpenChange={(o) => !o && setConfirm(null)}
+        open={confirming}
+        onOpenChange={setConfirming}
         title={`Approve ${entry.txnNo}?`}
         description={
           <>
@@ -273,9 +294,9 @@ export function FinanceEntryDetails({
         onConfirm={() => void approve()}
       >
         <div className="space-y-1">
-          <Label htmlFor="approval-note">Note (optional)</Label>
+          <Label htmlFor={`approval-note-${entry.id}`}>Note (optional)</Label>
           <Textarea
-            id="approval-note"
+            id={`approval-note-${entry.id}`}
             rows={2}
             maxLength={500}
             value={approvalNote}
@@ -286,6 +307,6 @@ export function FinanceEntryDetails({
       </ConfirmDialog>
 
       <RejectDialog open={rejecting} onOpenChange={setRejecting} path={`${BASE}/${entry.id}/reject`} label={entry.txnNo} />
-    </div>
+    </>
   );
 }

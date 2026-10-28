@@ -22,7 +22,7 @@ import { ExpandableText } from '@/components/shared/ExpandableText';
 import { formatDateTime } from '@/utils/date';
 import { FinancePageHeader, Money, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { FinanceEntryForm } from './FinanceEntryForm';
-import { FinanceEntryDetails } from './FinanceEntryDetails';
+import { EntryDecisionButtons, FinanceEntryDetails } from './FinanceEntryDetails';
 import { Eye } from 'lucide-react';
 
 /**
@@ -31,7 +31,7 @@ import { Eye } from 'lucide-react';
  *
  * The same documents and the same API as Income & Expense (one place to fix an
  * approval bug); this screen is the queue's view of them: who sent each one and
- * when, filterable by submitter. View opens the entry with Approve / Reject.
+ * when, filterable by submitter. Approve / Reject sit on the row after View.
  *
  * With no Status chosen it shows what is waiting. "All statuses" sends no
  * status at all, so an approver can look back at what they decided.
@@ -109,17 +109,18 @@ export function FinanceApprovalsPage() {
   const total = data?.total ?? 0;
 
   const columns = [
-    // First, as on Demand Record: the queue's one action stays on screen however
+    // First, as on Demand Record: the queue's actions stay on screen however
     // narrow the laptop, rather than past a horizontal scroll.
     col.display({
       id: 'actions',
       header: '',
       enableSorting: false,
       cell: (i) => (
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
+          <EntryDecisionButtons entry={i.row.original} abilities={abilities} />
         </div>
       ),
     }),

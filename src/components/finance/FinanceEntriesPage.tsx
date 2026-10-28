@@ -23,7 +23,7 @@ import { ExpandableText } from '@/components/shared/ExpandableText';
 import { formatDate } from '@/utils/date';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { FinanceEntryForm } from './FinanceEntryForm';
-import { FinanceEntryDetails } from './FinanceEntryDetails';
+import { EntryDecisionButtons, FinanceEntryDetails } from './FinanceEntryDetails';
 import { Eye, Plus } from 'lucide-react';
 
 /**
@@ -115,22 +115,6 @@ export function FinanceEntriesPage() {
   const total = data?.total ?? 0;
 
   const columns = [
-    // View first, as on Pending Approvals, and the row's only action: Edit,
-    // Submit, Edit and Correct, Resubmit, Approve and Reject all live behind it,
-    // each with its confirmation. First, so it stays on screen however narrow
-    // the laptop, rather than past a horizontal scroll.
-    col.display({
-      id: 'actions',
-      header: '',
-      enableSorting: false,
-      cell: (i) => (
-        <div className="flex items-center">
-          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ),
-    }),
     // The PV-/RV- sits under the entry number once approval issues it.
     col.accessor('txnNo', {
       header: 'Entry No / Voucher',
@@ -234,15 +218,19 @@ export function FinanceEntriesPage() {
         );
       },
     }),
-    col.accessor('createdByName', {
-      header: 'Created By',
+    // View, then Approve / Reject on a pending entry for an approver. Edit,
+    // Submit, Edit and Correct and Resubmit live behind View.
+    col.display({
+      id: 'actions',
+      header: '',
+      enableSorting: false,
       cell: (i) => (
-        <span className="block text-sm">
-          {i.getValue() ?? '—'}
-          <span className="block whitespace-nowrap text-xs text-muted-foreground">
-            {formatDate(i.row.original.createdAt)}
-          </span>
-        </span>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          <EntryDecisionButtons entry={i.row.original} abilities={abilities} />
+        </div>
       ),
     }),
   ];
