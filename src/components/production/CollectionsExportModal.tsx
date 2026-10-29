@@ -32,7 +32,7 @@ export interface CollectionsExportModalProps {
  */
 export function CollectionsExportModal({ open, onOpenChange, token }: CollectionsExportModalProps) {
   const today = businessDateStr();
-  // The month to date, by request date (each demand's business date): the 1st
+  // The month to date, by required date (each demand's required date): the 1st
   // of the current month through today, starting again on the 1st of the next
   // (owner's rule, 2026-10-25). Today alone was often an empty file — the
   // day's demands are not delivered yet when most people export.
@@ -134,17 +134,18 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
                 type="date"
                 value={to}
                 min={from}
-                max={today}
                 onChange={(e) => setTo(e.target.value || today)}
                 className="h-9 w-full"
               />
             </div>
           </div>
 
-          {/* Said here rather than discovered in the sheet: the rule is the
-              Demand Record's, so its figures match that page. */}
+          {/* Said here rather than discovered in the sheet: the Demand Record's
+              money rules, but dated by required date and opened with the
+              branch's stock, so Previous / Closing are the sheet's own. */}
           <p className="text-xs text-muted-foreground">
-            Rows are by request date. Demand = Total Demand Amount − Return − Discount. Company Share = Demand × share %.
+            Rows are by required date. Each branch starts with an Opening Stock row: the stock it held on the first day,
+            counted like a delivery. Demand = Total Demand Amount − Return − Discount. Company Share = Demand × share %.
             Remaining = Previous Balance + Company Share − Payment Received, carried to the next demand.
           </p>
         </div>
