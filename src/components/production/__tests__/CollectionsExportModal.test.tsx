@@ -52,4 +52,19 @@ describe('CollectionsExportModal', () => {
     view.rerender(<CollectionsExportModal open onOpenChange={vi.fn()} token="t" />);
     expect(dates()).toEqual(['2026-11-01', '2026-11-01']);
   });
+
+  test('From is locked to the 1st of the To date\'s month', async () => {
+    vi.setSystemTime(new Date('2026-10-25T07:00:00Z'));
+    render(<CollectionsExportModal open onOpenChange={vi.fn()} token="t" />);
+    const [fromInput, toInput] = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
+    expect(fromInput!.disabled).toBe(true);
+    fireEvent.change(toInput!, { target: { value: '2026-09-14' } });
+    expect(dates()).toEqual(['2026-09-01', '2026-09-14']);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Export Excel/ }));
+    });
+    expect(vi.mocked(apiCall).mock.calls[0]![0]).toBe(
+      '/api/production-reports/export?report=collections&from=2026-09-01&to=2026-09-14&type=excel',
+    );
+  });
 });

@@ -36,18 +36,16 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
   // of the current month through today, starting again on the 1st of the next
   // (owner's rule, 2026-10-25). Today alone was often an empty file — the
   // day's demands are not delivered yet when most people export.
-  const monthStart = `${today.slice(0, 7)}-01`;
-  const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
+  // From is locked to the 1st of To's month (owner's call, 2026-10-29): the
+  // server starts the export there whatever From says, so the field only shows it.
+  const from = `${to.slice(0, 7)}-01`;
   // Each time the dialog opens it starts from this month again, so a page left
   // open across the 1st does not keep last month's window.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) {
-      setFrom(monthStart);
-      setTo(today);
-    }
+    if (open) setTo(today);
   }
   const [branchId, setBranchId] = useState(ALL_BRANCHES);
   const [busy, setBusy] = useState(false);
@@ -123,17 +121,18 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
               <Input
                 type="date"
                 value={from}
-                max={to || today}
-                onChange={(e) => setFrom(e.target.value || monthStart)}
+                readOnly
+                disabled
+                title="Always the 1st of the To date's month"
                 className="h-9 w-full"
               />
+              <p className="text-[11px] text-muted-foreground">Always the 1st of the To date&apos;s month</p>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">To</label>
               <Input
                 type="date"
                 value={to}
-                min={from}
                 onChange={(e) => setTo(e.target.value || today)}
                 className="h-9 w-full"
               />
