@@ -98,8 +98,12 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
   const today = businessDateStr();
 
   const [branchId, setBranchId] = useState(ALL);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  // A branch sees one month to date: To picks the day (today to start with) and
+  // From is always the 1st of To's month (owner's call, 2026-10-30, as on the
+  // Collections export). Finance picks both, or leaves them open.
+  const [fromPick, setFromPick] = useState('');
+  const [to, setTo] = useState(isBranch ? today : '');
+  const from = isBranch ? `${to.slice(0, 7)}-01` : fromPick;
   const [search, setSearch] = useState('');
   const [sorting, setSorting] = useState<SortingState>([{ id: 'date', desc: true }]);
   const [page, setPage] = useState(1);
@@ -354,10 +358,21 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
           </FilterField>
         )}
         <FilterField label="From">
-          <DateFilter value={from} max={to || today} onChange={resetPage(setFrom)} />
+          {isBranch ? (
+            <Input
+              type="date"
+              value={from}
+              readOnly
+              disabled
+              title="Always the 1st of the To date's month"
+              className="h-11 md:h-9"
+            />
+          ) : (
+            <DateFilter value={from} max={to || today} onChange={resetPage(setFromPick)} />
+          )}
         </FilterField>
         <FilterField label="To">
-          <DateFilter value={to} max={today} onChange={resetPage(setTo)} />
+          <DateFilter value={to} max={today} onChange={resetPage((v: string) => setTo(isBranch ? v || today : v))} />
         </FilterField>
         <FilterField label="Search" className="min-w-[12rem] flex-1 space-y-1">
           <Input
@@ -367,8 +382,8 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
             className="h-11 md:h-9"
           />
         </FilterField>
-        {(from || to || search || branchId !== ALL) && (
-          <Button variant="ghost" size="sm" className="h-11 md:h-9" onClick={() => { setFrom(''); setTo(''); setSearch(''); setBranchId(ALL); setPage(1); }}>
+        {((isBranch ? to !== today : from || to) || search || branchId !== ALL) && (
+          <Button variant="ghost" size="sm" className="h-11 md:h-9" onClick={() => { setFromPick(''); setTo(isBranch ? today : ''); setSearch(''); setBranchId(ALL); setPage(1); }}>
             Clear
           </Button>
         )}
