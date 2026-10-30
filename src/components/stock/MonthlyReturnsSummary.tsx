@@ -29,8 +29,9 @@ import { cn } from '@/lib/utils';
  *
  * On Production the cards are followed by one box per active branch — its
  * monthly return amount under `branchReturnAmount` (approved, awaiting review
- * and sent back; rejected excluded). Branches whose amount is zero get no box;
- * picking one narrows the cards above (and the table below) to it.
+ * and sent back; rejected excluded) — and, under it, how much of that is still
+ * awaiting review and in how many claims. Branches whose amount is zero get no
+ * box; picking one narrows the cards above (and the table below) to it.
  *
  * The window is the server's, so the date line is too — it always names the
  * month the figures actually cover, never one computed here.
@@ -49,6 +50,7 @@ const TONE: Record<ProductionReturnStatus | 'submitted', string> = {
 };
 
 const STATUS_ORDER: ProductionReturnStatus[] = ['accepted', 'pending', 'rejected', 'returned'];
+const EMPTY_BUCKET: ReturnsBucket = { qty: 0, amount: 0, count: 0 };
 
 const qtyText = (n: number) => n.toLocaleString();
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -57,7 +59,22 @@ const bucketLine = (b: ReturnsBucket) => `${plural(b.qty, 'item', 'items')} · $
 const boxAmount = (n: number) =>
   `${CURRENCY_SYMBOL} ${n.toLocaleString(CURRENCY_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function BranchBox({ name, amount, selected, onPick }: { name: string; amount: number; selected: boolean; onPick?: () => void }) {
+function BranchBox({
+  name,
+  amount,
+  awaiting,
+  awaitingLabel,
+  selected,
+  onPick,
+}: {
+  name: string;
+  amount: number;
+  /** This branch's returns still awaiting review — part of `amount`, not final. */
+  awaiting: ReturnsBucket;
+  awaitingLabel: string;
+  selected: boolean;
+  onPick?: () => void;
+}) {
   return (
     <button
       type="button"
@@ -71,13 +88,24 @@ function BranchBox({ name, amount, selected, onPick }: { name: string; amount: n
       )}
     >
       <span className="text-sm font-semibold leading-snug break-words">{name}</span>
-      <span
-        className={cn(
-          'block border-t pt-2.5 text-xl font-bold whitespace-nowrap tabular-nums',
-          amount === 0 && 'text-muted-foreground',
-        )}
-      >
-        {boxAmount(amount)}
+      <span className="block space-y-1 border-t pt-2.5">
+        <span
+          data-testid="return-branch-amount"
+          className={cn('block text-xl font-bold whitespace-nowrap tabular-nums', amount === 0 && 'text-muted-foreground')}
+        >
+          {boxAmount(amount)}
+        </span>
+        <span
+          data-testid="return-branch-awaiting"
+          className={cn(
+            'block text-xs tabular-nums',
+            awaiting.count > 0 ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground',
+          )}
+        >
+          {awaiting.count > 0
+            ? `${boxAmount(awaiting.amount)} ${awaitingLabel} · ${plural(awaiting.count, 'claim', 'claims')}`
+            : `Nothing ${awaitingLabel}`}
+        </span>
       </span>
     </button>
   );
@@ -190,6 +218,8 @@ export function MonthlyReturnsSummary({
                   key={b.branchId}
                   name={b.branchName.replace('Mountain Bakes ', '')}
                   amount={b.amount}
+                  awaiting={summary?.branches.find((e) => e.branchId === b.branchId)?.pending ?? EMPTY_BUCKET}
+                  awaitingLabel={statusLabels.pending.toLowerCase()}
                   selected={b.branchId === selectedBranchId}
                   onPick={onSelectBranch ? () => onSelectBranch(b.branchId === selectedBranchId ? null : b.branchId) : undefined}
                 />

@@ -51,6 +51,8 @@ const LABELS: Record<ProductionReturnStatus, string> = {
 const base = { isLoading: false, isError: false, isFetching: false, error: null, onRetry: () => {}, statusLabels: LABELS };
 const boxes = () => screen.getAllByTestId('return-branch-box');
 const box = (name: string) => boxes().find((b) => b.textContent?.startsWith(name))!;
+const amount = (name: string) => box(name).querySelector('[data-testid="return-branch-amount"]')?.textContent;
+const awaiting = (name: string) => box(name).querySelector('[data-testid="return-branch-awaiting"]')?.textContent;
 
 afterEach(() => {
   cleanup();
@@ -66,7 +68,13 @@ describe('MonthlyReturnsSummary — Production branch boxes', () => {
   test('one box per active branch with an amount, name and amount in separate parts', () => {
     render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} />);
     expect(boxes().map((b) => b.firstElementChild?.textContent)).toEqual(['Alabad Branch']);
-    expect(box('Alabad Branch').lastElementChild?.textContent).toBe('Rs. 12,500.00');
+    expect(amount('Alabad Branch')).toBe('Rs. 12,500.00');
+  });
+
+  test('each box shows its amount awaiting review and how many claims', () => {
+    render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} selectedBranchId={B} />);
+    expect(awaiting('Alabad Branch')).toBe('Rs. 400.50 awaiting review · 1 claim');
+    expect(awaiting('Committee Chowk Branch')).toBe('Nothing awaiting review');
   });
 
   test('approved, awaiting review and sent back count; rejected does not', () => {
@@ -101,7 +109,7 @@ describe('MonthlyReturnsSummary — Production branch boxes', () => {
   test('a selected branch keeps its box at Rs. 0.00 so it can be cleared', () => {
     render(<MonthlyReturnsSummary {...base} summary={SUMMARY} showBranches branches={BRANCHES} selectedBranchId={B} />);
     expect(boxes().map((b) => b.firstElementChild?.textContent)).toEqual(['Alabad Branch', 'Committee Chowk Branch']);
-    expect(box('Committee Chowk Branch').lastElementChild?.textContent).toBe('Rs. 0.00');
+    expect(amount('Committee Chowk Branch')).toBe('Rs. 0.00');
   });
 
   test('a selected branch narrows the cards to its own figures', () => {
