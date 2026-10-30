@@ -37,6 +37,7 @@ import {
   Truck,
   ScrollText,
   ClipboardCheck,
+  Sparkles,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -98,6 +99,8 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Daily Ledger',     href: ROUTES.FINANCE_LEDGER,            icon: BookOpenCheck },
   { label: 'Cash Transfers',   href: ROUTES.FINANCE_CASH_TRANSFERS,    icon: Banknote },
   { label: 'Income & Expense', href: ROUTES.FINANCE_ENTRIES,           icon: Wallet },
+  // Receipts read by the AI into entries for Income & Expense — beside it, as its quick way in.
+  { label: 'AI Expense Capture', href: ROUTES.FINANCE_AI_CAPTURE,      icon: Sparkles },
   // The accountants' entries waiting for a decision — what Income & Expense
   // raises, an approver works through here.
   { label: 'Pending Approvals', href: ROUTES.FINANCE_APPROVALS,        icon: ClipboardCheck },

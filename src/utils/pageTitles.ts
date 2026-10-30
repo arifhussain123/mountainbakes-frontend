@@ -77,6 +77,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.FINANCE_DEMAND_RECORD]: 'Demand Record',
   [ROUTES.BRANCH_DEMAND_RECORD]: 'Demand Record',
   [ROUTES.FINANCE_ENTRIES]: 'Income & Expense Entries',
+  [ROUTES.FINANCE_AI_CAPTURE]: 'AI Expense Capture',
   [ROUTES.FINANCE_APPROVALS]: 'Pending Approvals',
   [ROUTES.FINANCE_SALARIES]: 'Salary Ledger',
   [ROUTES.FINANCE_PAYROLL]: 'Payroll',

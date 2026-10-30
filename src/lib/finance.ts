@@ -6,6 +6,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiCall } from '@/utils/api';
 import { FINANCE_QK_ROOT, qk } from '@/lib/queryKeys';
 import type {
+  AiCaptureResult,
+  Attachment,
   BranchAccountAdjustment,
   BranchShareBalance,
   CashTransfer,
@@ -867,16 +869,47 @@ export function useFinanceMutation<TResult = unknown, TBody = unknown>() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ path, method = 'POST', body }: { path: string; method?: string; body?: TBody }) =>
+    mutationFn: ({ path, method = 'POST', body, headers }: { path: string; method?: string; body?: TBody; headers?: Record<string, string> }) =>
       apiCall<TResult>(
         path,
-        { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
+        { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}), ...(headers ? { headers } : {}) },
         token,
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: FINANCE_QK_ROOT });
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// AI Expense Capture
+// ---------------------------------------------------------------------------
+
+/**
+ * Read staged receipt photos with the AI. Writes nothing to the books — the
+ * proposals are saved one by one through the ordinary entry create — so there
+ * is nothing to invalidate.
+ */
+export function useAnalyzeReceipts() {
+  const token = useToken();
+  return useMutation({
+    mutationFn: (attachmentIds: string[]) =>
+      apiCall<AiCaptureResult>(
+        '/api/finance/ai-capture/analyze',
+        { method: 'POST', body: JSON.stringify({ attachmentIds }) },
+        token,
+      ),
+  });
+}
+
+/** A staged copy of one of the caller's receipt photos, for a bill split into several entries. */
+export async function copyReceiptPhoto(id: string, token: string): Promise<Attachment> {
+  const { attachment } = await apiCall<{ attachment: Attachment }>(
+    `/api/finance/ai-capture/photos/${id}/copy`,
+    { method: 'POST' },
+    token,
+  );
+  return attachment;
 }
 
 // ---------------------------------------------------------------------------

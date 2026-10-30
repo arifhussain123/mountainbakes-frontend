@@ -193,6 +193,8 @@ export const ROUTES = {
   /** Each branch's running balance with the company, demand by demand. */
   FINANCE_DEMAND_RECORD: '/finance-demand-record',
   FINANCE_ENTRIES: '/finance-entries',
+  /** Receipts photographed or uploaded, read by the AI into expense entries to review and save. */
+  FINANCE_AI_CAPTURE: '/finance-ai-capture',
   /** Income & Expense entries waiting for a Finance Admin decision. */
   FINANCE_APPROVALS: '/finance-approvals',
   /** Read-only year ledger. Payslips are raised and approved on FINANCE_PAYROLL. */
