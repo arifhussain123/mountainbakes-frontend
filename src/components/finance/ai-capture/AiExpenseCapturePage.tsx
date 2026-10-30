@@ -38,7 +38,7 @@ import {
  * Finance → AI Expense Capture (owner's order, 2026-10-30).
  *
  * Photograph or upload receipts; Generate sends them to the server, which has
- * Google Gemini read them and proposes one expense per bill. Each proposal is
+ * Claude read them and proposes one expense per bill. Each proposal is
  * a card to check and edit; Approve marks it ready and Save Approved saves the
  * approved cards one at a time through the ordinary Income & Expense create —
  * as drafts, exactly like the New Entry form, so each still goes through

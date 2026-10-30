@@ -67,7 +67,7 @@ function newKey(prefix: string): string {
 
 /** Notes for the entry: where the figures came from, the supplier and the items. At most 500 characters. */
 export function defaultNotes(p: Pick<AiExpenseProposal, 'merchant' | 'invoiceNo' | 'lineItems' | 'tax' | 'discount'>): string {
-  const parts = ['Read from the receipt by AI (Gemini).'];
+  const parts = ['Read from the receipt by AI (Claude).'];
   if (p.merchant) parts.push(`Supplier: ${p.merchant}.`);
   if (p.tax) parts.push(`Tax: ${p.tax}.`);
   if (p.discount) parts.push(`Discount: ${p.discount}.`);
