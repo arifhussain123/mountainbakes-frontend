@@ -81,7 +81,8 @@ export function UnlockDialog({
             />
             <p className="text-xs text-muted-foreground">
               The record goes back to Pending Verification and the existing sign-off is
-              cleared. This is recorded in the history with your name.
+              cleared. It is verified again automatically at the next 12:30 AM run. This is
+              recorded in the history with your name.
             </p>
           </div>
 

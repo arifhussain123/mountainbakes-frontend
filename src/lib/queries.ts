@@ -2869,9 +2869,10 @@ export function useFeedDailySale(token: string) {
 }
 
 /**
- * Verify, lock or unlock a record.
+ * Lock or unlock a record. (Verify is not here: fed records are verified
+ * automatically at 12:30 AM by the API.)
  *
- * One hook for the three because they are one endpoint family with one
+ * One hook for both because they are one endpoint family with one
  * invalidation; which of them the current user may actually call is decided by
  * the API (`requireRole` plus the SQL status machine), and the buttons that do
  * not apply simply do not render.
@@ -2879,7 +2880,7 @@ export function useFeedDailySale(token: string) {
 export function useDecideDailySale(token: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, reason }: { id: string; action: 'verify' | 'lock' | 'unlock'; reason?: string }) =>
+    mutationFn: ({ id, action, reason }: { id: string; action: 'lock' | 'unlock'; reason?: string }) =>
       apiCall<DailySaleRecordDetail>(
         `/api/daily-sale-records/${id}/${action}`,
         { method: 'PUT', body: JSON.stringify(reason ? { reason } : {}) },

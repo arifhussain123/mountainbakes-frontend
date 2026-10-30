@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
-  CheckCircle2,
   Eye,
   History,
   Info,
@@ -175,11 +174,11 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
     }
   }
 
-  async function runDecide(row: DailySaleRecord, action: 'verify' | 'lock') {
+  async function runLock(row: DailySaleRecord) {
     if (!row.id) return;
     try {
-      await decide.mutateAsync({ id: row.id, action });
-      toast.success(action === 'verify' ? 'Record verified' : 'Record locked');
+      await decide.mutateAsync({ id: row.id, action: 'lock' });
+      toast.success('Record locked');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not update the record');
     }
@@ -197,15 +196,13 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
           <RowActions
             row={row.original}
             admin={admin}
-            canVerify={admin || user?.role === 'branch_manager'}
             busy={generate.isPending || decide.isPending}
             onGenerate={() => runGenerate(row.original.businessDate, admin ? row.original.branchId : null)}
             onFeed={() => setFeedRow(row.original)}
             onView={() => openView(row.original, 'summary')}
             onHistory={() => openView(row.original, 'history')}
             onPrint={() => openView(row.original, 'summary', true)}
-            onVerify={() => runDecide(row.original, 'verify')}
-            onLock={() => runDecide(row.original, 'lock')}
+            onLock={() => runLock(row.original)}
             onUnlock={() => setUnlockRow(row.original)}
             onAmend={() => setAmendRow(row.original)}
           />
@@ -213,7 +210,7 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [symbol, effectiveBranchId, admin, user?.role, generate.isPending, decide.isPending],
+    [symbol, effectiveBranchId, admin, generate.isPending, decide.isPending],
   );
 
   return (
@@ -389,35 +386,31 @@ export function DailySaleRecordPage({ admin = false }: { admin?: boolean }) {
  *
  * Only what the caller may actually do is rendered — §20's "do not display
  * unauthorized actions" — and each item is additionally gated on the record's
- * state, so Verify does not appear on a locked day and Lock does not appear on
- * one nobody has verified. Both gates are courtesy: the API re-decides every one
- * of these against the JWT and the status machine.
+ * state, so Lock does not appear on one nobody has verified. There is no Verify:
+ * fed records are verified automatically at 12:30 AM. The gates are courtesy: the
+ * API re-decides every one of these against the JWT and the status machine.
  */
 function RowActions({
   row,
   admin,
-  canVerify,
   busy,
   onGenerate,
   onFeed,
   onView,
   onHistory,
   onPrint,
-  onVerify,
   onLock,
   onUnlock,
   onAmend,
 }: {
   row: DailySaleRecord;
   admin: boolean;
-  canVerify: boolean;
   busy: boolean;
   onGenerate: () => void;
   onFeed: () => void;
   onView: () => void;
   onHistory: () => void;
   onPrint: () => void;
-  onVerify: () => void;
   onLock: () => void;
   onUnlock: () => void;
   onAmend: () => void;
@@ -451,11 +444,6 @@ function RowActions({
         {open && (
           <DropdownMenuItem onClick={onFeed}>
             <Plus className="mr-2 h-4 w-4" /> Manual Feed
-          </DropdownMenuItem>
-        )}
-        {open && canVerify && (
-          <DropdownMenuItem disabled={busy} onClick={onVerify}>
-            <CheckCircle2 className="mr-2 h-4 w-4" /> Verify
           </DropdownMenuItem>
         )}
         <DropdownMenuItem onClick={onPrint}>
