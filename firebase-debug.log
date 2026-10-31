@@ -1,0 +1,22 @@
+[debug] [2026-10-31T15:46:12.749Z] ----------------------------------------------------------------------
+[debug] [2026-10-31T15:46:12.751Z] Command:       /home/murtaza/.nvm/versions/node/v24.18.0/bin/node /home/murtaza/.nvm/versions/node/v24.18.0/bin/firebase deploy --only hosting
+[debug] [2026-10-31T15:46:12.752Z] CLI Version:   15.25.1
+[debug] [2026-10-31T15:46:12.752Z] Platform:      linux
+[debug] [2026-10-31T15:46:12.752Z] Node Version:  v24.18.0
+[debug] [2026-10-31T15:46:12.752Z] Detected Agent: claude-code_2-1-316_agent
+[debug] [2026-10-31T15:46:12.752Z] Time:          Sat Oct 31 2026 20:46:12 GMT+0500 (Pakistan Standard Time)
+[debug] [2026-10-31T15:46:12.752Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-10-31T15:46:13.522Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-10-31T15:46:13.522Z] > authorizing via signed-in user (arifsiksavi@gmail.com)
+[debug] [2026-10-31T15:46:13.522Z] [iam] checking project mountainbakes-dfc2c for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-10-31T15:46:13.535Z] Checked if tokens are valid: false, expires at: 1793457931252
+[debug] [2026-10-31T15:46:13.535Z] Checked if tokens are valid: false, expires at: 1793457931252
+[debug] [2026-10-31T15:46:13.536Z] > refreshing access token with scopes: []
+[debug] [2026-10-31T15:46:13.538Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-10-31T15:46:13.538Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-10-31T15:46:13.930Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-10-31T15:46:13.930Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-10-31T15:46:13.940Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/mountainbakes-dfc2c:testIamPermissions [none]
+[debug] [2026-10-31T15:46:13.941Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/mountainbakes-dfc2c:testIamPermissions  x-goog-user-project=mountainbakes-dfc2c
+[debug] [2026-10-31T15:46:13.941Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/mountainbakes-dfc2c:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}

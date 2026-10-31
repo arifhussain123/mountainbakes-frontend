@@ -56,7 +56,7 @@ describe('CollectionsExportModal', () => {
   test('From can be picked, so a previous month can be checked', async () => {
     vi.setSystemTime(new Date('2026-10-25T07:00:00Z'));
     render(<CollectionsExportModal open onOpenChange={vi.fn()} token="t" />);
-    const [fromInput, toInput] = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
+    const [fromInput] = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
     expect(fromInput!.disabled).toBe(false);
     fireEvent.change(fromInput!, { target: { value: '2026-09-01' } });
     expect(dates()).toEqual(['2026-09-01', '2026-10-25']);
