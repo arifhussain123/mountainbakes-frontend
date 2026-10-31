@@ -53,18 +53,34 @@ describe('CollectionsExportModal', () => {
     expect(dates()).toEqual(['2026-11-01', '2026-11-01']);
   });
 
-  test('From is locked to the 1st of the To date\'s month', async () => {
+  test('From can be picked, so a previous month can be checked', async () => {
     vi.setSystemTime(new Date('2026-10-25T07:00:00Z'));
     render(<CollectionsExportModal open onOpenChange={vi.fn()} token="t" />);
     const [fromInput, toInput] = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
-    expect(fromInput!.disabled).toBe(true);
-    fireEvent.change(toInput!, { target: { value: '2026-09-14' } });
-    expect(dates()).toEqual(['2026-09-01', '2026-09-14']);
+    expect(fromInput!.disabled).toBe(false);
+    fireEvent.change(fromInput!, { target: { value: '2026-09-01' } });
+    expect(dates()).toEqual(['2026-09-01', '2026-10-25']);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Export Excel/ }));
     });
     expect(vi.mocked(apiCall).mock.calls[0]![0]).toBe(
-      '/api/production-reports/export?report=collections&from=2026-09-01&to=2026-09-14&type=excel',
+      '/api/production-reports/export?report=collections&from=2026-09-01&to=2026-10-25&type=excel',
     );
+  });
+
+  test('a To before From moves From to the 1st of To\'s month', () => {
+    vi.setSystemTime(new Date('2026-10-25T07:00:00Z'));
+    render(<CollectionsExportModal open onOpenChange={vi.fn()} token="t" />);
+    const [, toInput] = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
+    fireEvent.change(toInput!, { target: { value: '2026-09-14' } });
+    expect(dates()).toEqual(['2026-09-01', '2026-09-14']);
+  });
+
+  test('a From after To moves To up to it', () => {
+    vi.setSystemTime(new Date('2026-10-25T07:00:00Z'));
+    render(<CollectionsExportModal open onOpenChange={vi.fn()} token="t" />);
+    const [fromInput] = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
+    fireEvent.change(fromInput!, { target: { value: '2026-10-28' } });
+    expect(dates()).toEqual(['2026-10-28', '2026-10-28']);
   });
 });

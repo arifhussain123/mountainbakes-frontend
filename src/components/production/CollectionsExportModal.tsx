@@ -37,15 +37,29 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
   // (owner's rule, 2026-10-25). Today alone was often an empty file — the
   // day's demands are not delivered yet when most people export.
   const [to, setTo] = useState(today);
-  // From is locked to the 1st of To's month (owner's call, 2026-10-29): the
-  // server starts the export there whatever From says, so the field only shows it.
-  const from = `${to.slice(0, 7)}-01`;
+  // From starts on the 1st of the month but can be picked (owner's call,
+  // 2026-10-31, reversing 2026-10-29's lock), so a previous month's record
+  // can be checked. The window opens with that day's Opening Stock.
+  const monthStart = (d: string) => `${d.slice(0, 7)}-01`;
+  const [from, setFrom] = useState(monthStart(today));
   // Each time the dialog opens it starts from this month again, so a page left
   // open across the 1st does not keep last month's window.
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setTo(today);
+    if (open) { setTo(today); setFrom(monthStart(today)); }
+  }
+  // A To before From moves From back to the 1st of To's month, rather than
+  // leaving a reversed window.
+  function changeTo(value: string) {
+    const next = value || today;
+    setTo(next);
+    if (next < from) setFrom(monthStart(next));
+  }
+  function changeFrom(value: string) {
+    const next = value || monthStart(to);
+    setFrom(next);
+    if (next > to) setTo(next);
   }
   const [branchId, setBranchId] = useState(ALL_BRANCHES);
   const [busy, setBusy] = useState(false);
@@ -121,19 +135,16 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
               <Input
                 type="date"
                 value={from}
-                readOnly
-                disabled
-                title="Always the 1st of the To date's month"
+                onChange={(e) => changeFrom(e.target.value)}
                 className="h-9 w-full"
               />
-              <p className="text-[11px] text-muted-foreground">Always the 1st of the To date&apos;s month</p>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">To</label>
               <Input
                 type="date"
                 value={to}
-                onChange={(e) => setTo(e.target.value || today)}
+                onChange={(e) => changeTo(e.target.value)}
                 className="h-9 w-full"
               />
             </div>
