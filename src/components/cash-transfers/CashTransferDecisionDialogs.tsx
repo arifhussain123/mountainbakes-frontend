@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CashTransfer, LedgerEntry } from '@mb/shared';
 import { useFinanceMutation } from '@/lib/finance';
+import { qk } from '@/lib/queryKeys';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -191,10 +193,21 @@ export function RejectCashTransferDialog({
   );
 }
 
+/** Every page of the Cash Transfers board, whatever its filters (qk.financeCashTransfers). */
+const CASH_TRANSFER_LISTS = ['finance', 'cashTransfers'] as const;
+type CashTransferList = { transfers: CashTransfer[]; total: number };
+
 /**
  * Accounts sends a deposit it has checked on to Finance Admin. After this the
  * deposit can no longer be edited here — Finance Admin approves or rejects it
  * as it stands.
+ *
+ * Instant: the dialog closes and the row moves to "awaiting approval" on the
+ * click, from the cache, while the request runs behind it. Waiting on the
+ * server (the write, the notices, the audit row) and then on the refetch of
+ * every finance query made the button feel stuck. A refusal — say a 409
+ * because someone else submitted it first — puts the cached rows back, shows
+ * the server's sentence, and refetches the board.
  */
 export function ForwardCashTransferDialog({
   transfer,
@@ -203,26 +216,42 @@ export function ForwardCashTransferDialog({
   transfer: CashTransfer | null;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const mut = useFinanceMutation<{ transfer: CashTransfer }>();
 
-  function close() {
-    if (mut.isPending) return;
-    onClose();
-  }
-
-  async function submit() {
+  function submit() {
     if (!transfer) return;
-    try {
-      await mut.mutateAsync({ path: `/api/finance/cash-transfers/${transfer.id}/forward`, method: 'PUT' });
-      toast.success(`${transfer.transferNo} submitted for Finance Admin approval`);
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not submit this transfer');
-    }
+    const t = transfer;
+    const forwardedAt = new Date().toISOString();
+    const markForwarded = (row: CashTransfer): CashTransfer => (row.id === t.id ? { ...row, forwardedAt } : row);
+
+    // A list fetch already in flight would land after this and undo the move.
+    void queryClient.cancelQueries({ queryKey: CASH_TRANSFER_LISTS });
+    const detailKey = qk.financeCashTransfer(t.id);
+    const listsBefore = queryClient.getQueriesData<CashTransferList>({ queryKey: CASH_TRANSFER_LISTS });
+    const detailBefore = queryClient.getQueryData<CashTransfer>(detailKey);
+    queryClient.setQueriesData<CashTransferList>({ queryKey: CASH_TRANSFER_LISTS }, (old) =>
+      old ? { ...old, transfers: old.transfers.map(markForwarded) } : old,
+    );
+    if (detailBefore) queryClient.setQueryData(detailKey, markForwarded(detailBefore));
+
+    toast.success(`${t.transferNo} submitted for Finance Admin approval`);
+    onClose();
+
+    // mutateAsync rather than mutate's callbacks: those are dropped if the page
+    // unmounts first, and the rollback must still happen.
+    mut
+      .mutateAsync({ path: `/api/finance/cash-transfers/${t.id}/forward`, method: 'PUT' })
+      .catch((err: unknown) => {
+        for (const [key, data] of listsBefore) queryClient.setQueryData(key, data);
+        if (detailBefore) queryClient.setQueryData(detailKey, detailBefore);
+        void queryClient.invalidateQueries({ queryKey: CASH_TRANSFER_LISTS });
+        toast.error(err instanceof Error ? err.message : `Could not submit ${t.transferNo}`);
+      });
   }
 
   return (
-    <Dialog open={transfer !== null} onOpenChange={(o) => !o && close()}>
+    <Dialog open={transfer !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="md:max-w-md">
         <DialogHeader>
           <DialogTitle>Submit for approval?</DialogTitle>
@@ -243,11 +272,11 @@ export function ForwardCashTransferDialog({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={mut.isPending}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={mut.isPending || !transfer}>
-            {mut.isPending ? 'Submitting…' : 'Submit for Approval'}
+          <Button onClick={submit} disabled={!transfer}>
+            Submit for Approval
           </Button>
         </DialogFooter>
       </DialogContent>
