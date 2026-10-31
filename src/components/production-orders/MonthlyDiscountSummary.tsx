@@ -66,6 +66,7 @@ function OwnBranchSummary({
   onRetry,
   updatedAt,
   currencySymbol,
+  filtered = false,
 }: {
   summary: Summary | undefined;
   isLoading: boolean;
@@ -74,6 +75,7 @@ function OwnBranchSummary({
   onRetry: () => void;
   updatedAt?: number;
   currencySymbol?: string | null;
+  filtered?: boolean;
 }) {
   // The server scopes a branch role to its own branch, so the totals ARE that branch.
   const totals = summary?.totals;
@@ -84,7 +86,7 @@ function OwnBranchSummary({
   return (
     <section aria-label="Monthly discount summary" aria-busy={isFetching || undefined} className="space-y-3">
       <div>
-        <h3 className="text-sm font-semibold">Monthly Discount Summary</h3>
+        <h3 className="text-sm font-semibold">{filtered ? 'Discount Summary · Date filter applied' : 'Monthly Discount Summary'}</h3>
         <p className="text-sm text-muted-foreground">
           {summary ? `Period: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'This month'} · approved claims
           {isFetching && summary ? <Loader2 aria-label="Refreshing" className="ml-1.5 inline size-3 animate-spin align-[-2px]" /> : null}
@@ -96,7 +98,7 @@ function OwnBranchSummary({
       <SummaryTotalCard
         data-testid="discount-summary-card"
         className={cn(stale && 'opacity-60')}
-        label={`Total discount (since ${summary?.from ?? businessMonthStartStr()})`}
+        label={filtered && summary ? `Total discount (${summary.from} to ${summary.to})` : `Total discount (since ${summary?.from ?? businessMonthStartStr()})`}
         amount={totals ? amount(totals.approved.amount) : null}
         secondaryText={
           totals ? (
@@ -171,6 +173,7 @@ export function MonthlyDiscountSummary({
   showBranches = false,
   highlightBranchId = null,
   currencySymbol,
+  filtered = false,
 }: {
   summary: Summary | undefined;
   isLoading: boolean;
@@ -186,6 +189,8 @@ export function MonthlyDiscountSummary({
   highlightBranchId?: string | null;
   /** Settings' currency symbol, for the branch view's total (formatted as Shop Expenses formats its own). */
   currencySymbol?: string | null;
+  /** Branch view: the page's Date filter set the window, so the card covers those days, not this month. */
+  filtered?: boolean;
 }) {
   useEffect(() => {
     if (error) logger.error('Monthly discount summary request failed', error);
@@ -201,6 +206,7 @@ export function MonthlyDiscountSummary({
         onRetry={onRetry}
         updatedAt={updatedAt}
         currencySymbol={currencySymbol}
+        filtered={filtered}
       />
     );
   }

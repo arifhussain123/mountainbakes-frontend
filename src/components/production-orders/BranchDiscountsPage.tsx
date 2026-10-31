@@ -92,7 +92,10 @@ export function BranchDiscountsPage() {
   const { token } = useAuth();
   const { settings } = useSettings();
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'businessDate'] });
-  const summaryQ = useBranchDiscountSummary(token);
+  const dateFrom = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+  const dateTo = list.getFilter('businessDate', 'lte')?.value as string | undefined;
+  // Month to date, or the Date filter's range when one is set.
+  const summaryQ = useBranchDiscountSummary(token, { from: dateFrom, to: dateTo });
   const filters = useMemo<FilterConfig[]>(
     () => [
       {
@@ -106,8 +109,8 @@ export function BranchDiscountsPage() {
   const discountsQ = useBranchDiscounts(token, {
     status: list.getFilter('status')?.value as string | undefined,
     search: list.state.search || undefined,
-    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
-    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    from: dateFrom,
+    to: dateTo,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
     sortBy: list.state.sort?.key as
@@ -289,6 +292,7 @@ export function BranchDiscountsPage() {
         onRetry={() => void summaryQ.refetch()}
         updatedAt={summaryQ.dataUpdatedAt}
         currencySymbol={settings?.currencySymbol}
+        filtered={!!(dateFrom || dateTo)}
       />
 
       <FilterBar list={list} filters={filters} searchable={false} />

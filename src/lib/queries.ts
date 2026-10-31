@@ -1833,16 +1833,26 @@ export function useBranchReturns(
   });
 }
 
+/** `?from=&to=` for a summary endpoint — empty when the page has no Date filter. */
+function summaryRangeQuery(range?: { from?: string | null; to?: string | null }): string {
+  const params = new URLSearchParams();
+  if (range?.from) params.set('from', range.from);
+  if (range?.to) params.set('to', range.to);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 /**
  * The branch's own returns this business month (1st → today), by status — summed
  * on the server (GET /api/stock/returns/summary), which also decides the branch
- * from the JWT. See `shared/utils/returns-summary.ts` for what each figure means.
+ * from the JWT. With the page's Date filter (`from`/`to`) it covers those days
+ * instead. See `shared/utils/returns-summary.ts` for what each figure means.
  */
-export function useBranchReturnsSummary(token: string) {
+export function useBranchReturnsSummary(token: string, range?: { from?: string | null; to?: string | null }) {
   const today = businessDateStr();
   return useQuery({
-    queryKey: qk.branchReturnsSummary(today),
-    queryFn: () => apiCall<MonthlyReturnsSummary>('/api/stock/returns/summary', {}, token),
+    queryKey: qk.branchReturnsSummary(today, range?.from || null, range?.to || null),
+    queryFn: () => apiCall<MonthlyReturnsSummary>(`/api/stock/returns/summary${summaryRangeQuery(range)}`, {}, token),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
     placeholderData: keepPreviousData,
@@ -2173,14 +2183,14 @@ export function useBranchCashTransfers(
  * The branch's own cash transfers this business month (1st → today): Total
  * Amount per channel and status, and Fuel Charges — summed on the server
  * (GET /api/cash-transfers/monthly-summary), which also decides the branch from
- * the JWT. Ignores the table's filters by design. See
- * `shared/utils/cash-transfer-summary.ts` for what each figure means.
+ * the JWT. Follows the table's Date filter (`from`/`to`) and none of its other
+ * filters. See `shared/utils/cash-transfer-summary.ts` for what each figure means.
  */
-export function useBranchCashTransferSummary(token: string) {
+export function useBranchCashTransferSummary(token: string, range?: { from?: string | null; to?: string | null }) {
   const today = businessDateStr();
   return useQuery({
-    queryKey: qk.branchCashTransferSummary(today),
-    queryFn: () => apiCall<MonthlyCashTransferSummary>('/api/cash-transfers/monthly-summary', {}, token),
+    queryKey: qk.branchCashTransferSummary(today, range?.from || null, range?.to || null),
+    queryFn: () => apiCall<MonthlyCashTransferSummary>(`/api/cash-transfers/monthly-summary${summaryRangeQuery(range)}`, {}, token),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
     placeholderData: keepPreviousData,

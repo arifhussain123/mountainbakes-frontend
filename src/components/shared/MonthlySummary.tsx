@@ -31,6 +31,11 @@ export function MonthToDateLine({ from }: { from: string }) {
   return <>Month to date, Karachi business day · starts again on {longDate(format(addMonths(parseISO(from), 1), 'yyyy-MM-dd'))}</>;
 }
 
+/** The subtitle when the page's Date filter picks the window instead of the calendar. */
+export function FilteredRangeLine() {
+  return <>Date filter applied, Karachi business day · clear the Date filter to see this month</>;
+}
+
 export function MonthlySummaryHeader({ title, subtitle, note }: { title: ReactNode; subtitle?: ReactNode; note?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-2">

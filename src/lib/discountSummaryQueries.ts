@@ -30,12 +30,19 @@ export function useProductionDiscountSummary(token: string, branchId: string | n
   });
 }
 
-/** A branch's own month — the server takes the branch from the JWT. */
-export function useBranchDiscountSummary(token: string) {
+/**
+ * A branch's own month — or the page's Date filter range when `from`/`to` are
+ * set. The server takes the branch from the JWT.
+ */
+export function useBranchDiscountSummary(token: string, range?: { from?: string | null; to?: string | null }) {
   const today = businessDateStr();
+  const params = new URLSearchParams();
+  if (range?.from) params.set('from', range.from);
+  if (range?.to) params.set('to', range.to);
+  const qs = params.toString();
   return useQuery({
-    queryKey: discountSummaryKeys.branch(today),
-    queryFn: () => apiCall<MonthlyDiscountSummary>('/api/branch-discounts/summary', {}, token),
+    queryKey: discountSummaryKeys.branch(today, range?.from || null, range?.to || null),
+    queryFn: () => apiCall<MonthlyDiscountSummary>(`/api/branch-discounts/summary${qs ? `?${qs}` : ''}`, {}, token),
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
     placeholderData: keepPreviousData,

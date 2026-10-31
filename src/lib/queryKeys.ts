@@ -120,7 +120,8 @@ export const qk = {
   // wiring of their own. Keyed by today's business date: the window is
   // 1st-of-month → today, so a new day (and with it a new month) is a new key
   // rather than yesterday's figures served as today's.
-  branchReturnsSummary: (businessDate: string) => ['stock', 'returns', 'summary', businessDate] as const,
+  branchReturnsSummary: (businessDate: string, from: string | null = null, to: string | null = null) =>
+    ['stock', 'returns', 'summary', businessDate, from, to] as const,
   // Login History. Keyed by the window and by the scope the caller asked for —
   // 'all' and one user's id are different answers, and an admin's dashboard can
   // show either. NOT under any existing prefix: nothing else invalidates it, and
@@ -215,7 +216,8 @@ export const qk = {
   // Under the same ['cashTransfers'] prefix as the list, so a new deposit (and
   // anything else that refreshes the list) refreshes the monthly summary too.
   // Keyed by today's business date: a new day, and with it a new month, is a new key.
-  branchCashTransferSummary: (businessDate: string) => ['cashTransfers', 'summary', businessDate] as const,
+  branchCashTransferSummary: (businessDate: string, from: string | null = null, to: string | null = null) =>
+    ['cashTransfers', 'summary', businessDate, from, to] as const,
   // Special Events. The list key carries its filters so switching year/category
   // does not serve a stale page; everything else is keyed by event id so a single
   // event's detail can be invalidated without dropping the list.
@@ -440,5 +442,6 @@ export const FINANCE_QK_ROOT = ['finance'] as const;
  */
 export const discountSummaryKeys = {
   production: (branchId: string | null, businessDate: string) => ['discounts', 'summary', 'production', branchId, businessDate] as const,
-  branch: (businessDate: string) => ['discounts', 'summary', 'branch', businessDate] as const,
+  branch: (businessDate: string, from: string | null = null, to: string | null = null) =>
+    ['discounts', 'summary', 'branch', businessDate, from, to] as const,
 };

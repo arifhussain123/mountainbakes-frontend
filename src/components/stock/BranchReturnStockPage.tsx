@@ -140,18 +140,20 @@ export function BranchReturnStockPage() {
         options: Object.keys(STATUS_LABELS).map((s) => ({ value: s, label: statusLabel(s) })),
       },
       { key: 'productId', label: 'Product', type: 'select', placement: 'bar', options: (productsQ.data ?? []).map((p) => ({ value: p.id, label: p.name })) },
-      { key: 'businessDate', label: 'Date', type: 'date-range' },
+      { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
     ],
     [productsQ.data],
   );
+  const dateFrom = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+  const dateTo = list.getFilter('businessDate', 'lte')?.value as string | undefined;
   const returnsQ = useBranchReturns(token, {
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
     status: list.getFilter('status')?.value as string | undefined,
     productId: list.getFilter('productId')?.value as string | undefined,
     search: list.state.search || undefined,
-    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
-    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    from: dateFrom,
+    to: dateTo,
     sortBy: list.state.sort?.key as
       | 'date' | 'createdAt' | 'reviewedAt' | 'productName' | 'qty' | 'status'
       | undefined,
@@ -160,10 +162,11 @@ export function BranchReturnStockPage() {
   const reviseMut = useReviseBranchReturn(token);
   const withdrawMut = useWithdrawBranchReturn(token);
   const resubmitMut = useResubmitBranchReturn(token);
-  // This branch's month to date — the server reads the branch off the JWT.
+  // This branch's month to date, or the Date filter's range when one is set —
+  // the server reads the branch off the JWT.
   // Under the ['stock'] prefix, so the realtime hook below and every return
   // write here refresh it along with the table.
-  const summaryQ = useBranchReturnsSummary(token);
+  const summaryQ = useBranchReturnsSummary(token, { from: dateFrom, to: dateTo });
 
   // A return moves stock, so the same notification stream that refreshes the
   // Stock page refreshes this list — `qk.branchReturns` sits under the ['stock']
@@ -383,6 +386,7 @@ export function BranchReturnStockPage() {
         error={summaryQ.error}
         onRetry={() => void summaryQ.refetch()}
         statusLabels={STATUS_LABELS}
+        filtered={!!(dateFrom || dateTo)}
       />
 
       <FilterBar list={list} filters={filters} searchable={false} />

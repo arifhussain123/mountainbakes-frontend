@@ -10,7 +10,7 @@ import type {
 } from '@mb/shared';
 import { buildBranchReturnBoxes, emptyReturnsTotals } from '@mb/shared';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MonthToDateLine, MonthlySummaryHeader, SUMMARY_TONE, SummaryTile, longDate } from '@/components/shared/MonthlySummary';
+import { FilteredRangeLine, MonthToDateLine, MonthlySummaryHeader, SUMMARY_TONE, SummaryTile, longDate } from '@/components/shared/MonthlySummary';
 import { SectionError } from '@/components/dashboard/branch-v2/parts';
 import { CURRENCY_LOCALE, CURRENCY_SYMBOL, formatCurrency } from '@/utils/currency';
 import { logger } from '@/utils/logger';
@@ -123,6 +123,7 @@ export function MonthlyReturnsSummary({
   branches,
   selectedBranchId = null,
   onSelectBranch,
+  filtered = false,
 }: {
   summary: Summary | undefined;
   isLoading: boolean;
@@ -140,6 +141,8 @@ export function MonthlyReturnsSummary({
   selectedBranchId?: string | null;
   /** A box was clicked: its id, or null when the selected box is clicked again. */
   onSelectBranch?: (branchId: string | null) => void;
+  /** The page's Date filter set the window: the cards cover those days, not this month. */
+  filtered?: boolean;
 }) {
   useEffect(() => {
     if (error) logger.error('Monthly returns summary request failed', error);
@@ -156,7 +159,7 @@ export function MonthlyReturnsSummary({
   const t: ReturnsSummaryTotals | undefined = summary && selectedBranchId ? (selected ?? emptyReturnsTotals()) : summary?.totals;
   const tiles = t && summary
     ? [
-        { label: 'Total Returned Items', value: qtyText(t.submitted.qty), sub: 'every status, this month', tone: TONE.submitted },
+        { label: 'Total Returned Items', value: qtyText(t.submitted.qty), sub: filtered ? 'every status, in this range' : 'every status, this month', tone: TONE.submitted },
         { label: 'Total Return Amount', value: formatCurrency(t.submitted.amount), sub: 'at each day’s price', tone: TONE.submitted },
         { label: 'Return Transactions', value: qtyText(t.submitted.count), sub: 'one per product returned', tone: TONE.submitted },
         ...(showBranches
@@ -178,11 +181,12 @@ export function MonthlyReturnsSummary({
       <MonthlySummaryHeader
         title={
           <>
-            {summary ? `Monthly Returns: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'Monthly Returns'}
+            {filtered ? 'Returns' : 'Monthly Returns'}
+            {summary ? `: ${longDate(summary.from)} – ${longDate(summary.to)}` : ''}
             {selected ? ` · ${selected.branchName.replace('Mountain Bakes ', '')}` : ''}
           </>
         }
-        subtitle={summary ? <MonthToDateLine from={summary.from} /> : null}
+        subtitle={summary ? (filtered ? <FilteredRangeLine /> : <MonthToDateLine from={summary.from} />) : null}
         note="Valued at each product's price on the return date"
       />
 

@@ -72,20 +72,23 @@ export function BranchCashTransfersPage() {
     ],
     [],
   );
+  const dateFrom = list.getFilter('businessDate', 'gte')?.value as string | undefined;
+  const dateTo = list.getFilter('businessDate', 'lte')?.value as string | undefined;
   const transfersQ = useBranchCashTransfers(token, {
     status: (list.getFilter('status')?.value as CashTransferStatus | undefined) ?? null,
     paymentMethod: (list.getFilter('paymentMethod')?.value as CashTransferMethod | undefined) ?? null,
     search: list.state.search || undefined,
-    from: list.getFilter('businessDate', 'gte')?.value as string | undefined,
-    to: list.getFilter('businessDate', 'lte')?.value as string | undefined,
+    from: dateFrom,
+    to: dateTo,
     limit: list.state.pageSize,
     offset: (list.state.page - 1) * list.state.pageSize,
     sortBy: (list.state.sort?.key as CashTransferSortKey | undefined) ?? null,
     sortDir: list.state.sort?.direction,
   });
 
-  // Month to date, whatever the table is filtered to.
-  const summaryQ = useBranchCashTransferSummary(token);
+  // Month to date, or the Date filter's range when one is set; the other
+  // filters (status, channel) only narrow the table.
+  const summaryQ = useBranchCashTransferSummary(token, { from: dateFrom, to: dateTo });
 
   const [viewRow, setViewRow] = useState<CashTransfer | null>(null);
   // A rejected deposit being corrected and sent back (same CT-, same branch and date).
@@ -216,6 +219,7 @@ export function BranchCashTransfersPage() {
         isFetching={summaryQ.isFetching}
         error={summaryQ.error}
         onRetry={() => void summaryQ.refetch()}
+        filtered={!!(dateFrom || dateTo)}
       />
 
       <FilterBar list={list} filters={filters} searchable={false} />

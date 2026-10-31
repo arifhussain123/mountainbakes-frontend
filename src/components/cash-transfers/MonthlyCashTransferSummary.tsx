@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import type { CashTransferBucket, MonthlyCashTransferSummary as Summary } from '@mb/shared';
 import { SectionError } from '@/components/dashboard/branch-v2/parts';
 import {
+  FilteredRangeLine,
   MonthToDateLine,
   MonthlySummaryHeader,
   SUMMARY_TONE,
@@ -22,8 +23,9 @@ import { cn } from '@/lib/utils';
  *
  * Lays out the server's figures (GET /api/cash-transfers/monthly-summary) and
  * computes none of its own — see `shared/utils/cash-transfer-summary.ts`. It
- * always covers this branch's business month to date and never follows the
- * table's filters or search, which only change the list below.
+ * covers this branch's business month to date, or the table's Date filter range
+ * when one is set (`filtered`); the other filters and search only change the
+ * list below.
  *
  * The first row is the money handed over (Total Amount, split by channel); the
  * second splits that same Total Amount by Finance's decision and adds Fuel
@@ -41,6 +43,7 @@ export function MonthlyCashTransferSummary({
   isFetching,
   error,
   onRetry,
+  filtered = false,
 }: {
   summary: Summary | undefined;
   isLoading: boolean;
@@ -48,6 +51,8 @@ export function MonthlyCashTransferSummary({
   isFetching: boolean;
   error: unknown;
   onRetry: () => void;
+  /** The page's Date filter set the window: the cards cover those days, not this month. */
+  filtered?: boolean;
 }) {
   useEffect(() => {
     if (error) logger.error('Monthly cash transfer summary request failed', error);
@@ -74,10 +79,10 @@ export function MonthlyCashTransferSummary({
   return (
     <section aria-label="Monthly transfers summary" className={cn('space-y-3 transition-opacity', isFetching && summary && 'opacity-70')}>
       <MonthlySummaryHeader
-        title={summary ? `Monthly Transfers: ${longDate(summary.from)} – ${longDate(summary.to)}` : 'Monthly Transfers'}
+        title={`${filtered ? 'Transfers' : 'Monthly Transfers'}${summary ? `: ${longDate(summary.from)} – ${longDate(summary.to)}` : ''}`}
         subtitle={
           summary ? (
-            <MonthToDateLine from={summary.from} />
+            filtered ? <FilteredRangeLine /> : <MonthToDateLine from={summary.from} />
           ) : (
             // The dates are the server's, so the line waits for it — but keeps its row, so nothing below moves.
             <span data-testid="summary-subtitle-skeleton" className="inline-block w-72 max-w-full animate-pulse rounded-md bg-muted align-top">{' '}</span>
