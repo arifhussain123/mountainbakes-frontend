@@ -45,6 +45,9 @@ import type {
   LedgerEntry,
   LedgerHead,
   LedgerPage,
+  LoanClientDetail,
+  LoanClientWithBalance,
+  LoanLedgerPage,
   LedgerSummary,
   PartnerExpense,
   PartnerShareSummary,
@@ -220,6 +223,56 @@ export function useLedger(filters: LedgerFilters) {
     enabled: Boolean(token),
     staleTime: 15_000,
     queryFn: () => apiCall<LedgerPage>(`/api/finance/ledger${toQuery(filters)}`, {}, token),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Refundable & Receivable Loans — the loan register, not the finance ledger
+// ---------------------------------------------------------------------------
+
+/** Loan ledger filters. A `type`, for the index-signature reason `LedgerFilters` gives. */
+export type LoanLedgerFilters = {
+  from: string;
+  to: string;
+  clientId?: string;
+  branchId?: string;
+  entryType?: string;
+  ledgerHeadId?: string;
+  paymentMethod?: string;
+  status?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export function useLoanLedger(filters: LoanLedgerFilters, enabled = true) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeLoanLedger(filters as Record<string, unknown>),
+    enabled: Boolean(token) && enabled,
+    staleTime: 15_000,
+    queryFn: () => apiCall<LoanLedgerPage>(`/api/finance/loans/ledger${toQuery(filters)}`, {}, token),
+  });
+}
+
+/** Every client with its posted totals — the dropdowns and the Detail of Clients table. */
+export function useLoanClients() {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeLoanClients(),
+    enabled: Boolean(token),
+    staleTime: 30_000,
+    queryFn: async () =>
+      (await apiCall<{ clients: LoanClientWithBalance[] }>('/api/finance/loans/clients', {}, token)).clients,
+  });
+}
+
+export function useLoanClient(id: string | null) {
+  const token = useToken();
+  return useQuery({
+    queryKey: qk.financeLoanClient(id ?? ''),
+    enabled: Boolean(token) && Boolean(id),
+    queryFn: () => apiCall<LoanClientDetail>(`/api/finance/loans/clients/${id}`, {}, token),
   });
 }
 

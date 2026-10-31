@@ -87,6 +87,8 @@ const REPORT_FIELDS: Record<FinanceReportType, readonly string[]> = {
   salary: ['salaryMonth', 'department', 'employeeId'],
   partner_expense: ['from', 'to', 'partnerName'],
   trial_balance: ['from', 'to'],
+  // Also on Refundable & Receivable Loans, with its client and type filters.
+  loan_ledger: ['from', 'to', 'ledgerHeadId', 'branchId'],
 };
 
 export function FinanceReportsPage() {

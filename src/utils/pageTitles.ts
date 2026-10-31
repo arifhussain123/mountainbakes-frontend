@@ -90,6 +90,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.FINANCE_HELP_DESK]: 'Finance Help Desk',
   [ROUTES.FINANCE_SETTINGS]: 'Finance Settings',
   [ROUTES.FINANCE_SUPPLIER_PAYMENTS]: 'Supplier Payments',
+  [ROUTES.FINANCE_LOANS]: 'Refundable & Receivable Loans',
 };
 
 export function getPageTitle(pathname: string): string | undefined {

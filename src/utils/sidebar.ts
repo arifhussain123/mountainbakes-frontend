@@ -38,6 +38,7 @@ import {
   ScrollText,
   ClipboardCheck,
   Sparkles,
+  PiggyBank,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -115,6 +116,8 @@ export const FINANCE_NAV: NavItem[] = [
   // Finance decision — but after the books themselves, since it is opened when
   // Production has paid a supplier, not every day.
   { label: 'Supplier Payments', href: ROUTES.FINANCE_SUPPLIER_PAYMENTS, icon: Truck },
+  // A separate register of loans and payments per client — not in the books above.
+  { label: 'Refundable & Receivable Loans', href: ROUTES.FINANCE_LOANS, icon: PiggyBank },
   { label: 'Daily Closing',    href: ROUTES.FINANCE_CLOSING,           icon: CalendarCheck },
   // What each branch owes (its Share Received is the Cash Transfers). After
   // Daily Closing by the owner's order, 2026-10-25.

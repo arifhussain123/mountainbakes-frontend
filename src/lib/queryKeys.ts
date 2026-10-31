@@ -284,6 +284,11 @@ export const qk = {
   financeLedgerSummary: (filters: Record<string, unknown>) => ['finance', 'ledgerSummary', filters] as const,
   financeHeads: (includeInactive?: boolean) =>
     ['finance', 'heads', { includeInactive: includeInactive ?? false }] as const,
+  // Refundable & Receivable Loans — under the finance root, so posting a loan
+  // entry refreshes the clients table and every open ledger view at once.
+  financeLoanLedger: (filters: Record<string, unknown>) => ['finance', 'loanLedger', filters] as const,
+  financeLoanClients: () => ['finance', 'loanClients'] as const,
+  financeLoanClient: (id: string) => ['finance', 'loanClient', id] as const,
   financeCashTransfers: (filters: Record<string, unknown>) => ['finance', 'cashTransfers', filters] as const,
   financeCashTransfer: (id: string) => ['finance', 'cashTransfer', id] as const,
   financeEntries: (filters: Record<string, unknown>) => ['finance', 'entries', filters] as const,

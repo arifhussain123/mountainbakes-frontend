@@ -215,6 +215,8 @@ export const ROUTES = {
    * until Finance approves it here. Same '/finance-' prefix rule as above.
    */
   FINANCE_SUPPLIER_PAYMENTS: '/finance-supplier-payments',
+  /** Refundable & Receivable Loans — the client-wise loan register, kept outside the General Ledger. */
+  FINANCE_LOANS: '/finance-loans',
 
   /**
    * Supplier Portal. The page a supplier reaches from the tokenised WhatsApp

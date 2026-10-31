@@ -58,7 +58,7 @@ const TONES: Record<string, string> = {
   slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
 };
 
-function SummaryStat({
+export function SummaryStat({
   label,
   value,
   icon: Icon,

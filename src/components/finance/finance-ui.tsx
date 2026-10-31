@@ -180,11 +180,13 @@ const STATUS_STYLES: Record<string, string> = {
   locked: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   rejected: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
   reversed: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+  cancelled: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
 };
 
 const EXTRA_LABELS: Record<string, string> = {
   pending_verification: 'Pending Verification',
   reversed: 'Reversed',
+  cancelled: 'Cancelled',
 };
 
 export function StatusBadge({ status, className }: { status: AnyStatus; className?: string }) {
