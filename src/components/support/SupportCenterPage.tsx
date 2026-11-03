@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox';
 import type { SupportTicket, SupportReference, SupportSaleItem, SupportSaleTotals, SupportDemandItem, Product, PaymentMethod, PageSize, StockFigures, ProductionStockFigures, SortState } from '@mb/shared';
@@ -134,10 +135,6 @@ function ReferenceDetail({ reference }: { reference: SupportReference }) {
  * (they carry `readOnly: true` and no flag) correctable now. Mirrors the same test
  * on the server, which is the one that actually authorises the write.
  */
-/** A rejected CT- deposit is final — nothing was booked, so nothing can be corrected. */
-function isRejectedDeposit(ref: SupportReference | null): boolean {
-  return ref?.type === 'cash_transfer' && ref.fields.some((f) => f.label === 'Status' && f.value === 'Rejected');
-}
 
 function isPoolStockTicket(ticket: SupportTicket): boolean {
   if (ticket.referenceType !== 'stock') return false;
@@ -408,16 +405,16 @@ export function SupportCenterPage() {
         // the dialog router sends it straight to the delete confirmation. Left
         // disabled it would be the one demand an admin cannot remove.
         //
-        // A CASH DEPOSIT overrides it unless the deposit was rejected: CT-
-        // snapshots taken before deposits became correctable say read-only,
-        // and the dialog re-reads the live row (the server refuses a rejected
-        // or deleted one regardless).
+        // A CASH DEPOSIT overrides it too, rejected or not: CT- snapshots taken
+        // before deposits became correctable say read-only, and the dialog
+        // re-reads the live row. A rejected one can be corrected, approved or
+        // deleted there (the server refuses a deleted one).
         const canChange =
           Boolean(t.referenceSnapshot) &&
           (t.referenceSnapshot?.readOnly !== true ||
             isPoolStockTicket(t) ||
             t.referenceType === 'demand' ||
-            (t.referenceType === 'cash_transfer' && !isRejectedDeposit(t.referenceSnapshot)));
+            t.referenceType === 'cash_transfer');
         const changeTitle = canChange ? 'Change figures' : 'Nothing to correct — reply from View';
         // Any cash deposit query can delete its deposit, whatever the status —
         // the server answers 409 if it is already gone.
@@ -1079,11 +1076,12 @@ function ChangeDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onCl
   }
   // Cash deposits before the read-only gate, for the same reason as the pool:
   // a legacy CT- snapshot says read-only, and the dialog re-reads the live row.
-  if (ref?.type === 'cash_transfer' && !isRejectedDeposit(ref)) {
+  // A rejected one lands here too — it can be corrected, approved or deleted.
+  if (ref?.type === 'cash_transfer') {
     return <CashDepositDialog ticket={ticket} onClose={onClose} onDone={onDone} />;
   }
   if (!ref || ref.readOnly) {
-    return <NothingToChangeDialog onClose={onClose} cashDeposit={ref?.type === 'cash_transfer'} />;
+    return <NothingToChangeDialog onClose={onClose} />;
   }
   // Sales get a dedicated line-item editor (change product / qty / amount, add /
   // remove lines) applied live to the order with stock reconciled server-side.
@@ -1477,7 +1475,7 @@ function DeleteDemandDialog({ ticket, stockMoved, onClose, onDone }: {
  * A rejected/cancelled demand no longer lands here: its lines still cannot be
  * corrected, but it can now be deleted, so it routes to DeleteDemandDialog.
  */
-function NothingToChangeDialog({ onClose, cashDeposit = false }: { onClose: () => void; cashDeposit?: boolean }) {
+function NothingToChangeDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="md:max-w-md">
@@ -1486,12 +1484,6 @@ function NothingToChangeDialog({ onClose, cashDeposit = false }: { onClose: () =
           <DialogDescription>
             This reference is informational only — there is no figure here that can be written
             back. Open <span className="font-medium">View</span> to reply and resolve the query.
-            {cashDeposit && (
-              <>
-                {' '}This cash deposit was rejected, so it is final — nothing was booked for it. The
-                branch records a new deposit instead.
-              </>
-            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -2145,6 +2137,12 @@ const DEPOSIT_FIGURES = [
 ] as const;
 type DepositFigure = (typeof DEPOSIT_FIGURES)[number]['key'];
 
+/** A rejected deposit's status choice in the editor — Approved books it. */
+const DEPOSIT_STATUS_OPTIONS = [
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'approved', label: 'Approved' },
+];
+
 function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket; onClose: () => void; onDone: () => void }) {
   const { token } = useAuth();
   const { reference: live, loading } = useLiveReference(ticket);
@@ -2164,6 +2162,8 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
   const [depositNote, setDepositNote] = useState('');
   const [date, setDate] = useState('');
   const [note, setNote] = useState('');
+  // A REJECTED deposit may be moved to Approved here (books its RV- receipts).
+  const [depositStatus, setDepositStatus] = useState<'rejected' | 'approved'>('rejected');
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -2184,6 +2184,9 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
 
   const editable = (live?.editableFields.length ?? 0) > 0;
   const approved = live?.cashTransferApproved === true;
+  const rejected = live?.cashTransferRejected === true;
+  const approving = rejected && depositStatus === 'approved';
+  const rejectionReason = live?.fields.find((f) => f.label === 'Rejection Reason')?.value;
   const num = (v: string) => (v.trim() === '' ? 0 : Number(v));
   const changed = DEPOSIT_FIGURES.filter((f) => num(figures[f.key]) !== num(current[f.key])).map((f) => f.key);
   const noteChanged = depositNote.trim() !== current.note.trim();
@@ -2208,15 +2211,15 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
       if (date > today) { toast.error('The date cannot be in the future'); return; }
       edits.businessDate = date;
     }
-    if (Object.keys(edits).length === 0) { toast.error('Change at least one value'); return; }
+    if (Object.keys(edits).length === 0 && !approving) { toast.error('Change at least one value'); return; }
     setBusy(true);
     try {
       await apiCall(
         `/api/support/${ticket.id}/figures`,
-        { method: 'PATCH', body: JSON.stringify({ edits, note }) },
+        { method: 'PATCH', body: JSON.stringify({ edits, note, approveDeposit: approving }) },
         token,
       );
-      toast.success('Cash deposit corrected & query resolved');
+      toast.success(approving ? 'Cash deposit approved & query resolved' : 'Cash deposit corrected & query resolved');
       onDone();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to apply change');
@@ -2241,10 +2244,38 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
           <p className="text-sm text-muted-foreground">Loading the deposit as it stands now…</p>
         ) : !editable ? (
           <p className="text-sm text-muted-foreground">
-            This deposit can no longer be corrected — it was rejected or deleted. Reply from View instead.
+            This deposit can no longer be corrected — it was deleted. Reply from View instead.
           </p>
         ) : (
           <div className="space-y-3">
+            {rejected && (
+              <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2">
+                <p className="text-sm">
+                  Finance <span className="font-medium">rejected</span> this deposit
+                  {rejectionReason ? <>: <span className="italic">{rejectionReason}</span></> : '.'}
+                  {' '}Correct it below, change its status to Approved, or delete it.
+                </p>
+                <div className="space-y-1">
+                  <Label htmlFor="ct-status">Status</Label>
+                  <Select
+                    items={DEPOSIT_STATUS_OPTIONS}
+                    value={depositStatus}
+                    onValueChange={(v) => v && setDepositStatus(v as 'rejected' | 'approved')}
+                  >
+                    <SelectTrigger id="ct-status" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {DEPOSIT_STATUS_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {approving && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Approving books this deposit in the Daily Ledger as an RV- receipt, dated its own day
+                    (or today, if Finance has closed that day) — the same as an approval from Cash Transfers.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-1">
               <Label htmlFor="ct-date">Date</Label>
               <Input id="ct-date" type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
@@ -2296,7 +2327,9 @@ function CashDepositDialog({ ticket, onClose, onDone }: { ticket: SupportTicket;
           </Button>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button onClick={submit} disabled={busy || loading || !editable}>{busy ? 'Applying…' : 'Apply & Resolve'}</Button>
+            <Button onClick={submit} disabled={busy || loading || !editable}>
+              {busy ? 'Applying…' : approving ? 'Approve & Resolve' : 'Apply & Resolve'}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>
