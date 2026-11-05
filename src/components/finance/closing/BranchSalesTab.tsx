@@ -124,8 +124,8 @@ const UNMATCHED_SHOWN = 8;
  * day's Company Share, and it hands it over as a cash deposit — usually the day
  * after, so the deposit carries a later date than the sales it pays for. The API
  * finds each day's deposit by AMOUNT, among the branch's deposits dated that day
- * or the two days after it — the same amount, else the nearest within 999, else
- * the one dated that day — and each deposit is used once. Received is what was
+ * or the two days after it — the same amount, else the ones dated that day,
+ * else one deposit within 999 — and each deposit is used once. Received is what was
  * found and approved; Deposit Difference is Company Share less Received.
  *
   * ─── What Finance cannot do here ─────────────────────────────────────────────
@@ -427,8 +427,8 @@ export function BranchSalesTab() {
                     <span>
                       {recon.counts.discrepancy}{' '}
                       {recon.counts.discrepancy === 1 ? 'branch day has' : 'branch days have'} no deposit of
-                      the same amount as the Company Share; the nearest one within {symbol} 999 is shown
-                      instead, or else the one deposited that day. Open
+                      the same amount as the Company Share; the one deposited that day is shown
+                      instead, or else the nearest one within {symbol} 999. Open
                       the deposit check and review it — nothing is corrected automatically.
                     </span>
                   </p>

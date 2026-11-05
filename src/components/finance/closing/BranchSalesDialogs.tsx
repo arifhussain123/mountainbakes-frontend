@@ -90,7 +90,7 @@ export function FinanceDailySaleViewDialog({
  * The table's three finance columns give the answer; this shows how it was
  * reached — the share and what it is a share of, which deposits were set against
  * the day and on what date they were handed over, and whether they were found by
- * amount, are only the nearest amount, or only the ones dated that day. It reads the row it was opened on and
+ * amount, are only the ones dated that day, or only the nearest amount. It reads the row it was opened on and
  * fetches nothing.
  *
  * It decides nothing. Whether a deposit arrived is decided on the deposit, on
@@ -143,8 +143,8 @@ function DepositCheckBody({
             {r.match === 'amount'
               ? 'A deposit of the same amount was found.'
               : r.match === 'nearest'
-                ? 'No deposit of the same amount — the nearest one, under 1,000 away, is shown.'
-                : 'No deposit within 1,000 of the share — the one deposited that day is shown.'}
+                ? 'No deposit of the same amount and none dated that day — the nearest one, under 1,000 away, is shown.'
+                : 'No deposit of the same amount — the one deposited that day is shown.'}
           </span>
         )}
         {r.extraCount > 0 && (
