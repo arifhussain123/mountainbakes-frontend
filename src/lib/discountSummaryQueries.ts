@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { businessDateStr, type MonthlyDiscountSummary } from '@mb/shared';
+import { businessDateStr, type DiscountDayCheck, type MonthlyDiscountSummary } from '@mb/shared';
 import { apiCall } from '@/utils/api';
 import { discountSummaryKeys } from './queryKeys';
 
@@ -46,5 +46,23 @@ export function useBranchDiscountSummary(token: string, range?: { from?: string 
     enabled: !!token,
     staleTime: LIVE_STALE_TIME,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Production: one branch-day's till discounts per product against what the
+ * branch claimed for that day. Fetched only while the breakdown is open.
+ */
+export function useDiscountDayCheck(token: string, branchId: string | null, date: string | null) {
+  return useQuery({
+    queryKey: ['discounts', 'day-check', branchId, date] as const,
+    queryFn: () =>
+      apiCall<DiscountDayCheck>(
+        `/api/production-discounts/day-check?branchId=${encodeURIComponent(branchId!)}&date=${encodeURIComponent(date!)}`,
+        {},
+        token,
+      ),
+    enabled: !!token && !!branchId && !!date,
+    staleTime: LIVE_STALE_TIME,
   });
 }

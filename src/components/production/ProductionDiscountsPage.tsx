@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useBranches, useProductionDiscounts, useReviewDiscount } from '@/lib/queries';
 import { useProductionDiscountSummary } from '@/lib/discountSummaryQueries';
 import { MonthlyDiscountSummary } from '@/components/production-orders/MonthlyDiscountSummary';
+import { DiscountDayBreakdown } from './DiscountDayBreakdown';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -29,7 +30,7 @@ import { formatDate, formatDateTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Check, Eye, Undo2, X } from 'lucide-react';
+import { Check, Eye, ListOrdered, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -120,6 +121,8 @@ export function ProductionDiscountsPage() {
   const [viewRow, setViewRow] = useState<BranchDiscount | null>(null);
   const [pendingAction, setPendingAction] = useState<BranchDiscountStatus | null>(null);
   const [note, setNote] = useState('');
+  // The Product breakdown face: the claim's day at the till, per product.
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'branchId', 'businessDate'] });
   const branchesQ = useBranches(token);
@@ -163,6 +166,7 @@ export function ProductionDiscountsPage() {
     setViewRow(null);
     setPendingAction(null);
     setNote('');
+    setShowBreakdown(false);
   }
 
   function pick(status: BranchDiscountStatus) {
@@ -252,7 +256,7 @@ export function ProductionDiscountsPage() {
       header: '',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="ghost" size="sm" onClick={() => { setViewRow(row.original); setPendingAction(null); setNote(''); }}>
+        <Button variant="ghost" size="sm" onClick={() => { setViewRow(row.original); setPendingAction(null); setNote(''); setShowBreakdown(false); }}>
           <Eye className="mr-1.5 h-4 w-4" /> View
         </Button>
       ),
@@ -318,11 +322,20 @@ export function ProductionDiscountsPage() {
       <Dialog open={!!viewRow} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{copy ? copy.title : 'Discount Detail'}</DialogTitle>
+            <DialogTitle>{copy ? copy.title : showBreakdown ? 'Product Breakdown' : 'Discount Detail'}</DialogTitle>
             {copy && <DialogDescription>{copy.body}</DialogDescription>}
           </DialogHeader>
 
-          {viewRow && !copy && (
+          {viewRow && !copy && showBreakdown && (
+            <DiscountDayBreakdown
+              token={token}
+              branchId={viewRow.branchId}
+              branchName={short(viewRow.branchName)}
+              date={viewRow.date}
+            />
+          )}
+
+          {viewRow && !copy && !showBreakdown && (
             <>
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
                 <dt className="text-muted-foreground">Reference</dt>
@@ -375,6 +388,11 @@ export function ProductionDiscountsPage() {
                   </>
                 )}
               </dl>
+
+              {/* The day's till discounts per product, against what was claimed. */}
+              <Button variant="outline" size="sm" className="w-full" onClick={() => setShowBreakdown(true)}>
+                <ListOrdered className="mr-1.5 h-4 w-4" /> Product breakdown — {formatDate(viewRow.date)}
+              </Button>
 
               {viewRow.status === 'pending' && (
                 <>
@@ -450,6 +468,10 @@ export function ProductionDiscountsPage() {
                         : 'Send Back'}
                 </Button>
               </>
+            ) : showBreakdown ? (
+              <Button variant="outline" onClick={() => setShowBreakdown(false)}>
+                Back
+              </Button>
             ) : (
               <Button variant="outline" onClick={closeDialog}>
                 Close
