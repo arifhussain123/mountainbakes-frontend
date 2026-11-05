@@ -224,6 +224,10 @@ export function CashDepositModal({
       });
       toast.success(`Cash Deposit submitted successfully (${created.transferNo}). Accounts will check it and send it for approval.`);
       resetForm();
+      // Done: the popup closes itself (owner's call, 2026-11-06), as the
+      // mobile app's deposit screen does. The toast names the deposit, and
+      // Branch → Cash Deposits lists it.
+      onOpenChange(false);
     } catch (err) {
       // The server's sentence names the cause — a closed day, a deposit that
       // already exists, a photo that vanished between upload and submit — and
