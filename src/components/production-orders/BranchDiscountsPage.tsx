@@ -383,15 +383,6 @@ export function BranchDiscountsPage() {
               <dt className="text-muted-foreground">Raised</dt>
               <dd className="text-right">{formatDateTime(viewRow.createdAt)}</dd>
 
-              <dt className="text-muted-foreground">Reviewed</dt>
-              <dd className="text-right">{viewRow.reviewedAt ? formatDateTime(viewRow.reviewedAt) : '—'}</dd>
-
-              <dt className="text-muted-foreground">Raised by</dt>
-              <dd className="truncate text-right">{viewRow.createdByName || '—'}</dd>
-
-              <dt className="text-muted-foreground">Reviewed by</dt>
-              <dd className="truncate text-right">{viewRow.reviewedByName || '—'}</dd>
-
               <dt className="col-span-2 pt-1 text-muted-foreground">Reason</dt>
               <dd className="col-span-2 rounded-md bg-muted/40 p-2.5">{viewRow.reason || '—'}</dd>
 

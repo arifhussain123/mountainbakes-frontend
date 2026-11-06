@@ -423,15 +423,6 @@ export function ProductionDiscountsPage() {
                 <dt className="text-muted-foreground">Raised</dt>
                 <dd className="text-right">{formatDateTime(viewRow.createdAt)}</dd>
 
-                <dt className="text-muted-foreground">Reviewed</dt>
-                <dd className="text-right">{viewRow.reviewedAt ? formatDateTime(viewRow.reviewedAt) : '—'}</dd>
-
-                <dt className="text-muted-foreground">Raised by</dt>
-                <dd className="truncate text-right">{viewRow.createdByName || '—'}</dd>
-
-                <dt className="text-muted-foreground">Reviewed by</dt>
-                <dd className="truncate text-right">{viewRow.reviewedByName || '—'}</dd>
-
                 {/* Full width and untruncated — the table clips it, and it is the
                     basis for choosing Reject over Send Back. */}
                 <dt className="col-span-2 pt-1 text-muted-foreground">Reason</dt>
