@@ -4,6 +4,8 @@ import type { BranchDiscount } from '@mb/shared';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { formatCurrency } from '@/utils/currency';
+import { formatDateTime } from '@/utils/date';
 
 /**
  * The vocabulary and the rules a branch discount is edited by, in one place.
@@ -146,6 +148,27 @@ export function DiscountFormFields({
         />
         {reasonBad && <p className="text-xs text-destructive">Say what the discount is for.</p>}
       </div>
+    </>
+  );
+}
+
+/**
+ * The "changed by Production" record under a claim's Amount — shown on both the
+ * Production and the Branch Discount Detail popup once Production has corrected
+ * the figure. Renders a <dt>/<dd> pair for the popups' two-column <dl>.
+ */
+export function AmountChangedRows({ row }: { row: BranchDiscount }) {
+  if (row.originalAmount == null) return null;
+  return (
+    <>
+      <dt className="text-muted-foreground">Branch claimed</dt>
+      <dd className="text-right">
+        <span className="tabular-nums line-through decoration-muted-foreground/60">{formatCurrency(row.originalAmount)}</span>
+        <span className="block text-xs text-muted-foreground">
+          Changed by Production{row.amountChangedByName ? ` · ${row.amountChangedByName}` : ''}
+          {row.amountChangedAt ? ` · ${formatDateTime(row.amountChangedAt)}` : ''}
+        </span>
+      </dd>
     </>
   );
 }

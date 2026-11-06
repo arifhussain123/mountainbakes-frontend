@@ -4,11 +4,13 @@ import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { BranchDiscount, BranchDiscountStatus, FilterConfig } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useBranches, useProductionDiscounts, useReviewDiscount } from '@/lib/queries';
+import { useBranches, useProductionDiscounts, useReviewDiscount, useSetDiscountAmount } from '@/lib/queries';
 import { useProductionDiscountSummary } from '@/lib/discountSummaryQueries';
 import { MonthlyDiscountSummary } from '@/components/production-orders/MonthlyDiscountSummary';
 import { DiscountDayBreakdown } from './DiscountDayBreakdown';
+import { AmountChangedRows, parseAmount, sanitizeAmount } from '@/components/production-orders/discountShared';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,7 +32,7 @@ import { formatDate, formatDateTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { Check, Eye, ListOrdered, Undo2, X } from 'lucide-react';
+import { Check, Eye, ListOrdered, Pencil, Undo2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -123,6 +125,8 @@ export function ProductionDiscountsPage() {
   const [note, setNote] = useState('');
   // The Product breakdown face: the claim's day at the till, per product.
   const [showBreakdown, setShowBreakdown] = useState(false);
+  // Edit amount, in the detail face (pending claims only). null = not editing.
+  const [amountDraft, setAmountDraft] = useState<string | null>(null);
 
   const list = useListQueryState({ syncUrl: true, filterKeys: ['status', 'branchId', 'businessDate'] });
   const branchesQ = useBranches(token);
@@ -151,6 +155,7 @@ export function ProductionDiscountsPage() {
     sortDir: list.state.sort?.direction,
   });
   const reviewMut = useReviewDiscount(token);
+  const amountMut = useSetDiscountAmount(token);
   // Always every active branch; picking a branch in the filter marks its card
   // rather than hiding the others (and costs no second request).
   const summaryQ = useProductionDiscountSummary(token, null);
@@ -162,11 +167,30 @@ export function ProductionDiscountsPage() {
   const total = discountsQ.data?.total ?? 0;
 
   function closeDialog() {
-    if (reviewMut.isPending) return;
+    if (reviewMut.isPending || amountMut.isPending) return;
     setViewRow(null);
     setPendingAction(null);
     setNote('');
     setShowBreakdown(false);
+    setAmountDraft(null);
+  }
+
+  const draftAmount = amountDraft == null ? 0 : parseAmount(amountDraft);
+
+  async function saveAmount() {
+    if (!viewRow || amountDraft == null || draftAmount <= 0) return;
+    if (draftAmount === viewRow.amount) { setAmountDraft(null); return; }
+    const before = viewRow.amount;
+    try {
+      const updated = await amountMut.mutateAsync({ id: viewRow.id, amount: draftAmount });
+      // The dialog keeps showing the claim — now with the new figure — so the
+      // reviewer can go straight on to Approve.
+      setViewRow(updated);
+      setAmountDraft(null);
+      toast.success(`Amount changed — ${formatCurrency(before)} → ${formatCurrency(updated.amount)} on ${updated.demandNumber}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : 'Failed to change the amount');
+    }
   }
 
   function pick(status: BranchDiscountStatus) {
@@ -256,7 +280,7 @@ export function ProductionDiscountsPage() {
       header: '',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="ghost" size="sm" onClick={() => { setViewRow(row.original); setPendingAction(null); setNote(''); setShowBreakdown(false); }}>
+        <Button variant="ghost" size="sm" onClick={() => { setViewRow(row.original); setPendingAction(null); setNote(''); setShowBreakdown(false); setAmountDraft(null); }}>
           <Eye className="mr-1.5 h-4 w-4" /> View
         </Button>
       ),
@@ -348,8 +372,43 @@ export function ProductionDiscountsPage() {
                 <dt className="text-muted-foreground">Demand</dt>
                 <dd className="text-right font-mono font-medium">{viewRow.demandNumber}</dd>
 
-                <dt className="text-muted-foreground">Amount</dt>
-                <dd className="text-right text-base font-semibold tabular-nums">{formatCurrency(viewRow.amount)}</dd>
+                <dt className="self-center text-muted-foreground">Amount</dt>
+                {/* Production may correct a claim still awaiting review — typically
+                    to the till's figure from Product breakdown (owner's call,
+                    2026-11-06). The branch's own figure is kept and shown below. */}
+                {amountDraft == null ? (
+                  <dd className="flex items-center justify-end gap-2">
+                    <span className="text-base font-semibold tabular-nums">{formatCurrency(viewRow.amount)}</span>
+                    {viewRow.status === 'pending' && (
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setAmountDraft(String(viewRow.amount))}>
+                        <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                      </Button>
+                    )}
+                  </dd>
+                ) : (
+                  <dd className="flex items-center justify-end gap-2">
+                    <Input
+                      aria-label="New amount"
+                      autoFocus
+                      inputMode="decimal"
+                      className="h-8 w-32 text-right tabular-nums"
+                      value={amountDraft}
+                      onChange={(e) => setAmountDraft(sanitizeAmount(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void saveAmount();
+                        if (e.key === 'Escape') { e.stopPropagation(); setAmountDraft(null); }
+                      }}
+                      disabled={amountMut.isPending}
+                    />
+                    <Button size="sm" className="h-8" onClick={() => void saveAmount()} disabled={draftAmount <= 0 || amountMut.isPending}>
+                      {amountMut.isPending ? 'Saving…' : 'Save'}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-8" onClick={() => setAmountDraft(null)} disabled={amountMut.isPending}>
+                      Cancel
+                    </Button>
+                  </dd>
+                )}
+                <AmountChangedRows row={viewRow} />
 
                 <dt className="text-muted-foreground">Status</dt>
                 <dd className="text-right">
@@ -394,7 +453,9 @@ export function ProductionDiscountsPage() {
                 <ListOrdered className="mr-1.5 h-4 w-4" /> Product breakdown — {formatDate(viewRow.date)}
               </Button>
 
-              {viewRow.status === 'pending' && (
+              {/* Not while an amount edit is open: a decision then would settle
+                  the old figure, not the one being typed. */}
+              {viewRow.status === 'pending' && amountDraft == null && (
                 <>
                   <Separator />
                   <div className="space-y-2">

@@ -2347,6 +2347,24 @@ export function useReviewDiscount(token: string) {
   });
 }
 
+/**
+ * Production correcting a pending claim's amount from its Discount Detail popup.
+ * The server keeps the branch's own figure (`originalAmount`) and tells the branch.
+ */
+export function useSetDiscountAmount(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount }: { id: string; amount: number }) =>
+      apiCall<BranchDiscount>(
+        `/api/production-discounts/${id}/amount`,
+        { method: 'PUT', body: JSON.stringify({ amount }) },
+        token,
+      ),
+    // Both lists and both summaries, as on a review.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['discounts'] }),
+  });
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Special Events
 //

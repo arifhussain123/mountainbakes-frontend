@@ -36,6 +36,7 @@ import {
   DISCOUNT_STATUS_STYLES,
   DiscountFormFields,
   discountStatusLabel,
+  AmountChangedRows,
   isDiscountInputValid,
   lockReason,
   parseAmount,
@@ -367,6 +368,7 @@ export function BranchDiscountsPage() {
 
               <dt className="text-muted-foreground">Amount</dt>
               <dd className="text-right text-base font-semibold tabular-nums">{formatCurrency(viewRow.amount)}</dd>
+              <AmountChangedRows row={viewRow} />
 
               <dt className="text-muted-foreground">Status</dt>
               <dd className="text-right">
