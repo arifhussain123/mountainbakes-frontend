@@ -17,7 +17,8 @@ import { formatDate } from '@/utils/date';
 import { cn } from '@/lib/utils';
 
 /**
- * Production → Discounts → View → Product breakdown.
+ * Production → Discounts → View → Product breakdown, and the same view on
+ * Branch → Discounts → View (`side="branch"`, the branch's own day only).
  *
  * The branch's till (POS) discounts for the claim's business day, one row per
  * product, against what the branch claimed for that same day. When the two
@@ -29,13 +30,15 @@ export function DiscountDayBreakdown({
   branchId,
   branchName,
   date,
+  side = 'production',
 }: {
   token: string;
   branchId: string;
   branchName: string;
   date: string;
+  side?: 'production' | 'branch';
 }) {
-  const q = useDiscountDayCheck(token, branchId, date);
+  const q = useDiscountDayCheck(token, branchId, date, side);
 
   if (q.isLoading) {
     return (

@@ -9,6 +9,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { useBranchDiscounts, useReviseBranchDiscount, useWithdrawBranchDiscount } from '@/lib/queries';
 import { useBranchDiscountSummary } from '@/lib/discountSummaryQueries';
 import { MonthlyDiscountSummary } from './MonthlyDiscountSummary';
+import { DiscountDayBreakdown } from '@/components/production/DiscountDayBreakdown';
 import { DataTable } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/data-engine/Pagination';
 import { ActiveFilters, FilterBar } from '@/components/data-engine';
@@ -29,7 +30,7 @@ import { formatDate, formatDateTime, formatTime } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { ApiError } from '@/utils/api';
 import { cn } from '@/lib/utils';
-import { BadgePercent, Eye, Pencil, Trash2 } from 'lucide-react';
+import { BadgePercent, Eye, ListOrdered, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DISCOUNT_STATUS_STYLES,
@@ -122,6 +123,8 @@ export function BranchDiscountsPage() {
   const withdrawMut = useWithdrawBranchDiscount(token);
 
   const [viewRow, setViewRow] = useState<BranchDiscount | null>(null);
+  // The Product breakdown face of the View dialog — the same one Production sees.
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [editRow, setEditRow] = useState<BranchDiscount | null>(null);
   const [deleteRow, setDeleteRow] = useState<BranchDiscount | null>(null);
   const [editAmount, setEditAmount] = useState('');
@@ -233,7 +236,7 @@ export function BranchDiscountsPage() {
         const d = row.original;
         return (
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setViewRow(d)}>
+            <Button variant="ghost" size="sm" onClick={() => { setViewRow(d); setShowBreakdown(false); }}>
               <Eye className="mr-1.5 h-4 w-4" /> View
             </Button>
             {isDiscountOpen(d.status) ? (
@@ -336,12 +339,24 @@ export function BranchDiscountsPage() {
       />
 
       {/* ── View ─────────────────────────────────────────────────────────── */}
-      <Dialog open={!!viewRow} onOpenChange={(o) => !o && setViewRow(null)}>
+      <Dialog open={!!viewRow} onOpenChange={(o) => { if (!o) { setViewRow(null); setShowBreakdown(false); } }}>
         <DialogContent className="md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Discount Detail</DialogTitle>
+            <DialogTitle>{showBreakdown ? 'Product Breakdown' : 'Discount Detail'}</DialogTitle>
           </DialogHeader>
-          {viewRow && (
+          {/* The day's till discounts per product against what was claimed — the
+              same check Production makes before approving (owner's call, 2026-11-06). */}
+          {viewRow && showBreakdown && (
+            <DiscountDayBreakdown
+              token={token}
+              branchId={viewRow.branchId}
+              branchName={viewRow.branchName.replace('Mountain Bakes ', '')}
+              date={viewRow.date}
+              side="branch"
+            />
+          )}
+          {viewRow && !showBreakdown && (
+            <>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
               <dt className="text-muted-foreground">Reference</dt>
               {/* The id in full here — the table shows only its first segment. */}
@@ -388,9 +403,17 @@ export function BranchDiscountsPage() {
                 </>
               )}
             </dl>
+            <Button variant="outline" size="sm" className="w-full" onClick={() => setShowBreakdown(true)}>
+              <ListOrdered className="mr-1.5 h-4 w-4" /> Product breakdown — {formatDate(viewRow.date)}
+            </Button>
+            </>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewRow(null)}>Close</Button>
+            {showBreakdown ? (
+              <Button variant="outline" onClick={() => setShowBreakdown(false)}>Back</Button>
+            ) : (
+              <Button variant="outline" onClick={() => { setViewRow(null); setShowBreakdown(false); }}>Close</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

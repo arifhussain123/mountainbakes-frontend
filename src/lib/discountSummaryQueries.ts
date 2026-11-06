@@ -53,16 +53,26 @@ export function useBranchDiscountSummary(token: string, range?: { from?: string 
  * Production: one branch-day's till discounts per product against what the
  * branch claimed for that day. Fetched only while the breakdown is open.
  */
-export function useDiscountDayCheck(token: string, branchId: string | null, date: string | null) {
+export function useDiscountDayCheck(
+  token: string,
+  branchId: string | null,
+  date: string | null,
+  /** 'branch' reads via the branch API: a branch role's own branch is pinned server-side. */
+  side: 'production' | 'branch' = 'production',
+) {
   return useQuery({
-    queryKey: ['discounts', 'day-check', branchId, date] as const,
+    queryKey: ['discounts', 'day-check', side, branchId, date] as const,
     queryFn: () =>
       apiCall<DiscountDayCheck>(
-        `/api/production-discounts/day-check?branchId=${encodeURIComponent(branchId!)}&date=${encodeURIComponent(date!)}`,
+        side === 'branch'
+          ? // A branch role is pinned to its own branch server-side (branchId ignored);
+            // super_admin has no branch claim, so it needs the branchId sent.
+            `/api/branch-discounts/day-check?date=${encodeURIComponent(date!)}${branchId ? `&branchId=${encodeURIComponent(branchId)}` : ''}`
+          : `/api/production-discounts/day-check?branchId=${encodeURIComponent(branchId!)}&date=${encodeURIComponent(date!)}`,
         {},
         token,
       ),
-    enabled: !!token && !!branchId && !!date,
+    enabled: !!token && !!date && (side === 'branch' || !!branchId),
     staleTime: LIVE_STALE_TIME,
   });
 }
