@@ -377,9 +377,6 @@ export function BranchDiscountsPage() {
                 </span>
               </dd>
 
-              <dt className="text-muted-foreground">Business day</dt>
-              <dd className="text-right">{formatDate(viewRow.date)}</dd>
-
               <dt className="text-muted-foreground">Raised</dt>
               <dd className="text-right">{formatDateTime(viewRow.createdAt)}</dd>
 
