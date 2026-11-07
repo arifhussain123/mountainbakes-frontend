@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowDownRight, ArrowUpRight, RotateCcw, Scale, Wallet } from 'lucide-react';
 import { useLedgerSummary } from '@/lib/finance';
@@ -64,12 +65,15 @@ export function SummaryStat({
   icon: Icon,
   tone,
   loading,
+  children,
 }: {
   label: string;
   value: number | undefined;
   icon: LucideIcon;
   tone: keyof typeof TONES;
   loading?: boolean;
+  /** Extra lines under the figure, e.g. a breakdown of it. */
+  children?: ReactNode;
 }) {
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -89,6 +93,7 @@ export function SummaryStat({
             <Icon className="h-5 w-5" />
           </div>
         </div>
+        {children}
       </CardContent>
     </Card>
   );

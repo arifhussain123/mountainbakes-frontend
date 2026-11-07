@@ -222,7 +222,19 @@ export function LoanLedgerTab() {
             )}
           </CardContent>
         </Card>
-        <SummaryStat label="Total Loan Payment" value={data?.totalDebit} icon={ArrowUpRight} tone="emerald" loading={isLoading} />
+        <SummaryStat label="Total Loan Payment" value={data?.totalDebit} icon={ArrowUpRight} tone="emerald" loading={isLoading}>
+          {/* Refundable + Receivable = Total Loan Payment: only loans debit the register. */}
+          <div className="mt-3 space-y-1 border-t pt-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">Refundable Loan</span>
+              {isLoading ? <Skeleton className="h-4 w-20" /> : <Money value={data?.totalRefundable} className="font-medium" />}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">Receivable Loan</span>
+              {isLoading ? <Skeleton className="h-4 w-20" /> : <Money value={data?.totalReceivable} className="font-medium" />}
+            </div>
+          </div>
+        </SummaryStat>
         <SummaryStat label="Loan Paid" value={data?.totalCredit} icon={ArrowDownRight} tone="red" loading={isLoading} />
         <div className="space-y-1">
           <SummaryStat label="Balance" value={data?.closingBalance} icon={Scale} tone="primary" loading={isLoading} />
@@ -362,6 +374,14 @@ export function LoanLedgerTab() {
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Total loan payment</span>
                 <Money value={data?.totalDebit} className="text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="flex items-center justify-between pl-3 text-xs font-normal">
+                <span className="text-muted-foreground">Refundable loan</span>
+                <Money value={data?.totalRefundable} />
+              </div>
+              <div className="flex items-center justify-between pl-3 text-xs font-normal">
+                <span className="text-muted-foreground">Receivable loan</span>
+                <Money value={data?.totalReceivable} />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Loan paid</span>
