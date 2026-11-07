@@ -48,7 +48,6 @@ import type {
   LoanClientDetail,
   LoanClientWithBalance,
   LoanLedgerPage,
-  LedgerReconciliation,
   LedgerSummary,
   PartnerExpense,
   PartnerShareSummary,
@@ -750,17 +749,6 @@ export function useMonthStatement(month: string, scope: DemandRecordScope = 'fin
     enabled: Boolean(token) && Boolean(month) && (opts?.enabled ?? true),
     staleTime: 15_000,
     queryFn: () => apiCall<MonthStatement>(`${demandRecordPath(scope)}/statement${toQuery({ month })}`, {}, token),
-  });
-}
-
-/** Collection slip against Demand Record, demand by demand (read only). Finance only; at most 62 days. */
-export function useLedgerReconciliation(from: string, to: string, branchId?: string, opts?: { enabled?: boolean }) {
-  const token = useToken();
-  return useQuery({
-    queryKey: qk.financeLedgerReconciliation(from, to, branchId),
-    enabled: Boolean(token) && Boolean(from) && Boolean(to) && (opts?.enabled ?? true),
-    staleTime: 60_000,
-    queryFn: () => apiCall<LedgerReconciliation>(`${demandRecordPath('finance')}/reconciliation${toQuery({ from, to, branchId })}`, {}, token),
   });
 }
 

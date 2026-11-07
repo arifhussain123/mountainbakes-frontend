@@ -824,12 +824,6 @@ export interface PreviousOrderBalance {
   discountsValue: number;
   /** The exact approved claims that discountsValue was built from. */
   discountItems: { demandNumber: string; amount: number }[];
-  /**
-   * Whether Returns and Discount came off the share. False from the Company-
-   * Share-on-Delivered date (1 Nov 2026): Amount to Collect is the Company Share
-   * and the two are shown as their own figures. Absent on an older server: true.
-   */
-  returnsDeducted?: boolean;
   amountToCollect: number;
   /**
    * Approved cash transfers (migration 118) in the same window — DISPLAYED

@@ -128,8 +128,8 @@ ${rule()}`;
 ${kv('Previous Order', money(collection.orderedValue, symbol))}
 ${kv('Delivered Value', money(collection.deliveredValue, symbol))}
 ${kv('Company Share', money(collection.companyShare, symbol))}
-${kv(collection.returnsDeducted === false ? 'Returns' : 'Less Returns', money(collection.returnsAmount, symbol))}
-${kv(collection.returnsDeducted === false ? 'Discount' : 'Less Discount', money(collection.discountsAmount, symbol))}
+${kv('Less Returns', money(collection.returnsAmount, symbol))}
+${kv('Less Discount', money(collection.discountsAmount, symbol))}
 ${rule(true)}
 ${kv('AMOUNT TO COLLECT', money(collection.amountToCollect, symbol), 'total')}
 ${

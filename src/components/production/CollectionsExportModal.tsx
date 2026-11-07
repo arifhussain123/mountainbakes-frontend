@@ -155,8 +155,7 @@ export function CollectionsExportModal({ open, onOpenChange, token }: Collection
               branch's stock, so Previous / Closing are the sheet's own. */}
           <p className="text-xs text-muted-foreground">
             Rows are by required date. Each branch starts with an Opening Stock row: the stock it held on the first day,
-            counted like a delivery. Company Share = Demand × share %, where Demand is the Total Demand Amount from
-            1 Nov 2026 (Return and Discount shown, not subtracted) and Total Demand Amount − Return − Discount before it.
+            counted like a delivery. Demand = Total Demand Amount − Return − Discount. Company Share = Demand × share %.
             Remaining = Previous Balance + Company Share − Payment Received, carried to the next demand.
           </p>
         </div>

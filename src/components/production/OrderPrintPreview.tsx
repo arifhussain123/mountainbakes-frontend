@@ -311,10 +311,6 @@ function PreviewBody({
   const discountRows = prevBal?.discountItems ?? [];
   const discountsAmount = prevBal?.discountsValue ?? 0;
   const collectionAmount = prevBal?.amountToCollect ?? 0;
-  // From 1 Nov 2026 (owner's rule) Returns and Discount are shown, not taken
-  // off: the slip then labels them as figures of their own. An older server
-  // sends no flag and always deducted.
-  const returnsDeducted = prevBal?.returnsDeducted ?? true;
   // Approved cash transfers in the same window (migration 118). Displayed
   // beside the figures above and NEVER netted off `collectionAmount` — the
   // money was already booked as an RV- receipt when Finance approved it, and
@@ -492,7 +488,6 @@ function PreviewBody({
               companyShare: companyShareValue,
               returnsAmount,
               discountsAmount,
-              returnsDeducted,
               amountToCollect: collectionAmount,
               paymentsReceived: paymentsAmount,
               remainingBalance: remainingAmount,
@@ -920,11 +915,11 @@ function PreviewBody({
                 <Field label="Previous Order" value={`${previousRef!.demandNumber} · ${previousRef!.date}`} />
                 <Field label="Delivered Value" value={money(deliveredValue, sym)} />
                 <Field label="Company Share" value={money(companyShareValue, sym)} />
-                <Field label={returnsDeducted ? 'Less Returns' : 'Returns'} value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+                <Field label="Less Returns" value={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
                 {/* Beside Less Returns, and before the total, because the two are
                     the same kind of thing: deductions from the company share.
                     Money only — there are no units behind a discount. */}
-                <Field label={returnsDeducted ? 'Less Discount' : 'Discount'} value={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
+                <Field label="Less Discount" value={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
                 <Field label="Amount to Collect" value={money(collectionAmount, sym)} strong />
                 {/* AFTER the total, not before it: Payment Received is money the
                     branch already handed over (approved cash transfers), shown as
@@ -1025,7 +1020,7 @@ function PreviewBody({
             previousRef={previousRef} deliveredValue={deliveredValue}
             companyShareValue={companyShareValue}
             returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
-            discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount} returnsDeducted={returnsDeducted}
+            discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
           />
           <PrintCopy
@@ -1035,7 +1030,7 @@ function PreviewBody({
             previousRef={previousRef} deliveredValue={deliveredValue}
             companyShareValue={companyShareValue}
             returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
-            discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount} returnsDeducted={returnsDeducted}
+            discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
             paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
           />
         </div>
@@ -1203,7 +1198,7 @@ function MetaKV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
 function PrintCopy({
   copyLabel, logo, companyName, sym, order, printRows, packingPrintRows, printDate, printTime,
   previousRef, deliveredValue, companyShareValue,
-  returnRows, returnsQty, returnsAmount, discountRows, discountsAmount, collectionAmount, returnsDeducted,
+  returnRows, returnsQty, returnsAmount, discountRows, discountsAmount, collectionAmount,
   paymentRows, paymentsAmount, remainingAmount,
 }: {
   copyLabel: string;
@@ -1229,11 +1224,9 @@ function PrintCopy({
   /** Approved discount claims in the same window — the second deduction. */
   discountRows: { demandNumber: string; amount: number }[];
   discountsAmount: number;
-  /** What the rider collects: the company share, less returnsAmount AND
-   *  discountsAmount only before 1 Nov 2026 (see returnsDeducted). */
+  /** companyShareValue less returnsAmount AND discountsAmount — what the rider
+   *  actually collects. */
   collectionAmount: number;
-  /** False from 1 Nov 2026: Returns and Discount are shown, not deducted. */
-  returnsDeducted: boolean;
   /** Approved cash transfers in the same window — shown, never deducted. */
   paymentRows: PaymentReceivedItem[];
   paymentsAmount: number;
@@ -1318,8 +1311,8 @@ function PrintCopy({
             <MetaKV k="Previous Demand Date" v={previousRef!.date} />
             <MetaKV k="Delivered Value" v={money(deliveredValue, sym)} />
             <MetaKV k="Company Share" v={money(companyShareValue, sym)} />
-            <MetaKV k={returnsDeducted ? 'Less Returns' : 'Returns'} v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
-            <MetaKV k={returnsDeducted ? 'Less Discount' : 'Discount'} v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
+            <MetaKV k="Less Returns" v={returnsQty > 0 ? `${fmt(returnsQty)} · ${money(returnsAmount, sym)}` : '—'} />
+            <MetaKV k="Less Discount" v={discountsAmount > 0 ? money(discountsAmount, sym) : '—'} />
             <MetaKV k="Amount to Collect" v={money(collectionAmount, sym)} />
             <MetaKV k="Payment Received" v={paymentsAmount > 0 ? money(paymentsAmount, sym) : '—'} />
             <MetaKV k="Remaining Balance" v={money(remainingAmount, sym)} />

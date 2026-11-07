@@ -86,12 +86,6 @@ export interface PreviousCollection {
   returnsAmount: number;
   /** Claims against that delivery. An amount, never a quantity. */
   discountsAmount: number;
-  /**
-   * Whether the two above were taken off the share. False from 1 Nov 2026
-   * (owner's rule): printed as "Returns" / "Discount", not "Less …".
-   * Absent: true, as every slip before the rule.
-   */
-  returnsDeducted?: boolean;
   /** What the rider actually collects. The server's figure, printed as given. */
   amountToCollect: number;
   /**

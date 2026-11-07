@@ -331,7 +331,6 @@ export const qk = {
     ['finance', 'demandRecordDetail', branchId, orderId ?? 'opening'] as const,
   financeDemandRecordSettings: () => ['finance', 'demandRecordSettings'] as const,
   financeMonthStatement: (month: string) => ['finance', 'monthStatement', month] as const,
-  financeLedgerReconciliation: (from: string, to: string, branchId?: string) => ['finance', 'ledgerReconciliation', from, to, branchId ?? 'all'] as const,
   financeDemandRecordAdjustments: (branchId?: string) =>
     ['finance', 'demandRecordAdjustments', branchId ?? 'all'] as const,
   // A branch's own Demand Record (/api/branch-account): the same rows, read by
