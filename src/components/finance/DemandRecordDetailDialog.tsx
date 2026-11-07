@@ -133,16 +133,30 @@ function Calculation({ row: r }: { row: DemandRecordRow }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-1 rounded-lg border px-3 py-2">
-        {line('Delivered', r.delivered)}
-        {line('Returns', r.returns, { sign: '−' })}
-        {line('Discount', r.discount, { sign: '−' })}
-        <div className="border-t" />
-        {line('G. Total', r.gTotal, { strong: true })}
+        {line('Delivered', r.delivered, r.shareOnDelivered ? { strong: true } : undefined)}
+        {/* Before 1 Nov 2026 the share was taken on the net; from it, on
+            Delivered, with Return and Discount kept as figures of their own. */}
+        {!r.shareOnDelivered && (
+          <>
+            {line('Returns', r.returns, { sign: '−' })}
+            {line('Discount', r.discount, { sign: '−' })}
+            <div className="border-t" />
+            {line('G. Total', r.gTotal, { strong: true })}
+          </>
+        )}
         <div className="flex justify-between gap-4 text-muted-foreground">
           <span>× Share %</span>
           <span className="tabular-nums">{r.sharePct}%{r.pctFrozen ? ' (frozen)' : " (today's)"}</span>
         </div>
         {line('Company Share', r.companyShare, { strong: true })}
+        {r.shareOnDelivered && (
+          <>
+            <div className="border-t" />
+            {line('Returns', r.returns, { muted: true })}
+            {line('Discount', r.discount, { muted: true })}
+            <p className="text-xs text-muted-foreground">Shown on their own — not taken off the share (from 1 Nov 2026).</p>
+          </>
+        )}
       </div>
       <div className="space-y-1 rounded-lg border px-3 py-2">
         {line('Previous Balance', r.previousBalance)}

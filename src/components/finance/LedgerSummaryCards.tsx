@@ -12,7 +12,8 @@ import { Money } from './finance-ui';
 
 /**
  * The Daily Ledger's top summary — Opening Balance, Total Amount Received,
- * Total Amount Expense and Balance, month-to-date as of `date`.
+ * Total Amount Expense and Balance, month-to-date as of `date`: cash and bank
+ * together, then each account on its own.
  *
  * A separate query from the table below it (`useLedger`): this one is always
  * month-to-date and ignores the table's own from/to/head/type/account/status/
@@ -39,12 +40,48 @@ export function LedgerSummaryCards({ date, branchId }: { date: string; branchId?
     );
   }
 
+  const accounts = data?.accounts;
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <SummaryStat label="Opening Balance" value={data?.openingBalance} icon={Wallet} tone="slate" loading={isLoading} />
-      <SummaryStat label="Total Amount Received" value={data?.totalReceived} icon={ArrowUpRight} tone="emerald" loading={isLoading} />
-      <SummaryStat label="Total Amount Expense" value={data?.totalExpense} icon={ArrowDownRight} tone="red" loading={isLoading} />
-      <SummaryStat label="Balance" value={data?.balance} icon={Scale} tone="primary" loading={isLoading} />
+    <div className="space-y-3">
+      {/* Cash and bank together — the total of the two accounts below, labelled
+          so, never shown in place of them (centralized ledger rules). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryStat label="Opening Balance · cash + bank" value={data?.openingBalance} icon={Wallet} tone="slate" loading={isLoading} />
+        <SummaryStat label="Total Amount Received" value={data?.totalReceived} icon={ArrowUpRight} tone="emerald" loading={isLoading} />
+        <SummaryStat label="Total Amount Expense" value={data?.totalExpense} icon={ArrowDownRight} tone="red" loading={isLoading} />
+        <SummaryStat label="Balance · cash + bank" value={data?.balance} icon={Scale} tone="primary" loading={isLoading} />
+      </div>
+      {accounts && (
+        <Card>
+          <CardContent className="overflow-x-auto p-0">
+            <table className="w-full min-w-[32rem] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">By account</th>
+                  <th className="px-4 py-2 text-right font-medium">Opening</th>
+                  <th className="px-4 py-2 text-right font-medium">Received</th>
+                  <th className="px-4 py-2 text-right font-medium">Expense</th>
+                  <th className="px-4 py-2 text-right font-medium">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(['cash', 'bank'] as const).map((k) => {
+                  const a = accounts[k];
+                  return (
+                    <tr key={k} className="border-b last:border-0">
+                      <td className="px-4 py-2 font-medium">{k === 'cash' ? 'Cash' : 'Bank'}</td>
+                      <td className="px-4 py-2 text-right tabular-nums"><Money value={a.openingBalance} /></td>
+                      <td className="px-4 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400"><Money value={a.totalReceived} /></td>
+                      <td className="px-4 py-2 text-right tabular-nums text-red-700 dark:text-red-400"><Money value={a.totalExpense} /></td>
+                      <td className="px-4 py-2 text-right font-semibold tabular-nums"><Money value={a.balance} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

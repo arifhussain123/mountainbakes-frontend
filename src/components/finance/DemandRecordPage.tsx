@@ -25,18 +25,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatDate } from '@/utils/date';
 import { saveBlob } from '@/utils/saveBlob';
 import { cn } from '@/lib/utils';
-import { CalendarCheck, Download, Eye, NotebookPen, RotateCcw, ScrollText } from 'lucide-react';
+import { CalendarCheck, Download, Eye, GitCompareArrows, NotebookPen, RotateCcw, ScrollText } from 'lucide-react';
 import { FinancePageHeader, Money, ReadOnlyNotice, useFinanceAbilities, useMoney, type FinanceAbilities } from './finance-ui';
 import { DateFilter, FilterBar, FilterField } from './finance-actions';
 import { DemandRecordDetailDialog } from './DemandRecordDetailDialog';
 import { DemandRecordEntriesDialog } from './DemandRecordEntriesDialog';
 import { MonthStatementDialog } from './MonthStatementDialog';
+import { ReconciliationDialog } from './ReconciliationDialog';
 
 /**
  * Finance → Demand Record: what each branch owes the company, demand by demand,
  * with the balance carried from one demand to the next.
  *
- *   G. Total      = Delivered − Returns − Discount
+ *   G. Total      = Delivered − Returns − Discount (before 1 Nov 2026);
+ *                   Delivered from it — Returns and Discount then stay
+ *                   figures of their own (owner's rule, 2026-11-07)
  *   Company Share = G. Total × the demand's frozen share %
  *   Closing       = Previous + Company Share + Adjustments − Share Received
  *
@@ -111,6 +114,7 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
   const [detail, setDetail] = useState<DemandRecordRow | null>(null);
   const [entriesOpen, setEntriesOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
+  const [reconOpen, setReconOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const filters: DemandRecordFilters = {
@@ -335,6 +339,11 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
             <Button variant="outline" size="sm" onClick={() => setStatementOpen(true)}>
               <CalendarCheck className="h-3.5 w-3.5" /> Month-end statement
             </Button>
+            {!isBranch && (
+              <Button variant="outline" size="sm" onClick={() => setReconOpen(true)}>
+                <GitCompareArrows className="h-3.5 w-3.5" /> Reconciliation
+              </Button>
+            )}
             <Button variant="outline" size="sm" disabled={!data || exporting} onClick={() => void exportCsv()}>
               <Download className="h-3.5 w-3.5" /> {exporting ? 'Exporting…' : 'Export'}
             </Button>
@@ -478,6 +487,9 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
 
       <DemandRecordDetailDialog row={detail} onClose={() => setDetail(null)} scope={scope} />
       <MonthStatementDialog open={statementOpen} onOpenChange={setStatementOpen} scope={scope} startDate={startDate} />
+      {!isBranch && (
+        <ReconciliationDialog open={reconOpen} onOpenChange={setReconOpen} branchId={branchId === ALL ? undefined : branchId} />
+      )}
       {abilities && (
         <DemandRecordEntriesDialog
           open={entriesOpen}
