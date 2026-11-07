@@ -515,7 +515,7 @@ export function FinanceDashboardBody({
           <StatCard
             label="Balance"
             value={s.balance}
-            sub="Company Share − Received"
+            sub="Received − Company Share"
             color={SERIES.balance}
             signed
             format={format}
@@ -720,7 +720,7 @@ export function financeOverviewGroups(
         {
           label: 'Balance',
           value: s.balance,
-          sub: 'Company Share − Received',
+          sub: 'Received − Company Share',
           signed: true,
           strong: true,
         },
@@ -729,7 +729,7 @@ export function financeOverviewGroups(
               {
                 label: 'Last Month Balance',
                 value: s.lastMonthBalance,
-                sub: s.lastMonthBalance === null ? `No records in ${prevLabel}` : `${prevLabel} · Share − Received`,
+                sub: s.lastMonthBalance === null ? `No records in ${prevLabel}` : `${prevLabel} · Received − Share`,
                 signed: true,
               },
             ]
@@ -940,12 +940,12 @@ function Reconciliation({ data, format }: { data: Dashboard; format: Format }) {
       </div>
       <div className="min-w-[15rem] flex-1">
         <div className={line}>
-          <span className="text-muted-foreground">Company Share</span>
-          <strong className="tabular-nums">{format(s.companyShare)}</strong>
+          <span className="text-muted-foreground">Received</span>
+          <strong className="tabular-nums">{format(s.received)}</strong>
         </div>
         <div className={line}>
-          <span className="text-muted-foreground">− Received</span>
-          <strong className="tabular-nums">{format(s.received)}</strong>
+          <span className="text-muted-foreground">− Company Share</span>
+          <strong className="tabular-nums">{format(s.companyShare)}</strong>
         </div>
         <div className={cn(line, 'border-b-2 border-foreground/70')}>
           <span className="font-semibold">Balance</span>

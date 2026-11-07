@@ -93,7 +93,7 @@ describe('branchSummaryRows', () => {
       demand: 1500,
       companyShare: 1050,
       received: 500,
-      balance: 550,
+      balance: -550,
       lastMonthBalance: 100,
       orders: 3,
       returns: 30,

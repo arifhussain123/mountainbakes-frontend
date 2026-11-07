@@ -51,7 +51,7 @@ function datesBetween(from: string, to: string): string[] {
 // ---------------------------------------------------------------------------
 
 export interface BranchSummaryRow extends BranchTotals {
-  /** The previous business month's Share − Received; null = no records that month. */
+  /** The previous business month's Received − Share; null = no records that month. */
   lastMonthBalance: number | null;
   orders: number;
 }

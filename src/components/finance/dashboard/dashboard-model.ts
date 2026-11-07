@@ -13,8 +13,9 @@ import { saveBlob } from '@/utils/saveBlob';
  * date, branch[, ledger head]) from `finance_monthly_dashboard` (migration 128);
  * this file only regroups those rows into the period the table is showing
  * (day / week / month) and labels them. The one subtraction, Balance =
- * Company Share − Received, is the rule the brief defines and the server's own
- * summary applies, so a table row and the summary card agree by construction.
+ * Received − Company Share (owner's rule, 2026-11-07: negative = paid less than
+ * the share, positive = paid more), is the server's own summary rule, so a
+ * table row and the summary card agree by construction.
  */
 
 export type Granularity = 'daily' | 'weekly' | 'monthly';
@@ -184,7 +185,7 @@ export function incomeRows(data: FinanceMonthlyDashboard, gran: Granularity): In
     demand: round2(r.demand),
     companyShare: round2(r.companyShare),
     received: round2(r.received),
-    balance: round2(r.companyShare - r.received),
+    balance: round2(r.received - r.companyShare),
   }));
 }
 
@@ -374,7 +375,7 @@ export function branchTotals(data: FinanceMonthlyDashboard): BranchTotals[] {
       demand: round2(r.demand),
       companyShare: round2(r.companyShare),
       received: round2(r.received),
-      balance: round2(r.companyShare - r.received),
+      balance: round2(r.received - r.companyShare),
       ledger: round2(r.ledger),
       returns: round2(r.returns),
       discount: round2(r.discount),
