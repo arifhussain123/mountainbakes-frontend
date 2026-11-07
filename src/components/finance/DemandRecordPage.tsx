@@ -148,7 +148,8 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
     }),
     col.accessor('at', {
       id: 'date',
-      header: 'Date',
+      // The demand's Required by date — every finance figure dates a demand by it.
+      header: twoLine('Required', 'Date'),
       // One line, never wrapped.
       cell: ({ row }) => <span className="whitespace-nowrap">{format(parseISO(row.original.businessDate), 'dd MMM yyyy')}</span>,
     }),
@@ -262,7 +263,7 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
       const { page: _p, pageSize: _s, ...rest } = filters;
       const all = await fetchAllDemandRecordRows(rest, token, scope);
       const header = [
-        'Date', 'Demand Number', 'Branch', 'Delivered', 'Actual Sales', 'Return', 'Discount', 'G. Total',
+        'Required Date', 'Demand Number', 'Branch', 'Delivered', 'Actual Sales', 'Return', 'Discount', 'G. Total',
         'Share %', 'Share % Frozen', 'Company Share', 'Share on Sales', 'Share Received', 'Adjustments',
         'Previous Balance', 'Closing Balance', 'Status',
       ];

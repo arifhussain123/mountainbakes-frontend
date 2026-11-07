@@ -132,7 +132,7 @@ function BranchStatement({ b, showName }: { b: MonthStatementBranch; showName: b
           <Line label="Closing balance" value={<Balance value={p.closingBalance} />} total />
           <p className="mt-1.5 text-xs text-muted-foreground">
             {p.demands} {p.demands === 1 ? 'demand' : 'demands'}.
-            {p.lastRowOpen && ' The last one is still open: returns and deposits made before the next demand still land in it.'}
+            {p.lastRowOpen && ' The latest one is still open: returns and deposits made before the next demand still land in it.'}
           </p>
         </div>
         <div>

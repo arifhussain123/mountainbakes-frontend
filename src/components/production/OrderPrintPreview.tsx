@@ -18,7 +18,7 @@ import { PopPrintButton, type PrintHooks } from '@/components/print/PopPrintButt
 import { printProductionOrder } from '@/lib/print/systemPrinter';
 import type { ProductionOrderDoc } from '@/lib/print/receipt/types';
 import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
-import { CheckCircle2, XCircle, Loader2, Pencil, ClipboardCheck, Plus, Undo2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Pencil, Plus, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { RestrictionNotice } from '@/components/shared/RestrictionNotice';
 import { restrictionFromError } from '@/lib/restrictions';
@@ -163,9 +163,6 @@ function PreviewBody({
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [packingEdits, setPackingEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState(order.changeReason ?? '');
-  // 'slip' = the Customer/Company Copy challan; 'check' = the simplified
-  // Production Check sheet (branch, product, qty, amount only).
-  const [printMode, setPrintMode] = useState<'slip' | 'check'>('slip');
   const [addingProduct, setAddingProduct] = useState(false);
   // The add panel takes a product or a packing material — one panel, one Add
   // button, so Production does not hunt for a second control.
@@ -433,19 +430,8 @@ function PreviewBody({
   // while still pending).
   function print() {
     setEditing(false);
-    setPrintMode('slip');
     printTrace('markPrinted requested');
     markPrinted(order.id).then(() => printTrace('markPrinted done')).catch(() => printTrace('markPrinted failed'));
-    printAndClose();
-  }
-
-  // A separate, simplified sheet for the floor — branch, product, qty, amount
-  // only, laid out in 2-3 columns when there are many items so a long demand
-  // still fits on one page. Doesn't touch markPrinted: that flag tracks the
-  // official delivery slip, not this internal stock-check aid.
-  function printCheck() {
-    setEditing(false);
-    setPrintMode('check');
     printAndClose();
   }
 
@@ -1014,8 +1000,7 @@ function PreviewBody({
 
       </div>
 
-      {/* ── Print-only: either the Customer/Company Copy pair, or the
-          Production Check sheet — whichever printCheck()/print() picked.
+      {/* ── Print-only: the Customer/Company Copy pair.
 
           Portalled to <body> deliberately. Left inside the dialog it is an
           absolutely positioned box inside a fixed, translated, overflow-clipped
@@ -1024,35 +1009,31 @@ function PreviewBody({
 
           Mounted only while a print is in progress. ── */}
       <PrintPortal active={documentPrinting}>
-        {printMode === 'slip' ? (
-          /* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
-             the bottom half, with a cut line between them. See `.print-sheet` /
-             `.print-half` in globals.css. */
-          <div className="print-sheet">
-            <PrintCopy
-              copyLabel="Customer Copy"
-              logo={logo} companyName={companyName} sym={sym} order={order}
-              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-              previousRef={previousRef} deliveredValue={deliveredValue}
-              companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
-              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
-              paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
-            />
-            <PrintCopy
-              copyLabel="Company Copy"
-              logo={logo} companyName={companyName} sym={sym} order={order}
-              printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
-              previousRef={previousRef} deliveredValue={deliveredValue}
-              companyShareValue={companyShareValue}
-              returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
-              discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
-              paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
-            />
-          </div>
-        ) : (
-          <ProductionCheckSheet order={order} printRows={printRows} sym={sym} printDate={printDate} />
-        )}
+        {/* One demand = ONE sheet: Customer Copy on the top half, Company Copy on
+           the bottom half, with a cut line between them. See `.print-sheet` /
+           `.print-half` in globals.css. */}
+        <div className="print-sheet">
+          <PrintCopy
+            copyLabel="Customer Copy"
+            logo={logo} companyName={companyName} sym={sym} order={order}
+            printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
+            previousRef={previousRef} deliveredValue={deliveredValue}
+            companyShareValue={companyShareValue}
+            returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
+            discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
+            paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
+          />
+          <PrintCopy
+            copyLabel="Company Copy"
+            logo={logo} companyName={companyName} sym={sym} order={order}
+            printRows={printRows} packingPrintRows={packingPrintRows} printDate={printDate} printTime={printTime}
+            previousRef={previousRef} deliveredValue={deliveredValue}
+            companyShareValue={companyShareValue}
+            returnRows={returnRows} returnsQty={returnsQty} returnsAmount={returnsAmount}
+            discountRows={discountRows} discountsAmount={discountsAmount} collectionAmount={collectionAmount}
+            paymentRows={paymentRows} paymentsAmount={paymentsAmount} remainingAmount={remainingAmount}
+          />
+        </div>
       </PrintPortal>
 
       {shortage && (
@@ -1118,16 +1099,6 @@ function PreviewBody({
               {reviewing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />} Submit for Verification
             </Button>
           </>
-        )}
-        {/* Simplified branch/product/qty/amount sheet for the production floor —
-            not a customer-facing document, so no printer/PDF picker menu.
-            Only while the demand is still pending: it is the sheet used to check
-            and prepare stock against a newly received order, so it has no purpose
-            once the goods have gone out. */}
-        {order.status === 'pending' && (
-          <Button variant="outline" onClick={printCheck} disabled={reviewing}>
-            <ClipboardCheck className="mr-1.5 h-4 w-4" /> Production Check
-          </Button>
         )}
         {/* Two documents, two buttons, and neither falls back to the other.
 
@@ -1591,74 +1562,6 @@ function PrintCopy({
         </div>
       )}
 
-    </div>
-  );
-}
-
-/**
- * Production Check sheet — a stripped-down stock-check aid for the floor, not a
- * customer/company document: just Branch, Product, Qty, Amount, no prices,
- * balances, returns or sign-offs. When a demand has many line items they're
- * split into 2-3 side-by-side columns so a long list still fits one page.
- */
-function ProductionCheckSheet({
-  order, printRows, sym, printDate,
-}: {
-  order: BranchProductionOrder;
-  printRows: PrintRow[];
-  sym: string;
-  printDate: string;
-}) {
-  const items = printRows.filter((r) => r.approved > 0).map((r) => ({ productName: r.productName, qty: r.approved, amount: r.amount }));
-  const cols = items.length > 30 ? 3 : items.length > 12 ? 2 : 1;
-  const groups = chunk(items, cols);
-  const totalQty = items.reduce((a, r) => a + r.qty, 0);
-  const totalAmount = items.reduce((a, r) => a + r.amount, 0);
-
-  return (
-    <div className="production-slip print-page relative mx-auto w-full max-w-[720px] bg-white p-6 text-black">
-      <div className="avoid-break border-b-2 border-neutral-800 pb-3">
-        <h2 className="text-lg font-bold uppercase tracking-wide">Production Check</h2>
-        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] sm:grid-cols-4">
-          <MetaKV k="Branch" v={order.branchName} />
-          <MetaKV k="Production Order No" v={slipReference(order)} mono />
-          <MetaKV k="Demand Date" v={order.date} />
-          <MetaKV k="Required Date" v={order.requiredDate ?? ''} />
-          <MetaKV k="Print Date" v={printDate} />
-        </div>
-      </div>
-
-      {items.length === 0 ? (
-        <p className="mt-4 text-center text-[11px] text-neutral-500">No approved products.</p>
-      ) : (
-        <div className={`avoid-break print-cols mt-3 grid gap-x-4 ${cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {groups.map((group, gi) => (
-            <table key={gi} className="w-full border-collapse text-[11px]">
-              <thead>
-                <tr className="border-y border-neutral-400 text-left">
-                  <th className="py-1 pr-1 font-semibold">Product</th>
-                  <th className="px-1 py-1 text-right font-semibold">Qty</th>
-                  <th className="py-1 pl-1 text-right font-semibold">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.map((r) => (
-                  <tr key={r.productName} className="border-b border-neutral-200 align-top">
-                    <td className="py-1 pr-1 font-medium">{r.productName}</td>
-                    <td className="px-1 py-1 text-right tabular-nums">{fmt(r.qty)}</td>
-                    <td className="py-1 pl-1 text-right tabular-nums">{money(r.amount, sym)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ))}
-        </div>
-      )}
-
-      <div className="avoid-break mt-3 flex justify-end gap-6 border-t-2 border-neutral-400 pt-2 text-[11px] font-bold">
-        <span>Total Qty: {fmt(totalQty)}</span>
-        <span>Total Amount: {money(totalAmount, sym)}</span>
-      </div>
     </div>
   );
 }

@@ -35,7 +35,7 @@ export function DemandRecordDetailDialog({
           </DialogTitle>
           <DialogDescription>
             {r?.orderId
-              ? `Delivered demand of ${r ? formatDate(r.businessDate) : ''}, with everything up to the branch's next demand.`
+              ? `Delivered demand required ${r ? formatDate(r.businessDate) : ''}, with everything up to the branch's next demand.`
               : "The branch's opening balance, and anything between the go-live day and its first demand."}
           </DialogDescription>
         </DialogHeader>
