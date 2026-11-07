@@ -162,8 +162,7 @@ function DrawerBody({ target, dashboardBranchId }: { target: DrillTarget; dashbo
                   <li key={r.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 px-5 py-2.5 text-sm">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        {/* An Opening Stock row is not a demand: nothing to open. */}
-                        {r.reference && referenceKind && (referenceKind === 'voucher' || r.source === 'Production order') ? (
+                        {r.reference && referenceKind ? (
                           <button
                             type="button"
                             className="font-semibold text-fin-share underline-offset-2 hover:underline"
