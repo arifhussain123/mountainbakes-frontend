@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, ReadOnlyNotice, StatusBadge, useFinanceAbilities } from '../finance-ui';
 import { SummaryStat } from '../LedgerSummaryCards';
 import { LoanClientPicker } from './LoanClientPicker';
+import { LOAN_REGISTER_START } from './loanDates';
 import { LoanEntryDialog } from './LoanEntryDialog';
 import { LoanEntryDetailsDialog } from './LoanEntryDetailsDialog';
 
@@ -49,14 +50,14 @@ export function LoanLedgerTab() {
   const { token } = useAuth();
   const abilities = useFinanceAbilities();
   const today = businessDateStr();
-  const monthStart = `${today.slice(0, 7)}-01`;
+  const defaultFrom = LOAN_REGISTER_START;
 
   const list = useListQueryState({
     syncUrl: true,
     filterKeys: ['businessDate', 'clientId', 'branchId', 'entryType', 'ledgerHeadId', 'paymentMethod', 'status'],
     defaults: {
       filters: [
-        { key: 'businessDate', op: 'gte', value: monthStart },
+        { key: 'businessDate', op: 'gte', value: defaultFrom },
         { key: 'businessDate', op: 'lte', value: today },
       ],
     },
@@ -104,7 +105,7 @@ export function LoanLedgerTab() {
 
   const query: LoanLedgerFilters = useMemo(() => {
     const pick = (key: string) => (list.getFilter(key)?.value as string | undefined) || undefined;
-    const from = (list.getFilter('businessDate', 'gte')?.value as string | null | undefined) || monthStart;
+    const from = (list.getFilter('businessDate', 'gte')?.value as string | null | undefined) || defaultFrom;
     const to = (list.getFilter('businessDate', 'lte')?.value as string | null | undefined) || today;
     return {
       from: from > to ? to : from,

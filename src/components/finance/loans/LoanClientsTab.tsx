@@ -27,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { FinancePageHeader, Money, StatusBadge, useFinanceAbilities } from '../finance-ui';
+import { LOAN_REGISTER_START } from './loanDates';
 
 /**
  * Detail of Clients — everyone in the loan register, with their totals.
@@ -330,7 +331,7 @@ function LoanClientForm({ client, onDone }: { client: LoanClientWithBalance | nu
 /** One client: details, the five totals, and their own ledger with a date filter. */
 function LoanClientDetailDialog({ clientId, onClose }: { clientId: string | null; onClose: () => void }) {
   const today = businessDateStr();
-  const [from, setFrom] = useState('2020-01-01');
+  const [from, setFrom] = useState(LOAN_REGISTER_START);
   const [to, setTo] = useState(today);
   const detailQ = useLoanClient(clientId);
   const ledgerQ = useLoanLedger({ from: from > to ? to : from, to, clientId: clientId ?? undefined, limit: 500 }, Boolean(clientId));
