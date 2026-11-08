@@ -11,6 +11,7 @@ import {
   type SortingState,
   type Table as TanstackTable,
   type Cell,
+  type Row,
 } from '@tanstack/react-table';
 import { useState } from 'react';
 import {
@@ -86,6 +87,14 @@ interface DataTableProps<TData> {
    */
   mobileLayout?: 'cards' | 'table';
   /**
+   * Replaces the generic label:value card with the caller's own, per row, in
+   * the `'cards'` phone layout. Loading skeletons, the empty state, the totals
+   * card and the pager stay DataTable's, and the row is the same filtered,
+   * sorted, paged row the wide table shows — so search and sort still apply.
+   * For a ledger whose figures only read well as columns (the Stock page).
+   */
+  mobileCard?: (row: Row<TData>) => React.ReactNode;
+  /**
    * SERVER-SIDE paging. When given, `data` is one page and the pager below the
    * table drives the caller rather than TanStack's in-memory row model — the
    * table shows every row it was handed and reports `total` as the count.
@@ -143,6 +152,7 @@ export function DataTable<TData>({
   columnVisibility,
   empty,
   mobileLayout = 'cards',
+  mobileCard,
   manual,
   sortable = false,
   toolbar = true,
@@ -336,6 +346,7 @@ export function DataTable<TData>({
         <div className="md:hidden no-print">
           <DataTableCards
             table={table}
+            renderCard={mobileCard}
             loading={loading}
             empty={empty ?? <EmptyState title="No results found" description={emptyHint} />}
             showFooter={hasFooter}
@@ -377,11 +388,14 @@ export function DataTable<TData>({
  */
 function DataTableCards<TData>({
   table,
+  renderCard,
   loading,
   empty,
   showFooter,
 }: {
   table: TanstackTable<TData>;
+  /** The caller's own card for a row; the generic label:value card when absent. */
+  renderCard?: (row: Row<TData>) => React.ReactNode;
   loading?: boolean;
   empty: React.ReactNode;
   /** Append a totals card mirroring the desktop `<tfoot>`. */
@@ -407,6 +421,7 @@ function DataTableCards<TData>({
   return (
     <div className="space-y-3">
       {rows.map((row) => {
+        if (renderCard) return <div key={row.id}>{renderCard(row)}</div>;
         const { title, subtitle, badges, fields, actions } = bucketCells(row);
         return (
           <div key={row.id} className="rounded-lg border bg-card p-3">

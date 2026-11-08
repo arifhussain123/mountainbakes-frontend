@@ -14,6 +14,7 @@ import { createColumnHelper, type Table as TanstackTable } from '@tanstack/react
 import { cn } from '@/lib/utils';
 import { waitingDemandByProduct } from '@/utils/demandLines';
 import { StockCheckModal } from './StockCheckModal';
+import { StockMobileCard } from './StockMobileCard';
 
 const col = createColumnHelper<StockRow>();
 
@@ -303,6 +304,18 @@ export function StockPage() {
         searchPlaceholder="Search products…"
         pageSize={50}
         sortable
+        // Phone layout: the seven figures as columns under the product name,
+        // Stock below them. Same rows, figures and today-only rule for Waiting /
+        // Expected as the table — a past day shows "—" there instead of
+        // dropping the columns, so every card keeps the same seven slots.
+        mobileCard={(r) => (
+          <StockMobileCard
+            row={r.original}
+            waiting={
+              !isToday ? 'not-today' : !incomingLoaded ? 'loading' : (incomingByProduct.get(r.original.productId) ?? 0)
+            }
+          />
+        )}
         // Ahead of the search box, because it scopes what the search then filters
         // WITHIN: pick the day first, find the product second.
         leading={
