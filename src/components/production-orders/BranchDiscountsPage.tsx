@@ -176,7 +176,7 @@ export function BranchDiscountsPage() {
     col.accessor('id', {
       header: 'ID',
       enableSorting: false,
-      meta: { mobileLabel: 'Ref' },
+      meta: { mobileLabel: 'Ref', mobile: 'figure' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
     }),
     // The accessor carries the ISO date AND the rendered one so the global filter
@@ -190,13 +190,13 @@ export function BranchDiscountsPage() {
     }),
     col.accessor('createdAt', {
       header: 'Time',
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
     col.accessor((d) => d.reviewedAt ?? '', {
       id: 'reviewedAt',
       header: 'Reviewed',
-      meta: { align: 'center', mobileLabel: 'Reviewed' },
+      meta: { align: 'center', mobileLabel: 'Reviewed', mobile: 'figure' },
       cell: ({ row }) => (
         <span className="whitespace-nowrap tabular-nums text-muted-foreground">
           {row.original.reviewedAt ? formatTime(row.original.reviewedAt) : '—'}
@@ -212,7 +212,7 @@ export function BranchDiscountsPage() {
     }),
     col.accessor('amount', {
       header: 'Amount',
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="font-semibold tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor('reason', {

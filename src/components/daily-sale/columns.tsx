@@ -161,7 +161,7 @@ export function moneyColumn<T extends DailySaleRecord = DailySaleRecord>(
     id,
     accessorFn: (r) => value(r) ?? 0,
     header,
-    meta: { align: 'right', mobileLabel: header },
+    meta: { align: 'right', mobileLabel: header, mobile: 'figure' },
     cell: ({ row }) => {
       const v = value(row.original);
       return (

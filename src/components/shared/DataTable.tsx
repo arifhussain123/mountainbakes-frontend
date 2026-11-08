@@ -422,7 +422,7 @@ function DataTableCards<TData>({
     <div className="space-y-3">
       {rows.map((row) => {
         if (renderCard) return <div key={row.id}>{renderCard(row)}</div>;
-        const { title, subtitle, badges, fields, actions } = bucketCells(row);
+        const { title, subtitle, badges, figures, fields, actions } = bucketCells(row);
         return (
           <div key={row.id} className="rounded-lg border bg-card p-3">
             <div className="flex items-start justify-between gap-3">
@@ -446,6 +446,26 @@ function DataTableCards<TData>({
                 </div>
               )}
             </div>
+
+            {figures.length > 0 && (
+              // The figure strip: one compact column per figure, label above
+              // value. Each column takes an equal share of the row but never
+              // less than its own content (longest label word, the whole value
+              // — values do not wrap), and a row that cannot hold them all
+              // wraps onto the next instead of scrolling sideways. `gap-px`
+              // over a border-coloured background draws the dividers between
+              // columns and between wrapped rows alike.
+              <dl className="mt-2.5 flex flex-wrap gap-px overflow-hidden rounded-lg border bg-border">
+                {figures.map((c) => (
+                  <div key={c.id} className="flex flex-1 basis-0 flex-col items-center justify-between gap-1 bg-card px-1.5 py-2 text-center">
+                    <dt className="text-[10px] font-medium leading-tight tracking-tight text-muted-foreground">{mobileLabel(c)}</dt>
+                    <dd className="whitespace-nowrap text-sm font-medium leading-5 tabular-nums">
+                      <CellContent cell={c} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
 
             {fields.length > 0 && (
               <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">

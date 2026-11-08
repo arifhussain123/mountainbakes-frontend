@@ -122,35 +122,35 @@ export function BranchCashTransfersPage() {
     }),
     col.accessor('createdAt', {
       header: 'Time',
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
     col.accessor('cashAmount', {
       header: 'Cash',
       enableSorting: false,
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor('easypaisaAmount', {
       header: 'Easypaisa',
       enableSorting: false,
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor('bankAmount', {
       header: 'Bank',
       enableSorting: false,
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor('amount', {
       header: 'Total Amount',
-      meta: { align: 'center', mobileLabel: 'Total' },
+      meta: { align: 'center', mobileLabel: 'Total', mobile: 'figure' },
       cell: (i) => <span className="font-semibold tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor('fuelCharges', {
       header: 'Fuel Charges',
-      meta: { align: 'center', mobileLabel: 'Fuel' },
+      meta: { align: 'center', mobileLabel: 'Fuel', mobile: 'figure' },
       cell: (i) => <span className="tabular-nums">{formatCurrency(i.getValue())}</span>,
     }),
     col.accessor((t) => t.note ?? '', {
