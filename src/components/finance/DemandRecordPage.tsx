@@ -150,6 +150,8 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
       id: 'date',
       // The demand's Required by date — every finance figure dates a demand by it.
       header: twoLine('Required', 'Date'),
+      // The header is markup, so the phone card needs its label spelled out.
+      meta: { mobileLabel: 'Required Date' },
       // One line, never wrapped.
       cell: ({ row }) => <span className="whitespace-nowrap">{format(parseISO(row.original.businessDate), 'dd MMM yyyy')}</span>,
     }),
@@ -174,31 +176,31 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
     col.accessor('delivered', {
       header: 'Delivered',
       enableSorting: false,
-      meta: { align: 'right' },
+      meta: { align: 'right', mobile: 'figure' },
       cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('returns', {
       header: 'Return',
       enableSorting: false,
-      meta: { align: 'right' },
+      meta: { align: 'right', mobile: 'figure' },
       cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('discount', {
       header: 'Discount',
       enableSorting: false,
-      meta: { align: 'right' },
+      meta: { align: 'right', mobile: 'figure' },
       cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('gTotal', {
       header: 'G. Total',
       enableSorting: false,
-      meta: { align: 'right' },
+      meta: { align: 'right', mobile: 'figure' },
       cell: (i) => <Money value={i.getValue()} className="font-medium" noSymbol />,
     }),
     col.accessor('companyShare', {
       header: twoLine('Company', 'Share'),
       enableSorting: false,
-      meta: { align: 'right', mobileLabel: 'Company Share' },
+      meta: { align: 'right', mobileLabel: 'Company Share', mobile: 'figure' },
       cell: ({ row }) => (
         <span className="inline-flex flex-col items-end leading-tight">
           <Money value={row.original.companyShare} className="font-medium" noSymbol />
@@ -217,19 +219,19 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
     col.accessor('received', {
       header: twoLine('Share', 'Received'),
       enableSorting: false,
-      meta: { align: 'right', mobileLabel: 'Received' },
+      meta: { align: 'right', mobileLabel: 'Received', mobile: 'figure' },
       cell: (i) => <Money value={i.getValue()} blankZero noSymbol className="text-emerald-700 dark:text-emerald-400" />,
     }),
     col.accessor('adjustments', {
       header: twoLine('Adjust-', 'ments'),
       enableSorting: false,
-      meta: { align: 'right', mobileLabel: 'Adjustments' },
+      meta: { align: 'right', mobileLabel: 'Adjustments', mobile: 'figure' },
       cell: (i) => <Money value={i.getValue()} blankZero noSymbol />,
     }),
     col.accessor('previousBalance', {
       header: twoLine('Previous', 'Balance'),
       enableSorting: false,
-      meta: { align: 'right', mobileLabel: 'Previous' },
+      meta: { align: 'right', mobileLabel: 'Previous', mobile: 'figure' },
       cell: (i) => <BalanceCell value={i.getValue()} noSymbol />,
     }),
     col.accessor('closingBalance', {

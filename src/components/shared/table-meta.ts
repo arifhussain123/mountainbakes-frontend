@@ -17,6 +17,12 @@ export type MobileRole =
   | 'badge'
   /** A label:value pair in the field grid. The default — never needs writing. */
   | 'meta'
+  /**
+   * A short figure (an amount, a quantity, a time, a ref) in the card's
+   * figure strip: one compact column per figure, label above value, in column
+   * order, wrapping onto another row rather than scrolling sideways.
+   */
+  | 'figure'
   /** Card footer. Auto-detected when `column.id === 'actions'`. */
   | 'actions'
   /** Dropped on mobile — noise that only earns its keep in a wide table. */
@@ -75,6 +81,8 @@ export interface MobileCardSlots<TData> {
   title?: Cell<TData, unknown>;
   subtitle?: Cell<TData, unknown>;
   badges: Cell<TData, unknown>[];
+  /** `'figure'` cells, for the label-above-value strip. */
+  figures: Cell<TData, unknown>[];
   fields: Cell<TData, unknown>[];
   actions?: Cell<TData, unknown>;
 }
@@ -86,7 +94,7 @@ export interface MobileCardSlots<TData> {
  * make it searchable-but-not-shown never leaks into a card.
  */
 export function bucketCells<TData>(row: Row<TData>): MobileCardSlots<TData> {
-  const slots: MobileCardSlots<TData> = { badges: [], fields: [] };
+  const slots: MobileCardSlots<TData> = { badges: [], figures: [], fields: [] };
 
   for (const cell of row.getVisibleCells()) {
     const role =
@@ -106,6 +114,9 @@ export function bucketCells<TData>(row: Row<TData>): MobileCardSlots<TData> {
         break;
       case 'badge':
         slots.badges.push(cell);
+        break;
+      case 'figure':
+        slots.figures.push(cell);
         break;
       case 'actions':
         if (slots.actions) slots.fields.push(cell);

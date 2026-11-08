@@ -246,7 +246,7 @@ export function BranchReturnStockPage() {
     col.accessor('id', {
       header: 'ID',
       enableSorting: false,
-      meta: { mobileLabel: 'Ref' },
+      meta: { mobileLabel: 'Ref', mobile: 'figure' },
       cell: (i) => <span className="font-mono text-xs text-muted-foreground">{shortRef(i.getValue())}</span>,
     }),
     // The accessor carries the ISO date AND the rendered one so the global filter
@@ -260,7 +260,7 @@ export function BranchReturnStockPage() {
     }),
     col.accessor('createdAt', {
       header: 'Time',
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{formatTime(i.getValue())}</span>,
     }),
     // Null until Production decides — which now includes every branch return, so
@@ -270,7 +270,7 @@ export function BranchReturnStockPage() {
     col.accessor((r) => r.reviewedAt ?? '', {
       id: 'reviewedAt',
       header: 'Reviewed',
-      meta: { align: 'center', mobileLabel: 'Reviewed' },
+      meta: { align: 'center', mobileLabel: 'Reviewed', mobile: 'figure' },
       cell: ({ row }) => (
         <span className="whitespace-nowrap tabular-nums text-muted-foreground">
           {row.original.reviewedAt ? formatTime(row.original.reviewedAt) : '—'}
@@ -284,10 +284,14 @@ export function BranchReturnStockPage() {
     }),
     col.accessor('qty', {
       header: 'Qty',
-      meta: { align: 'center' },
+      meta: { align: 'center', mobile: 'figure' },
       cell: (i) => <span className="font-semibold tabular-nums">{i.getValue()}</span>,
     }),
-    ...returnValueColumns(col).filter((c) => c.id !== 'productCode'),
+    // Unit Price and Amount join the phone card's figure strip here only — the
+    // Production returns table shares these columns and keeps its own layout.
+    ...returnValueColumns(col)
+      .filter((c) => c.id !== 'productCode')
+      .map((c) => ({ ...c, meta: { ...c.meta, mobile: 'figure' as const } })),
     col.accessor('reason', {
       header: 'Reason',
       enableSorting: false,
