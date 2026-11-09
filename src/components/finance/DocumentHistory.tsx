@@ -95,7 +95,11 @@ export function DocumentHistory({
                   )}
                 />
                 <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-sm font-medium">{FINANCE_DOCUMENT_EVENT_LABELS[e.event] ?? e.event}</span>
+                  <span className="text-sm font-medium">
+                    {type === 'finance_transaction' && e.event === 'rejected'
+                      ? 'Returned to Accountant'
+                      : (FINANCE_DOCUMENT_EVENT_LABELS[e.event] ?? e.event)}
+                  </span>
                   {e.revision > 1 && <span className="text-xs text-muted-foreground">rev. {e.revision}</span>}
                   {e.voucherNo && <span className="font-mono text-xs">{e.voucherNo}</span>}
                 </div>

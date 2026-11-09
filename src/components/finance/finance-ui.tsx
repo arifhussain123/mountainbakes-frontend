@@ -189,7 +189,30 @@ const EXTRA_LABELS: Record<string, string> = {
   cancelled: 'Cancelled',
 };
 
-export function StatusBadge({ status, className }: { status: AnyStatus; className?: string }) {
+export function StatusBadge({
+  status,
+  className,
+  returned,
+}: {
+  status: AnyStatus;
+  className?: string;
+  /**
+   * Income & Expense entries: Finance Admin RETURNS an entry to the Accountant
+   * rather than rejecting it. The stored status is still `rejected` (what lets
+   * the Accountant edit and resubmit it); it is shown as "Returned".
+   */
+  returned?: boolean;
+}) {
+  if (returned && status === 'rejected') {
+    return (
+      <Badge
+        variant="secondary"
+        className={cn('bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300', className)}
+      >
+        Returned
+      </Badge>
+    );
+  }
   const label =
     EXTRA_LABELS[status] ??
     FINANCE_DOC_STATUS_LABELS[status as FinanceDocStatus] ??
