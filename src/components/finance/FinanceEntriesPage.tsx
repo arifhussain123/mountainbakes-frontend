@@ -65,7 +65,7 @@ export function FinanceEntriesPage() {
           { value: 'pending_approval', label: 'Pending Approval' },
           { value: 'posted', label: 'Posted' },
           { value: 'locked', label: 'Locked' },
-          { value: 'rejected', label: 'Rejected' },
+          { value: 'rejected', label: 'Returned' },
         ],
       },
       { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' },
@@ -110,6 +110,10 @@ export function FinanceEntriesPage() {
     sortBy: sort?.key,
     sortDir: sort?.direction,
   });
+
+  // A returned entry opens for the Accountant as the editable form, with
+  // Finance Admin's remarks on top — not as read-only details.
+  const open = (e: FinanceTransaction) => (e.status === 'rejected' && abilities.review ? setEditing(e) : setViewing(e));
 
   const rows = data?.entries ?? [];
   const total = data?.total ?? 0;
@@ -201,12 +205,12 @@ export function FinanceEntriesPage() {
         const row = i.row.original;
         return (
           <span className="block space-y-1">
-            <StatusBadge status={i.getValue()} />
+            <StatusBadge status={i.getValue()} returned />
             {row.status === 'rejected' && row.rejectionReason && (
               <ExpandableText
                 text={row.rejectionReason}
                 lines={2}
-                className="block whitespace-normal break-words text-xs text-red-700 dark:text-red-300 md:max-w-[11rem]"
+                className="block whitespace-normal break-words text-xs text-orange-700 dark:text-orange-300 md:max-w-[11rem]"
               />
             )}
             {row.status === 'pending_approval' && row.submittedAt && (
@@ -227,7 +231,7 @@ export function FinanceEntriesPage() {
       enableSorting: false,
       cell: (i) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
+          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => open(i.row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
           <EntryDecisionButtons entry={i.row.original} abilities={abilities} onEdit={setEditing} />

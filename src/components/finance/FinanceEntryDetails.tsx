@@ -18,7 +18,7 @@ import { Money, StatusBadge, type FinanceAbilities } from './finance-ui';
 import { RejectDialog } from './finance-actions';
 import { DocumentHistory } from './DocumentHistory';
 import { SUBMITTED_MESSAGE } from './FinanceEntryForm';
-import { Check, CheckCircle2, Clock, Pencil, Send, Undo2, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Pencil, Send, Undo2 } from 'lucide-react';
 
 /**
  * One Income & Expense entry, and what can be done with it now.
@@ -27,7 +27,8 @@ import { Check, CheckCircle2, Clock, Pencil, Send, Undo2, XCircle } from 'lucide
  *   draft            — Edit, Submit for Approval (the Accountant only)
  *   pending_approval — Approve / Edit / Return sit on the table row
  *                      (EntryDecisionButtons); an approver can also Edit here
- *   rejected         — the remarks first, then Edit and Correct, Resubmit (the Accountant only)
+ *   rejected         — shown as RETURNED: the remarks first, then Edit and Correct, Resubmit
+ *                      (the Accountant only; the list opens it straight in the form)
  *   posted / locked  — who approved it, the voucher, the ledger posting
  *
  * Reads the entry fresh by id, so a decision taken in another tab shows here
@@ -79,20 +80,20 @@ export function FinanceEntryDetails({
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={entry.status} />
+        <StatusBadge status={entry.status} returned />
         {entry.revision > 1 && <span className="text-xs text-muted-foreground">Revision {entry.revision}</span>}
       </div>
 
       {entry.status === 'rejected' && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/40">
-          <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600 dark:text-red-400" />
+        <div className="flex items-start gap-2.5 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-900 dark:bg-orange-950/40">
+          <Undo2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-600 dark:text-orange-400" />
           <div className="min-w-0 space-y-1">
-            <p className="font-semibold text-red-900 dark:text-red-200">Finance Admin remarks</p>
-            <p className="whitespace-pre-wrap break-words text-red-900 dark:text-red-200">
+            <p className="font-semibold text-orange-900 dark:text-orange-200">Returned to the Accountant — remarks</p>
+            <p className="whitespace-pre-wrap break-words text-orange-900 dark:text-orange-200">
               {entry.rejectionReason ?? 'No remarks were given.'}
             </p>
-            <p className="text-xs text-red-800/80 dark:text-red-300/80">
-              Rejected by {entry.rejectedByName ?? '—'}
+            <p className="text-xs text-orange-800/80 dark:text-orange-300/80">
+              Returned by {entry.rejectedByName ?? '—'}
               {entry.rejectedAt ? ` · ${formatDateTime(entry.rejectedAt)}` : ''}
             </p>
           </div>

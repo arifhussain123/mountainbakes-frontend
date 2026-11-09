@@ -31,7 +31,7 @@ import { Eye } from 'lucide-react';
  *
  * The same documents and the same API as Income & Expense (one place to fix an
  * approval bug); this screen is the queue's view of them: who sent each one and
- * when, filterable by submitter. Approve / Reject sit on the row after View.
+ * when, filterable by submitter. Approve / Edit / Return sit on the row after View.
  *
  * With no Status chosen it shows what is waiting. "All statuses" sends no
  * status at all, so an approver can look back at what they decided.
@@ -64,7 +64,7 @@ export function FinanceApprovalsPage() {
         key: 'status', label: 'Status', type: 'select', placement: 'bar',
         options: [
           { value: PENDING, label: 'Pending Approval' },
-          { value: 'rejected', label: 'Rejected' },
+          { value: 'rejected', label: 'Returned' },
           { value: 'posted', label: 'Approved (posted)' },
           { value: ALL, label: 'All statuses' },
         ],
@@ -117,7 +117,16 @@ export function FinanceApprovalsPage() {
       enableSorting: false,
       cell: (i) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="View"
+            onClick={() =>
+              i.row.original.status === 'rejected' && abilities.review
+                ? setEditing(i.row.original)
+                : setViewing(i.row.original)
+            }
+          >
             <Eye className="h-3.5 w-3.5" />
           </Button>
           <EntryDecisionButtons entry={i.row.original} abilities={abilities} onEdit={setEditing} />
@@ -193,7 +202,7 @@ export function FinanceApprovalsPage() {
     col.accessor('status', {
       header: 'Status',
       meta: { mobile: 'badge' },
-      cell: (i) => <StatusBadge status={i.getValue()} />,
+      cell: (i) => <StatusBadge status={i.getValue()} returned />,
     }),
   ];
 
@@ -201,12 +210,12 @@ export function FinanceApprovalsPage() {
     <div className="space-y-6">
       <FinancePageHeader
         title="Pending Approvals"
-        description="Income & Expense entries submitted by accountants. Approving posts the entry to the Daily Ledger and issues its RV-/PV- voucher; rejecting sends it back with your remarks."
+        description="Income & Expense entries submitted by accountants. Approving posts the entry to the Daily Ledger and issues its RV-/PV- voucher; returning sends it back to the Accountant with your remarks to correct."
       />
 
       {!abilities.loading && !abilities.approve && (
         <p className="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          You can see the queue, but approving and rejecting need a Finance Admin or Finance Manager account.
+          You can see the queue, but approving and returning need a Finance Admin or Finance Manager account.
         </p>
       )}
 

@@ -32,7 +32,7 @@ import { AttachmentGallery } from '@/components/shared/AttachmentGallery';
 import { PhotoCapture } from '@/components/shared/PhotoCapture';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/utils/date';
-import { TriangleAlert, XCircle } from 'lucide-react';
+import { Send, TriangleAlert, Undo2 } from 'lucide-react';
 
 /** What the server says back for a submission — the wording the brief asks for. */
 export const SUBMITTED_MESSAGE = 'Transaction submitted for Finance Admin approval.';
@@ -190,7 +190,7 @@ export function FinanceEntryForm({
       ? (branchesQ.data ?? []).filter((b) => EXPENSE_BRANCH_NAMES.includes(b.name.trim().toLowerCase()))
       : (branchesQ.data ?? []);
 
-  async function save(data: CreateFinanceTransactionInput) {
+  async function save(data: CreateFinanceTransactionInput, resubmit = false) {
     setDuplicateWarning(null);
     setRefused(null);
     if (restricted) return;
@@ -200,15 +200,17 @@ export function FinanceEntryForm({
         // pending one (an approver) — a posted one has no update path at all.
         // attachmentIds is stripped alongside asDraft: an edit revises the
         // figures, and the photos bound at creation stay bound (see the note on
-        // UpdateFinanceTransactionSchema). No `resubmit`: a rejected entry's
-        // correction is saved and resubmitted from View.
+        // UpdateFinanceTransactionSchema). A returned entry's correction is
+        // saved as it stands, or saved and resubmitted in one request.
         await mut.mutateAsync({
           path: `/api/finance/income/entries/${entry.id}`,
           method: 'PUT',
-          body: { ...data, asDraft: undefined, attachmentIds: undefined },
+          body: { ...data, asDraft: undefined, attachmentIds: undefined, resubmit: resubmit || undefined },
         });
         toast.success(
-          entry.status === 'pending_approval'
+          resubmit
+            ? SUBMITTED_MESSAGE
+            : entry.status === 'pending_approval'
             ? 'Changes saved — it is still awaiting approval'
             : entry.status === 'rejected'
               ? 'Correction saved — open it with View to resubmit it for approval'
@@ -262,14 +264,16 @@ export function FinanceEntryForm({
   return (
     <form onSubmit={form.handleSubmit((d) => save(d))} className="space-y-4">
       {entry?.status === 'rejected' && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
-          <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600 dark:text-red-400" />
+        <div className="flex items-start gap-2.5 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-900 dark:bg-orange-950/40">
+          <Undo2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-600 dark:text-orange-400" />
           <div className="min-w-0 space-y-1">
-            <p className="font-semibold text-red-900 dark:text-red-200">Rejected — correct it and resubmit</p>
-            <p className="whitespace-pre-wrap break-words text-red-900 dark:text-red-200">
+            <p className="font-semibold text-orange-900 dark:text-orange-200">
+              Returned by Finance Admin — correct it below and resubmit
+            </p>
+            <p className="whitespace-pre-wrap break-words text-orange-900 dark:text-orange-200">
               {entry.rejectionReason ?? 'No remarks were given.'}
             </p>
-            <p className="text-xs text-red-800/80 dark:text-red-300/80">
+            <p className="text-xs text-orange-800/80 dark:text-orange-300/80">
               {entry.rejectedByName ?? 'Finance Admin'}
               {entry.rejectedAt ? ` · ${formatDateTime(entry.rejectedAt)}` : ''}
             </p>
@@ -492,9 +496,27 @@ export function FinanceEntryForm({
         refused && <RestrictionNotice restriction={refused} />
       )}
 
-      <Button type="submit" size="lg" className="w-full" disabled={mut.isPending || restricted}>
-        {mut.isPending ? 'Saving…' : entry?.status === 'rejected' ? 'Save correction' : 'Save'}
-      </Button>
+      {entry?.status === 'rejected' && financeCanReview(user?.role) ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="submit" variant="outline" size="lg" className="flex-1" disabled={mut.isPending || restricted}>
+            {mut.isPending ? 'Saving…' : 'Save correction'}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            className="flex-1"
+            disabled={mut.isPending || restricted}
+            onClick={() => void form.handleSubmit((d) => save(d, true))()}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Save and resubmit
+          </Button>
+        </div>
+      ) : (
+        <Button type="submit" size="lg" className="w-full" disabled={mut.isPending || restricted}>
+          {mut.isPending ? 'Saving…' : 'Save'}
+        </Button>
+      )}
     </form>
   );
 }
