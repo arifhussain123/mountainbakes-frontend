@@ -218,8 +218,9 @@ export function FinanceEntriesPage() {
         );
       },
     }),
-    // View, then Approve / Reject on a pending entry for an approver. Edit,
-    // Submit, Edit and Correct and Resubmit live behind View.
+    // View, then Approve / Edit / Return on a pending entry for an approver, or
+    // Edit on a draft or returned one for the Accountant. Submit and Resubmit
+    // live behind View.
     col.display({
       id: 'actions',
       header: '',
@@ -229,7 +230,7 @@ export function FinanceEntriesPage() {
           <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <EntryDecisionButtons entry={i.row.original} abilities={abilities} />
+          <EntryDecisionButtons entry={i.row.original} abilities={abilities} onEdit={setEditing} />
         </div>
       ),
     }),
