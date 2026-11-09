@@ -120,7 +120,7 @@ export function FinanceApprovalsPage() {
           <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => setViewing(i.row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <EntryDecisionButtons entry={i.row.original} abilities={abilities} />
+          <EntryDecisionButtons entry={i.row.original} abilities={abilities} onEdit={setEditing} />
         </div>
       ),
     }),

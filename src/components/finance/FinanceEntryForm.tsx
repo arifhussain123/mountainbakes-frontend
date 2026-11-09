@@ -196,8 +196,8 @@ export function FinanceEntryForm({
     if (restricted) return;
     try {
       if (entry) {
-        // Editing only ever touches a draft or a rejected document — a posted one
-        // has no update path at all, by design.
+        // Editing touches a draft or a returned document (the Accountant) or a
+        // pending one (an approver) — a posted one has no update path at all.
         // attachmentIds is stripped alongside asDraft: an edit revises the
         // figures, and the photos bound at creation stay bound (see the note on
         // UpdateFinanceTransactionSchema). No `resubmit`: a rejected entry's
@@ -208,9 +208,11 @@ export function FinanceEntryForm({
           body: { ...data, asDraft: undefined, attachmentIds: undefined },
         });
         toast.success(
-          entry.status === 'rejected'
-            ? 'Correction saved — open it with View to resubmit it for approval'
-            : 'Draft saved — open it with View to submit it for approval',
+          entry.status === 'pending_approval'
+            ? 'Changes saved — it is still awaiting approval'
+            : entry.status === 'rejected'
+              ? 'Correction saved — open it with View to resubmit it for approval'
+              : 'Draft saved — open it with View to submit it for approval',
         );
       } else {
         await mut.mutateAsync({

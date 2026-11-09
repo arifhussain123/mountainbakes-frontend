@@ -129,12 +129,20 @@ export function RejectDialog({
   onOpenChange,
   path,
   label,
+  verb = 'reject',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   path: string;
   label: string;
+  /**
+   * 'return' sends it back to its author for correction: the same request as
+   * 'reject' (status `rejected`, with remarks), worded as Income & Expense
+   * entries use it.
+   */
+  verb?: 'reject' | 'return';
 }) {
+  const isReturn = verb === 'return';
   const [reason, setReason] = useState('');
   const mut = useFinanceMutation();
 
@@ -145,11 +153,11 @@ export function RejectDialog({
     }
     try {
       await mut.mutateAsync({ path, body: { reason: reason.trim() } });
-      toast.success('Rejected');
+      toast.success(isReturn ? `${label} returned for correction` : 'Rejected');
       setReason('');
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not reject this document');
+      toast.error(err instanceof Error ? err.message : `Could not ${verb} this document`);
     }
   }
 
@@ -157,9 +165,13 @@ export function RejectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="md:max-w-md">
         <DialogHeader>
-          <DialogTitle>Reject {label}</DialogTitle>
+          <DialogTitle>
+            {isReturn ? 'Return' : 'Reject'} {label}
+          </DialogTitle>
           <DialogDescription>
-            The reason is recorded on the document and in the audit trail, and is what tells its author what to fix.
+            {isReturn
+              ? 'It goes back to its author to correct and resubmit. The reason is recorded on the document and in the audit trail.'
+              : 'The reason is recorded on the document and in the audit trail, and is what tells its author what to fix.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -179,7 +191,7 @@ export function RejectDialog({
             Cancel
           </Button>
           <Button variant="destructive" disabled={mut.isPending} onClick={() => void submit()}>
-            {mut.isPending ? 'Rejecting…' : 'Reject'}
+            {mut.isPending ? (isReturn ? 'Returning…' : 'Rejecting…') : isReturn ? 'Return' : 'Reject'}
           </Button>
         </DialogFooter>
       </DialogContent>

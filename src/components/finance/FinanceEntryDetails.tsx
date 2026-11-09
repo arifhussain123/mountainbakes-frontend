@@ -18,15 +18,15 @@ import { Money, StatusBadge, type FinanceAbilities } from './finance-ui';
 import { RejectDialog } from './finance-actions';
 import { DocumentHistory } from './DocumentHistory';
 import { SUBMITTED_MESSAGE } from './FinanceEntryForm';
-import { Check, CheckCircle2, Clock, Pencil, Send, X, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Pencil, Send, Undo2, XCircle } from 'lucide-react';
 
 /**
  * One Income & Expense entry, and what can be done with it now.
  *
  * The actions follow the status, and the server enforces the same rules:
  *   draft            — Edit, Submit for Approval (the Accountant only)
- *   pending_approval — locked to edits; Approve / Reject sit on the table row
- *                      (EntryDecisionButtons), not here
+ *   pending_approval — Approve / Edit / Return sit on the table row
+ *                      (EntryDecisionButtons); an approver can also Edit here
  *   rejected         — the remarks first, then Edit and Correct, Resubmit (the Accountant only)
  *   posted / locked  — who approved it, the voucher, the ledger posting
  *
@@ -104,8 +104,8 @@ export function FinanceEntryDetails({
           <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
           <p className="text-amber-900 dark:text-amber-200">
             Awaiting Finance Admin approval — submitted by {entry.submittedByName ?? '—'}
-            {entry.submittedAt ? ` on ${formatDateTime(entry.submittedAt)}` : ''}. It cannot be edited while it is
-            under review.
+            {entry.submittedAt ? ` on ${formatDateTime(entry.submittedAt)}` : ''}. While it is under review only an
+            approver can edit it.
           </p>
         </div>
       )}
@@ -198,6 +198,12 @@ export function FinanceEntryDetails({
             </Button>
           </>
         )}
+        {entry.status === 'pending_approval' && abilities.approve && (
+          <Button variant="outline" className="flex-1" onClick={() => onEdit(entry)}>
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </Button>
+        )}
         {entry.status === 'rejected' && abilities.review && (
           <>
             <Button variant="outline" className="flex-1" onClick={() => onEdit(entry)}>
@@ -233,23 +239,41 @@ export function FinanceEntryDetails({
 }
 
 /**
- * Approve / Reject for a pending entry, on its table row beside View. The same
- * confirmations the details dialog used to carry: approving asks first (with
- * an optional note) because it posts to the ledger, rejecting asks for remarks.
+ * The row's actions beside View.
+ *
+ * For an approver on a pending entry: Approve, Edit (fix it in the queue; it
+ * stays pending) and Return (back to the Accountant with remarks, to correct
+ * and resubmit). There is no Reject: Return is the same request, and every
+ * refused entry is meant to come back corrected. Approving asks first, with an
+ * optional note, because it posts to the ledger.
+ *
+ * For the Accountant on a draft or returned entry: Edit.
  */
 export function EntryDecisionButtons({
   entry,
   abilities,
+  onEdit,
 }: {
   entry: FinanceTransaction;
   abilities: FinanceAbilities;
+  /** Open the entry form on this entry. Without it no Edit button is shown. */
+  onEdit?: (entry: FinanceTransaction) => void;
 }) {
   const approveMut = useFinanceMutation();
   const [confirming, setConfirming] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
+  const [returning, setReturning] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
 
-  if (entry.status !== 'pending_approval' || !abilities.approve) return null;
+  const authorCanEdit = (entry.status === 'draft' || entry.status === 'rejected') && abilities.review;
+  if (entry.status !== 'pending_approval' || !abilities.approve) {
+    if (!authorCanEdit || !onEdit) return null;
+    return (
+      <Button variant="outline" size="sm" onClick={() => onEdit(entry)}>
+        <Pencil className="h-3.5 w-3.5" />
+        Edit
+      </Button>
+    );
+  }
 
   const isIncome = entry.txnType === 'income';
 
@@ -273,9 +297,15 @@ export function EntryDecisionButtons({
         <Check className="h-3.5 w-3.5" />
         Approve
       </Button>
-      <Button variant="destructive" size="sm" onClick={() => setRejecting(true)}>
-        <X className="h-3.5 w-3.5" />
-        Reject
+      {onEdit && (
+        <Button variant="outline" size="sm" onClick={() => onEdit(entry)}>
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </Button>
+      )}
+      <Button variant="outline" size="sm" onClick={() => setReturning(true)}>
+        <Undo2 className="h-3.5 w-3.5" />
+        Return
       </Button>
 
       <ConfirmDialog
@@ -306,7 +336,13 @@ export function EntryDecisionButtons({
         </div>
       </ConfirmDialog>
 
-      <RejectDialog open={rejecting} onOpenChange={setRejecting} path={`${BASE}/${entry.id}/reject`} label={entry.txnNo} />
+      <RejectDialog
+        open={returning}
+        onOpenChange={setReturning}
+        path={`${BASE}/${entry.id}/reject`}
+        label={entry.txnNo}
+        verb="return"
+      />
     </>
   );
 }
