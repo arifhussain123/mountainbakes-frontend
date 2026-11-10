@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
+import { toast } from 'sonner';
 import {
   FINANCE_PAYMENT_METHOD_LABELS,
   type FilterConfig,
@@ -22,7 +23,7 @@ import { ExpandableText } from '@/components/shared/ExpandableText';
 import { formatDateTime } from '@/utils/date';
 import { FinancePageHeader, Money, StatusBadge, useFinanceAbilities } from './finance-ui';
 import { FinanceEntryForm } from './FinanceEntryForm';
-import { EntryDecisionButtons, FinanceEntryDetails } from './FinanceEntryDetails';
+import { EntryDecisionButtons, FinanceEntryDetails, nextInQueue, queueOf } from './FinanceEntryDetails';
 import { Eye } from 'lucide-react';
 
 /**
@@ -269,6 +270,7 @@ export function FinanceApprovalsPage() {
           </DialogHeader>
           {viewing && (
             <FinanceEntryDetails
+              key={viewing.id}
               entry={viewing}
               abilities={abilities}
               onEdit={(e) => {
@@ -276,6 +278,14 @@ export function FinanceApprovalsPage() {
                 setEditing(e);
               }}
               onClose={() => setViewing(null)}
+              // Working through a pile: once this one is dealt with, open the
+              // next one of its kind on the page rather than dropping back to the list.
+              onDone={(done) => {
+                const next = nextInQueue(rows, done.id, queueOf(done));
+                setViewing(next);
+                if (!next) toast.success('Nothing more waiting on this page');
+              }}
+              queueLeft={rows.filter((r) => r.status === queueOf(viewing) && r.id !== viewing.id).length}
             />
           )}
         </DialogContent>

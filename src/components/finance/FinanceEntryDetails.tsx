@@ -46,17 +46,43 @@ function Field({ label, children, wide }: { label: string; children: React.React
   );
 }
 
+/**
+ * The entry to open after one has been dealt with: the next row on the page in
+ * `status` (a draft for the Accountant, a pending entry for the approver),
+ * wrapping round to the top. Null when there is none left on the page.
+ */
+/** The queue an entry belongs to: the approver's pending pile, or the Accountant's drafts. */
+export function queueOf(entry: FinanceTransaction): FinanceTransaction['status'] {
+  return entry.status === 'pending_approval' ? 'pending_approval' : 'draft';
+}
+
+export function nextInQueue(
+  rows: FinanceTransaction[],
+  currentId: string,
+  status: FinanceTransaction['status'],
+): FinanceTransaction | null {
+  const at = rows.findIndex((r) => r.id === currentId);
+  const ordered = at < 0 ? rows : [...rows.slice(at + 1), ...rows.slice(0, at)];
+  return ordered.find((r) => r.id !== currentId && r.status === status) ?? null;
+}
+
 export function FinanceEntryDetails({
   entry: initial,
   abilities,
   onEdit,
   onClose,
+  onDone,
+  queueLeft = 0,
 }: {
   entry: FinanceTransaction;
   abilities: FinanceAbilities;
   /** Open the entry form on this entry (Edit / Edit and Correct). */
   onEdit: (entry: FinanceTransaction) => void;
   onClose: () => void;
+  /** Called after Submit, Approve or Return went through — the page opens the next one. */
+  onDone?: (entry: FinanceTransaction) => void;
+  /** How many more entries wait in the same queue on this page (shown as a hint). */
+  queueLeft?: number;
 }) {
   const fresh = useFinanceEntry(initial.id);
   const entry = fresh.data ?? initial;
@@ -66,12 +92,17 @@ export function FinanceEntryDetails({
 
   const isIncome = entry.txnType === 'income';
   const posted = entry.status === 'posted' || entry.status === 'locked' || entry.status === 'approved';
+  /** This viewer can act on it here (submit it, or approve/return it). */
+  const actionable =
+    ((entry.status === 'draft' || entry.status === 'rejected') && abilities.review) ||
+    (entry.status === 'pending_approval' && abilities.approve);
 
   async function submit() {
     try {
       await submitMut.mutateAsync({ path: `${BASE}/${entry.id}/submit`, body: {} });
       toast.success(SUBMITTED_MESSAGE);
       setConfirm(null);
+      onDone?.(entry);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not submit this entry');
     }
@@ -186,6 +217,16 @@ export function FinanceEntryDetails({
 
       <DocumentHistory type="finance_transaction" id={entry.id} path={`${BASE}/${entry.id}`} className="border-t pt-3" />
 
+      {queueLeft > 0 && onDone && actionable && (
+        <p className="border-t pt-3 text-xs text-muted-foreground">
+          {queueLeft} more{' '}
+          {entry.status === 'pending_approval'
+            ? `${queueLeft === 1 ? 'entry' : 'entries'} waiting for approval`
+            : queueLeft === 1 ? 'draft' : 'drafts'}{' '}
+          on this page — the next one opens when you are done with this.
+        </p>
+      )}
+
       <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:flex-wrap">
         {entry.status === 'draft' && abilities.review && (
           <>
@@ -200,10 +241,7 @@ export function FinanceEntryDetails({
           </>
         )}
         {entry.status === 'pending_approval' && abilities.approve && (
-          <Button variant="outline" className="flex-1" onClick={() => onEdit(entry)}>
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </Button>
+          <EntryDecisionButtons entry={entry} abilities={abilities} onEdit={onEdit} onDone={() => onDone?.(entry)} fill />
         )}
         {entry.status === 'rejected' && abilities.review && (
           <>
@@ -254,12 +292,20 @@ export function EntryDecisionButtons({
   entry,
   abilities,
   onEdit,
+  onDone,
+  fill = false,
 }: {
   entry: FinanceTransaction;
   abilities: FinanceAbilities;
   /** Open the entry form on this entry. Without it no Edit button is shown. */
   onEdit?: (entry: FinanceTransaction) => void;
+  /** Called after Approve or Return went through. */
+  onDone?: () => void;
+  /** Full-size buttons that share a dialog footer, instead of compact row buttons. */
+  fill?: boolean;
 }) {
+  const size = fill ? 'default' : 'sm';
+  const cls = fill ? 'flex-1' : undefined;
   const approveMut = useFinanceMutation();
   const [confirming, setConfirming] = useState(false);
   const [returning, setReturning] = useState(false);
@@ -287,6 +333,7 @@ export function EntryDecisionButtons({
       toast.success(`${entry.txnNo} approved and posted to the Daily Ledger`);
       setConfirming(false);
       setApprovalNote('');
+      onDone?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not approve this entry');
     }
@@ -294,17 +341,17 @@ export function EntryDecisionButtons({
 
   return (
     <>
-      <Button size="sm" onClick={() => setConfirming(true)}>
+      <Button size={size} className={cls} onClick={() => setConfirming(true)}>
         <Check className="h-3.5 w-3.5" />
         Approve
       </Button>
       {onEdit && (
-        <Button variant="outline" size="sm" onClick={() => onEdit(entry)}>
+        <Button variant="outline" size={size} className={cls} onClick={() => onEdit(entry)}>
           <Pencil className="h-3.5 w-3.5" />
           Edit
         </Button>
       )}
-      <Button variant="outline" size="sm" onClick={() => setReturning(true)}>
+      <Button variant="outline" size={size} className={cls} onClick={() => setReturning(true)}>
         <Undo2 className="h-3.5 w-3.5" />
         Return
       </Button>
@@ -343,6 +390,7 @@ export function EntryDecisionButtons({
         path={`${BASE}/${entry.id}/reject`}
         label={entry.txnNo}
         verb="return"
+        onDone={onDone}
       />
     </>
   );
