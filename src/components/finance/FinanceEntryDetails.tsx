@@ -18,15 +18,17 @@ import { Money, StatusBadge, type FinanceAbilities } from './finance-ui';
 import { RejectDialog } from './finance-actions';
 import { DocumentHistory } from './DocumentHistory';
 import { SUBMITTED_MESSAGE } from './FinanceEntryForm';
-import { Check, CheckCircle2, Clock, Pencil, Send, Undo2 } from 'lucide-react';
+import { Check, CheckCircle2, Clock, History, Pencil, Send, Undo2 } from 'lucide-react';
 
 /**
  * One Income & Expense entry, and what can be done with it now.
  *
  * The actions follow the status, and the server enforces the same rules:
  *   draft            — Edit, Submit for Approval (the Accountant only)
- *   pending_approval — Approve / Edit / Return sit on the table row
- *                      (EntryDecisionButtons); an approver can also Edit here
+ *   pending_approval — for an approver this IS the approval popup: the complete
+ *                      entry, an optional note, Approve and post / Edit / Return
+ *                      (the row's Approve opens it); the next pending entry
+ *                      opens after each decision
  *   rejected         — shown as RETURNED: the remarks first, then Edit and Correct, Resubmit
  *                      (the Accountant only; the list opens it straight in the form)
  *   posted / locked  — who approved it, the voucher, the ledger posting
@@ -89,6 +91,7 @@ export function FinanceEntryDetails({
 
   const submitMut = useFinanceMutation();
   const [confirm, setConfirm] = useState<'submit' | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const isIncome = entry.txnType === 'income';
   const posted = entry.status === 'posted' || entry.status === 'locked' || entry.status === 'approved';
@@ -215,7 +218,18 @@ export function FinanceEntryDetails({
         </div>
       </div>
 
-      <DocumentHistory type="finance_transaction" id={entry.id} path={`${BASE}/${entry.id}`} className="border-t pt-3" />
+      {/* Hidden until asked for: it is long, and it pushed the decision buttons
+          far down the window. Fetched only when opened. */}
+      {showHistory ? (
+        <DocumentHistory type="finance_transaction" id={entry.id} path={`${BASE}/${entry.id}`} className="border-t pt-3" />
+      ) : (
+        <div className="border-t pt-2">
+          <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={() => setShowHistory(true)}>
+            <History className="h-3.5 w-3.5" />
+            Show history
+          </Button>
+        </div>
+      )}
 
       {queueLeft > 0 && onDone && actionable && (
         <p className="border-t pt-3 text-xs text-muted-foreground">
@@ -278,13 +292,16 @@ export function FinanceEntryDetails({
 }
 
 /**
- * The row's actions beside View.
+ * The approver's decisions on a pending entry, and the author's Edit.
  *
- * For an approver on a pending entry: Approve, Edit (fix it in the queue; it
- * stays pending) and Return (back to the Accountant with remarks, to correct
- * and resubmit). There is no Reject: Return is the same request, and every
- * refused entry is meant to come back corrected. Approving asks first, with an
- * optional note, because it posts to the ledger.
+ * ON A TABLE ROW (compact): Approve does not post from the row — it opens the
+ * complete entry (`onReview`), because an approver should see everything,
+ * photo included, before it reaches the ledger. Edit and Return work in place.
+ *
+ * IN THE ENTRY WINDOW (`fill`): the window is the confirmation, so the note and
+ * "Approve and post" sit right here and post in one press. There is no Reject:
+ * Return is the same request, and every refused entry is meant to come back
+ * corrected.
  *
  * For the Accountant on a draft or returned entry: Edit.
  */
@@ -292,6 +309,7 @@ export function EntryDecisionButtons({
   entry,
   abilities,
   onEdit,
+  onReview,
   onDone,
   fill = false,
 }: {
@@ -299,15 +317,16 @@ export function EntryDecisionButtons({
   abilities: FinanceAbilities;
   /** Open the entry form on this entry. Without it no Edit button is shown. */
   onEdit?: (entry: FinanceTransaction) => void;
+  /** Row only: open the complete entry to approve it there. */
+  onReview?: (entry: FinanceTransaction) => void;
   /** Called after Approve or Return went through. */
   onDone?: () => void;
-  /** Full-size buttons that share a dialog footer, instead of compact row buttons. */
+  /** Full-size controls for the entry window's footer, instead of compact row buttons. */
   fill?: boolean;
 }) {
   const size = fill ? 'default' : 'sm';
   const cls = fill ? 'flex-1' : undefined;
   const approveMut = useFinanceMutation();
-  const [confirming, setConfirming] = useState(false);
   const [returning, setReturning] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
 
@@ -331,7 +350,6 @@ export function EntryDecisionButtons({
         body: { notes: approvalNote.trim() || undefined },
       });
       toast.success(`${entry.txnNo} approved and posted to the Daily Ledger`);
-      setConfirming(false);
       setApprovalNote('');
       onDone?.();
     } catch (err) {
@@ -341,48 +359,47 @@ export function EntryDecisionButtons({
 
   return (
     <>
-      <Button size={size} className={cls} onClick={() => setConfirming(true)}>
-        <Check className="h-3.5 w-3.5" />
-        Approve
-      </Button>
+      {fill && (
+        <div className="w-full basis-full space-y-2 rounded-lg border bg-muted/40 p-3">
+          <p>
+            Approving posts <Money value={entry.amount} className="font-semibold" /> to the Daily Ledger under{' '}
+            <b>{entry.ledgerHeadName}</b> on {entry.businessDate} and issues its {isIncome ? 'RV-' : 'PV-'} voucher. A
+            posted entry can only be changed by a reversal.
+          </p>
+          <div className="space-y-1">
+            <Label htmlFor={`approval-note-${entry.id}`}>Note (optional)</Label>
+            <Textarea
+              id={`approval-note-${entry.id}`}
+              rows={2}
+              maxLength={500}
+              value={approvalNote}
+              onChange={(e) => setApprovalNote(e.target.value)}
+              placeholder="e.g. Checked against the bill"
+            />
+          </div>
+        </div>
+      )}
+      {(fill || onReview) && (
+        <Button
+          size={size}
+          className={cls}
+          disabled={approveMut.isPending}
+          onClick={() => (fill ? void approve() : onReview?.(entry))}
+        >
+          <Check className="h-3.5 w-3.5" />
+          {fill ? (approveMut.isPending ? 'Approving…' : 'Approve and post') : 'Approve'}
+        </Button>
+      )}
       {onEdit && (
-        <Button variant="outline" size={size} className={cls} onClick={() => onEdit(entry)}>
+        <Button variant="outline" size={size} className={cls} disabled={approveMut.isPending} onClick={() => onEdit(entry)}>
           <Pencil className="h-3.5 w-3.5" />
           Edit
         </Button>
       )}
-      <Button variant="outline" size={size} className={cls} onClick={() => setReturning(true)}>
+      <Button variant="outline" size={size} className={cls} disabled={approveMut.isPending} onClick={() => setReturning(true)}>
         <Undo2 className="h-3.5 w-3.5" />
         Return
       </Button>
-
-      <ConfirmDialog
-        open={confirming}
-        onOpenChange={setConfirming}
-        title={`Approve ${entry.txnNo}?`}
-        description={
-          <>
-            This posts <Money value={entry.amount} className="font-semibold" /> to the Daily Ledger under{' '}
-            {entry.ledgerHeadName} on {entry.businessDate} and issues its {isIncome ? 'RV-' : 'PV-'} voucher. A posted
-            entry can only be changed by a reversal.
-          </>
-        }
-        confirmLabel="Approve and post"
-        pending={approveMut.isPending}
-        onConfirm={() => void approve()}
-      >
-        <div className="space-y-1">
-          <Label htmlFor={`approval-note-${entry.id}`}>Note (optional)</Label>
-          <Textarea
-            id={`approval-note-${entry.id}`}
-            rows={2}
-            maxLength={500}
-            value={approvalNote}
-            onChange={(e) => setApprovalNote(e.target.value)}
-            placeholder="e.g. Checked against the bill"
-          />
-        </div>
-      </ConfirmDialog>
 
       <RejectDialog
         open={returning}

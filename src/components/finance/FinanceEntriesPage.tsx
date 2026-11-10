@@ -235,7 +235,7 @@ export function FinanceEntriesPage() {
           <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => open(i.row.original)}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
-          <EntryDecisionButtons entry={i.row.original} abilities={abilities} onEdit={setEditing} />
+          <EntryDecisionButtons entry={i.row.original} abilities={abilities} onEdit={setEditing} onReview={setViewing} />
         </div>
       ),
     }),
@@ -324,7 +324,9 @@ export function FinanceEntriesPage() {
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
         <DialogContent className="overflow-y-auto md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{viewing?.txnNo}</DialogTitle>
+            <DialogTitle>
+              {viewing?.status === 'pending_approval' && abilities.approve ? `Approve ${viewing.txnNo}?` : viewing?.txnNo}
+            </DialogTitle>
           </DialogHeader>
           {viewing && (
             <FinanceEntryDetails
