@@ -74,8 +74,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 export function setRememberMe(remember: boolean): void {
   if (typeof window === 'undefined') return;
   try {
-    if (remember) window.localStorage.setItem(REMEMBER_KEY, '1');
-    else window.localStorage.removeItem(REMEMBER_KEY);
+    window.localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0');
   } catch {
     // Private mode / storage disabled — fall through to the non-persistent branch.
   }
@@ -90,8 +89,12 @@ function wantsPersistence(): boolean {
   // "Don't remember me" is a promise about a shared BROWSER; an app someone put
   // on their own Home Screen is not that, and a tab still honours the choice.
   if (isStandalone()) return true;
+  // Kept unless someone UNTICKED "Remember me". No choice recorded (every
+  // sign-in before this rule, when unticked was the default) counts as kept: a
+  // session living in sessionStorage ends with the tab or the browser, and
+  // staff read that as being signed out on their own.
   try {
-    return window.localStorage.getItem(REMEMBER_KEY) === '1';
+    return window.localStorage.getItem(REMEMBER_KEY) !== '0';
   } catch {
     return false;
   }
