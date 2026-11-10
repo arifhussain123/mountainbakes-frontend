@@ -32,7 +32,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showForgot, setShowForgot] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   // Warm every possible landing route while the person is still typing, so the
   // spinner RouteGuard shows during its post-login redirect isn't also waiting
