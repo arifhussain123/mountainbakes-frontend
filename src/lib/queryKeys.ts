@@ -429,6 +429,31 @@ export const qk = {
   purchaseItems: () => ['purchasing', 'items'] as const,
   purchaseConversations: (search: string | null) => ['purchasing', 'conversations', search ?? ''] as const,
   purchaseMessages: (params: Record<string, unknown>) => ['purchasing', 'messages', params] as const,
+
+  // Dry Items Store. One root, like purchasing: a receipt changes stock, the
+  // ledger, the dashboard and what a demand can be approved for, so every
+  // write invalidates ['store'] (lib/store.ts) rather than guessing which of
+  // these views it touched.
+  storeMe: () => ['store', 'me'] as const,
+  storeLookups: (all: boolean) => ['store', 'lookups', all] as const,
+  storeAccounts: () => ['store', 'accounts'] as const,
+  storeItems: (includeInactive: boolean) => ['store', 'items', includeInactive] as const,
+  storeItemHistory: (id: string) => ['store', 'itemHistory', id] as const,
+  storeItemLedger: (id: string, from: string, to: string) => ['store', 'ledger', id, from, to] as const,
+  storePrices: (params: Record<string, unknown>) => ['store', 'prices', params] as const,
+  storeSuppliers: () => ['store', 'suppliers'] as const,
+  storeReceipts: (params: Record<string, unknown>) => ['store', 'receipts', params] as const,
+  storeReceipt: (id: string) => ['store', 'receipt', id] as const,
+  storeStock: (from: string, to: string) => ['store', 'stock', from, to] as const,
+  storeAdjustments: (params: Record<string, unknown>) => ['store', 'adjustments', params] as const,
+  storeDemands: (params: Record<string, unknown>) => ['store', 'demands', params] as const,
+  storeDemandCounts: () => ['store', 'demandCounts'] as const,
+  storeIssues: (params: Record<string, unknown>) => ['store', 'issues', params] as const,
+  storeQueries: (params: Record<string, unknown>) => ['store', 'queries', params] as const,
+  storeQuery: (id: string) => ['store', 'query', id] as const,
+  storeDashboard: (from: string, to: string, period: string) => ['store', 'dashboard', from, to, period] as const,
+  storeReport: (type: string, from: string, to: string, itemId: string | null) => ['store', 'report', type, from, to, itemId ?? ''] as const,
+  storeAudit: (params: Record<string, unknown>) => ['store', 'audit', params] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

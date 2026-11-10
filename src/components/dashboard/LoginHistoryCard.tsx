@@ -107,6 +107,7 @@ const ROLE_OPTIONS = [
   { value: 'finance_manager', label: 'Finance Manager' },
   { value: 'accountant', label: 'Accountant' },
   { value: 'finance_auditor', label: 'Finance Auditor' },
+  { value: 'store_user', label: 'Store Keeper' },
 ];
 
 type DatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'month';

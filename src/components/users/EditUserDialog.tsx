@@ -22,6 +22,7 @@ const ROLE_ITEMS = [
   { value: 'super_admin', label: 'Super Admin' },
   { value: 'branch_manager', label: 'Branch Manager' },
   { value: 'production_user', label: 'Production User' },
+  { value: 'store_user', label: 'Store Keeper' },
 ];
 const STATUS_ITEMS = [
   { value: 'active', label: 'Active' },

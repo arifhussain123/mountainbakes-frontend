@@ -39,6 +39,10 @@ import {
   ClipboardCheck,
   Sparkles,
   PiggyBank,
+  Warehouse,
+  PackagePlus,
+  PackageCheck,
+  Wheat,
 } from 'lucide-react';
 import type { UserRole } from '@mb/shared';
 import { ROUTES, normalizePath } from './routes';
@@ -78,6 +82,8 @@ export const ADMIN_NAV: NavItem[] = [
   // Beside Security rather than under Settings: it is an operations check
   // ("do we have last night's backup?"), not a preference.
   { label: 'Database Backup', href: ROUTES.DATABASE_BACKUP,  icon: DatabaseBackup },
+  // The whole Dry Items Store opens from here; its pages carry their own tabs.
+  { label: 'Dry Items Store', href: ROUTES.STORE_DASHBOARD,  icon: Warehouse },
   { label: 'Settings',        href: ROUTES.SETTINGS,         icon: Settings },
 ];
 
@@ -125,6 +131,8 @@ export const FINANCE_NAV: NavItem[] = [
   { label: 'Reports',          href: ROUTES.FINANCE_REPORTS,           icon: BarChart3 },
   { label: 'Audit Trail',      href: ROUTES.FINANCE_AUDIT,             icon: ShieldCheck },
   { label: 'Help Desk',        href: ROUTES.FINANCE_HELP_DESK,         icon: Headset },
+  // Read-only, apart from Price Control for Finance Admin / Manager (storeCan).
+  { label: 'Dry Items Store',  href: ROUTES.STORE_DASHBOARD,           icon: Warehouse },
   { label: 'Settings',         href: ROUTES.FINANCE_SETTINGS,          icon: Settings },
 ];
 
@@ -160,9 +168,23 @@ export const PRODUCTION_NAV: NavItem[] = [
   { label: 'Returns',           href: ROUTES.PRODUCTION_RETURNS,       icon: Undo2 },
   { label: 'Discounts',         href: ROUTES.PRODUCTION_DISCOUNTS,     icon: BadgePercent },
   { label: 'WhatsApp Purchasing', href: ROUTES.PRODUCTION_WHATSAPP,    icon: MessageCircle },
+  { label: 'Dry Items Demand',  href: ROUTES.PRODUCTION_DRY_DEMAND,    icon: Wheat },
   { label: 'Events',            href: ROUTES.PRODUCTION_EVENTS,        icon: CalendarDays },
   { label: 'Reports',           href: ROUTES.PRODUCTION_REPORTS,       icon: BarChart3 },
   { label: 'Help Desk',         href: ROUTES.PRODUCTION_HELP_DESK,     icon: Headset },
+];
+
+/** Dry Items Store keeper. Ordered the way a day runs: receive, review demand, issue, check stock. */
+export const STORE_NAV: NavItem[] = [
+  { label: 'Dashboard',           href: ROUTES.STORE_DASHBOARD, icon: LayoutDashboard },
+  { label: 'Store Items',         href: ROUTES.STORE_ITEMS,     icon: Package },
+  { label: 'Price Control',       href: ROUTES.STORE_PRICES,    icon: Tag },
+  { label: 'New Stock Receiving', href: ROUTES.STORE_RECEIVING, icon: PackagePlus },
+  { label: 'Store Stock',         href: ROUTES.STORE_STOCK,     icon: Boxes },
+  { label: 'Approval & Issue',    href: ROUTES.STORE_APPROVAL,  icon: PackageCheck },
+  { label: 'Stock Ledger',        href: ROUTES.STORE_LEDGER,    icon: ScrollText },
+  { label: 'Reports',             href: ROUTES.STORE_REPORTS,   icon: BarChart3 },
+  { label: 'Queries',             href: ROUTES.STORE_QUERIES,   icon: Headset },
 ];
 
 export const NAV_MAP: Record<UserRole, NavItem[]> = {
@@ -173,6 +195,7 @@ export const NAV_MAP: Record<UserRole, NavItem[]> = {
   finance_manager: FINANCE_NAV,
   accountant:      ACCOUNTANT_NAV,
   finance_auditor: FINANCE_NAV,
+  store_user:      STORE_NAV,
 };
 
 export function getNavItems(role: UserRole): NavItem[] {
@@ -218,6 +241,7 @@ export const PRIMARY_NAV: Record<UserRole, string[]> = {
   finance_manager: FINANCE_PRIMARY,
   accountant:      FINANCE_PRIMARY.filter((href) => href !== ROUTES.FINANCE_LEDGER),
   finance_auditor: FINANCE_PRIMARY,
+  store_user: [ROUTES.STORE_DASHBOARD, ROUTES.STORE_RECEIVING, ROUTES.STORE_APPROVAL, ROUTES.STORE_STOCK],
 };
 
 /**

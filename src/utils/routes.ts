@@ -102,6 +102,8 @@ export const ROUTES = {
    * already links here, so the path must not move.
    */
   PRODUCTION_WHATSAPP: '/production-whatsapp',
+  // Dry Items Demand: Production asks the Dry Items Store for the day's dry items.
+  PRODUCTION_DRY_DEMAND: '/production-dry-demand',
   USERS: '/users',
   SETTINGS: '/settings',
   /**
@@ -225,6 +227,22 @@ export const ROUTES = {
    * role guard — never put it under a role prefix.
    */
   SUPPLIER_PORTAL: '/supplier-portal',
+
+  // Dry Items Store (store_user; Admin too, Finance roles read part of it —
+  // see canOpenStorePage in utils/storeAccess.ts). One '/store-' prefix rule
+  // in RouteGuard covers them all.
+  STORE_DASHBOARD: '/store-dashboard',
+  STORE_ITEMS: '/store-items',
+  STORE_PRICES: '/store-prices',
+  STORE_RECEIVING: '/store-receiving',
+  STORE_STOCK: '/store-stock',
+  STORE_APPROVAL: '/store-approval',
+  STORE_LEDGER: '/store-ledger',
+  STORE_QUERIES: '/store-queries',
+  STORE_REPORTS: '/store-reports',
+  // Admin only, inside the Store's own prefix.
+  STORE_ACCOUNTS: '/store-accounts',
+  STORE_SETTINGS: '/store-settings',
 } as const;
 
 
