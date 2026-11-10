@@ -130,11 +130,14 @@ export function RejectDialog({
   path,
   label,
   verb = 'reject',
+  onDone,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   path: string;
   label: string;
+  /** Called once the reject/return has gone through. */
+  onDone?: () => void;
   /**
    * 'return' sends it back to its author for correction: the same request as
    * 'reject' (status `rejected`, with remarks), worded as Income & Expense
@@ -156,6 +159,7 @@ export function RejectDialog({
       toast.success(isReturn ? `${label} returned for correction` : 'Rejected');
       setReason('');
       onOpenChange(false);
+      onDone?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Could not ${verb} this document`);
     }
