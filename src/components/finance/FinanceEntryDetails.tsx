@@ -16,9 +16,8 @@ import { ConfirmDialog } from '@/components/purchasing/parts';
 import { formatDateTime } from '@/utils/date';
 import { Money, StatusBadge, type FinanceAbilities } from './finance-ui';
 import { RejectDialog } from './finance-actions';
-import { DocumentHistory } from './DocumentHistory';
 import { SUBMITTED_MESSAGE } from './FinanceEntryForm';
-import { Check, CheckCircle2, Clock, History, Pencil, Send, Undo2 } from 'lucide-react';
+import { Check, CheckCircle2, Clock, Pencil, Send, Undo2 } from 'lucide-react';
 
 /**
  * One Income & Expense entry, and what can be done with it now.
@@ -91,7 +90,6 @@ export function FinanceEntryDetails({
 
   const submitMut = useFinanceMutation();
   const [confirm, setConfirm] = useState<'submit' | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
 
   const isIncome = entry.txnType === 'income';
   const posted = entry.status === 'posted' || entry.status === 'locked' || entry.status === 'approved';
@@ -187,16 +185,6 @@ export function FinanceEntryDetails({
         <Field label="Payment Method">{FINANCE_PAYMENT_METHOD_LABELS[entry.paymentMethod] ?? entry.paymentMethod}</Field>
         <Field label="Account">{FINANCE_ACCOUNT_LABELS[entry.account]}</Field>
         {entry.referenceNo && <Field label="Reference">{entry.referenceNo}</Field>}
-        <Field label="Created By">
-          {entry.createdByName ?? '—'}
-          <span className="block text-xs font-normal text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
-        </Field>
-        <Field label="Submitted By">
-          {entry.submittedByName ?? '—'}
-          {entry.submittedAt && (
-            <span className="block text-xs font-normal text-muted-foreground">{formatDateTime(entry.submittedAt)}</span>
-          )}
-        </Field>
         {posted && (
           <Field label="Voucher">
             <span className="font-mono">{entry.voucherNo ?? '—'}</span>
@@ -218,18 +206,6 @@ export function FinanceEntryDetails({
         </div>
       </div>
 
-      {/* Hidden until asked for: it is long, and it pushed the decision buttons
-          far down the window. Fetched only when opened. */}
-      {showHistory ? (
-        <DocumentHistory type="finance_transaction" id={entry.id} path={`${BASE}/${entry.id}`} className="border-t pt-3" />
-      ) : (
-        <div className="border-t pt-2">
-          <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={() => setShowHistory(true)}>
-            <History className="h-3.5 w-3.5" />
-            Show history
-          </Button>
-        </div>
-      )}
 
       {queueLeft > 0 && onDone && actionable && (
         <p className="border-t pt-3 text-xs text-muted-foreground">
