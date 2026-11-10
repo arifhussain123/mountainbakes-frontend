@@ -53,6 +53,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   finance_manager: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
   accountant: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
   finance_auditor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+  store_user: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
 };
 
 export function UsersPage() {
@@ -304,6 +305,9 @@ export function UsersPage() {
                     <SelectItem value="super_admin">Super Admin</SelectItem>
                     <SelectItem value="branch_manager">Branch Manager</SelectItem>
                     <SelectItem value="production_user">Production User</SelectItem>
+                    {/* Dry Items Store keeper. What the account may do beyond the
+                        defaults is set on Store → Accounts. */}
+                    <SelectItem value="store_user">Store Keeper (Dry Items Store)</SelectItem>
                     {/* Finance Ledger accounts are provisioned here like every
                         other account — the role rides in app_metadata and is what
                         the module's own login checks. Without these four options

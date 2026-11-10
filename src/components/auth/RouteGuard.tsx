@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { canAccessFinance, getRoleHome } from '@/utils/roleHome';
+import { canOpenStorePage } from '@/utils/storeAccess';
 import { normalizePath, ROUTES } from '@/utils/routes';
 import { isBranchRole } from '@mb/shared';
 
@@ -172,7 +173,10 @@ export function redirectFor(
     // What each may actually do on those screens is decided per action by
     // financeCan(), and independently re-decided by the API — the difference
     // between a Read Only Auditor and a Finance Admin is not a routing concern.
-    (pathname.startsWith('/finance-') && !canAccessFinance(user.role));
+    (pathname.startsWith('/finance-') && !canAccessFinance(user.role)) ||
+    // Dry Items Store. Store keeper and Admin; Finance reads part of it; the
+    // two admin-only pages (Accounts, Settings) sit under the same prefix.
+    (pathname.startsWith('/store-') && !canOpenStorePage(user.role, pathname));
 
   return wrongRole ? home : null;
 }

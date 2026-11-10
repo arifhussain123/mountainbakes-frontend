@@ -44,6 +44,9 @@ export function getRoleHome(role: string): string {
     case 'accountant':
     case 'finance_auditor':
       return ROUTES.FINANCE_DASHBOARD;
+    // Dry Items Store keeper.
+    case 'store_user':
+      return ROUTES.STORE_DASHBOARD;
     default:
       return ROUTES.LOGIN;
   }

@@ -68,6 +68,19 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.PRODUCTION_EVENTS]: 'Special Events',
   [ROUTES.PRODUCTION_QUEUE]: 'Production Queue',
   [ROUTES.PRODUCTION_WHATSAPP]: 'WhatsApp Purchasing',
+  [ROUTES.PRODUCTION_DRY_DEMAND]: 'Dry Items Demand',
+  // Dry Items Store
+  [ROUTES.STORE_DASHBOARD]: 'Store Dashboard',
+  [ROUTES.STORE_ITEMS]: 'Store Items',
+  [ROUTES.STORE_PRICES]: 'Store Price Control',
+  [ROUTES.STORE_RECEIVING]: 'New Stock Receiving',
+  [ROUTES.STORE_STOCK]: 'Store Stock',
+  [ROUTES.STORE_APPROVAL]: 'Demand Approval & Issue',
+  [ROUTES.STORE_LEDGER]: 'Stock Ledger',
+  [ROUTES.STORE_QUERIES]: 'Store Queries',
+  [ROUTES.STORE_REPORTS]: 'Store Reports',
+  [ROUTES.STORE_ACCOUNTS]: 'Store Accounts',
+  [ROUTES.STORE_SETTINGS]: 'Store Settings',
 
   // Finance Ledger. Several deliberately differ from their nav label — the nav
   // has a column of finance items and does not need to say "Finance" eleven
