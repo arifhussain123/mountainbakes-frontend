@@ -81,3 +81,41 @@ describe('redirectFor — the supplier portal', () => {
     expect(redirectFor('/supplier-portal-admin', null)).toBe('/login');
   });
 });
+
+describe('redirectFor — Dry Items Store', () => {
+  test('a Store keeper lands on the Store Dashboard and keeps every Store page but Accounts and Settings', () => {
+    expect(redirectFor('/', as('store_user'))).toBe('/store-dashboard');
+    for (const path of ['/store-dashboard', '/store-items', '/store-prices', '/store-receiving', '/store-stock', '/store-approval', '/store-ledger/', '/store-queries', '/store-reports']) {
+      expect(redirectFor(path, as('store_user'))).toBeNull();
+    }
+    expect(redirectFor('/store-accounts', as('store_user'))).toBe('/store-dashboard');
+    expect(redirectFor('/store-settings', as('store_user'))).toBe('/store-dashboard');
+  });
+
+  test('a Store keeper is kept off admin, branch, production and finance screens', () => {
+    for (const path of ['/dashboard', '/users', '/branch-sales', '/production-dry-demand', '/finance-ledger']) {
+      expect(redirectFor(path, as('store_user'))).toBe('/store-dashboard');
+    }
+  });
+
+  test('Admin opens every Store page, Accounts and Settings included', () => {
+    for (const path of ['/store-dashboard', '/store-approval', '/store-accounts', '/store-settings']) {
+      expect(redirectFor(path, as('super_admin'))).toBeNull();
+    }
+  });
+
+  test('Finance reads the Store but does not receive, approve or open its accounts', () => {
+    for (const path of ['/store-dashboard', '/store-items', '/store-prices', '/store-stock', '/store-ledger', '/store-reports']) {
+      expect(redirectFor(path, as('finance_manager'))).toBeNull();
+    }
+    for (const path of ['/store-receiving', '/store-approval', '/store-queries', '/store-accounts']) {
+      expect(redirectFor(path, as('accountant'))).toBe('/finance-dashboard');
+    }
+  });
+
+  test('Production raises dry-items demand on its own screen and cannot open the Store', () => {
+    expect(redirectFor('/production-dry-demand', as('production_user'))).toBeNull();
+    expect(redirectFor('/store-approval', as('production_user'))).toBe('/production-dashboard');
+    expect(redirectFor('/store-dashboard', as('branch_manager'))).toBe('/branch-dashboard');
+  });
+});
