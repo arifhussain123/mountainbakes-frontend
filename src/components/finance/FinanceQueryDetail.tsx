@@ -1250,6 +1250,21 @@ export function DeleteQueryDialog({ ticket, onClose, onDone }: { ticket: Finance
   const mutation = useFinanceMutation();
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [raisingNew, setRaisingNew] = useState(false);
+  // A query can be recreated once; a draft never reaches this dialog.
+  const canRaiseNew = !ticket.recreatedAsId && ticket.status !== 'draft';
+
+  if (raisingNew) {
+    return (
+      <QuickFeedDialog
+        ticket={ticket}
+        mode="recreate"
+        deleteOriginalReason={reason.trim()}
+        onClose={() => setRaisingNew(false)}
+        onDone={() => onDone()}
+      />
+    );
+  }
 
   async function submit() {
     try {
@@ -1299,6 +1314,18 @@ export function DeleteQueryDialog({ ticket, onClose, onDone }: { ticket: Finance
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             Cancel
+          </Button>
+          <Button
+            variant="outline"
+            disabled={mutation.isPending || reason.trim().length < 3 || !confirmed || !canRaiseNew}
+            title={
+              canRaiseNew
+                ? 'Open a new query filled in from this one; this one is deleted once the new one is saved'
+                : `Already recreated as ${ticket.recreatedAsQueryNo}`
+            }
+            onClick={() => setRaisingNew(true)}
+          >
+            <Copy className="mr-1.5 h-4 w-4" /> Delete &amp; raise new
           </Button>
           <Button variant="destructive" disabled={mutation.isPending || reason.trim().length < 3 || !confirmed} onClick={() => void submit()}>
             {mutation.isPending ? 'Deleting…' : 'Delete query'}
@@ -1504,30 +1531,40 @@ export function QuickFeedDialog({
   mode,
   onClose,
   onDone,
+  deleteOriginalReason,
 }: {
   ticket: FinanceTicket;
   mode: QuickFeedMode;
   onClose: () => void;
   /** Called with the ticket the change produced — the NEW one on recreate. */
   onDone: (result: FinanceTicket | null) => void;
+  /**
+   * Recreate only: once the new query is saved, delete the original with this
+   * reason ("Delete & raise new"). The new query is created first, so backing
+   * out of the form leaves the original untouched.
+   */
+  deleteOriginalReason?: string;
 }) {
   const { token } = useAuth();
   const mutation = useFinanceMutation<{ ticket: FinanceTicket }>();
   const { data: branches = [] } = useBranches(token ?? '', { enabled: Boolean(token) });
   const base = useMemo(() => feedFromTicket(ticket), [ticket]);
   const [feed, setFeed] = useState<FeedState>(base);
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(deleteOriginalReason ?? '');
+  const replacing = mode === 'recreate' && deleteOriginalReason !== undefined;
   const diff = useMemo(() => feedDiff(base, feed), [base, feed]);
   const dirty = Object.keys(diff).length > 0;
   const incomplete = feed.subject.trim().length < 3 || feed.description.trim().length < 3;
 
-  const title = mode === 'edit' ? 'Edit' : mode === 'amend' ? 'Amend' : 'Recreate';
+  const title = mode === 'edit' ? 'Edit' : mode === 'amend' ? 'Amend' : replacing ? 'Raise new query in place of' : 'Recreate';
   const description =
     mode === 'edit'
       ? 'Changes the query, not the financial record behind it. The previous values are kept as a version and the raiser is told why.'
       : mode === 'amend'
         ? 'Saves the form as a new version, marks the query AMENDED and keeps every previous version. Nothing on the books changes.'
-        : 'Creates a NEW query under a new Query ID with the form as it stands. This query is left as it is and both point at each other.';
+        : replacing
+          ? `Creates a NEW query under a new Query ID with the form as it stands, then deletes ${ticket.queryNo}. Both point at each other, and ${ticket.queryNo} can still be restored from Deleted.`
+          : 'Creates a NEW query under a new Query ID with the form as it stands. This query is left as it is and both point at each other.';
 
   async function submit() {
     const path =
@@ -1542,6 +1579,22 @@ export function QuickFeedDialog({
         method: mode === 'edit' ? 'PATCH' : 'POST',
         body: { ...diff, reason: reason.trim() },
       });
+      if (replacing) {
+        const newNo = result.ticket.queryNo;
+        try {
+          await mutation.mutateAsync({
+            path: `/api/finance/tickets/${ticket.id}`,
+            method: 'DELETE',
+            body: { reason: deleteOriginalReason!.trim(), confirmDelete: true },
+          });
+          toast.success(`${newNo} raised · ${ticket.queryNo} deleted`);
+        } catch (err) {
+          const why = err instanceof Error ? err.message : 'unknown error';
+          toast.error(`${newNo} was raised, but ${ticket.queryNo} could not be deleted (${why}). Delete it from the queue.`);
+        }
+        onDone(result.ticket ?? null);
+        return;
+      }
       toast.success(
         mode === 'edit'
           ? `${ticket.queryNo} updated`
@@ -1596,7 +1649,15 @@ export function QuickFeedDialog({
             Cancel
           </Button>
           <Button variant={mode === 'edit' ? 'default' : 'secondary'} disabled={blocked} onClick={() => void submit()}>
-            {mutation.isPending ? 'Saving…' : mode === 'edit' ? 'Save changes' : mode === 'amend' ? 'Amend query' : 'Recreate query'}
+            {mutation.isPending
+              ? 'Saving…'
+              : mode === 'edit'
+                ? 'Save changes'
+                : mode === 'amend'
+                  ? 'Amend query'
+                  : replacing
+                    ? `Raise new & delete ${ticket.queryNo}`
+                    : 'Recreate query'}
           </Button>
         </DialogFooter>
       </DialogContent>

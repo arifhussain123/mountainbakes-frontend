@@ -20,6 +20,9 @@ import { saveBlob } from '@/utils/saveBlob';
 // than the period dropdown. It is built server-side off the production-stock
 // ledger, so the same rows the preview shows are what the exporters write.
 const PREPARED_REPORT = 'prepared-detail';
+// Production Stock runs on the same From/To window: Opening is the stock at
+// the start of From, Closing the stock at the end of To.
+const RANGE_REPORTS = new Set([PREPARED_REPORT, 'production-stock']);
 
 const REPORTS = [
   { value: 'production', label: 'Production (Daily)' },
@@ -81,7 +84,7 @@ export function ProductionReportsPage() {
   const period = (list.getFilter('period')?.value as string | undefined) ?? 'monthly';
   const from = (list.getFilter('businessDate', 'gte')?.value as string | undefined) ?? today;
   const to = (list.getFilter('businessDate', 'lte')?.value as string | undefined) ?? today;
-  const isPrepared = report === PREPARED_REPORT;
+  const isRange = RANGE_REPORTS.has(report);
 
   // A column INDEX, not a key — these reports have no per-cell name, only a
   // position, and that position means something completely different from one
@@ -107,20 +110,20 @@ export function ProductionReportsPage() {
   const filters = useMemo<FilterConfig[]>(
     () => [
       { key: 'report', label: 'Report', type: 'select', placement: 'bar', options: REPORTS },
-      isPrepared
+      isRange
         ? { key: 'businessDate', label: 'Date', type: 'date-range', placement: 'bar' }
         : { key: 'period', label: 'Period', type: 'select', placement: 'bar', options: PERIODS },
     ],
-    [isPrepared],
+    [isRange],
   );
 
   // One endpoint for every report: period-driven ones send `period`, the
   // date-wise one sends `from`/`to`. The server ignores whichever it doesn't use.
   // `page`/`pageSize` are likewise ignored by every report type except the two
   // that are actually paginated server-side (see ReportPagination above).
-  const rangeParams = isPrepared ? `&from=${from}&to=${to}` : '';
+  const rangeParams = isRange ? `&from=${from}&to=${to}` : '';
   const query = useQuery({
-    queryKey: ['productionReport', report, period, isPrepared ? from : '', isPrepared ? to : '', list.state.page, list.state.pageSize, sort?.index, sort?.direction],
+    queryKey: ['productionReport', report, period, isRange ? from : '', isRange ? to : '', list.state.page, list.state.pageSize, sort?.index, sort?.direction],
     queryFn: () =>
       apiCall<ReportData>(
         `/api/production-reports/summary?report=${report}&period=${period}${rangeParams}&page=${list.state.page}&pageSize=${list.state.pageSize}${sortParams}`,
@@ -147,7 +150,7 @@ export function ProductionReportsPage() {
       const ext = type === 'excel' ? 'xlsx' : type;
       // Name the file after the window it covers — two exports pulled the same
       // day for different date ranges must not collide in the Downloads folder.
-      const scope = isPrepared ? (from === to ? from : `${from}_to_${to}`) : period;
+      const scope = isRange ? (from === to ? from : `${from}_to_${to}`) : period;
       saveBlob(blob, `mountain-bakes-${report}-${scope}.${ext}`);
       toast.success(`${type.toUpperCase()} exported`);
     } catch {

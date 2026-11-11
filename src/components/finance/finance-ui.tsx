@@ -36,6 +36,8 @@ export interface FinanceAbilities {
   approve: boolean;
   adjust: boolean;
   configure: boolean;
+  /** Add an employee on Payroll: `configure`, or Super Admin outright (owner, 2026-11-11). */
+  addEmployee: boolean;
   /** Edit and Submit for Approval on Income & Expense entries and cash deposits — the Accountant only. */
   review: boolean;
   /** True while the finance settings are still loading. */
@@ -75,6 +77,7 @@ export function useFinanceAbilities(): FinanceAbilities {
       approve: can('approve'),
       adjust: can('adjust'),
       configure: can('configure'),
+      addEmployee: can('configure') || role === 'super_admin',
       review: financeCanReview(role),
       loading: isLoading,
       roleLabel: isFinanceRole(role)
