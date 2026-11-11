@@ -304,8 +304,14 @@ export function LedgerLegend({ salary, symbol }: { salary: boolean; symbol: stri
       )}
       {salary && (
         <span className="flex items-center gap-1.5">
-          <span className="font-bold text-red-500">—</span>
-          Eligible month, no approved salary
+          <span className="size-2.5 rounded-[3px] border border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/60" />
+          Advance drawn, no salary yet
+        </span>
+      )}
+      {salary && (
+        <span className="flex items-center gap-1.5">
+          <span className="text-[11px] font-bold text-red-500">Pending</span>
+          No salary or advance yet
         </span>
       )}
       <span className="flex items-center gap-1.5">
@@ -577,8 +583,10 @@ function CellButton({
   const paid = cell.state === 'paid';
   const description = paid
     ? `${amount(cell.amount)} approved${cell.flagged ? ', flagged for review' : ''}`
-    : cell.state === 'unpaid'
-      ? 'no approved salary'
+    : cell.state === 'advance'
+      ? `no salary yet, advance ${amount(cell.advanceAmount ?? 0)} drawn`
+      : cell.state === 'unpaid'
+      ? 'pending: no salary or advance yet'
       : cell.state === 'closed'
         ? 'closed after resignation'
         : 'no approved record';
@@ -596,6 +604,8 @@ function CellButton({
         paid &&
           'border-emerald-100 bg-emerald-50 hover:border-emerald-600 dark:border-emerald-900 dark:bg-emerald-950/50 dark:hover:border-emerald-500',
         cell.state === 'unpaid' && 'border-transparent text-red-500 hover:border-red-200 hover:bg-red-50 dark:hover:border-red-900 dark:hover:bg-red-950/40',
+        cell.state === 'advance' &&
+          'border-sky-100 bg-sky-50 hover:border-sky-600 dark:border-sky-900 dark:bg-sky-950/50 dark:hover:border-sky-500',
         cell.state === 'none' && 'border-transparent text-muted-foreground/50 hover:border-border',
         cell.state === 'closed' && cn('border-transparent text-muted-foreground/50 hover:border-border', HATCH),
       )}
@@ -616,6 +626,15 @@ function CellButton({
               <span className="text-[11px] font-bold whitespace-nowrap text-amber-700 dark:text-amber-400">Review</span>
             )}
           </>
+        ) : cell.state === 'advance' ? (
+          <>
+            <span className="text-[13.5px] font-semibold whitespace-nowrap text-foreground print:text-[9px]">
+              {amount(cell.advanceAmount ?? 0)}
+            </span>
+            <span className="text-[11px] font-semibold whitespace-nowrap text-sky-700 dark:text-sky-400">Advance</span>
+          </>
+        ) : cell.state === 'unpaid' ? (
+          <span className="text-[12px] font-bold whitespace-nowrap print:text-[9px]">Pending</span>
         ) : (
           <span className="font-bold">—</span>
         )}
