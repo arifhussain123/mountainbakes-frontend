@@ -954,16 +954,20 @@ function EmployeesTab({ abilities }: { abilities: ReturnType<typeof useFinanceAb
             ]}
           />
         </LegacyFilterField>
-        {abilities.configure && (
+        {(abilities.configure || abilities.addEmployee) && (
           <div className="ml-auto flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="h-11 md:h-9" onClick={() => setResigning(true)}>
-              <UserMinus className="h-3.5 w-3.5" />
-              Resignation
-            </Button>
-            <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
-              <UserPlus className="h-3.5 w-3.5" />
-              Add employee
-            </Button>
+            {abilities.configure && (
+              <Button variant="outline" size="sm" className="h-11 md:h-9" onClick={() => setResigning(true)}>
+                <UserMinus className="h-3.5 w-3.5" />
+                Resignation
+              </Button>
+            )}
+            {abilities.addEmployee && (
+              <Button size="sm" className="h-11 md:h-9" onClick={() => setCreating(true)}>
+                <UserPlus className="h-3.5 w-3.5" />
+                Add employee
+              </Button>
+            )}
           </div>
         )}
       </LegacyFilterBar>
