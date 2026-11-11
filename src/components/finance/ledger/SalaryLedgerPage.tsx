@@ -77,7 +77,7 @@ const STATUS_OPTIONS: { value: SalaryLedgerStatusFilter; label: string }[] = [
   { value: 'all', label: 'All employees' },
   { value: 'active', label: 'Active' },
   { value: 'resigned', label: 'Resigned' },
-  { value: 'unpaid', label: 'Has unpaid months' },
+  { value: 'unpaid', label: 'Has pending months' },
   { value: 'pending', label: 'Has pending approval' },
 ];
 
@@ -149,7 +149,7 @@ export function SalaryLedgerPage() {
       note: s ? `${s.activeEmployees} active · ${s.resignedEmployees} resigned` : ' ',
     },
     {
-      label: 'Unpaid employee-months',
+      label: 'Pending employee-months',
       value: s ? String(s.unpaidEmployeeMonths) : '—',
       note: 'Eligible months with no approved salary',
     },
