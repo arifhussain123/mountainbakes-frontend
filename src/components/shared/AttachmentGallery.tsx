@@ -1,10 +1,23 @@
 'use client';
 
 import { memo, useState, type ReactNode } from 'react';
-import { ImageOff } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Crop, ImageOff, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Attachment } from '@mb/shared';
-import { forgetStableAttachmentUrl, formatBytes, stableAttachmentUrl } from '@/lib/attachments';
+import {
+  cropImage,
+  fetchAttachmentFile,
+  forgetStableAttachmentUrl,
+  formatBytes,
+  replaceAttachmentFile,
+  stableAttachmentUrl,
+  type CropArea,
+} from '@/lib/attachments';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/providers/AuthProvider';
+import { Button } from '@/components/ui/button';
+import { CropDialog } from '@/components/shared/CropDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 /**
@@ -48,7 +61,46 @@ export const AttachmentGallery = memo(function AttachmentGallery({
 }) {
   const [viewing, setViewing] = useState<Attachment | null>(null);
   const [zoomed, setZoomed] = useState(false);
-  const items = attachments ?? [];
+  // Crop (Finance Admin / Super Admin, saved pictures only). `cropped` keeps
+  // the replacement on screen until the parent's query refetches.
+  const { user, token } = useAuth();
+  const queryClient = useQueryClient();
+  const canCrop = user?.role === 'finance_admin' || user?.role === 'super_admin';
+  const [cropped, setCropped] = useState<Record<string, Attachment>>({});
+  const [cropSource, setCropSource] = useState<Blob | null>(null);
+  const [cropLoading, setCropLoading] = useState(false);
+  const [cropSaving, setCropSaving] = useState(false);
+  const items = (attachments ?? []).map((a) => cropped[a.id] ?? a);
+
+  async function startCrop(a: Attachment) {
+    setCropLoading(true);
+    try {
+      setCropSource(await fetchAttachmentFile(a.id, token));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not open the picture');
+    } finally {
+      setCropLoading(false);
+    }
+  }
+
+  async function saveCrop(area: CropArea) {
+    if (!viewing || !cropSource) return;
+    setCropSaving(true);
+    try {
+      const blob = await cropImage(cropSource, area);
+      const saved = await replaceAttachmentFile(viewing, blob, token);
+      setCropped((m) => ({ ...m, [saved.id]: saved }));
+      setViewing(saved);
+      setCropSource(null);
+      toast.success('Picture cropped and saved. The original is kept on record.');
+      // Every list that shows this picture refetches and picks up the new file.
+      void queryClient.invalidateQueries();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The cropped picture could not be saved');
+    } finally {
+      setCropSaving(false);
+    }
+  }
 
   if (items.length === 0) {
     return emptyText ? <p className={cn('text-xs text-muted-foreground', className)}>{emptyText}</p> : null;
@@ -108,13 +160,30 @@ export const AttachmentGallery = memo(function AttachmentGallery({
           )}
           {viewing && details}
           {viewing && (
-            <p className="text-xs text-muted-foreground">
-              {formatBytes(viewing.sizeBytes)}
-              {viewing.uploadedByName ? ` · ${viewing.uploadedByName}` : ''}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {formatBytes(viewing.sizeBytes)}
+                {viewing.uploadedByName ? ` · ${viewing.uploadedByName}` : ''}
+              </p>
+              {canCrop && viewing.entityId && (
+                <Button type="button" variant="outline" size="sm" disabled={cropLoading} onClick={() => void startCrop(viewing)}>
+                  {cropLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Crop className="mr-1.5 h-4 w-4" />}
+                  Crop
+                </Button>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {canCrop && (
+        <CropDialog
+          source={cropSource}
+          busy={cropSaving}
+          onConfirm={(area) => void saveCrop(area)}
+          onCancel={() => setCropSource(null)}
+        />
+      )}
     </>
   );
 });

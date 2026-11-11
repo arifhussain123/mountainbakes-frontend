@@ -12,7 +12,7 @@ import {
   type AttachmentEntity,
 } from '@mb/shared';
 import { apiCall } from '@/utils/api';
-import { apiUpload, type UploadOptions } from '@/lib/api/client';
+import { API_URL, apiUpload, type UploadOptions } from '@/lib/api/client';
 
 /**
  * Capturing a photo and getting it to the API at a size a branch phone can
@@ -458,4 +458,58 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ── Crop a SAVED picture (Finance Admin) ───────────────────────────────────
+
+/**
+ * The stored bytes of a saved picture, read through the API rather than the
+ * signed URL: a canvas cannot take pixels from a cross-origin image unless the
+ * bucket sends CORS headers, and it does not.
+ */
+export async function fetchAttachmentFile(id: string, token: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/attachments/${encodeURIComponent(id)}/file`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('Could not reach the server to open the picture.');
+  }
+  if (!res.ok) {
+    throw new Error(
+      res.status === 403
+        ? 'Only Finance Admin can crop a saved picture.'
+        : res.status === 404
+          ? 'This picture could not be found, or the server has not been updated yet.'
+          : `Could not open the picture (HTTP ${res.status}).`,
+    );
+  }
+  return res.blob();
+}
+
+/**
+ * Replace a saved picture with a cropped copy. The server keeps the original
+ * file and logs it (attachment_revisions), so this is recoverable.
+ */
+export async function replaceAttachmentFile(
+  attachment: Pick<Attachment, 'id' | 'entity'>,
+  cropped: Blob,
+  token: string,
+): Promise<Attachment> {
+  const image = await compressImage(cropped, attachment.entity === 'branch_return' ? RETURN_PHOTO_PROFILE : DOCUMENT_PROFILE);
+  const form = new FormData();
+  form.append('width', String(image.width));
+  form.append('height', String(image.height));
+  form.append('photo', image.blob, image.blob.type === 'image/webp' ? 'crop.webp' : 'crop.jpg');
+  const { attachment: saved } = await apiCall<{ attachment: Attachment }>(
+    `/api/attachments/${encodeURIComponent(attachment.id)}/file`,
+    { method: 'PUT', body: form },
+    token,
+  );
+  // The held URL points at the old file. Hold the NEW one instead, so a list
+  // still rendering the old signed URL (until it refetches) shows the crop.
+  forgetStableAttachmentUrl(attachment.id);
+  stableAttachmentUrl(saved);
+  return saved;
 }
