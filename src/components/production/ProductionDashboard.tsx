@@ -322,7 +322,9 @@ export function ProductionDashboard({ embedded = false }: { embedded?: boolean }
   const sectionProps = { token, period, branchId, scope, periodName: per.name, versus: per.versus };
 
   return (
-    <div className={cn(jakarta.variable, 'min-w-0 space-y-4 font-sans')}>
+    // `mb-font`: on a phone the redesign's Urbanist replaces this page's own
+    // Plus Jakarta (globals.css). Desktop keeps Jakarta.
+    <div className={cn(jakarta.variable, 'mb-font min-w-0 space-y-4 font-sans')}>
       {/* Live indicator, branch in view, period switch, refresh */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
@@ -345,7 +347,7 @@ export function ProductionDashboard({ embedded = false }: { embedded?: boolean }
             </span>
           )}
         </div>
-        <div className="flex gap-0.5 rounded-[10px] bg-muted p-[3px]" role="group" aria-label="Period">
+        <div className="flex gap-0.5 rounded-[10px] bg-muted p-[3px] max-md:rounded-2xl max-md:p-1" role="group" aria-label="Period">
           {PERIODS.map((p) => (
             <button
               key={p.key}
@@ -365,7 +367,7 @@ export function ProductionDashboard({ embedded = false }: { embedded?: boolean }
           type="button"
           onClick={refreshAll}
           disabled={fetching}
-          className="inline-flex items-center gap-1.5 rounded-[9px] border bg-card px-3.5 py-[7px] text-[12.5px] font-semibold transition-colors hover:bg-muted disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-[9px] border bg-card px-3.5 py-[7px] text-[12.5px] font-semibold transition-colors hover:bg-muted disabled:opacity-60 max-md:rounded-full"
         >
           <RefreshCw className={cn('size-3.5', fetching && 'animate-spin')} aria-hidden />
           Refresh
@@ -375,7 +377,7 @@ export function ProductionDashboard({ embedded = false }: { embedded?: boolean }
       <div className={cn('space-y-4 transition-opacity', isPlaceholderData && 'opacity-60')}>
         {/* KPIs — company-wide until a branch is picked below, then that branch's. */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))]">
-          <Kpi name="Total demand" value={fmt(demand)} note={`units requested ${per.name}`} delta={delta(k?.demand)} loading={isLoading} />
+          <Kpi hero name="Total demand" value={fmt(demand)} note={`units requested ${per.name}`} delta={delta(k?.demand)} loading={isLoading} />
           <Kpi
             name="Produced"
             value={fmt(produced)}
@@ -410,7 +412,7 @@ export function ProductionDashboard({ embedded = false }: { embedded?: boolean }
         </div>
 
         {/* Strip */}
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-y-2 rounded-[14px] border bg-card px-1.5 py-3">
+        <div className="mb-card grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-y-2 rounded-[14px] border bg-card px-1.5 py-3">
           {strip.map((s) => (
             <div key={s.name} className="flex flex-col gap-[3px] border-l border-border/70 px-4 py-1">
               <p className="text-[11.5px] font-semibold text-muted-foreground">{s.name}</p>

@@ -410,7 +410,7 @@ function SourcePayslips({
                 <button
                   type="button"
                   onClick={() => onOpen(p)}
-                  className="flex w-full flex-col gap-1 rounded-xl border bg-card p-3 text-left"
+                  className="mb-card flex w-full flex-col gap-1 rounded-xl border bg-card p-3 text-left max-md:p-4"
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="font-semibold">{p.employeeName}</span>
@@ -529,7 +529,7 @@ function EmployeeRoster({
 
       <ul className="space-y-2 md:hidden">
         {employees.map((e) => (
-          <li key={e.id} className="space-y-2.5 rounded-xl border bg-card p-3">
+          <li key={e.id} className="mb-card space-y-2.5 rounded-xl border bg-card p-3 max-md:p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-semibold">{e.name}</p>

@@ -69,9 +69,10 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section className={cn('min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs', className)}>
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-fin-soft px-4 py-2.5">
-        <h2 className="text-xs font-extrabold tracking-[0.1em] text-foreground uppercase">{title}</h2>
+    // Phone (light): white redesign card with the title as a plain heading.
+    <section className={cn('mb-card min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs', className)}>
+      <header className="mb-head flex flex-wrap items-center justify-between gap-2 border-b bg-fin-soft px-4 py-2.5">
+        <h2 className="mb-head-title text-xs font-extrabold tracking-[0.1em] text-foreground uppercase">{title}</h2>
         {aside}
       </header>
       <div className={cn('p-4', bodyClassName)}>{children}</div>

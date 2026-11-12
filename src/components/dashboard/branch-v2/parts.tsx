@@ -12,7 +12,16 @@ import { cn } from '@/lib/utils';
  * Colours are the Finance Dashboard's `fin-*` tokens (globals.css), which are
  * the design's indigo / brown / ink palette already carried in light and dark.
  * No hex lives in this folder.
+ *
+ * Phone redesign 2026: every shape here also carries `max-md:` classes and/or an
+ * `mb-*` surface class (globals.css, light mode only) — the Sales band becomes the
+ * violet hero, tiles become pastel, panels become soft white cards with a plain
+ * heading. Desktop reads only the classes without a `max-md:` prefix.
  */
+
+/** Phone redesign: a heading on the card itself, not a coloured strip. */
+const PHONE_HEADING =
+  'max-md:bg-transparent max-md:px-4 max-md:pt-4 max-md:pb-1 max-md:text-[13px] max-md:font-semibold max-md:normal-case max-md:tracking-normal max-md:text-muted-foreground';
 
 export type BandTone = 'income' | 'expense' | 'ink';
 
@@ -35,11 +44,12 @@ export function BandCard({
   className?: string;
 }) {
   return (
-    <section className={cn('min-w-0 overflow-hidden rounded-md border bg-card', className)}>
-      <h3 className={cn('px-3 py-[7px] text-[11px] font-extrabold tracking-[0.08em] uppercase', BAND[tone])}>
+    // Phone: the Sales band is the violet hero; the other two are white cards.
+    <section className={cn('min-w-0 overflow-hidden rounded-md border bg-card', tone === 'income' ? 'mb-hero' : 'mb-card', className)}>
+      <h3 className={cn('px-3 py-[7px] text-[11px] font-extrabold tracking-[0.08em] uppercase', BAND[tone], PHONE_HEADING)}>
         {title}
       </h3>
-      <div className="px-3 pt-1 pb-2">{children}</div>
+      <div className="px-3 pt-1 pb-2 max-md:px-4 max-md:pb-3">{children}</div>
     </section>
   );
 }
@@ -63,7 +73,7 @@ export function StatRow({
   return (
     <div className={cn('flex items-center justify-between gap-3 py-2', !last && 'border-b border-border/60')}>
       <div className="min-w-0">
-        <div className="text-xs font-bold">{label}</div>
+        <div className="text-xs font-bold max-md:text-sm max-md:font-semibold">{label}</div>
         {loading ? (
           <Skeleton className="mt-1 h-3 w-28" />
         ) : (
@@ -73,7 +83,7 @@ export function StatRow({
       {loading ? (
         <Skeleton className="h-5 w-20 shrink-0" />
       ) : (
-        <span className={cn('shrink-0 text-[15px] font-extrabold tabular-nums', valueClassName)}>{value}</span>
+        <span className={cn('shrink-0 text-[15px] font-extrabold tabular-nums max-md:text-[17px] max-md:tracking-[-0.3px]', valueClassName)}>{value}</span>
       )}
     </div>
   );
@@ -90,8 +100,15 @@ export function SectionBanner({
   children?: React.ReactNode;
 }) {
   return (
-    <div className={cn('flex flex-wrap items-center justify-between gap-3 rounded-md px-3.5 py-[9px]', BAND[tone])}>
-      <h3 className="text-xs font-extrabold tracking-[0.08em] uppercase">{title}</h3>
+    // Phone: a short violet hero strip (Sales) or the deep indigo one (Stock).
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 rounded-md px-3.5 py-[9px] max-md:px-4 max-md:py-3.5',
+        BAND[tone],
+        tone === 'income' ? 'mb-hero mb-hero-strip' : 'mb-ink',
+      )}
+    >
+      <h3 className="text-xs font-extrabold tracking-[0.08em] uppercase max-md:text-[17px] max-md:font-semibold max-md:normal-case max-md:tracking-[-0.2px]">{title}</h3>
       {children}
     </div>
   );
@@ -114,17 +131,19 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section className={cn('min-w-0 overflow-hidden rounded-md border bg-card', className)}>
+    <section className={cn('mb-card min-w-0 overflow-hidden rounded-md border bg-card', className)}>
       <header
         className={cn(
           'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b px-3.5 py-[9px]',
           tone === 'soft' ? 'bg-fin-soft' : 'bg-fin-peach/40',
+          // Phone: the title sits on the card as an H3, no tinted strip or rule.
+          'max-md:border-b-0 max-md:bg-transparent max-md:px-4 max-md:pt-4 max-md:pb-0',
         )}
       >
-        <h3 className="text-[11px] font-extrabold tracking-[0.06em] uppercase">{title}</h3>
+        <h3 className="text-[11px] font-extrabold tracking-[0.06em] uppercase max-md:text-[17px] max-md:leading-[22px] max-md:font-semibold max-md:normal-case max-md:tracking-[-0.2px]">{title}</h3>
         {aside}
       </header>
-      <div className={cn('p-3.5', bodyClassName)}>{children}</div>
+      <div className={cn('p-3.5', 'max-md:px-4', bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -152,10 +171,11 @@ export function Tile({
   loading?: boolean;
 }) {
   return (
+    // Phone: pastel tile; the one emphasised tile is the violet hero instead.
     <div
       className={cn(
-        'min-w-0 rounded-md border px-3 py-2.5',
-        inverted ? 'bg-fin-ink text-fin-ink-foreground' : 'bg-card',
+        'min-w-0 rounded-md border px-3 py-2.5 max-md:px-3.5 max-md:py-3',
+        inverted ? 'bg-fin-ink text-fin-ink-foreground mb-hero mb-hero-strip' : 'bg-card mb-tile',
       )}
     >
       <div
@@ -174,7 +194,7 @@ export function Tile({
         </>
       ) : (
         <>
-          <div className="mt-1.5 truncate text-[19px] leading-tight font-extrabold tracking-[-0.01em] tabular-nums">
+          <div className="mt-1.5 truncate text-[19px] leading-tight font-extrabold tracking-[-0.01em] tabular-nums max-md:text-[21px] max-md:tracking-[-0.6px]">
             {value}
           </div>
           {note && (
@@ -204,7 +224,7 @@ export function SectionError({
   retrying: boolean;
 }) {
   return (
-    <div role="alert" className="rounded-md border bg-card px-4 py-8 text-center">
+    <div role="alert" className="mb-card rounded-md border bg-card px-4 py-8 text-center">
       <p className="text-sm font-semibold">Unable to load {what}</p>
       <p className="mt-1 text-sm text-muted-foreground">Please try again.</p>
       <Button className="mt-4" variant="outline" onClick={onRetry} disabled={retrying}>

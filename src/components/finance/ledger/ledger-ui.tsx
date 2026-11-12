@@ -92,7 +92,7 @@ export function LedgerHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0 space-y-1">
-        <h2 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-bold tracking-tight sm:text-2xl">
+        <h2 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-bold tracking-tight sm:text-2xl max-md:text-[28px] max-md:leading-[34px] max-md:font-semibold max-md:tracking-[-0.8px]">
           <span>
             {title}
             {year !== null && <span className="text-primary"> — {year}</span>}
@@ -122,8 +122,9 @@ export interface SummaryCard {
 export function SummaryCards({ cards, loading }: { cards: SummaryCard[]; loading?: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {cards.map((card) => (
-        <div key={card.label} className="flex flex-col gap-1 rounded-xl border bg-card px-4 py-3.5">
+      {/* Phone (light): the first figure is the violet hero, the rest pastel tiles. */}
+      {cards.map((card, i) => (
+        <div key={card.label} className={cn('flex flex-col gap-1 rounded-xl border bg-card px-4 py-3.5', i === 0 ? 'mb-hero mb-hero-strip' : 'mb-tile')}>
           <p className="text-[13px] text-muted-foreground">{card.label}</p>
           {loading ? (
             <Skeleton className="my-1 h-6 w-28" />
@@ -487,7 +488,7 @@ export function LedgerGrid(props: LedgerGridProps) {
       {/* Phones: one card per row, its twelve months inside it. */}
       <ul className="space-y-3 md:hidden print:hidden">
         {rows.map((row) => (
-          <li key={row.id} className="rounded-xl border bg-card p-3">
+          <li key={row.id} className="mb-card rounded-xl border bg-card p-3 max-md:p-4">
             <div className="flex items-start justify-between gap-3">
               <button
                 type="button"
@@ -526,7 +527,8 @@ export function LedgerGrid(props: LedgerGridProps) {
             </div>
           </li>
         ))}
-        <li className="rounded-xl border bg-primary/10 p-3">
+        {/* Phone (light): the year's totals as the violet hero. */}
+        <li className="mb-hero mb-hero-strip rounded-xl border bg-primary/10 p-3 max-md:p-4">
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-sm font-bold">Monthly total</p>
             <p className="text-sm font-bold text-primary tabular-nums">{amount(yearTotal)}</p>
@@ -649,7 +651,7 @@ function CellButton({
 
 export function LedgerSkeleton() {
   return (
-    <div className="space-y-3 rounded-xl border bg-card p-4" aria-busy="true" aria-label="Loading ledger">
+    <div className="mb-card space-y-3 rounded-xl border bg-card p-4" aria-busy="true" aria-label="Loading ledger">
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i} className="grid grid-cols-[72px_1fr] gap-3 md:grid-cols-[90px_180px_repeat(6,minmax(0,1fr))]">
           <Skeleton className="h-3.5" />
@@ -665,7 +667,7 @@ export function LedgerSkeleton() {
 
 export function LedgerEmpty({ title, body }: { title: string; body: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card px-6 py-14 text-center">
+    <div className="mb-card flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card px-6 py-14 text-center">
       <p className="text-[17px] font-semibold">{title}</p>
       <p className="max-w-md text-sm text-pretty text-muted-foreground">{body}</p>
     </div>

@@ -52,7 +52,7 @@ export function Definition({ text }: { text: string }) {
 }
 
 export function Kpi({
-  name, value, note, delta, definition, loading, size = 'lg',
+  name, value, note, delta, definition, loading, size = 'lg', hero,
 }: {
   name: string;
   value: string;
@@ -61,9 +61,12 @@ export function Kpi({
   definition?: string;
   loading?: boolean;
   size?: 'lg' | 'sm';
+  /** Phone (light) only: the headline figure as the violet hero. */
+  hero?: boolean;
 }) {
   return (
-    <div className={cn('flex min-w-0 flex-col rounded-[14px] border bg-card', size === 'lg' ? 'gap-2 px-[18px] py-4' : 'gap-1.5 bg-muted/30 px-3.5 py-3')}>
+    // Phone (light): a pastel tile (mb-tile), or the violet hero.
+    <div className={cn('flex min-w-0 flex-col rounded-[14px] border bg-card', size === 'lg' ? 'gap-2 px-[18px] py-4' : 'gap-1.5 bg-muted/30 px-3.5 py-3', hero ? 'mb-hero mb-hero-strip' : 'mb-tile')}>
       {/* Wraps rather than truncates: on a phone the delta drops under the name
           instead of cutting "Fulfilment rate" down to "Fulfilm…". */}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -116,7 +119,7 @@ function RetryButton({ onRetry, retrying }: { onRetry: () => void; retrying?: bo
       type="button"
       onClick={onRetry}
       disabled={retrying}
-      className="inline-flex items-center gap-1.5 rounded-[9px] border bg-card px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted disabled:opacity-60"
+      className="inline-flex items-center gap-1.5 rounded-[9px] border bg-card px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted disabled:opacity-60 max-md:rounded-full"
     >
       <RotateCw className={cn('size-3.5', retrying && 'animate-spin')} aria-hidden />
       Retry

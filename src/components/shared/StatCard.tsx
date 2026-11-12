@@ -21,7 +21,9 @@ const colorMap = {
 
 export function StatCard({ title, value, icon: Icon, trend, color = 'orange', loading }: StatCardProps) {
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    // `mb-tile`: on a phone in light mode the card is a pastel gradient tile
+    // (mint, aqua, amber, lilac, pink by position among its siblings).
+    <Card className="mb-tile hover:shadow-md transition-shadow">
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-1 min-w-0">
@@ -29,7 +31,7 @@ export function StatCard({ title, value, icon: Icon, trend, color = 'orange', lo
             {loading ? (
               <div className="h-7 w-24 bg-muted animate-pulse rounded" />
             ) : (
-              <p className="text-2xl font-bold text-foreground">{value}</p>
+              <p className="text-2xl font-bold text-foreground max-md:tracking-[-0.6px]">{value}</p>
             )}
             {trend && (
               <p className={cn('text-xs font-medium', trend.value >= 0 ? 'text-emerald-600' : 'text-red-500')}>
@@ -37,7 +39,7 @@ export function StatCard({ title, value, icon: Icon, trend, color = 'orange', lo
               </p>
             )}
           </div>
-          <div className={cn('p-3 rounded-xl flex-shrink-0', colorMap[color])}>
+          <div className={cn('p-3 rounded-xl flex-shrink-0 mb-tile-icon', colorMap[color])}>
             <Icon className="h-5 w-5" />
           </div>
         </div>

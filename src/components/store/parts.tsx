@@ -246,21 +246,27 @@ export function ErrorBlock({ error, onRetry }: { error: unknown; onRetry?: () =>
 }
 
 /** White card with the design's 14px radius and hairline border. */
+/** Phone (light): the redesign's white card (mb-card, globals.css). */
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn('min-w-0 rounded-2xl border border-border bg-card', className)}>{children}</section>;
+  return <section className={cn('mb-card min-w-0 rounded-2xl border border-border bg-card', className)}>{children}</section>;
 }
 
 export function CardHead({ title, right, className }: { title: ReactNode; right?: ReactNode; className?: string }) {
   return (
-    <div className={cn('flex items-center justify-between gap-3 border-b border-border px-4 py-3', className)}>
-      <span className="text-[13px] font-bold uppercase tracking-wide text-muted-foreground">{title}</span>
+    // Phone (light): a plain H3 heading on the card, no rule (mb-head).
+    <div className={cn('mb-head flex items-center justify-between gap-3 border-b border-border px-4 py-3', className)}>
+      <span className="mb-head-title text-[13px] font-bold uppercase tracking-wide text-muted-foreground">{title}</span>
       {right}
     </div>
   );
 }
 
 /** KPI tile (Store Dashboard): small caps label, big tabular figure, one line of context. */
-export function Kpi({ label, value, sub, tone, href }: { label: string; value: string; sub?: string; tone?: 'good' | 'warn' | 'bad' | 'info'; href?: string }) {
+export function Kpi({ label, value, sub, tone, href, hero }: {
+  label: string; value: string; sub?: string; tone?: 'good' | 'warn' | 'bad' | 'info'; href?: string;
+  /** Phone (light) only: the headline figure as the violet hero. */
+  hero?: boolean;
+}) {
   const color = tone === 'good' ? 'text-emerald-700 dark:text-emerald-400' : tone === 'warn' ? 'text-amber-700 dark:text-amber-400' : tone === 'bad' ? 'text-red-700 dark:text-red-400' : tone === 'info' ? 'text-blue-800 dark:text-blue-300' : 'text-foreground';
   const body = (
     <>
@@ -269,7 +275,8 @@ export function Kpi({ label, value, sub, tone, href }: { label: string; value: s
       {sub ? <span className="text-[12.5px] leading-snug text-muted-foreground">{sub}</span> : null}
     </>
   );
-  const cls = 'flex min-w-0 flex-col gap-1 rounded-2xl border border-border bg-card px-4 py-3.5 text-foreground';
+  // Phone (light): a pastel tile (mb-tile), or the violet hero.
+  const cls = cn('flex min-w-0 flex-col gap-1 rounded-2xl border border-border bg-card px-4 py-3.5 text-foreground', hero ? 'mb-hero mb-hero-strip' : 'mb-tile');
   return href ? (
     <Link href={href} className={cn(cls, 'transition-colors hover:border-primary/50')}>{body}</Link>
   ) : (
@@ -285,7 +292,7 @@ export function Segmented<T extends string>({ value, options, onChange, classNam
   className?: string;
 }) {
   return (
-    <div role="tablist" className={cn('inline-flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5', className)}>
+    <div role="tablist" className={cn('inline-flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 max-md:rounded-2xl max-md:p-1', className)}>
       {options.map((o) => (
         <button
           key={o.value}

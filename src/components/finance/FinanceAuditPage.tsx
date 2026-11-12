@@ -130,7 +130,7 @@ export function FinanceAuditPage() {
           description="Approvals, adjustments and settings changes are recorded here as they happen."
         />
       ) : (
-        <div className="divide-y overflow-hidden rounded-lg border bg-card">
+        <div className="mb-card divide-y overflow-hidden rounded-lg border bg-card">
           {logs.map((log) => (
             <AuditRow key={log.id} log={log} />
           ))}

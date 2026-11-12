@@ -40,7 +40,7 @@ export function MonthlySummaryHeader({ title, subtitle, note }: { title: ReactNo
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <div className="min-w-0">
-        <h3 className="text-sm font-semibold">{title}</h3>
+        <h3 className="text-sm font-semibold max-md:text-[19px] max-md:leading-6 max-md:tracking-[-0.4px]">{title}</h3>
         {subtitle ? <p className="text-xs text-muted-foreground">{subtitle}</p> : null}
       </div>
       {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
@@ -48,9 +48,10 @@ export function MonthlySummaryHeader({ title, subtitle, note }: { title: ReactNo
   );
 }
 
+/** Phone (light): a pastel tile (mb-tile, globals.css), coloured by position. */
 export function SummaryTile({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: string }) {
   return (
-    <div className="min-w-0 rounded-lg border bg-card p-3">
+    <div className="mb-tile min-w-0 rounded-lg border bg-card p-3 max-md:p-3.5">
       <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
       <p className={cn('mt-1 truncate text-xl font-bold tabular-nums', tone)}>{value}</p>
       <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>
@@ -66,7 +67,7 @@ export function SummaryTile({ label, value, sub, tone }: { label: string; value:
 export function SummaryTileSkeleton() {
   const bar = (width: string) => <Skeleton className={`inline-block max-w-full align-top ${width}`}>{' '}</Skeleton>;
   return (
-    <div data-testid="summary-tile-skeleton" aria-hidden="true" className="min-w-0 rounded-lg border bg-card p-3">
+    <div data-testid="summary-tile-skeleton" aria-hidden="true" className="mb-card min-w-0 rounded-lg border bg-card p-3">
       <div className="text-xs font-medium">{bar('w-24')}</div>
       <div className="mt-1 text-xl font-bold">{bar('w-32')}</div>
       <div className="mt-0.5 text-xs">{bar('w-20')}</div>

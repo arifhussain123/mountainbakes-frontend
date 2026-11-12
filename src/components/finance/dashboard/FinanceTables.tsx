@@ -180,9 +180,11 @@ function FinanceGrid<T extends { id: string }>({
   };
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
-      <header className={cn('flex flex-wrap items-center justify-between gap-2 px-4 py-2', band)}>
-        <h2 className="text-[13px] font-extrabold tracking-[0.12em] text-fin-ink-foreground">{title}</h2>
+    // Phone (light): white redesign card; the coloured band becomes a plain
+    // heading and its dark controls turn lavender (mb-head, globals.css).
+    <section className="mb-card min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
+      <header className={cn('mb-head flex flex-wrap items-center justify-between gap-2 px-4 py-2', band)}>
+        <h2 className="mb-head-title text-[13px] font-extrabold tracking-[0.12em] text-fin-ink-foreground uppercase">{title}</h2>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{controls}</div>
       </header>
 
@@ -276,7 +278,7 @@ function FinanceGrid<T extends { id: string }>({
                 </li>
               );
             })}
-            <li className="bg-fin-soft px-4 py-3 text-sm">
+            <li className="bg-fin-soft px-4 py-3 text-sm max-md:mx-3 max-md:mb-3 max-md:rounded-[20px]">
               <p className="mb-1.5 font-extrabold">{totalsLabel}</p>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {columns
@@ -390,7 +392,7 @@ export function IncomeTable({
 
   return (
     <FinanceGrid
-      title="INCOME"
+      title="Income"
       band="bg-fin-income"
       controls={
         <>
@@ -495,7 +497,7 @@ export function ExpenseTable({
 
   return (
     <FinanceGrid
-      title="EXPENSES"
+      title="Expenses"
       band="bg-fin-expense"
       controls={
         <>

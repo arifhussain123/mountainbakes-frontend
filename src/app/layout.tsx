@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist } from 'next/font/google';
+import { Geist, Urbanist } from 'next/font/google';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { AuthProvider } from '@/providers/AuthProvider';
@@ -15,6 +15,15 @@ import { appleStartupImages } from '@/utils/pwa-splash';
 import './globals.css';
 
 const geist = Geist({ variable: '--font-sans', subsets: ['latin'] });
+// The phone redesign's face. Only defines `--font-urbanist`; globals.css points
+// `--font-sans` at it below the `md` breakpoint. Not preloaded, so a desktop —
+// which never uses it — does not download it.
+const urbanist = Urbanist({
+  variable: '--font-urbanist',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  preload: false,
+});
 
 const APP_NAME = 'Mountain Bakes ERP';
 const APP_DESCRIPTION =
@@ -64,7 +73,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} h-full`} suppressHydrationWarning>
+    <html lang="en" className={`${geist.variable} ${urbanist.variable} h-full`} suppressHydrationWarning>
       <body className="min-h-full antialiased" suppressHydrationWarning>
         <ThemeProvider>
           <QueryProvider>

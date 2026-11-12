@@ -348,6 +348,261 @@
   --sidebar-ring: oklch(0.64 0.21 15);
 }
 
+/* ── Phone redesign 2026 (lavender canvas, violet hero, pastel tiles) ─────────
+   Source of truth: mobile/design UIandUX/redesign-2026 (common.py, the v4 type /
+   v5 colour / v6 navigation blocks). PHONE WIDTH ONLY: everything below sits in
+   `max-width: 767px`, the same edge as Tailwind's `md`, so desktop and tablet
+   render exactly as before.
+
+   Light mode only. Each selector is `:root:not(.dark)`, so a user who picked dark
+   mode keeps the dark palette above. The orange-only tokens (--primary and what
+   derives from it) are matched on `data-accent='orange'` as well, so a user who
+   picked another accent keeps it.
+
+   The `mb-*` classes are opt-in surfaces that shared components put on
+   themselves. They are deliberately UNLAYERED: an unlayered rule outranks the
+   layered utilities on the same element (bg-card, rounded-md, …), which is how
+   one class can turn a card into the violet hero on a phone only. */
+@media (max-width: 767px) {
+  /* Urbanist. Outranks next/font's `--font-sans` class on <html> (0,1,0). */
+  :root:root {
+    --font-sans: var(--font-urbanist), ui-sans-serif, system-ui, sans-serif;
+    /* Lighter overall: nothing heavier than 700. */
+    --font-weight-extrabold: 700;
+    --font-weight-black: 700;
+    /* No card shadow unless the light block below sets one. */
+    --mb-card-shadow: 0 0 #0000;
+    --mb-primary-glow: 0 0 #0000;
+  }
+  /* A page that sets its own --font-sans with next/font (Production Dashboard:
+     Plus Jakarta) — that class is unlayered (0,1,0); this outranks it. */
+  :root .mb-font {
+    --font-sans: var(--font-urbanist), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  :root:not(.dark) {
+    --background: #f5f3fe;
+    --foreground: #171a35;
+    --card: #ffffff;
+    --card-foreground: #171a35;
+    --popover: #ffffff;
+    --popover-foreground: #171a35;
+    --secondary: #2a2e5c;
+    --secondary-foreground: #ffffff;
+    --muted: #efecfd;
+    --muted-foreground: #5b6080;
+    --accent: #efebff;
+    --accent-foreground: #5b48d8;
+    --border: #ece8fb;
+    --input: #e6e1fa;
+    --chart-2: #6c5ce7;
+    --chart-3: #ff8a3d;
+    --chart-4: #ffc266;
+    --chart-5: #5b48d8;
+    --fin-income: #5b48d8;
+    --fin-soft: #efebff;
+    --fin-ink: #2a2466;
+    --fin-ink-field: #3a3380;
+    --fin-row-hover: #f8f6ff;
+    /* The phone drawer (More) is a white sheet, not the dark brown aside. */
+    --sidebar: #ffffff;
+    --sidebar-foreground: #171a35;
+    --sidebar-accent: #efebff;
+    --sidebar-accent-foreground: #5b48d8;
+    --sidebar-border: #ece8fb;
+
+    /* Design-only values the components read. */
+    --mb-text-3: #9599b3;
+    /* Inputs read this (ui/input.tsx) — white on the lavender canvas. Unset
+       elsewhere, where it falls back to the input's transparent. */
+    --mb-input-bg: #ffffff;
+    --mb-violet: #6c5ce7;
+    --mb-card-shadow: inset 0 1px 0 #ffffff, 0 2px 4px rgba(76, 60, 170, 0.04), 0 14px 30px rgba(76, 60, 170, 0.08);
+    --mb-primary-grad: linear-gradient(135deg, color-mix(in oklab, var(--primary), #ffd29a 30%) 0%, var(--primary) 100%);
+    --mb-primary-glow: 0 10px 22px color-mix(in oklab, var(--primary) 38%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  /* The default (orange) accent is the design's orange gradient exactly. */
+  :root:not(.dark):not([data-accent]),
+  :root:not(.dark)[data-accent='orange'] {
+    --primary: #f2542d;
+    --ring: #f2542d;
+    --chart-1: #f2542d;
+    --sidebar-primary: #f2542d;
+    --sidebar-ring: #f2542d;
+    --mb-primary-grad: linear-gradient(135deg, #ff8a3d 0%, #f2542d 100%);
+    --mb-primary-glow: 0 10px 22px rgba(242, 84, 45, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  /* Screen canvas: lavender with a violet glow top-right and a peach one top-left. */
+  :root:not(.dark) .mb-canvas {
+    background:
+      radial-gradient(70% 28% at 100% 0%, rgba(169, 145, 255, 0.3) 0%, rgba(169, 145, 255, 0) 100%),
+      radial-gradient(60% 22% at 0% 6%, rgba(255, 195, 107, 0.22) 0%, rgba(255, 195, 107, 0) 100%),
+      var(--background);
+  }
+
+  /* A white card: soft gradient, lavender hairline, violet-tinted shadow. */
+  :root:not(.dark) .mb-card {
+    background: linear-gradient(180deg, #ffffff 0%, #fbfaff 100%);
+    border: 1px solid #ece8fb;
+    border-radius: 24px;
+    box-shadow: var(--mb-card-shadow);
+  }
+
+  /* The hero / total card: violet gradient, white type, an orange sphere peeking
+     in at the top-right and a lilac ball at the bottom-right. The two balls are
+     pseudo-elements behind the content (isolation + z-index -1), so no markup
+     changes. Text tokens are re-pointed inside it, so every `text-muted-foreground`
+     or `text-primary` descendant turns white without touching the call site. */
+  :root:not(.dark) .mb-hero {
+    --foreground: #ffffff;
+    --card-foreground: #ffffff;
+    --muted-foreground: rgba(255, 255, 255, 0.82);
+    --primary: #ffffff;
+    --border: rgba(255, 255, 255, 0.22);
+    --muted: rgba(255, 255, 255, 0.18);
+    --fin-ink-muted: rgba(255, 255, 255, 0.8);
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    color: #ffffff;
+    border: none;
+    border-radius: 28px;
+    background: linear-gradient(145deg, #a594ff 0%, #7f6bf2 48%, #5b48d8 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -10px 24px rgba(40, 20, 140, 0.25),
+      0 18px 36px rgba(91, 72, 216, 0.35);
+  }
+  :root:not(.dark) .mb-hero::before,
+  :root:not(.dark) .mb-hero::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  /* Tucked well into the corner (52×44px of it shows) so it stays clear of a
+     right-aligned total on the card's first line. */
+  :root:not(.dark) .mb-hero::before {
+    right: -44px;
+    top: -52px;
+    width: 96px;
+    height: 96px;
+    background: radial-gradient(circle at 34% 30%, #ffe9c2 0%, #ffad4d 26%, #f2542d 68%, #b8321a 100%);
+    box-shadow: 0 14px 28px rgba(184, 50, 26, 0.3);
+  }
+  :root:not(.dark) .mb-hero::after {
+    right: -10px;
+    bottom: -12px;
+    width: 40px;
+    height: 40px;
+    background: radial-gradient(circle at 34% 30%, #ffffff 0%, #d6ccff 30%, #8e7cff 70%, #5b48d8 100%);
+    box-shadow: 0 10px 20px rgba(60, 40, 180, 0.3);
+  }
+  /* A hero strip (a section banner) is too short for the full sphere. */
+  :root:not(.dark) .mb-hero-strip::before {
+    right: -30px;
+    top: -34px;
+    width: 68px;
+    height: 68px;
+  }
+  :root:not(.dark) .mb-hero-strip::after {
+    display: none;
+  }
+  /* The dark variant of a banner: the design's deep indigo "cocoa". */
+  :root:not(.dark) .mb-ink {
+    border: none;
+    border-radius: 24px;
+    color: #ffffff;
+    background: linear-gradient(145deg, #2e2a5c 0%, #141233 100%);
+    box-shadow: 0 10px 24px rgba(20, 18, 51, 0.25);
+  }
+
+  /* Stat tiles: pastel gradients cycling mint → aqua → amber → lilac → pink by
+     position, dark type, no border. */
+  :root:not(.dark) .mb-tile {
+    --muted-foreground: rgba(23, 26, 53, 0.62);
+    --card: transparent;
+    --foreground: #171a35;
+    color: #171a35;
+    border: none;
+    border-radius: 24px;
+    background: linear-gradient(150deg, #c9f4da 0%, #9fe3bc 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -6px 14px rgba(0, 0, 0, 0.04),
+      0 12px 24px rgba(76, 60, 170, 0.1);
+  }
+  :root:not(.dark) .mb-tile:nth-child(5n + 2) { background: linear-gradient(150deg, #c6f4f7 0%, #9ee6ee 100%); }
+  :root:not(.dark) .mb-tile:nth-child(5n + 3) { background: linear-gradient(150deg, #ffdda0 0%, #ffc266 100%); }
+  :root:not(.dark) .mb-tile:nth-child(5n + 4) { background: linear-gradient(150deg, #dcd3ff 0%, #bcaeff 100%); }
+  :root:not(.dark) .mb-tile:nth-child(5n + 5) { background: linear-gradient(150deg, #fbd3f6 0%, #f3a9ec 100%); }
+  /* A tile's icon chip: a frosted white disc instead of a coloured square. */
+  :root:not(.dark) .mb-tile .mb-tile-icon {
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.55);
+    color: #2a2466;
+  }
+
+  /* A coloured title strip (fin-income / fin-expense / fin-ink band, a tinted
+     panel header) becomes a plain heading sitting on its white card. The
+     fin-ink text tokens are re-pointed so `text-fin-ink-foreground` /
+     `text-fin-ink-muted` children turn to the ink and grey of the card. Pair
+     with `mb-head-title` on the heading text. */
+  :root:not(.dark) .mb-head {
+    --fin-ink-foreground: #171a35;
+    --fin-ink-muted: #5b6080;
+    --fin-ink-field: #efecfd; /* dark search / toggle wells → lavender */
+    background: transparent;
+    color: #171a35;
+    border-bottom-color: transparent;
+    padding-top: 16px;
+  }
+  :root:not(.dark) .mb-head-title {
+    color: inherit; /* the heading's ink (or white on the hero), not a muted grey */
+    font-size: 17px;
+    line-height: 22px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    text-transform: none;
+  }
+  /* …except on the violet hero, where the heading stays white. */
+  :root:not(.dark) .mb-hero .mb-head {
+    --fin-ink-foreground: #ffffff;
+    --fin-ink-muted: rgba(255, 255, 255, 0.8);
+    color: #ffffff;
+  }
+  /* A full-bleed band (negative margins) becomes a rounded panel inside the
+     page gutter. */
+  :root:not(.dark) .mb-inset {
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 0;
+    border-radius: 24px;
+  }
+  /* A tinted well inside a card (bg-fin-row-hover, bg-muted/30): let the card's
+     own white show through. */
+  :root:not(.dark) .mb-clear {
+    background: transparent;
+  }
+
+  /* Round logo spot: the real badge inside a white ring. */
+  .mb-logo {
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px #ffffff, 0 8px 18px rgba(190, 30, 30, 0.3);
+  }
+}
+
+/* Headings on a phone: SemiBold with tight tracking (H1 32/38 −1px, H2 21/27
+   −0.4px in the design). Layered, so any heading that names its own size or
+   weight keeps it. */
+@layer base {
+  @media (max-width: 767px) {
+    h1, h2, h3 {
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+  }
+}
+
 /* ── Table heading rows ──────────────────────────────────────────────────────
    Every on-screen table's first row carries the selected brand accent as a soft
    tint, so the heading follows whichever accent the user picked.
