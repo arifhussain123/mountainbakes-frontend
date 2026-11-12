@@ -145,9 +145,9 @@ function Calculation({ row: r }: { row: DemandRecordRow }) {
         {line('Company Share', r.companyShare, { strong: true })}
       </div>
       <div className="space-y-1 rounded-lg border px-3 py-2">
-        {line('Previous Balance', r.previousBalance)}
-        {line('Company Share', r.companyShare, { sign: '+' })}
+        {line('Company Share', r.companyShare)}
         {line('Adjustments', r.adjustments, { sign: '+' })}
+        {line('Previous Balance', r.previousBalance, { sign: '+' })}
         {line('Share Received', r.received, { sign: '−' })}
         <div className="border-t" />
         {line('Closing Balance', r.closingBalance, { strong: true })}
