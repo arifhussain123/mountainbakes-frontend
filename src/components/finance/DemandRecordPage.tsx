@@ -38,7 +38,7 @@ import { MonthStatementDialog } from './MonthStatementDialog';
  *
  *   G. Total      = Delivered − Returns − Discount
  *   Company Share = G. Total × the demand's frozen share %
- *   Closing       = Previous + Company Share + Adjustments − Share Received
+ *   Closing       = Company Share + Adjustments + Previous − Share Received
  *
  * Every figure is computed by the API from the records themselves (see
  * shared/utils/branch-account.ts); nothing here is typed in or summed on the
@@ -418,8 +418,8 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
             </div>
             {t && (
               <p className="text-xs text-muted-foreground">
-                Opening <Money value={t.openingBalance} /> + Company Share <Money value={t.companyShare} /> + Adjustments{' '}
-                <Money value={t.adjustments} /> − Received <Money value={t.received} /> = Closing <Money value={t.closingBalance} />.
+                Company Share <Money value={t.companyShare} /> + Adjustments <Money value={t.adjustments} /> + Opening{' '}
+                <Money value={t.openingBalance} /> − Received <Money value={t.received} /> = Closing <Money value={t.closingBalance} />.
                 Balances are taken once per branch, never added down the rows.
               </p>
             )}
