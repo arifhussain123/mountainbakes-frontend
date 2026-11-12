@@ -113,8 +113,8 @@ export function BranchDashboard() {
     <div className="mx-auto flex max-w-[1400px] flex-col gap-4 tabular-nums">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold tracking-[-0.01em]">{branchName}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <h2 className="text-xl font-extrabold tracking-[-0.01em] max-md:text-[32px] max-md:leading-[38px] max-md:font-semibold max-md:tracking-[-1px]">{branchName}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground max-md:mt-1 max-md:text-sm">
             {meta.summaryLabel} overview · {dayLabel(today)} {today.slice(0, 4)}
           </p>
           {showingCache && (
@@ -124,7 +124,9 @@ export function BranchDashboard() {
             </p>
           )}
         </div>
-        <div role="group" aria-label="Period" className="flex overflow-hidden rounded-[4px] border bg-card">
+        {/* Phone: the redesign's segmented control — a lavender track with the
+            chosen period as a raised white pill. */}
+        <div role="group" aria-label="Period" className="flex overflow-hidden rounded-[4px] border bg-card max-md:w-full max-md:gap-1 max-md:rounded-2xl max-md:border-0 max-md:bg-muted max-md:p-1">
           {PERIODS.map((p) => (
             <button
               key={p.value}
@@ -132,8 +134,10 @@ export function BranchDashboard() {
               aria-pressed={period === p.value}
               onClick={() => setPeriod(p.value)}
               className={cn(
-                'px-3.5 py-1.5 text-xs font-semibold transition-colors max-md:py-2.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
-                period === p.value ? 'bg-fin-income text-white' : 'text-muted-foreground hover:bg-fin-soft',
+                'px-3.5 py-1.5 text-xs font-semibold transition-colors max-md:flex-1 max-md:rounded-xl max-md:py-2.5 max-md:text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
+                period === p.value
+                  ? 'bg-fin-income text-white max-md:bg-card max-md:text-foreground max-md:shadow-[0_4px_10px_rgba(23,26,53,0.10)]'
+                  : 'text-muted-foreground hover:bg-fin-soft max-md:hover:bg-transparent',
               )}
             >
               {p.label}

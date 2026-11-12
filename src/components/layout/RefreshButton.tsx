@@ -33,7 +33,12 @@ export function RefreshButton() {
           ? 'A new version of the app is available — press to load it'
           : 'Refresh the data on this screen'
       }
-      className="relative h-9 shrink-0 gap-2 px-3"
+      className={
+        updateReady
+          ? 'relative h-9 shrink-0 gap-2 px-3'
+          : // Phone redesign: an icon-only white disc, like the other chrome buttons.
+            'relative h-9 shrink-0 gap-2 px-3 max-md:size-10 max-md:rounded-full max-md:bg-card max-md:px-0 max-md:shadow-[0_6px_16px_rgba(76,60,170,0.12)] dark:max-md:shadow-none'
+      }
     >
       <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
       {/* The word is worth the space when it is a warning; on a normal day the

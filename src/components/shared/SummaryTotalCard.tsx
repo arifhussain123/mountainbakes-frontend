@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 /**
  * A full-width total: a muted label on the left, the amount large and bold in
@@ -14,6 +15,9 @@ import { Skeleton } from '@/components/ui/skeleton';
  * The skeleton draws the same lines at the same heights as the loaded card, so
  * nothing below it moves when the figures arrive. An error stays inside the
  * card, with its own retry, instead of replacing it.
+ *
+ * `mb-hero`: on a phone in light mode this is the redesign's violet hero card,
+ * with white type (globals.css re-points the text tokens inside it).
  */
 
 /** `Rs. 12,200`: the settings' currency symbol written straight before the number, as Shop Expenses has always shown it. */
@@ -56,7 +60,7 @@ export function SummaryTotalCard({
     // heights would not.
     const bar = (width: string) => <Skeleton className={`inline-block max-w-full align-top ${width}`}>{' '}</Skeleton>;
     return (
-      <Card className={className} aria-busy="true" data-testid={testId && `${testId}-skeleton`}>
+      <Card className={cn('mb-hero', className)} aria-busy="true" data-testid={testId && `${testId}-skeleton`}>
         <CardContent className={row}>
           <div className="min-w-0">
             <div className="text-sm font-medium">{bar('w-48')}</div>
@@ -69,7 +73,7 @@ export function SummaryTotalCard({
   }
 
   return (
-    <Card className={className} data-testid={testId}>
+    <Card className={cn('mb-hero', className)} data-testid={testId}>
       <CardContent className={row}>
         <div className="min-w-0">
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -89,7 +93,15 @@ export function SummaryTotalCard({
             <div className="mt-0.5 text-xs text-muted-foreground">{secondaryText}</div>
           ) : null}
         </div>
-        <p className="text-xl font-bold text-primary" aria-busy={busy}>
+        {/* Phone, one-row layout: a right margin keeps the figure off the hero's
+            corner sphere. */}
+        <p
+          className={cn(
+            'text-xl font-bold text-primary max-md:text-[26px] max-md:leading-8 max-md:tracking-[-0.6px]',
+            layout === 'inline' && 'max-md:mr-9',
+          )}
+          aria-busy={busy}
+        >
           {error ? '—' : amount}
         </p>
       </CardContent>

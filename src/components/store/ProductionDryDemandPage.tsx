@@ -148,9 +148,9 @@ function NewDemandCard({ session }: { session: StoreSession }) {
   };
 
   return (
-    <section className="flex min-w-0 flex-col gap-3.5 rounded-2xl border border-border bg-card p-4">
+    <section className="mb-card flex min-w-0 flex-col gap-3.5 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-bold">New Demand</span>
+        <span className="text-base font-bold max-md:text-[17px] max-md:font-semibold max-md:tracking-[-0.2px]">New Demand</span>
         <span className="font-mono text-[12.5px] text-muted-foreground">ID on save</span>
       </div>
 
@@ -413,7 +413,7 @@ function DemandsCard({ token }: { token: string }) {
       ) : !data ? (
         <div className="grid gap-2">{[0, 1].map((i) => <Skeleton key={i} className="h-28 w-full rounded-xl" />)}</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+        <div className="mb-card rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
           {filter ? 'No demands with this status.' : 'No demands yet. Your first one appears here once sent.'}
         </div>
       ) : (
@@ -451,7 +451,7 @@ function DemandsCard({ token }: { token: string }) {
 function DemandCard({ d, onCancel }: { d: StoreDemand; onCancel: () => void }) {
   const canCancel = d.status === 'pending_review' && d.lines.every((l) => l.status === 'pending');
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3.5 py-3">
+    <div className="mb-card flex flex-col gap-2 rounded-xl border border-border bg-card px-3.5 py-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-mono text-sm font-medium">{d.demandNo}</div>
@@ -504,7 +504,7 @@ function QueriesCard({ token }: { token: string }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const rows = q.data?.rows ?? [];
   return (
-    <section className="flex min-w-0 flex-col gap-2.5 rounded-2xl border border-border bg-card p-3.5">
+    <section className="mb-card flex min-w-0 flex-col gap-2.5 rounded-2xl border border-border bg-card p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="text-base font-bold">Questions for the Store?</div>

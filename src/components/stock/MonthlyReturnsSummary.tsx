@@ -83,7 +83,9 @@ function BranchBox({
       title={selected ? 'Showing this branch only — click to show all' : 'Show only this branch'}
       onClick={onPick}
       className={cn(
-        'flex min-h-[104px] min-w-0 flex-col justify-between gap-2.5 rounded-lg border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary',
+        // Phone: the redesign's rounded white card. Utilities, not `mb-card`, so the
+        // selected state's ring (also a box-shadow) still shows.
+        'flex min-h-[104px] min-w-0 flex-col justify-between gap-2.5 rounded-lg border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary max-md:rounded-[24px] max-md:not-dark:shadow-[0_2px_4px_rgba(76,60,170,0.04),0_14px_30px_rgba(76,60,170,0.08)]',
         selected && 'border-primary bg-primary/10 ring-2 ring-primary/25',
       )}
     >
@@ -207,7 +209,7 @@ export function MonthlyReturnsSummary({
       {showBranches ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-1.5">
-            <h3 className="text-sm font-semibold">Monthly Return Amount by Branch</h3>
+            <h3 className="text-sm font-semibold max-md:text-[19px] max-md:leading-6 max-md:tracking-[-0.4px]">Monthly Return Amount by Branch</h3>
             <span className="text-xs text-muted-foreground">{ruleText}</span>
           </div>
           {/* One row when the width allows; fewer columns on a tablet, two (or one) on a phone. */}
@@ -215,7 +217,7 @@ export function MonthlyReturnsSummary({
             {!boxes ? (
               Array.from({ length: 4 }, (_, i) => <Skeleton key={i} data-testid="return-branch-skeleton" className="h-[104px] rounded-lg" />)
             ) : boxes.length === 0 ? (
-              <p className="col-span-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No branch return amounts this month.</p>
+              <p className="mb-card col-span-full rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">No branch return amounts this month.</p>
             ) : (
               boxes.map((b) => (
                 <BranchBox

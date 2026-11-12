@@ -322,7 +322,7 @@ function KpiGrid({ d, rejected, rangeText, open }: {
   return (
     <div className="grid grid-cols-2 gap-3 min-[1100px]:grid-cols-4">
       <Kpi label="Total Store Items" value={String(d.itemsActive)} sub={`${d.itemsInactive} inactive`} href={open(ROUTES.STORE_ITEMS)} />
-      <Kpi label="Total Available Stock" value={rs(d.stockValue)} sub={`${plural(d.itemsInStock, 'item')} in stock, at cost`} href={open(ROUTES.STORE_STOCK)} />
+      <Kpi hero label="Total Available Stock" value={rs(d.stockValue)} sub={`${plural(d.itemsInStock, 'item')} in stock, at cost`} href={open(ROUTES.STORE_STOCK)} />
       <Kpi
         label="Today's Received Stock"
         value={rs(d.receivedToday.amount)}

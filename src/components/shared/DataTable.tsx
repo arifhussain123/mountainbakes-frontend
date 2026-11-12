@@ -405,7 +405,7 @@ function DataTableCards<TData>({
     return (
       <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="space-y-2 rounded-lg border bg-card p-3">
+          <div key={i} className="mb-card space-y-2 rounded-lg border bg-card p-3">
             <Skeleton className="h-4 w-2/3" />
             <Skeleton className="h-3 w-1/3" />
             <Skeleton className="h-3 w-full" />
@@ -424,7 +424,8 @@ function DataTableCards<TData>({
         if (renderCard) return <div key={row.id}>{renderCard(row)}</div>;
         const { title, subtitle, badges, figures, fields, actions } = bucketCells(row);
         return (
-          <div key={row.id} className="rounded-lg border bg-card p-3">
+          // `mb-card`: the phone redesign's white card (light mode; globals.css).
+          <div key={row.id} className="mb-card rounded-lg border bg-card p-3.5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 {title && (
@@ -531,7 +532,7 @@ function DataTableCards<TData>({
           columns are exactly the ones bucketed as the card's title/subtitle, so
           that annotation is what filters them. */}
       {showFooter && (
-        <div className="rounded-lg border bg-muted/50 p-3">
+        <div className="rounded-lg border bg-muted/50 p-3 max-md:rounded-[24px] max-md:border-0 max-md:bg-accent">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</p>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
             {table.getFooterGroups().flatMap((fg) =>

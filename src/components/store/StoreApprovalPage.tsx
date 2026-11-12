@@ -162,7 +162,7 @@ export function StoreApprovalPage() {
           {[0, 1].map((i) => <Skeleton key={i} className="h-48 w-full rounded-2xl" />)}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+        <div className="mb-card rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
           {tab === 'pending' ? 'No demand waiting for review.' : `Nothing under ${tabLabel}.`}
         </div>
       ) : (
@@ -173,8 +173,9 @@ export function StoreApprovalPage() {
             const open = d.status === 'pending_review' || d.status === 'ready_to_issue';
             const urgent = open && !!today && d.requiredDate <= today;
             return (
-              <section key={d.id} className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
-                <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border bg-muted/40 px-4 py-3">
+              // Phone (light): white redesign card; the grey header well clears.
+              <section key={d.id} className="mb-card min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
+                <div className="mb-clear flex flex-wrap items-center justify-between gap-2.5 border-b border-border bg-muted/40 px-4 py-3">
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <div className="flex flex-wrap items-center gap-2.5">
                       <span className="font-mono text-[15px] font-medium">{d.demandNo}</span>

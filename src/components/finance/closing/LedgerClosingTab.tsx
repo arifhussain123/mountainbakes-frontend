@@ -64,7 +64,7 @@ export function LedgerClosingTab({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
+      <div className="mb-card flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
         <FilterField label="Business date">
           {/* Future dates cannot be closed and have no figures — the picker says
               so rather than letting the server explain it after the fact. */}
@@ -122,7 +122,7 @@ export function LedgerClosingTab({
 
       {/* Recent closings */}
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Recent closings</h3>
+        <h3 className="text-sm font-semibold max-md:text-[21px] max-md:leading-[27px] max-md:tracking-[-0.4px]">Recent closings</h3>
 
         {historyLoading ? (
           <Skeleton className="h-48 w-full rounded-lg" />
@@ -241,7 +241,7 @@ function ClosingLine({
 
 function ClosingCard({ closing, onOpen }: { closing: FinanceDayClosing; onOpen: () => void }) {
   return (
-    <button type="button" onClick={onOpen} className="w-full rounded-lg border bg-card p-3 text-left">
+    <button type="button" onClick={onOpen} className="mb-card w-full rounded-lg border bg-card p-3 text-left max-md:p-4">
       <div className="flex items-center justify-between">
         <span className="font-medium">{closing.businessDate}</span>
         <Money value={closing.closingBalance} className="font-semibold" />

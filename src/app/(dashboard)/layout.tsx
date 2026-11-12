@@ -38,7 +38,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               iOS Safari 100vh is the height with the toolbar COLLAPSED, so a
               100vh shell is taller than what is visible and the bottom of every
               screen sits behind the toolbar. 100dvh is what is actually on show. */}
-          <div className="flex h-screen overflow-hidden bg-background supports-[height:100dvh]:h-dvh">
+          {/* `mb-canvas`: on a phone in light mode, the redesign's lavender
+              canvas with its two faint glows (globals.css). Nothing at md+. */}
+          <div className="mb-canvas flex h-screen overflow-hidden bg-background supports-[height:100dvh]:h-dvh">
             <RealtimeBridge />
             <LoginHistoryBridge />
             <PushNotifications />
@@ -47,8 +49,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Topbar />
               {/* Clears the BottomNav INCLUDING its safe-area inset. The nav is
                   56px + the inset (34px on a Face ID iPhone); a flat pb-20 left the
-                  last 11px of every page underneath it. */}
-              <main className="flex-1 overflow-y-auto overscroll-contain pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
+                  last 11px of every page underneath it. 6rem rather than 5: the
+                  active tab's raised circle stands ~30px above the bar. */}
+              <main className="flex-1 overflow-y-auto overscroll-contain pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
             </div>
             <BottomNav />
           </div>

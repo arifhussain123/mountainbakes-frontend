@@ -251,14 +251,14 @@ export function AdminDashboard() {
   };
 
   const selectCls =
-    'h-10 rounded-lg border bg-card px-3 text-base text-foreground disabled:opacity-60 md:h-9 md:text-sm';
+    'h-10 rounded-lg border bg-card px-3 text-base text-foreground disabled:opacity-60 max-md:rounded-2xl md:h-9 md:text-sm';
 
   return (
     <div className="admin-dash-theme print-area flex min-w-0 flex-col gap-5">
       {/* ---------------- Heading & filters ---------------- */}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="text-xl font-bold sm:text-2xl">Admin Dashboard</h1>
+          <h1 className="text-xl font-bold sm:text-2xl max-md:text-[32px] max-md:leading-[38px] max-md:font-semibold max-md:tracking-[-1px]">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground">
             Sales, branch, production &amp; finance summary · {context}
           </p>
@@ -317,7 +317,7 @@ export function AdminDashboard() {
               </option>
             ))}
           </select>
-          <div className="flex h-10 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm text-muted-foreground md:h-9">
+          <div className="flex h-10 items-center gap-1.5 rounded-lg border bg-card px-2 text-sm text-muted-foreground max-md:rounded-2xl md:h-9">
             <select
               aria-label="From day"
               className="bg-transparent text-base text-foreground md:text-sm"
@@ -607,7 +607,7 @@ function LiveSales({ token, today, format }: { token: string; today: string; for
 
 function StatePanel({ title, body, action }: { title: string; body: string; action: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border bg-card px-6 py-14 text-center">
+    <div className="mb-card flex flex-col items-center gap-3 rounded-xl border bg-card px-6 py-14 text-center">
       <p className="text-lg font-bold">{title}</p>
       <p className="max-w-md text-sm text-muted-foreground">{body}</p>
       {action}

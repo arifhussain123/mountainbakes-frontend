@@ -92,6 +92,7 @@ export function KpiTile({
   tone = 'accent',
   negative,
   onClick,
+  hero,
 }: {
   label: string;
   value: string;
@@ -100,6 +101,8 @@ export function KpiTile({
   tone?: keyof typeof TONES;
   negative?: boolean;
   onClick?: () => void;
+  /** Phone (light) only: the section's headline figure as the violet hero. */
+  hero?: boolean;
 }) {
   const body = (
     <>
@@ -110,12 +113,16 @@ export function KpiTile({
         </span>
         {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
       </span>
-      <span className={cn('flex size-11 flex-none items-center justify-center rounded-xl', TONES[tone])}>
+      <span className={cn('mb-tile-icon flex size-11 flex-none items-center justify-center rounded-xl', TONES[tone])}>
         <Icon className="size-5" aria-hidden />
       </span>
     </>
   );
-  const cls = 'flex min-w-0 justify-between gap-3 rounded-xl border bg-card px-4 py-5 text-left shadow-xs';
+  // Phone (light): a pastel tile, or the violet hero for the headline figure.
+  const cls = cn(
+    'flex min-w-0 justify-between gap-3 rounded-xl border bg-card px-4 py-5 text-left shadow-xs',
+    hero ? 'mb-hero' : 'mb-tile',
+  );
   return onClick ? (
     <button
       type="button"
@@ -133,7 +140,7 @@ export function KpiTile({
 export function SectionHeading({ title, sub }: { title: string; sub: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <h2 className="text-lg font-bold sm:text-xl">{title}</h2>
+      <h2 className="text-lg font-bold sm:text-xl max-md:text-[21px] max-md:leading-[27px] max-md:font-semibold max-md:tracking-[-0.4px]">{title}</h2>
       <p className="text-sm text-muted-foreground">{sub}</p>
     </div>
   );
@@ -171,7 +178,7 @@ export function SalesOverview({
     <section className="flex min-w-0 flex-col gap-4">
       <SectionHeading title="Sales Overview" sub={`Point-of-sale orders · ${subtitle}`} />
       {failed && !s ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
+        <div className="mb-card flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-4 text-sm">
           <span>The sales figures could not be loaded. The rest of the dashboard is unaffected.</span>
           <Button size="sm" variant="outline" onClick={onRetry}>
             Retry
@@ -186,6 +193,7 @@ export function SalesOverview({
               sub="Paid orders at the counter"
               icon={Inbox}
               tone="accent"
+              hero
             />
             <KpiTile
               label="Transactions"
@@ -237,9 +245,10 @@ export function SalesOverview({
 /** One branch's figure for the period: its name in one box, its sale in the other. */
 function LiveSaleCard({ row, label, format }: { row: LiveSaleRow; label: string; format: Format }) {
   return (
-    <div data-testid="live-sale-card" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+    // Phone (light): a pastel tile (mb-tile); the name box loses its grey well.
+    <div data-testid="live-sale-card" className="mb-tile flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       {/* Two lines' room for every name, so the amount boxes line up across a row. */}
-      <div className="flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5">
+      <div className="mb-clear flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5 max-md:border-black/5">
         <p className="line-clamp-2 text-sm leading-snug font-semibold break-words" title={row.branch}>
           {row.branch}
         </p>
@@ -258,8 +267,8 @@ function LiveSaleCard({ row, label, format }: { row: LiveSaleRow; label: string;
 /** A card while the figures load, laid out as the loaded one. */
 function LiveSaleCardSkeleton() {
   return (
-    <div data-testid="live-sale-card-skeleton" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
-      <div className="flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5">
+    <div data-testid="live-sale-card-skeleton" className="mb-tile flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+      <div className="mb-clear flex min-h-[3.75rem] items-center border-b bg-muted/50 px-3.5 py-2.5 max-md:border-black/5">
         <Skeleton className="h-4 w-24" />
       </div>
       <div className="flex flex-col gap-1.5 px-3.5 py-3">
@@ -361,12 +370,12 @@ export function LiveBranchSales({
       id="live-sales"
       data-testid="live-sales"
       aria-labelledby="live-sales-title"
-      className="min-w-0 scroll-mt-20 overflow-hidden rounded-xl border bg-card shadow-xs"
+      className="mb-card min-w-0 scroll-mt-20 overflow-hidden rounded-xl border bg-card shadow-xs"
     >
       <div className="flex flex-col gap-3 border-b px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div className="flex min-w-0 flex-col gap-0.5">
-            <h2 id="live-sales-title" className="text-base font-bold tracking-wide uppercase sm:text-lg">
+            <h2 id="live-sales-title" className="mb-head-title text-base font-bold tracking-wide uppercase sm:text-lg">
               Live Sales — All Branches
             </h2>
             <p className="text-xs text-muted-foreground">
@@ -435,7 +444,8 @@ export function LiveBranchSales({
           {!loading && (
             <div
               data-testid="live-sales-total"
-              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded-lg bg-fin-soft px-3.5 py-2.5"
+              // Phone (light): the board's headline total as a violet hero strip.
+              className="mb-hero mb-hero-strip flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded-lg bg-fin-soft px-3.5 py-2.5 max-md:py-4"
             >
               <span className="text-sm font-extrabold uppercase">Total Sales</span>
               <span className="flex items-baseline gap-2">
@@ -698,6 +708,7 @@ export function TodaySnapshot({
           sub={t ? `${plural(t.totalOrders, 'order')} · staff sales excluded` : 'Point-of-sale orders'}
           icon={Inbox}
           tone="accent"
+          hero
         />
         <KpiTile
           label="Today's Shop Expenses"
@@ -770,6 +781,7 @@ export function HeadlineKpis({
   return (
     <div className={KPI_GRID}>
       <KpiTile
+        hero
         label="Total Sales"
         value={sales ? format(sales.totalSales) : salesFailed ? '—' : '…'}
         sub={

@@ -96,12 +96,13 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             alt={settings.companyName || 'Logo'}
             width={64}
             height={64}
-            className="h-16 w-16 flex-shrink-0 rounded-full object-cover"
+            className="mb-logo h-16 w-16 flex-shrink-0 rounded-full object-cover"
             priority
             unoptimized
           />
         ) : (
-          <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary">
+          // `mb-logo`: a white ring and soft shadow in the phone drawer (globals.css).
+          <div className="mb-logo flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary">
             <Image
               src={IMAGES.logo}
               alt={settings?.companyName || COMPANY_NAME}

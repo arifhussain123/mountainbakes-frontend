@@ -171,7 +171,9 @@ export function FinanceMonthlyDashboard() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {/* ---------------- Header & filters ---------------- */}
-      <div className="-mx-4 -mt-4 flex flex-wrap items-end justify-end gap-x-7 gap-y-4 bg-fin-ink px-4 py-4 text-fin-ink-foreground sm:-mx-6 sm:-mt-6 sm:px-6 print:mx-0 print:mt-0">
+      {/* Phone (light): `mb-ink mb-inset` turn the full-bleed band into the
+          redesign's deep-indigo rounded panel inside the page gutter. */}
+      <div className="mb-ink mb-inset -mx-4 -mt-4 flex flex-wrap items-end justify-end gap-x-7 gap-y-4 bg-fin-ink px-4 py-4 text-fin-ink-foreground sm:-mx-6 sm:-mt-6 sm:px-6 print:mx-0 print:mt-0">
         <div className="flex w-full flex-wrap items-end justify-end gap-3 print:hidden">
           <label className={labelCls}>
             MONTH
@@ -410,8 +412,8 @@ export function FinanceDashboardBody({
   return (
     <>
       <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">
-        {overview.map((g) => (
-          <OverviewCard key={g.title} group={g} format={format} />
+        {overview.map((g, i) => (
+          <OverviewCard key={g.title} group={g} format={format} hero={i === 0} />
         ))}
       </div>
 
@@ -477,14 +479,16 @@ export function FinanceDashboardBody({
       </Panel>
 
       {/* ---------------- Income ---------------- */}
-      <section className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
-        <header className="flex flex-wrap items-center justify-between gap-2 bg-fin-income px-4 py-2.5 text-fin-ink-foreground">
-          <h2 className="text-[13px] font-extrabold tracking-[0.12em]">INCOME</h2>
+      {/* Phone (light): a white card with a plain heading (mb-card / mb-head),
+          its figures as pastel tiles. Desktop keeps the coloured band. */}
+      <section className="mb-card min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
+        <header className="mb-head flex flex-wrap items-center justify-between gap-2 bg-fin-income px-4 py-2.5 text-fin-ink-foreground">
+          <h2 className="mb-head-title text-[13px] font-extrabold tracking-[0.12em] uppercase">Income</h2>
           <span className="text-xs text-fin-ink-muted">{context}</span>
         </header>
         <div
           className={cn(
-            'grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 bg-fin-row-hover p-3.5 sm:grid-cols-3',
+            'mb-clear grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 bg-fin-row-hover p-3.5 max-md:grid-cols-2 sm:grid-cols-3',
             isCurrentMonth ? 'xl:grid-cols-5' : 'xl:grid-cols-4',
           )}
         >
@@ -580,13 +584,13 @@ export function FinanceDashboardBody({
       </div>
 
       {/* ---------------- Expense ---------------- */}
-      <section className="min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
-        <header className="flex flex-wrap items-center justify-between gap-2 bg-fin-expense px-4 py-2.5 text-fin-ink-foreground">
-          <h2 className="text-[13px] font-extrabold tracking-[0.12em]">EXPENSES</h2>
+      <section className="mb-card min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
+        <header className="mb-head flex flex-wrap items-center justify-between gap-2 bg-fin-expense px-4 py-2.5 text-fin-ink-foreground">
+          <h2 className="mb-head-title text-[13px] font-extrabold tracking-[0.12em] uppercase">Expenses</h2>
           <span className="text-xs text-fin-ink-muted">{context}</span>
         </header>
-        <div className="grid grid-cols-1 gap-3.5 bg-fin-row-hover p-3.5 lg:grid-cols-2">
-          <div className="grid grid-cols-1 content-start gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+        <div className="mb-clear grid grid-cols-1 gap-3.5 bg-fin-row-hover p-3.5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 content-start gap-3 max-md:grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
             <StatCard
               label="Ledger Head"
               value={s.ledgerExpense}
@@ -612,9 +616,9 @@ export function FinanceDashboardBody({
               format={format}
             />
           </div>
-          <div className="min-w-0 rounded-lg border bg-card">
-            <p className="border-b bg-fin-soft px-3 py-2 text-[11px] font-extrabold tracking-[0.1em]">
-              LEDGER HEAD BREAKDOWN
+          <div className="mb-card min-w-0 rounded-lg border bg-card">
+            <p className="mb-head mb-head-title border-b bg-fin-soft px-3 py-2 text-[11px] font-extrabold tracking-[0.1em] uppercase">
+              Ledger head breakdown
             </p>
             <div className="max-h-72 overflow-y-auto p-3">
               <BarList
@@ -806,10 +810,15 @@ export interface OverviewGroup {
   note?: string;
 }
 
-export function OverviewCard({ group, format }: { group: OverviewGroup; format: Format }) {
+/**
+ * `hero`: on a phone in light mode this card is the redesign's violet hero (the
+ * page's headline figures); the others are white cards with a plain heading.
+ * Desktop ignores it.
+ */
+export function OverviewCard({ group, format, hero }: { group: OverviewGroup; format: Format; hero?: boolean }) {
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
-      <h3 className={cn('px-3.5 py-2 text-xs font-extrabold tracking-[0.12em] text-fin-ink-foreground', group.band)}>
+    <section className={cn('flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs', hero ? 'mb-hero' : 'mb-card')}>
+      <h3 className={cn('mb-head px-3.5 py-2 text-xs font-extrabold tracking-[0.12em] text-fin-ink-foreground', group.band)}>
         {group.title}
       </h3>
       {group.items.map((it) => {
@@ -849,7 +858,7 @@ export function OverviewCard({ group, format }: { group: OverviewGroup; format: 
         );
       })}
       {group.note && (
-        <p className="mt-auto bg-fin-row-hover px-3.5 py-2.5 text-[11.5px] leading-snug text-muted-foreground">
+        <p className="mb-clear mt-auto bg-fin-row-hover px-3.5 py-2.5 text-[11.5px] leading-snug text-muted-foreground">
           {group.note}
         </p>
       )}
@@ -900,9 +909,10 @@ function StatCard({
       <span className={cn('text-[11.5px]', inverse ? 'text-fin-ink-muted' : 'text-muted-foreground')}>{sub}</span>
     </>
   );
+  // Phone (light): pastel tile, or the small violet hero for the inverse one.
   const cls = cn(
     'flex min-w-0 flex-col gap-1 rounded-lg border px-3.5 py-3 text-left',
-    inverse ? 'border-transparent bg-fin-ink text-fin-ink-foreground' : 'bg-card',
+    inverse ? 'border-transparent bg-fin-ink text-fin-ink-foreground mb-hero mb-hero-strip' : 'bg-card mb-tile',
   );
   return onClick ? (
     <button
@@ -988,7 +998,7 @@ export function CashStrip({
   if (loading) return <Skeleton className="h-11 w-full print:hidden" />;
   if (!cash) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 rounded-lg border bg-card px-4 py-2.5 text-sm print:hidden">
+    <div className="mb-card flex flex-wrap items-center gap-x-6 gap-y-1.5 rounded-lg border bg-card px-4 py-2.5 text-sm print:hidden">
       <span className="text-[10.5px] font-bold tracking-[0.1em] text-muted-foreground uppercase">
         Today · company-wide
       </span>
@@ -1012,7 +1022,7 @@ export function CashStrip({
 
 function StatePanel({ title, body, action }: { title: string; body: string; action: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border bg-card px-6 py-12 text-center">
+    <div className="mb-card flex flex-col items-center gap-3 rounded-xl border bg-card px-6 py-12 text-center">
       <p className="text-lg font-bold">{title}</p>
       <p className="max-w-md text-sm text-muted-foreground">{body}</p>
       {action}

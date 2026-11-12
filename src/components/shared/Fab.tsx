@@ -33,9 +33,12 @@ export function Fab({
       onClick={onClick}
       aria-label={label}
       className={cn(
-        'md:hidden fixed right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40',
+        // 7rem, not 5: clears the bottom nav's raised active-tab circle, which
+        // stands ~30px above the bar (and sits right here when More is active).
+        'md:hidden fixed right-4 bottom-[calc(7rem+env(safe-area-inset-bottom))] z-40',
         'flex h-14 w-14 items-center justify-center rounded-full',
-        'bg-primary text-white shadow-lg transition-transform',
+        // Phone redesign: the accent gradient and its glow (light mode; flat in dark).
+        'bg-primary bg-[image:var(--mb-primary-grad)] text-white shadow-lg not-dark:shadow-(--mb-primary-glow) transition-transform',
         'active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         className
       )}

@@ -323,7 +323,7 @@ export function AdminBranchStockPage() {
   return (
     <div className="space-y-4">
       {/* ── Controls ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-card grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4 max-md:p-4">
         <div className="space-y-1">
           <Label htmlFor="stock-branch">Branch</Label>
           {/* `items` is what lets the closed trigger show the branch NAME; without
@@ -527,7 +527,8 @@ export function AdminBranchStockPage() {
               return (
                 <div
                   key={row.productId}
-                  className={cn('rounded-lg border bg-card p-3', dirty && 'ring-2 ring-primary/30', error && 'ring-destructive/50')}
+                  // Phone: rounded redesign card via utilities, so the dirty / error ring survives.
+                  className={cn('rounded-lg border bg-card p-3 max-md:p-4 max-md:rounded-[24px] max-md:not-dark:shadow-[0_2px_4px_rgba(76,60,170,0.04),0_14px_30px_rgba(76,60,170,0.08)]', dirty && 'ring-2 ring-primary/30', error && 'ring-destructive/50')}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
