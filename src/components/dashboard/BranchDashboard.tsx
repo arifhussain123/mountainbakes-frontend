@@ -30,6 +30,10 @@ import {
   type PeriodMeta,
 } from './branch-v2/model';
 
+/** Up / down figures on the phone's violet hero cards: light mint and pink, both modes. */
+const ON_HERO_UP = 'max-md:text-[#b8f5d6] max-md:dark:text-[#b8f5d6]';
+const ON_HERO_DOWN = 'max-md:text-[#ffd0d2] max-md:dark:text-[#ffd0d2]';
+
 /**
  * Branch Dashboard v2 — `Desing File/Branch Dashboard v2.dc.html`.
  *
@@ -302,7 +306,7 @@ function SummaryBands({
             label="Budget vs Actual"
             note={`${money(revenue)} of ${money(budget)}`}
             value={`${budgetPct}%`}
-            valueClassName={budgetPct >= 100 ? 'text-emerald-600 dark:text-emerald-400' : undefined}
+            valueClassName={budgetPct >= 100 ? cn('text-emerald-600 dark:text-emerald-400', ON_HERO_UP) : undefined}
             loading={loading}
             last
           />
@@ -347,9 +351,9 @@ function TrendBand({
       changeValue = `${c.changePct > 0 ? '+' : ''}${c.changePct}%`;
       changeTone =
         c.direction === 'up'
-          ? 'text-emerald-600 dark:text-emerald-400'
+          ? cn('text-emerald-600 dark:text-emerald-400', ON_HERO_UP)
           : c.direction === 'down'
-            ? 'text-red-600 dark:text-red-400'
+            ? cn('text-red-600 dark:text-red-400', ON_HERO_DOWN)
             : 'text-muted-foreground';
     }
   }
@@ -407,11 +411,12 @@ function DeductionBars({
   money: (n: number) => string;
 }) {
   const s = summary;
+  // Phone: the card is the violet hero, so each bar gets a colour that reads on violet.
   const bars = [
-    { label: 'Sales', kind: 'Income', value: s?.totalRevenue ?? 0, fill: 'bg-fin-share' },
-    { label: 'Net Amount', kind: 'Income', value: s?.totalProfit ?? 0, fill: 'bg-fin-ink-muted' },
-    { label: 'Expenses', kind: 'Deduction', value: s?.totalExpenses ?? 0, fill: 'bg-fin-ledger' },
-    { label: 'Discounts', kind: 'Deduction', value: s?.totalDiscount ?? 0, fill: 'bg-primary' },
+    { label: 'Sales', kind: 'Income', value: s?.totalRevenue ?? 0, fill: 'bg-fin-share max-md:bg-white' },
+    { label: 'Net Amount', kind: 'Income', value: s?.totalProfit ?? 0, fill: 'bg-fin-ink-muted max-md:bg-[#a8ebc4]' },
+    { label: 'Expenses', kind: 'Deduction', value: s?.totalExpenses ?? 0, fill: 'bg-fin-ledger max-md:bg-[#ffd36e]' },
+    { label: 'Discounts', kind: 'Deduction', value: s?.totalDiscount ?? 0, fill: 'bg-primary max-md:bg-[#ff8a3d]' },
   ];
   const max = Math.max(...bars.map((b) => b.value));
   const when = meta.bucketNoun === 'day' ? dayLabel(today) : meta.summaryLabel;
@@ -419,7 +424,7 @@ function DeductionBars({
   return (
     <Panel
       title={`Sales vs Deductions · ${when}`}
-      className={cn('transition-opacity', stale && 'opacity-60')}
+      className={cn('mb-hero transition-opacity', stale && 'opacity-60')}
       bodyClassName="flex flex-col gap-2 py-3"
     >
       {bars.map((b) => (

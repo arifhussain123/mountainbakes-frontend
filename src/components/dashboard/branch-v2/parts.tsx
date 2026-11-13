@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
  * No hex lives in this folder.
  *
  * Phone redesign 2026: every shape here also carries `max-md:` classes and/or an
- * `mb-*` surface class (globals.css, light mode only) — the Sales band becomes the
+ * `mb-*` surface class (globals.css, light and dark) — the summary bands become the
  * violet hero, tiles become pastel, panels become soft white cards with a plain
  * heading. Desktop reads only the classes without a `max-md:` prefix.
  */
@@ -44,8 +44,8 @@ export function BandCard({
   className?: string;
 }) {
   return (
-    // Phone: the Sales band is the violet hero; the other two are white cards.
-    <section className={cn('min-w-0 overflow-hidden rounded-md border bg-card', tone === 'income' ? 'mb-hero' : 'mb-card', className)}>
+    // Phone: every summary band (Sales, Deductions, the trend) is the violet hero.
+    <section className={cn('mb-hero min-w-0 overflow-hidden rounded-md border bg-card', className)}>
       <h3 className={cn('px-3 py-[7px] text-[11px] font-extrabold tracking-[0.08em] uppercase', BAND[tone], PHONE_HEADING)}>
         {title}
       </h3>
