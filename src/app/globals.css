@@ -354,8 +354,10 @@
    `max-width: 767px`, the same edge as Tailwind's `md`, so desktop and tablet
    render exactly as before.
 
-   Light mode only. Each selector is `:root:not(.dark)`, so a user who picked dark
-   mode keeps the dark palette above. The orange-only tokens (--primary and what
+   Light and dark. Light rules are `:root:not(.dark)`, dark ones `:root.dark`
+   (the dark build of the same mockups: `MB_THEME=dark python3 branch.py`), and
+   the shape-only ones (hero, inset, head title) are plain `:root`. Desktop and
+   tablet dark mode keep the brown palette above. The orange-only tokens (--primary and what
    derives from it) are matched on `data-accent='orange'` as well, so a user who
    picked another accent keeps it.
 
@@ -455,7 +457,7 @@
      pseudo-elements behind the content (isolation + z-index -1), so no markup
      changes. Text tokens are re-pointed inside it, so every `text-muted-foreground`
      or `text-primary` descendant turns white without touching the call site. */
-  :root:not(.dark) .mb-hero {
+  :root:is(.dark, :not(.dark)) .mb-hero {
     --foreground: #ffffff;
     --card-foreground: #ffffff;
     --muted-foreground: rgba(255, 255, 255, 0.82);
@@ -473,8 +475,8 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -10px 24px rgba(40, 20, 140, 0.25),
       0 18px 36px rgba(91, 72, 216, 0.35);
   }
-  :root:not(.dark) .mb-hero::before,
-  :root:not(.dark) .mb-hero::after {
+  :root:is(.dark, :not(.dark)) .mb-hero::before,
+  :root:is(.dark, :not(.dark)) .mb-hero::after {
     content: '';
     position: absolute;
     z-index: -1;
@@ -483,7 +485,7 @@
   }
   /* Tucked well into the corner (52×44px of it shows) so it stays clear of a
      right-aligned total on the card's first line. */
-  :root:not(.dark) .mb-hero::before {
+  :root:is(.dark, :not(.dark)) .mb-hero::before {
     right: -44px;
     top: -52px;
     width: 96px;
@@ -491,7 +493,7 @@
     background: radial-gradient(circle at 34% 30%, #ffe9c2 0%, #ffad4d 26%, #f2542d 68%, #b8321a 100%);
     box-shadow: 0 14px 28px rgba(184, 50, 26, 0.3);
   }
-  :root:not(.dark) .mb-hero::after {
+  :root:is(.dark, :not(.dark)) .mb-hero::after {
     right: -10px;
     bottom: -12px;
     width: 40px;
@@ -500,13 +502,13 @@
     box-shadow: 0 10px 20px rgba(60, 40, 180, 0.3);
   }
   /* A hero strip (a section banner) is too short for the full sphere. */
-  :root:not(.dark) .mb-hero-strip::before {
+  :root:is(.dark, :not(.dark)) .mb-hero-strip::before {
     right: -30px;
     top: -34px;
     width: 68px;
     height: 68px;
   }
-  :root:not(.dark) .mb-hero-strip::after {
+  :root:is(.dark, :not(.dark)) .mb-hero-strip::after {
     display: none;
   }
   /* The dark variant of a banner: the design's deep indigo "cocoa". */
@@ -556,7 +558,7 @@
     border-bottom-color: transparent;
     padding-top: 16px;
   }
-  :root:not(.dark) .mb-head-title {
+  :root:is(.dark, :not(.dark)) .mb-head-title {
     color: inherit; /* the heading's ink (or white on the hero), not a muted grey */
     font-size: 17px;
     line-height: 22px;
@@ -565,14 +567,14 @@
     text-transform: none;
   }
   /* …except on the violet hero, where the heading stays white. */
-  :root:not(.dark) .mb-hero .mb-head {
+  :root:is(.dark, :not(.dark)) .mb-hero .mb-head {
     --fin-ink-foreground: #ffffff;
     --fin-ink-muted: rgba(255, 255, 255, 0.8);
     color: #ffffff;
   }
   /* A full-bleed band (negative margins) becomes a rounded panel inside the
      page gutter. */
-  :root:not(.dark) .mb-inset {
+  :root:is(.dark, :not(.dark)) .mb-inset {
     margin-left: 0;
     margin-right: 0;
     margin-top: 0;
@@ -580,14 +582,124 @@
   }
   /* A tinted well inside a card (bg-fin-row-hover, bg-muted/30): let the card's
      own white show through. */
-  :root:not(.dark) .mb-clear {
+  :root:is(.dark, :not(.dark)) .mb-clear {
     background: transparent;
+  }
+
+  /* ── Dark (phone): midnight canvas, deep-violet cards, darker stat tiles. Same
+     violet hero and orange accent as light. Mirrors common.py's DARK_CSS. ── */
+  :root.dark {
+    --background: #0e0f1f;
+    --foreground: #f3f2ff;
+    --card: #1a1b33;
+    --card-foreground: #f3f2ff;
+    --popover: #1a1b33;
+    --popover-foreground: #f3f2ff;
+    --secondary: #2e2f5c;
+    --secondary-foreground: #f3f2ff;
+    --muted: #24254a;
+    --muted-foreground: #b7b9d6;
+    --accent: #2b2557;
+    --accent-foreground: #c9beff;
+    --border: #2a2b4d;
+    --input: #2d2f52;
+    --chart-2: #8e7cff;
+    --chart-3: #ff8a3d;
+    --chart-4: #ffc266;
+    --chart-5: #b3a6ff;
+    --fin-income: #3a3175;
+    --fin-soft: #24254a;
+    --fin-ink: #1f1c45;
+    --fin-ink-field: #2e2a66;
+    --fin-row-hover: #20213d;
+    --sidebar: #15162b;
+    --sidebar-foreground: #f3f2ff;
+    --sidebar-accent: #2b2557;
+    --sidebar-accent-foreground: #c9beff;
+    --sidebar-border: #2a2b4d;
+
+    --mb-text-3: #7f83a8;
+    --mb-input-bg: #15162b;
+    --mb-violet: #8e7cff;
+    --mb-card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 2px 4px rgba(0, 0, 0, 0.25), 0 14px 30px rgba(0, 0, 0, 0.35);
+    --mb-primary-grad: linear-gradient(135deg, color-mix(in oklab, var(--primary), #ffd29a 30%) 0%, var(--primary) 100%);
+    --mb-primary-glow: 0 10px 22px color-mix(in oklab, var(--primary) 35%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  :root.dark:not([data-accent]),
+  :root.dark[data-accent='orange'] {
+    --primary: #ff6a3d;
+    --ring: #ff6a3d;
+    --chart-1: #ff6a3d;
+    --sidebar-primary: #ff6a3d;
+    --sidebar-ring: #ff6a3d;
+    --mb-primary-grad: linear-gradient(135deg, #ff8a3d 0%, #f2542d 100%);
+    --mb-primary-glow: 0 10px 22px rgba(255, 106, 61, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  :root.dark .mb-canvas {
+    background:
+      radial-gradient(70% 28% at 100% 0%, rgba(127, 107, 242, 0.22) 0%, rgba(127, 107, 242, 0) 100%),
+      radial-gradient(60% 22% at 0% 6%, rgba(255, 138, 61, 0.1) 0%, rgba(255, 138, 61, 0) 100%),
+      var(--background);
+  }
+  :root.dark .mb-card:not(.mb-hero) {
+    background: linear-gradient(180deg, #1c1d37 0%, #17182e 100%);
+    border: 1px solid #2a2b4d;
+    border-radius: 24px;
+    box-shadow: var(--mb-card-shadow);
+  }
+  :root.dark .mb-hero {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -10px 24px rgba(40, 20, 140, 0.3),
+      0 18px 36px rgba(0, 0, 0, 0.45);
+  }
+  :root.dark .mb-ink {
+    border: none;
+    border-radius: 24px;
+    color: #ffffff;
+    background: linear-gradient(145deg, #3b3478 0%, #221d4d 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  }
+  :root.dark .mb-tile {
+    --muted-foreground: rgba(255, 255, 255, 0.62);
+    --card: transparent;
+    --foreground: #ffffff;
+    color: #ffffff;
+    border: none;
+    border-radius: 24px;
+    background: linear-gradient(150deg, #164a33 0%, #0f3324 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 24px rgba(0, 0, 0, 0.35);
+  }
+  :root.dark .mb-tile:nth-child(5n + 2) { background: linear-gradient(150deg, #124650 0%, #0c3139 100%); }
+  :root.dark .mb-tile:nth-child(5n + 3) { background: linear-gradient(150deg, #5a3f12 0%, #3e2b0b 100%); }
+  :root.dark .mb-tile:nth-child(5n + 4) { background: linear-gradient(150deg, #3a3175 0%, #28215a 100%); }
+  :root.dark .mb-tile:nth-child(5n + 5) { background: linear-gradient(150deg, #5a2453 0%, #3e173a 100%); }
+  :root.dark .mb-tile .mb-tile-icon {
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+  :root.dark .mb-head {
+    --fin-ink-foreground: #f3f2ff;
+    --fin-ink-muted: #b7b9d6;
+    --fin-ink-field: #24254a;
+    background: transparent;
+    color: #f3f2ff;
+    border-bottom-color: transparent;
+    padding-top: 16px;
+  }
+  :root.dark .mb-hero .mb-head {
+    --fin-ink-foreground: #ffffff;
+    --fin-ink-muted: rgba(255, 255, 255, 0.8);
+    color: #ffffff;
   }
 
   /* Round logo spot: the real badge inside a white ring. */
   .mb-logo {
     border-radius: 50%;
     box-shadow: 0 0 0 2px #ffffff, 0 8px 18px rgba(190, 30, 30, 0.3);
+  }
+  :root.dark .mb-logo {
+    box-shadow: 0 0 0 2px #2a2b4d, 0 8px 18px rgba(0, 0, 0, 0.4);
   }
 }
 
