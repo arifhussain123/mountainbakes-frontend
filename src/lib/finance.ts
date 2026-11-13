@@ -767,24 +767,17 @@ export function useDemandRecordAdjustments(branchId?: string, opts?: { enabled?:
 }
 
 /**
- * Every row of the current filter, page by page, for the export. The API caps a
- * page at 500; a year of every branch is a few thousand rows.
+ * The Demand Record as an Excel file: every row of the current filter, built
+ * by the API (GET <path>/export) from the same figures the page shows.
  */
-export async function fetchAllDemandRecordRows(
+export async function downloadDemandRecordExcel(
   filters: Omit<DemandRecordFilters, 'page' | 'pageSize'>,
   token: Parameters<typeof apiCall>[2],
   scope: DemandRecordScope = 'finance',
-): Promise<DemandRecordResult> {
-  const path = demandRecordPath(scope);
-  const first = await apiCall<DemandRecordResult>(
-    `${path}${toQuery({ ...filters, page: 1, pageSize: 500 })}`, {}, token);
-  const rows = [...first.rows];
-  for (let page = 2; page <= first.pagination.totalPages; page++) {
-    const next = await apiCall<DemandRecordResult>(
-      `${path}${toQuery({ ...filters, page, pageSize: 500 })}`, {}, token);
-    rows.push(...next.rows);
-  }
-  return { ...first, rows };
+  fileName = 'demand-record.xlsx',
+): Promise<void> {
+  const blob = await apiCall<Blob>(`${demandRecordPath(scope)}/export${toQuery(filters)}`, {}, token);
+  saveBlob(blob, fileName);
 }
 
 // ---------------------------------------------------------------------------

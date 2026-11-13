@@ -8,7 +8,7 @@ import { balanceStanding, businessDateStr, type DemandRecordRow, type PageSize }
 import { useAuth } from '@/hooks/useAuth';
 import { useBranches } from '@/lib/queries';
 import {
-  fetchAllDemandRecordRows,
+  downloadDemandRecordExcel,
   useDemandRecord,
   useDemandRecordSettings,
   useFinanceMutation,
@@ -23,7 +23,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate } from '@/utils/date';
-import { saveBlob } from '@/utils/saveBlob';
 import { cn } from '@/lib/utils';
 import { CalendarCheck, Download, Eye, NotebookPen, RotateCcw, ScrollText } from 'lucide-react';
 import { FinancePageHeader, Money, ReadOnlyNotice, useFinanceAbilities, useMoney, type FinanceAbilities } from './finance-ui';
@@ -258,35 +257,16 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
     return true;
   });
 
-  async function exportCsv() {
+  async function exportExcel() {
     if (!data) return;
     setExporting(true);
     try {
       const { page: _p, pageSize: _s, ...rest } = filters;
-      const all = await fetchAllDemandRecordRows(rest, token, scope);
-      const header = [
-        'Required Date', 'Demand Number', 'Branch', 'Delivered', 'Actual Sales', 'Return', 'Discount', 'G. Total',
-        'Share %', 'Share % Frozen', 'Company Share', 'Share on Sales', 'Share Received', 'Adjustments',
-        'Previous Balance', 'Closing Balance', 'Status',
-      ];
-      const lines = all.rows.map((r) => [
-        r.businessDate, r.demandNumber ?? 'Opening', r.branchName, r.delivered, r.sales, r.returns, r.discount,
-        r.gTotal, r.sharePct, r.pctFrozen ? 'yes' : 'no', r.companyShare, r.shareOnSales, r.received,
-        r.adjustments, r.previousBalance, r.closingBalance, r.status ?? '',
-      ]);
-      const t = all.totals;
-      lines.push([]);
-      lines.push(['TOTAL', '', '', t.delivered, t.sales, t.returns, t.discount, t.gTotal, '', '', t.companyShare,
-        t.shareOnSales, t.received, t.adjustments, t.openingBalance, t.closingBalance, '']);
-      lines.push([`Opening and closing balances are per branch at the start and end of ${all.from} to ${all.to}, not sums of the rows.`]);
-      const csv = [header, ...lines]
-        .map((row) => row.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
-        .join('\n');
       const name = isBranch
         ? (user?.branchName ?? 'branch')
         : branchId === ALL ? 'all-branches' : (branchItems.find((b) => b.value === branchId)?.label ?? 'branch');
       const who = shortBranch(name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      saveBlob(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }), `demand-record-${who}-${all.from}_to_${all.to}.csv`);
+      await downloadDemandRecordExcel(rest, token, scope, `demand-record-${who}-${data.from}_to_${data.to}.xlsx`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Export failed');
     } finally {
@@ -337,7 +317,7 @@ function DemandRecordView({ scope, abilities }: { scope: DemandRecordScope; abil
             <Button variant="outline" size="sm" onClick={() => setStatementOpen(true)}>
               <CalendarCheck className="h-3.5 w-3.5" /> Month-end statement
             </Button>
-            <Button variant="outline" size="sm" disabled={!data || exporting} onClick={() => void exportCsv()}>
+            <Button variant="outline" size="sm" disabled={!data || exporting} onClick={() => void exportExcel()}>
               <Download className="h-3.5 w-3.5" /> {exporting ? 'Exporting…' : 'Export'}
             </Button>
             <Button variant="outline" size="sm" onClick={() => void recordQ.refetch()}>
