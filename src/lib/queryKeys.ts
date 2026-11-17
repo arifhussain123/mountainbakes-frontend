@@ -458,6 +458,8 @@ export const qk = {
   storeAudit: (params: Record<string, unknown>) => ['store', 'audit', params] as const,
   storeFeatures: () => ['store', 'features'] as const,
   storePriceRequests: (status: string) => ['store', 'priceRequests', status] as const,
+  storePurchaseOrders: (params: Record<string, unknown>) => ['store', 'purchaseOrders', params] as const,
+  storePurchaseOrder: (id: string) => ['store', 'purchaseOrder', id] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

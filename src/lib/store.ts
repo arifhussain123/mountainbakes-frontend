@@ -50,6 +50,10 @@ import type {
   StorePrice,
   StorePriceInput,
   StorePriceRequest,
+  StorePoInput,
+  StorePoStatus,
+  StorePoTransitionInput,
+  StorePurchaseOrder,
   StoreSupplier,
   StoreSupplierInput,
   StoreQuery,
@@ -402,6 +406,35 @@ export function useDeactivateStorePrice(token: string) {
 export function useRequestStorePrice(token: string) {
   return useStoreMutation((v: { itemId: string; note?: string }) =>
     apiCall<StorePriceRequest>(`${BASE}/price-requests`, send('POST', v), token));
+}
+
+// ── Purchase Orders (behind the `purchase_orders` flag) ───────────────────────
+
+export function useStorePurchaseOrders(token: string, params: { status?: StorePoStatus; search?: string } = {}, enabled = true) {
+  return useQuery({
+    queryKey: qk.storePurchaseOrders(params),
+    queryFn: () => apiCall<StorePage<StorePurchaseOrder>>(`${BASE}/purchase-orders${qs(params)}`, {}, token),
+    enabled: !!token && enabled,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+export function useStorePurchaseOrder(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.storePurchaseOrder(id ?? ''),
+    queryFn: () => apiCall<StorePurchaseOrder>(`${BASE}/purchase-orders/${id}`, {}, token),
+    enabled: !!token && !!id,
+  });
+}
+
+export function useCreateStorePurchaseOrder(token: string) {
+  return useStoreMutation((input: StorePoInput) =>
+    apiCall<StorePurchaseOrder>(`${BASE}/purchase-orders`, send('POST', input), token));
+}
+
+export function useTransitionStorePurchaseOrder(token: string) {
+  return useStoreMutation((v: { id: string; input: StorePoTransitionInput }) =>
+    apiCall<StorePurchaseOrder>(`${BASE}/purchase-orders/${v.id}/action`, send('POST', v.input), token));
 }
 
 export function useReceiveStock(token: string) {

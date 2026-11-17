@@ -149,6 +149,7 @@ const STORE_TABS: Array<[string, string]> = [
   [ROUTES.STORE_PRICES, 'Price Control'],
   [ROUTES.STORE_RECEIVING, 'New Stock Receiving'],
   [ROUTES.STORE_SUPPLIERS, 'Suppliers'],
+  [ROUTES.STORE_PURCHASE_ORDERS, 'Purchase Orders'],
   [ROUTES.STORE_STOCK, 'Store Stock'],
   [ROUTES.STORE_APPROVAL, 'Approval & Issue'],
   [ROUTES.STORE_LEDGER, 'Stock Ledger'],
@@ -161,6 +162,7 @@ const STORE_TABS: Array<[string, string]> = [
 /** Tabs that only appear when their store feature flag is on (Phase 2+). */
 const TAB_FEATURE: Record<string, StoreFeatureKey> = {
   [ROUTES.STORE_SUPPLIERS]: 'suppliers',
+  [ROUTES.STORE_PURCHASE_ORDERS]: 'purchase_orders',
 };
 
 /**

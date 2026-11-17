@@ -236,6 +236,7 @@ export const ROUTES = {
   STORE_PRICES: '/store-prices',
   STORE_RECEIVING: '/store-receiving',
   STORE_SUPPLIERS: '/store-suppliers',
+  STORE_PURCHASE_ORDERS: '/store-purchase-orders',
   STORE_STOCK: '/store-stock',
   STORE_APPROVAL: '/store-approval',
   STORE_LEDGER: '/store-ledger',
