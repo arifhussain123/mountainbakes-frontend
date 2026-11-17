@@ -33,6 +33,8 @@ import type {
   StoreIssueInput,
   StoreItem,
   StoreItemHistory,
+  StoreItemPackage,
+  StoreItemPackageInput,
   StoreItemImportCommitRow,
   StoreItemImportPreview,
   StoreItemImportResult,
@@ -141,6 +143,25 @@ export function useStoreItemHistory(token: string, id: string | null) {
     queryFn: () => apiCall<StoreItemHistory>(`${BASE}/items/${id}/history`, {}, token),
     enabled: !!token && !!id,
   });
+}
+
+/** The purchase packages of one item (Items v2). */
+export function useStoreItemPackages(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.storeItemPackages(id ?? ''),
+    queryFn: () => apiCall<StoreItemPackage[]>(`${BASE}/items/${id}/packages`, {}, token),
+    enabled: !!token && !!id,
+    staleTime: 60_000,
+  });
+}
+
+export function useAddStoreItemPackage(token: string) {
+  return useStoreMutation((v: { itemId: string; input: StoreItemPackageInput }) =>
+    apiCall<StoreItemPackage>(`${BASE}/items/${v.itemId}/packages`, send('POST', v.input), token));
+}
+
+export function useDeleteStoreItemPackage(token: string) {
+  return useStoreMutation((id: string) => apiCall<{ ok: true }>(`${BASE}/item-packages/${id}`, send('DELETE'), token));
 }
 
 export function useStoreItemLedger(token: string, id: string | null, from: string, to: string) {

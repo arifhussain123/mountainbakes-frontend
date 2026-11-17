@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { downloadStoreItems, useDeleteStoreItem, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemHistory, useStoreItems, useStoreLookups } from '@/lib/store';
+import { downloadStoreItems, useAddStoreItemPackage, useDeleteStoreItem, useDeleteStoreItemPackage, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemHistory, useStoreItemPackages, useStoreItems, useStoreLookups, useStoreSuppliers } from '@/lib/store';
 import { StoreItemImportDialog } from './StoreItemImportDialog';
 import { ROUTES } from '@/utils/routes';
 import {
@@ -37,6 +37,14 @@ interface Form {
   conversionQty: string;
   minStock: string;
   remarks: string;
+  reorderQty: string;
+  maxLevel: string;
+  safetyStock: string;
+  leadTimeDays: string;
+  preferredSupplierId: string;
+  storageType: 'dry' | 'chilled' | 'frozen';
+  trackExpiry: boolean;
+  description: string;
 }
 
 const lookupValues = (rows: StoreLookup[] | undefined, kind: StoreLookup['kind']) =>
@@ -231,7 +239,7 @@ export function StoreItemsPage() {
           onClose={() => setEditing(null)}
         />
       )}
-      {viewing && <ItemViewDialog token={token} id={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <ItemViewDialog token={token} id={viewing} canEdit={canEdit} onClose={() => setViewing(null)} />}
       {importing && <StoreItemImportDialog token={token} onClose={() => setImporting(false)} />}
 
       <ConfirmDialog
@@ -281,11 +289,14 @@ function ItemFormDialog({ token, item, categories, baseUnits, purchaseUnits, onC
   onClose: () => void;
 }) {
   const saveM = useSaveStoreItem(token);
+  const suppliersQ = useStoreSuppliers(token);
   const [tried, setTried] = useState(false);
   const [f, setF] = useState<Form>(() => item
-    ? { itemCode: item.itemCode, name: item.name, category: item.category, baseUnit: item.baseUnit, purchaseUnit: item.purchaseUnit, conversionQty: String(item.conversionQty), minStock: String(item.minStock), remarks: item.remarks ?? '' }
-    : { itemCode: '', name: '', category: categories[0] ?? '', baseUnit: baseUnits[0] ?? 'KG', purchaseUnit: purchaseUnits[0] ?? 'Bag', conversionQty: '', minStock: '', remarks: '' });
-  const set = (k: keyof Form) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+    ? { itemCode: item.itemCode, name: item.name, category: item.category, baseUnit: item.baseUnit, purchaseUnit: item.purchaseUnit, conversionQty: String(item.conversionQty), minStock: String(item.minStock), remarks: item.remarks ?? '', reorderQty: item.reorderQty ? String(item.reorderQty) : '', maxLevel: item.maxLevel ? String(item.maxLevel) : '', safetyStock: item.safetyStock ? String(item.safetyStock) : '', leadTimeDays: item.leadTimeDays != null ? String(item.leadTimeDays) : '', preferredSupplierId: item.preferredSupplierId ?? '', storageType: item.storageType ?? 'dry', trackExpiry: item.trackExpiry ?? false, description: item.description ?? '' }
+    : { itemCode: '', name: '', category: categories[0] ?? '', baseUnit: baseUnits[0] ?? 'KG', purchaseUnit: purchaseUnits[0] ?? 'Bag', conversionQty: '', minStock: '', remarks: '', reorderQty: '', maxLevel: '', safetyStock: '', leadTimeDays: '', preferredSupplierId: '', storageType: 'dry', trackExpiry: false, description: '' });
+  // Only the string-valued fields go through this setter; storageType/trackExpiry use setF directly.
+  type StrKey = { [K in keyof Form]: string extends Form[K] ? K : never }[keyof Form];
+  const set = (k: StrKey) => (v: string) => setF((x) => ({ ...x, [k]: v }));
 
   const input: StoreItemInput = {
     itemCode: f.itemCode.trim().toUpperCase(),
@@ -296,6 +307,14 @@ function ItemFormDialog({ token, item, categories, baseUnits, purchaseUnits, onC
     conversionQty: Number(f.conversionQty),
     minStock: f.minStock === '' ? NaN : Number(f.minStock),
     remarks: f.remarks.trim() || null,
+    reorderQty: f.reorderQty === '' ? undefined : Number(f.reorderQty),
+    maxLevel: f.maxLevel === '' ? undefined : Number(f.maxLevel),
+    safetyStock: f.safetyStock === '' ? undefined : Number(f.safetyStock),
+    leadTimeDays: f.leadTimeDays === '' ? null : Number(f.leadTimeDays),
+    preferredSupplierId: f.preferredSupplierId || null,
+    storageType: f.storageType,
+    trackExpiry: f.trackExpiry,
+    description: f.description.trim() || null,
   };
   const parsed = StoreItemInputSchema.safeParse(input);
   const errs: Record<string, string> = {};
@@ -350,7 +369,39 @@ function ItemFormDialog({ token, item, categories, baseUnits, purchaseUnits, onC
           <Field label="Low-stock Level" required error={e('minStock')} hint={`Flag as low stock at or below this many ${f.baseUnit}`}>
             <input inputMode="decimal" className={inputCls(!!e('minStock'))} value={f.minStock} onChange={(x) => set('minStock')(x.target.value.replace(/[^\d.]/g, ''))} placeholder="0" />
           </Field>
+          <Field label="Reorder quantity" hint={`How many ${f.baseUnit} to order when low`}>
+            <input inputMode="decimal" className={inputCls()} value={f.reorderQty} onChange={(x) => set('reorderQty')(x.target.value.replace(/[^\d.]/g, ''))} placeholder="0" />
+          </Field>
+          <Field label="Max level" hint="Target maximum stock (0 = none)">
+            <input inputMode="decimal" className={inputCls()} value={f.maxLevel} onChange={(x) => set('maxLevel')(x.target.value.replace(/[^\d.]/g, ''))} placeholder="0" />
+          </Field>
+          <Field label="Safety stock">
+            <input inputMode="decimal" className={inputCls()} value={f.safetyStock} onChange={(x) => set('safetyStock')(x.target.value.replace(/[^\d.]/g, ''))} placeholder="0" />
+          </Field>
+          <Field label="Lead time (days)">
+            <input inputMode="numeric" className={inputCls()} value={f.leadTimeDays} onChange={(x) => set('leadTimeDays')(x.target.value.replace(/[^\d]/g, ''))} placeholder="e.g. 3" />
+          </Field>
+          <Field label="Storage">
+            <select className={inputCls()} value={f.storageType} onChange={(x) => setF((s) => ({ ...s, storageType: x.target.value as Form['storageType'] }))}>
+              <option value="dry">Dry</option>
+              <option value="chilled">Chilled</option>
+              <option value="frozen">Frozen</option>
+            </select>
+          </Field>
+          <Field label="Preferred supplier">
+            <select className={inputCls()} value={f.preferredSupplierId} onChange={(x) => set('preferredSupplierId')(x.target.value)}>
+              <option value="">—</option>
+              {(suppliersQ.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </Field>
         </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" checked={f.trackExpiry} onChange={(x) => setF((s) => ({ ...s, trackExpiry: x.target.checked }))} className="h-4 w-4 accent-primary" />
+          Track expiry dates for this item
+        </label>
+        <Field label="Description" optional>
+          <Textarea rows={2} value={f.description} onChange={(x) => set('description')(x.target.value)} />
+        </Field>
         <Field label="Remarks" optional>
           <Textarea rows={2} value={f.remarks} onChange={(x) => set('remarks')(x.target.value)} />
         </Field>
@@ -363,7 +414,64 @@ function ItemFormDialog({ token, item, categories, baseUnits, purchaseUnits, onC
   );
 }
 
-function ItemViewDialog({ token, id, onClose }: { token: string; id: string; onClose: () => void }) {
+/** An item's purchase packages (Items v2): the default plus any extra ones. */
+function ItemPackages({ token, item, canEdit }: { token: string; item: StoreItem; canEdit: boolean }) {
+  const pkgsQ = useStoreItemPackages(token, item.id);
+  const lookupsQ = useStoreLookups(token);
+  const purchaseUnits = lookupValues(lookupsQ.data, 'purchase_unit');
+  const addM = useAddStoreItemPackage(token);
+  const delM = useDeleteStoreItemPackage(token);
+  const [name, setName] = useState(item.purchaseUnit);
+  const [qty, setQty] = useState('');
+
+  const add = () => {
+    const q = Number(qty);
+    if (!name || !(q > 0)) return;
+    addM.mutate({ itemId: item.id, input: { packageName: name, packageQty: q } }, {
+      onSuccess: () => { toast.success('Package added.'); setQty(''); },
+      onError: (e) => toast.error(errorMessage(e)),
+    });
+  };
+
+  const pkgs = pkgsQ.data ?? [];
+  return (
+    <div>
+      <div className="mb-1.5 text-[13px] font-bold uppercase tracking-wide text-muted-foreground">Purchase packages</div>
+      {pkgsQ.isLoading ? (
+        <Skeleton className="h-10 w-full" />
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {pkgs.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+              <span className="flex items-center gap-2">
+                1 {p.packageName} = <b className="tabular-nums">{num(p.packageQty)}</b> {item.baseUnit}
+                {p.isDefault && <Pill tone="blue">Default</Pill>}
+              </span>
+              {canEdit && !p.isDefault && (
+                <Button size="sm" variant="ghost" className="text-red-700" aria-label={`Remove ${p.packageName}`} disabled={delM.isPending}
+                  onClick={() => delM.mutate(p.id, { onSuccess: () => toast.success('Package removed.'), onError: (e) => toast.error(errorMessage(e)) })}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </li>
+          ))}
+          {pkgs.length === 0 && <li className="text-sm text-muted-foreground">No packages recorded.</li>}
+        </ul>
+      )}
+      {canEdit && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select className={inputCls()} value={name} onChange={(ev) => setName(ev.target.value)} aria-label="Package unit">
+            {purchaseUnits.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+          <input inputMode="decimal" className={inputCls() + ' max-w-[140px]'} value={qty} onChange={(ev) => setQty(ev.target.value.replace(/[^\d.]/g, ''))} placeholder={`${item.baseUnit} per ${name || 'pack'}`} aria-label="Base units per package" />
+          <Button variant="outline" onClick={add} disabled={addM.isPending || !name || !(Number(qty) > 0)}><Plus className="mr-1 h-4 w-4" />Add package</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ItemViewDialog({ token, id, canEdit, onClose }: { token: string; id: string; canEdit: boolean; onClose: () => void }) {
   const h = useStoreItemHistory(token, id);
   const i = h.data?.item;
   const events = h.data?.events ?? [];
@@ -397,6 +505,7 @@ function ItemViewDialog({ token, id, onClose }: { token: string; id: string; onC
               <Link className="text-sm font-semibold text-primary hover:underline" href={`${ROUTES.STORE_LEDGER}?item=${i.id}`}>Open stock ledger</Link>
               <Link className="text-sm font-semibold text-primary hover:underline" href={ROUTES.STORE_PRICES}>Prices</Link>
             </div>
+            <ItemPackages token={token} item={i} canEdit={canEdit} />
             <div>
               <div className="mb-1.5 text-[13px] font-bold uppercase tracking-wide text-muted-foreground">Item history</div>
               {events.length === 0 ? (
