@@ -23,10 +23,11 @@ import { useEffect } from 'react';
  * whole mechanism and has to be exact. No phone is taller than 500px sideways;
  * no tablet is shorter.
  *
- * `(pointer: coarse)` is the final guard: it fires only when the PRIMARY pointer
- * is touch (a phone/tablet). A desktop or laptop browser — even one whose window
- * is short and wide enough to satisfy every size bound above — reports a fine
- * (mouse/trackpad) pointer, so the overlay never shows on the web.
+ * `(pointer: coarse) and (hover: none)` is the final guard: it fires only on a
+ * touch-ONLY device (a phone/tablet). A desktop or laptop — even a touchscreen
+ * laptop, and even one zoomed in or in a short window so it satisfies every size
+ * bound above — has a mouse/trackpad that can hover, so it reports `hover: hover`
+ * (and usually `pointer: fine`) and is excluded. The overlay never shows on the web.
  */
 export function OrientationLock() {
   useEffect(() => {
@@ -38,7 +39,7 @@ export function OrientationLock() {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] hidden flex-col items-center justify-center gap-3 bg-background p-6 text-center [@media(orientation:landscape)_and_(max-width:1023px)_and_(max-height:500px)_and_(pointer:coarse)]:flex"
+      className="fixed inset-0 z-[9999] hidden flex-col items-center justify-center gap-3 bg-background p-6 text-center [@media(orientation:landscape)_and_(max-width:1023px)_and_(max-height:500px)_and_(pointer:coarse)_and_(hover:none)]:flex"
       role="alert"
     >
       <p className="text-lg font-semibold">Please rotate your device</p>
