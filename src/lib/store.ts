@@ -34,6 +34,7 @@ import type {
   StoreItem,
   StoreItemBarcode,
   StoreItemBarcodeInput,
+  StoreItemBulkInput,
   StoreItemHistory,
   StoreItemPackage,
   StoreItemPackageInput,
@@ -376,6 +377,12 @@ export function useCommitStoreItemImport(token: string) {
 export function useSetStoreItemStatus(token: string) {
   return useStoreMutation((v: { id: string; active: boolean }) =>
     apiCall<StoreItem>(`${BASE}/items/${v.id}/status`, send('PATCH', { active: v.active }), token));
+}
+
+/** Bulk activate / deactivate / re-categorise selected items (Items v2). */
+export function useBulkUpdateStoreItems(token: string) {
+  return useStoreMutation((input: StoreItemBulkInput) =>
+    apiCall<{ updated: number }>(`${BASE}/items/bulk`, send('POST', input), token));
 }
 
 export function useDeleteStoreItem(token: string) {

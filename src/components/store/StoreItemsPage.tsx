@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Download, Eye, Package, Pencil, Plus, Power, Tag, Trash2, Upload } from 'lucide-react';
+import { Download, Eye, LayoutGrid, List, Package, Pencil, Plus, Power, Tag, Trash2, Upload } from 'lucide-react';
 import type { StoreBarcodeType, StoreItem, StoreItemInput, StoreLookup } from '@mb/shared';
 import { STORE_BARCODE_TYPES, StoreItemInputSchema } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { downloadStoreItems, useAddStoreItemBarcode, useAddStoreItemPackage, useDeleteStoreItem, useDeleteStoreItemBarcode, useDeleteStoreItemPackage, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemBarcodes, useStoreItemHistory, useStoreItemPackages, useStoreItems, useStoreLookups, useStoreSuppliers } from '@/lib/store';
+import { downloadStoreItems, useAddStoreItemBarcode, useAddStoreItemPackage, useBulkUpdateStoreItems, useDeleteStoreItem, useDeleteStoreItemBarcode, useDeleteStoreItemPackage, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemBarcodes, useStoreItemHistory, useStoreItemPackages, useStoreItems, useStoreLookups, useStoreSuppliers } from '@/lib/store';
 import { StoreItemImportDialog } from './StoreItemImportDialog';
 import { ROUTES } from '@/utils/routes';
 import {
@@ -76,6 +76,23 @@ export function StoreItemsPage() {
   const canEdit = can('items.edit');
   const canReceive = can('receive');
 
+  const [view, setView] = useState<'list' | 'grid'>('list');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkCat, setShowBulkCat] = useState(false);
+  const [bulkCatTo, setBulkCatTo] = useState('');
+  const bulkM = useBulkUpdateStoreItems(token);
+
+  const toggleOne = (id: string, on: boolean) =>
+    setSelected((prev) => { const n = new Set(prev); if (on) n.add(id); else n.delete(id); return n; });
+  const clearSel = () => setSelected(new Set());
+  const runBulk = (action: 'activate' | 'deactivate' | 'set_category', categoryTo?: string) => {
+    if (selected.size === 0) return;
+    bulkM.mutate({ ids: Array.from(selected), action, categoryTo }, {
+      onSuccess: (r) => { toast.success(`${r.updated} item${r.updated === 1 ? '' : 's'} updated.`); clearSel(); setShowBulkCat(false); },
+      onError: (e) => toast.error(errorMessage(e)),
+    });
+  };
+
   const all = useMemo(() => itemsQ.data ?? [], [itemsQ.data]);
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -85,6 +102,16 @@ export function StoreItemsPage() {
   }, [all, q, cat, unit, status]);
 
   const columns = useMemo(() => [
+    ...(canEdit ? [col.display({
+      id: 'select',
+      header: () => {
+        const allOn = rows.length > 0 && rows.every((r) => selected.has(r.id));
+        return <input type="checkbox" aria-label="Select all" className="h-4 w-4 accent-primary" checked={allOn}
+          onChange={(e) => setSelected((prev) => { const n = new Set(prev); rows.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} />;
+      },
+      cell: (c) => <input type="checkbox" aria-label={`Select ${c.row.original.name}`} className="h-4 w-4 accent-primary"
+        checked={selected.has(c.row.original.id)} onChange={(e) => toggleOne(c.row.original.id, e.target.checked)} />,
+    })] : []),
     col.accessor('itemNo', { header: 'Item ID', meta: { mobile: 'subtitle' }, cell: (c) => <span className="font-mono text-xs">{c.getValue()}</span> }),
     col.accessor('itemCode', { header: 'Item Code', cell: (c) => <span className="font-mono text-xs">{c.getValue()}</span> }),
     col.accessor('name', {
@@ -149,7 +176,7 @@ export function StoreItemsPage() {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [canEdit, canReceive, session.me.data]);
+  ], [canEdit, canReceive, session.me.data, selected, rows]);
 
   async function handleDownload() {
     setDownloading(true);
@@ -203,11 +230,41 @@ export function StoreItemsPage() {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </FilterSelect>
-        <span className="ml-auto text-[13px] text-muted-foreground">{rows.length} of {all.length} items</span>
+        <div className="ml-auto flex items-center gap-1">
+          <Button size="sm" variant={view === 'list' ? 'default' : 'outline'} onClick={() => setView('list')} aria-label="List view"><List className="h-4 w-4" /></Button>
+          <Button size="sm" variant={view === 'grid' ? 'default' : 'outline'} onClick={() => setView('grid')} aria-label="Grid view"><LayoutGrid className="h-4 w-4" /></Button>
+          <span className="ml-2 text-[13px] text-muted-foreground">{rows.length} of {all.length} items</span>
+        </div>
       </div>
+
+      {canEdit && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+          <b>{selected.size} selected</b>
+          <Button size="sm" variant="outline" disabled={bulkM.isPending} onClick={() => runBulk('activate')}><Power className="mr-1 h-3.5 w-3.5 text-emerald-700" />Activate</Button>
+          <Button size="sm" variant="outline" disabled={bulkM.isPending} onClick={() => runBulk('deactivate')}><Power className="mr-1 h-3.5 w-3.5 text-red-700" />Deactivate</Button>
+          <Button size="sm" variant="outline" disabled={bulkM.isPending} onClick={() => { setBulkCatTo(categories[0] ?? ''); setShowBulkCat(true); }}><Tag className="mr-1 h-3.5 w-3.5" />Change category</Button>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={clearSel}>Clear</Button>
+        </div>
+      )}
 
       {itemsQ.isError ? (
         <ErrorBlock error={itemsQ.error} onRetry={() => void itemsQ.refetch()} />
+      ) : view === 'grid' ? (
+        rows.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title={all.length ? 'No items match these filters' : 'No dry items yet'}
+            description={all.length ? 'Clear a filter to see more.' : 'Add the first dry item the store keeps.'}
+            action={!all.length && canEdit ? <Button size="sm" onClick={() => setEditing({})}><Plus className="mr-1.5 h-4 w-4" />New Item</Button> : undefined}
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {rows.map((i) => (
+              <ItemCard key={i.id} item={i} canEdit={canEdit} selected={selected.has(i.id)}
+                onToggle={(on) => toggleOne(i.id, on)} onView={() => setViewing(i.id)} onEdit={() => setEditing({ id: i.id })} onToggleStatus={() => setToggling(i)} />
+            ))}
+          </div>
+        )
       ) : (
         <DataTable
           columns={columns}
@@ -241,6 +298,26 @@ export function StoreItemsPage() {
       )}
       {viewing && <ItemViewDialog token={token} id={viewing} canEdit={canEdit} onClose={() => setViewing(null)} />}
       {importing && <StoreItemImportDialog token={token} onClose={() => setImporting(false)} />}
+
+      {showBulkCat && (
+        <Dialog open onOpenChange={(o) => !o && !bulkM.isPending && setShowBulkCat(false)}>
+          <DialogContent className="md:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Change category</DialogTitle>
+              <DialogDescription>Move {selected.size} item{selected.size === 1 ? '' : 's'} to a category.</DialogDescription>
+            </DialogHeader>
+            <Field label="Category">
+              <select className={inputCls()} value={bulkCatTo} onChange={(e) => setBulkCatTo(e.target.value)}>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowBulkCat(false)} disabled={bulkM.isPending}>Cancel</Button>
+              <Button onClick={() => runBulk('set_category', bulkCatTo)} disabled={bulkM.isPending || !bulkCatTo}>{bulkM.isPending ? 'Saving…' : 'Change category'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ConfirmDialog
         open={!!toggling}
@@ -411,6 +488,43 @@ function ItemFormDialog({ token, item, categories, baseUnits, purchaseUnits, onC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** One item as a card for the grid view, with selection + quick actions. */
+function ItemCard({ item, canEdit, selected, onToggle, onView, onEdit, onToggleStatus }: {
+  item: StoreItem;
+  canEdit: boolean;
+  selected: boolean;
+  onToggle: (on: boolean) => void;
+  onView: () => void;
+  onEdit: () => void;
+  onToggleStatus: () => void;
+}) {
+  return (
+    <div className={`flex flex-col gap-2 rounded-xl border border-border bg-card p-3 ${selected ? 'ring-2 ring-primary' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate font-semibold">{titleCase(item.name)}</div>
+          <div className="font-mono text-xs text-muted-foreground">{item.itemNo} · {item.itemCode}</div>
+        </div>
+        {canEdit && <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-primary" checked={selected} onChange={(e) => onToggle(e.target.checked)} aria-label={`Select ${item.name}`} />}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <Pill tone="muted">{item.category}</Pill>
+        <span>In store: <b className="tabular-nums text-foreground">{qty(item.availableQty, item.baseUnit)}</b></span>
+        <Pill tone={item.status === 'active' ? 'green' : 'muted'}>{item.status === 'active' ? 'Active' : 'Inactive'}</Pill>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="sm" variant="outline" onClick={onView}><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
+        {canEdit && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="mr-1 h-3.5 w-3.5" />Edit</Button>}
+        {canEdit && (
+          <Button size="sm" variant="outline" className={item.status === 'active' ? 'text-red-700' : 'text-emerald-700'} onClick={onToggleStatus}>
+            <Power className="mr-1 h-3.5 w-3.5" />{item.status === 'active' ? 'Deactivate' : 'Activate'}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
