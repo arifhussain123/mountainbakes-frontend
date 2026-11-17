@@ -5,15 +5,15 @@ import Link from 'next/link';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Download, Eye, Package, Pencil, Plus, Power, Tag, Trash2, Upload } from 'lucide-react';
-import type { StoreItem, StoreItemInput, StoreLookup } from '@mb/shared';
-import { StoreItemInputSchema } from '@mb/shared';
+import type { StoreBarcodeType, StoreItem, StoreItemInput, StoreLookup } from '@mb/shared';
+import { STORE_BARCODE_TYPES, StoreItemInputSchema } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { downloadStoreItems, useAddStoreItemPackage, useDeleteStoreItem, useDeleteStoreItemPackage, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemHistory, useStoreItemPackages, useStoreItems, useStoreLookups, useStoreSuppliers } from '@/lib/store';
+import { downloadStoreItems, useAddStoreItemBarcode, useAddStoreItemPackage, useDeleteStoreItem, useDeleteStoreItemBarcode, useDeleteStoreItemPackage, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemBarcodes, useStoreItemHistory, useStoreItemPackages, useStoreItems, useStoreLookups, useStoreSuppliers } from '@/lib/store';
 import { StoreItemImportDialog } from './StoreItemImportDialog';
 import { ROUTES } from '@/utils/routes';
 import {
@@ -414,6 +414,65 @@ function ItemFormDialog({ token, item, categories, baseUnits, purchaseUnits, onC
   );
 }
 
+/** An item's barcodes (Items v2) — only rendered when the `barcodes` module is on. */
+function ItemBarcodes({ token, item, canEdit }: { token: string; item: StoreItem; canEdit: boolean }) {
+  const session = useStoreSession();
+  const on = Boolean(session.me.data?.features?.barcodes);
+  const bcQ = useStoreItemBarcodes(token, on ? item.id : null);
+  const addM = useAddStoreItemBarcode(token);
+  const delM = useDeleteStoreItemBarcode(token);
+  const [code, setCode] = useState('');
+  const [type, setType] = useState<StoreBarcodeType>('ean');
+
+  if (!on) return null;
+
+  const add = () => {
+    const c = code.trim();
+    if (!c) return;
+    addM.mutate({ itemId: item.id, input: { code: c, type } }, {
+      onSuccess: () => { toast.success('Barcode added.'); setCode(''); },
+      onError: (e) => toast.error(errorMessage(e)),
+    });
+  };
+
+  const codes = bcQ.data ?? [];
+  return (
+    <div>
+      <div className="mb-1.5 text-[13px] font-bold uppercase tracking-wide text-muted-foreground">Barcodes</div>
+      {bcQ.isLoading ? (
+        <Skeleton className="h-10 w-full" />
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {codes.map((b) => (
+            <li key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+              <span className="flex items-center gap-2">
+                <span className="font-mono">{b.code}</span>
+                <Pill tone="muted">{b.type.toUpperCase()}</Pill>
+              </span>
+              {canEdit && (
+                <Button size="sm" variant="ghost" className="text-red-700" aria-label={`Remove ${b.code}`} disabled={delM.isPending}
+                  onClick={() => delM.mutate(b.id, { onSuccess: () => toast.success('Barcode removed.'), onError: (e) => toast.error(errorMessage(e)) })}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </li>
+          ))}
+          {codes.length === 0 && <li className="text-sm text-muted-foreground">No barcodes.</li>}
+        </ul>
+      )}
+      {canEdit && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input className={inputCls() + ' font-mono'} value={code} maxLength={60} onChange={(ev) => setCode(ev.target.value)} onKeyDown={(ev) => ev.key === 'Enter' && add()} placeholder="Scan or type a barcode" aria-label="Barcode" />
+          <select className={inputCls()} value={type} onChange={(ev) => setType(ev.target.value as StoreBarcodeType)} aria-label="Barcode type">
+            {STORE_BARCODE_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+          </select>
+          <Button variant="outline" onClick={add} disabled={addM.isPending || !code.trim()}><Plus className="mr-1 h-4 w-4" />Add</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** An item's purchase packages (Items v2): the default plus any extra ones. */
 function ItemPackages({ token, item, canEdit }: { token: string; item: StoreItem; canEdit: boolean }) {
   const pkgsQ = useStoreItemPackages(token, item.id);
@@ -506,6 +565,7 @@ function ItemViewDialog({ token, id, canEdit, onClose }: { token: string; id: st
               <Link className="text-sm font-semibold text-primary hover:underline" href={ROUTES.STORE_PRICES}>Prices</Link>
             </div>
             <ItemPackages token={token} item={i} canEdit={canEdit} />
+            <ItemBarcodes token={token} item={i} canEdit={canEdit} />
             <div>
               <div className="mb-1.5 text-[13px] font-bold uppercase tracking-wide text-muted-foreground">Item history</div>
               {events.length === 0 ? (

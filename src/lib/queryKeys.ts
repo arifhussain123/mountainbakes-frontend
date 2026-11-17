@@ -440,6 +440,7 @@ export const qk = {
   storeItems: (includeInactive: boolean) => ['store', 'items', includeInactive] as const,
   storeItemHistory: (id: string) => ['store', 'itemHistory', id] as const,
   storeItemPackages: (id: string) => ['store', 'itemPackages', id] as const,
+  storeItemBarcodes: (id: string) => ['store', 'itemBarcodes', id] as const,
   storeItemLedger: (id: string, from: string, to: string) => ['store', 'ledger', id, from, to] as const,
   storePrices: (params: Record<string, unknown>) => ['store', 'prices', params] as const,
   storeSuppliers: (includeInactive: boolean) => ['store', 'suppliers', includeInactive] as const,

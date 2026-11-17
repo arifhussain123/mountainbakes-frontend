@@ -32,6 +32,8 @@ import type {
   StoreIssue,
   StoreIssueInput,
   StoreItem,
+  StoreItemBarcode,
+  StoreItemBarcodeInput,
   StoreItemHistory,
   StoreItemPackage,
   StoreItemPackageInput,
@@ -162,6 +164,25 @@ export function useAddStoreItemPackage(token: string) {
 
 export function useDeleteStoreItemPackage(token: string) {
   return useStoreMutation((id: string) => apiCall<{ ok: true }>(`${BASE}/item-packages/${id}`, send('DELETE'), token));
+}
+
+/** An item's barcodes (behind the `barcodes` flag). */
+export function useStoreItemBarcodes(token: string, id: string | null) {
+  return useQuery({
+    queryKey: qk.storeItemBarcodes(id ?? ''),
+    queryFn: () => apiCall<StoreItemBarcode[]>(`${BASE}/items/${id}/barcodes`, {}, token),
+    enabled: !!token && !!id,
+    staleTime: 60_000,
+  });
+}
+
+export function useAddStoreItemBarcode(token: string) {
+  return useStoreMutation((v: { itemId: string; input: StoreItemBarcodeInput }) =>
+    apiCall<StoreItemBarcode>(`${BASE}/items/${v.itemId}/barcodes`, send('POST', v.input), token));
+}
+
+export function useDeleteStoreItemBarcode(token: string) {
+  return useStoreMutation((id: string) => apiCall<{ ok: true }>(`${BASE}/item-barcodes/${id}`, send('DELETE'), token));
 }
 
 export function useStoreItemLedger(token: string, id: string | null, from: string, to: string) {
