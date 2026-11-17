@@ -74,6 +74,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [ROUTES.STORE_ITEMS]: 'Store Items',
   [ROUTES.STORE_PRICES]: 'Store Price Control',
   [ROUTES.STORE_RECEIVING]: 'New Stock Receiving',
+  [ROUTES.STORE_SUPPLIERS]: 'Suppliers',
   [ROUTES.STORE_STOCK]: 'Store Stock',
   [ROUTES.STORE_APPROVAL]: 'Demand Approval & Issue',
   [ROUTES.STORE_LEDGER]: 'Stock Ledger',

@@ -441,7 +441,7 @@ export const qk = {
   storeItemHistory: (id: string) => ['store', 'itemHistory', id] as const,
   storeItemLedger: (id: string, from: string, to: string) => ['store', 'ledger', id, from, to] as const,
   storePrices: (params: Record<string, unknown>) => ['store', 'prices', params] as const,
-  storeSuppliers: () => ['store', 'suppliers'] as const,
+  storeSuppliers: (includeInactive: boolean) => ['store', 'suppliers', includeInactive] as const,
   storeReceipts: (params: Record<string, unknown>) => ['store', 'receipts', params] as const,
   storeReceipt: (id: string) => ['store', 'receipt', id] as const,
   storeStock: (from: string, to: string) => ['store', 'stock', from, to] as const,
@@ -454,6 +454,8 @@ export const qk = {
   storeDashboard: (from: string, to: string, period: string) => ['store', 'dashboard', from, to, period] as const,
   storeReport: (type: string, from: string, to: string, itemId: string | null) => ['store', 'report', type, from, to, itemId ?? ''] as const,
   storeAudit: (params: Record<string, unknown>) => ['store', 'audit', params] as const,
+  storeFeatures: () => ['store', 'features'] as const,
+  storePriceRequests: (status: string) => ['store', 'priceRequests', status] as const,
 };
 
 /** Prefix that matches every finance cache entry. See the note above. */

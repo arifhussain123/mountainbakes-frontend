@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { AlertTriangle, Lock, RotateCw } from 'lucide-react';
-import type { StoreAction, StoreDemandStatus, StoreMe } from '@mb/shared';
-import { STORE_DEMAND_STATUS_LABELS } from '@mb/shared';
+import type { StoreAction, StoreDemandStatus, StoreFeatureKey, StoreMe } from '@mb/shared';
+import { STORE_DEMAND_STATUS_LABELS, STORE_STOCK_STATUS_LABEL, STORE_STOCK_STATUS_TONE, storeStockStatus } from '@mb/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useStoreMe } from '@/lib/store';
 import { ApiError } from '@/lib/api/client';
@@ -47,6 +47,15 @@ export function rs(n: number | null | undefined): string {
 /** A quantity: up to 3 decimals, grouped. */
 export function num(n: number | null | undefined): string {
   return (Math.round(Number(n ?? 0) * 1000) / 1000).toLocaleString(PK, { maximumFractionDigits: 3 });
+}
+
+/**
+ * Title-Case an item name for display only — fixes the "EGG" / "oil" / "Sugar"
+ * casing mix. A word that is already mixed-case (e.g. "pH", "McVitie") is left
+ * alone. Stored data is never changed; uniqueness is still case-insensitive.
+ */
+export function titleCase(s: string): string {
+  return s.replace(/\S+/g, (w) => (/[a-z]/.test(w) && /[A-Z]/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()));
 }
 
 export const qty = (n: number | null | undefined, unit: string | null | undefined) => `${num(n)} ${unit ?? ''}`.trim();
@@ -122,12 +131,14 @@ export function DemandStatusPill({ status }: { status: StoreDemandStatus }) {
 export const LINE_TONE: Record<string, Tone> = { pending: 'amber', approved: 'blue', issued: 'green', rejected: 'red' };
 export const LINE_LABEL: Record<string, string> = { pending: 'Pending', approved: 'Approved', issued: 'Issued', rejected: 'Rejected' };
 
-/** Stock state of an item: Inactive / Out / Low / OK. */
+/**
+ * Stock state of an item: Inactive / Out / Low / OK — from the one shared
+ * definition (`storeStockStatus`) so this and the Dashboard KPIs agree. Low is
+ * amber and Out is red, per the shared status-colour language (§10).
+ */
 export function stockTone(status: string, available: number, minStock: number): { tone: Tone; label: string } {
-  if (status !== 'active') return { tone: 'muted', label: 'Inactive' };
-  if (available <= 0) return { tone: 'red', label: 'Out of stock' };
-  if (available <= minStock) return { tone: 'red', label: 'Low' };
-  return { tone: 'green', label: 'OK' };
+  const s = storeStockStatus({ status, availableQty: available, minStock });
+  return { tone: STORE_STOCK_STATUS_TONE[s], label: STORE_STOCK_STATUS_LABEL[s] };
 }
 
 // ── Layout pieces ────────────────────────────────────────────────────────────
@@ -137,6 +148,7 @@ const STORE_TABS: Array<[string, string]> = [
   [ROUTES.STORE_ITEMS, 'Store Items'],
   [ROUTES.STORE_PRICES, 'Price Control'],
   [ROUTES.STORE_RECEIVING, 'New Stock Receiving'],
+  [ROUTES.STORE_SUPPLIERS, 'Suppliers'],
   [ROUTES.STORE_STOCK, 'Store Stock'],
   [ROUTES.STORE_APPROVAL, 'Approval & Issue'],
   [ROUTES.STORE_LEDGER, 'Stock Ledger'],
@@ -146,14 +158,23 @@ const STORE_TABS: Array<[string, string]> = [
   [ROUTES.STORE_SETTINGS, 'Settings'],
 ];
 
+/** Tabs that only appear when their store feature flag is on (Phase 2+). */
+const TAB_FEATURE: Record<string, StoreFeatureKey> = {
+  [ROUTES.STORE_SUPPLIERS]: 'suppliers',
+};
+
 /**
  * The Store's own page tabs (the design's pill row). A Store keeper has them
  * in the sidebar, so on a wide screen they are hidden for that role; Admin and
  * Finance reach the Store from one sidebar entry and move inside it here.
  */
-export function StoreTabs({ role }: { role: string }) {
+export function StoreTabs({ role, features }: { role: string; features?: Record<string, boolean> }) {
   const path = normalizePath(usePathname() ?? '');
-  const tabs = STORE_TABS.filter(([href]) => canOpenStorePage(role, href));
+  const tabs = STORE_TABS.filter(([href]) => {
+    if (!canOpenStorePage(role, href)) return false;
+    const flag = TAB_FEATURE[href];
+    return !flag || Boolean(features?.[flag]);
+  });
   return (
     <nav aria-label="Dry Items Store" className={cn('-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1', role === 'store_user' && 'lg:hidden')}>
       {tabs.map(([href, label]) => {
@@ -197,7 +218,7 @@ export function StorePage({
   const { me, role } = session;
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <StoreTabs role={role} />
+      <StoreTabs role={role} features={me.data?.features} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="min-w-0 text-sm text-muted-foreground">
           {me.data ? <span className="font-medium text-foreground">{me.data.store.storeCode}</span> : null}

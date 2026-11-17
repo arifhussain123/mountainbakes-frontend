@@ -28,10 +28,14 @@ import type {
   StoreDemandInput,
   StoreDemandStatus,
   StoreDepartment,
+  StoreFeature,
   StoreIssue,
   StoreIssueInput,
   StoreItem,
   StoreItemHistory,
+  StoreItemImportCommitRow,
+  StoreItemImportPreview,
+  StoreItemImportResult,
   StoreItemInput,
   StoreLedger,
   StoreLookup,
@@ -40,6 +44,9 @@ import type {
   StorePage,
   StorePrice,
   StorePriceInput,
+  StorePriceRequest,
+  StoreSupplier,
+  StoreSupplierInput,
   StoreQuery,
   StoreQueryInput,
   StoreQueryMessageInput,
@@ -153,13 +160,29 @@ export function useStorePrices(token: string, params: { itemId?: string; history
   });
 }
 
-export function useStoreSuppliers(token: string) {
+/** Items a keeper has asked Finance to price (default: still open). */
+export function useStorePriceRequests(token: string, status: 'open' | 'resolved' | 'cancelled' = 'open', enabled = true) {
   return useQuery({
-    queryKey: qk.storeSuppliers(),
-    queryFn: () => apiCall<Array<{ id: string; name: string; supplierCode: string }>>(`${BASE}/suppliers`, {}, token),
+    queryKey: qk.storePriceRequests(status),
+    queryFn: () => apiCall<StorePriceRequest[]>(`${BASE}/price-requests?status=${status}`, {}, token),
+    enabled: !!token && enabled,
+    staleTime: LIVE_STALE_TIME,
+  });
+}
+
+export function useStoreSuppliers(token: string, includeInactive = false) {
+  return useQuery({
+    queryKey: qk.storeSuppliers(includeInactive),
+    queryFn: () => apiCall<StoreSupplier[]>(`${BASE}/suppliers${includeInactive ? '?includeInactive=true' : ''}`, {}, token),
     enabled: !!token,
     staleTime: 5 * 60_000,
   });
+}
+
+/** Create or edit a supplier in the shared master (behind the `suppliers` flag). */
+export function useSaveStoreSupplier(token: string) {
+  return useStoreMutation((v: { id?: string; input: StoreSupplierInput }) =>
+    apiCall<StoreSupplier>(v.id ? `${BASE}/suppliers/${v.id}` : `${BASE}/suppliers`, send(v.id ? 'PUT' : 'POST', v.input), token));
 }
 
 export function useStoreReceipts(token: string, params: { from?: string; to?: string; search?: string; limit?: number; offset?: number }) {
@@ -265,9 +288,34 @@ export function useStoreAudit(token: string, params: { entity?: string; limit?: 
   });
 }
 
+/** Which optional modules are on for the store (Admin). */
+export function useStoreFeatures(token: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.storeFeatures(),
+    queryFn: () => apiCall<StoreFeature[]>(`${BASE}/features`, {}, token),
+    enabled: !!token && enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export async function downloadStoreReport(token: string, type: StoreReportType, from: string, to: string, itemId: string | null): Promise<void> {
   const blob = await apiCall<Blob>(`${BASE}/reports/${type}/export${qs({ from, to, itemId })}`, {}, token);
   saveBlob(blob, `mountain-bakes-store-${type.replace(/_/g, '-')}-${from}-to-${to}.xlsx`);
+}
+
+/** Download the full item master as .xlsx (or .csv). Doubles as the re-import template. */
+export async function downloadStoreItems(token: string, type: 'excel' | 'csv' = 'excel'): Promise<void> {
+  const blob = await apiCall<Blob>(`${BASE}/items/export?type=${type}`, {}, token);
+  const ext = type === 'csv' ? 'csv' : 'xlsx';
+  saveBlob(blob, `mountain-bakes-store-items-${new Date().toISOString().slice(0, 10)}.${ext}`);
+}
+
+/** Upload a .xlsx/.csv and get a validated preview. Never writes. */
+export async function previewStoreItemImport(token: string, file: File): Promise<StoreItemImportPreview> {
+  const body = new FormData();
+  body.append('file', file);
+  // apiCall omits Content-Type for FormData so the browser sets the multipart boundary.
+  return apiCall<StoreItemImportPreview>(`${BASE}/items/import/preview`, { method: 'POST', body }, token);
 }
 
 // ── Writes ──────────────────────────────────────────────────────────────────
@@ -275,6 +323,12 @@ export async function downloadStoreReport(token: string, type: StoreReportType, 
 export function useSaveStoreItem(token: string) {
   return useStoreMutation((v: { id?: string; input: StoreItemInput }) =>
     apiCall<StoreItem>(v.id ? `${BASE}/items/${v.id}` : `${BASE}/items`, send(v.id ? 'PUT' : 'POST', v.input), token));
+}
+
+/** Apply the confirmed rows from an item Excel import; invalidates the Store on success. */
+export function useCommitStoreItemImport(token: string) {
+  return useStoreMutation((rows: StoreItemImportCommitRow[]) =>
+    apiCall<StoreItemImportResult>(`${BASE}/items/import/commit`, send('POST', { rows }), token));
 }
 
 export function useSetStoreItemStatus(token: string) {
@@ -293,6 +347,12 @@ export function useAddStorePrice(token: string) {
 
 export function useDeactivateStorePrice(token: string) {
   return useStoreMutation((id: string) => apiCall<StorePrice>(`${BASE}/prices/${id}/deactivate`, send('POST'), token));
+}
+
+/** Ask Finance/Admin to set a price for an item that has none. */
+export function useRequestStorePrice(token: string) {
+  return useStoreMutation((v: { itemId: string; note?: string }) =>
+    apiCall<StorePriceRequest>(`${BASE}/price-requests`, send('POST', v), token));
 }
 
 export function useReceiveStock(token: string) {
@@ -364,4 +424,10 @@ export function useSetStoreLookupActive(token: string) {
 
 export function useSaveStoreSettings(token: string) {
   return useStoreMutation((input: StoreSettingsInput) => apiCall<StoreDepartment>(`${BASE}/settings`, send('PUT', input), token));
+}
+
+/** Turn a store module on/off; invalidates ['store'] so /me features refresh. */
+export function useSetStoreFeature(token: string) {
+  return useStoreMutation((v: { key: string; enabled: boolean }) =>
+    apiCall<StoreFeature>(`${BASE}/features/${v.key}`, send('PUT', { enabled: v.enabled }), token));
 }

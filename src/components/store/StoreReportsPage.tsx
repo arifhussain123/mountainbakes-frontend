@@ -167,6 +167,8 @@ export function StoreReportsPage() {
             loading={reportQ.isLoading || (!from && !reportQ.isError)}
             sortable
             toolbar={false}
+            stickyFirstColumn
+            columnChooser
             pageSize={50}
             dense={def.columns.length > 10}
             empty={<EmptyState icon={FileText} title="No rows in this range." description={def.dated ? 'Pick a wider range or another item.' : 'Nothing is in store for this filter.'} />}

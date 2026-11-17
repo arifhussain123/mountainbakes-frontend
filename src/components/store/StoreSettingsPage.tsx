@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
-import type { StoreLookup, StoreLookupKind } from '@mb/shared';
+import type { StoreLookup, StoreLookupKind, StoreUnitType } from '@mb/shared';
+import { STORE_UNIT_TYPES, STORE_UNIT_TYPE_LABELS } from '@mb/shared';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { useAddStoreLookup, useSaveStoreSettings, useSetStoreLookupActive, useStoreAudit, useStoreLookups } from '@/lib/store';
+import { useAddStoreLookup, useSaveStoreSettings, useSetStoreFeature, useSetStoreLookupActive, useStoreAudit, useStoreFeatures, useStoreLookups } from '@/lib/store';
 import { Card, CardHead, ErrorBlock, Fact, Field, Pill, StorePage, errorMessage, fdt, inputCls, useStoreSession } from './parts';
 
 /**
@@ -60,6 +61,8 @@ export function StoreSettingsPage() {
         </div>
       </Card>
 
+      <FeaturesCard token={token} />
+
       {lookupsQ.isLoading ? (
         <Skeleton className="h-48 w-full rounded-2xl" />
       ) : lookupsQ.isError ? (
@@ -96,15 +99,59 @@ export function StoreSettingsPage() {
   );
 }
 
+/**
+ * Early-access modules. Each new inventory feature ships off and is turned on
+ * here per store once it's ready, so half-built work can merge without showing.
+ */
+function FeaturesCard({ token }: { token: string }) {
+  const featuresQ = useStoreFeatures(token);
+  const setM = useSetStoreFeature(token);
+  return (
+    <Card>
+      <CardHead title="Modules (early access)" />
+      <p className="px-4 pt-3 text-xs text-muted-foreground">
+        Turn optional inventory modules on when they are ready. Off hides them everywhere for this store.
+      </p>
+      {featuresQ.isLoading ? (
+        <Skeleton className="m-4 h-24" />
+      ) : featuresQ.isError ? (
+        <ErrorBlock error={featuresQ.error} onRetry={() => void featuresQ.refetch()} />
+      ) : (
+        <ul className="flex flex-col divide-y divide-border px-4 py-2">
+          {(featuresQ.data ?? []).map((f) => (
+            <li key={f.key} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{f.label}</div>
+                <div className="text-xs text-muted-foreground">{f.description}</div>
+              </div>
+              <Switch
+                checked={f.enabled}
+                disabled={setM.isPending}
+                aria-label={`${f.enabled ? 'Turn off' : 'Turn on'} ${f.label}`}
+                onCheckedChange={(on: boolean) => setM.mutate({ key: f.key, enabled: on }, {
+                  onSuccess: () => toast.success(`${f.label} ${on ? 'enabled' : 'disabled'}.`),
+                  onError: (e) => toast.error(errorMessage(e)),
+                })}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function LookupCard({ token, kind, title, hint, rows }: { token: string; kind: StoreLookupKind; title: string; hint: string; rows: StoreLookup[] }) {
   const addM = useAddStoreLookup(token);
   const setM = useSetStoreLookupActive(token);
   const [value, setValue] = useState('');
+  const [unitType, setUnitType] = useState<StoreUnitType | ''>('');
+  const isUnit = kind === 'base_unit' || kind === 'purchase_unit';
   const add = () => {
     const v = value.trim();
     if (!v) return;
-    addM.mutate({ kind, value: v }, {
-      onSuccess: () => { toast.success(`"${v}" added.`); setValue(''); },
+    addM.mutate({ kind, value: v, ...(isUnit && unitType ? { unitType } : {}) }, {
+      onSuccess: () => { toast.success(`"${v}" added.`); setValue(''); setUnitType(''); },
       onError: (e) => toast.error(errorMessage(e)),
     });
   };
@@ -115,7 +162,10 @@ function LookupCard({ token, kind, title, hint, rows }: { token: string; kind: S
       <ul className="flex flex-col divide-y divide-border px-4 py-2">
         {rows.map((l) => (
           <li key={l.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-            <span className={l.isActive ? '' : 'text-muted-foreground line-through'}>{l.value}</span>
+            <span className="flex items-center gap-2">
+              <span className={l.isActive ? '' : 'text-muted-foreground line-through'}>{l.value}</span>
+              {l.unitType && <Pill tone="muted">{STORE_UNIT_TYPE_LABELS[l.unitType]}</Pill>}
+            </span>
             <Switch
               checked={l.isActive}
               disabled={setM.isPending}
@@ -125,8 +175,14 @@ function LookupCard({ token, kind, title, hint, rows }: { token: string; kind: S
           </li>
         ))}
       </ul>
-      <div className="flex gap-2 border-t border-border p-3">
-        <input className={inputCls()} value={value} maxLength={40} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder={`Add to ${title.toLowerCase()}`} aria-label={`New ${title}`} />
+      <div className="flex flex-wrap gap-2 border-t border-border p-3">
+        <input className={inputCls() + ' min-w-0 flex-1'} value={value} maxLength={40} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} placeholder={`Add to ${title.toLowerCase()}`} aria-label={`New ${title}`} />
+        {isUnit && (
+          <select className={inputCls()} value={unitType} onChange={(e) => setUnitType(e.target.value as StoreUnitType | '')} aria-label="Unit type">
+            <option value="">Type…</option>
+            {STORE_UNIT_TYPES.map((t) => <option key={t} value={t}>{STORE_UNIT_TYPE_LABELS[t]}</option>)}
+          </select>
+        )}
         <Button variant="outline" onClick={add} disabled={addM.isPending || !value.trim()}><Plus className="mr-1 h-4 w-4" />Add</Button>
       </div>
     </Card>

@@ -6,7 +6,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { BookOpen, Download, Package, SlidersHorizontal } from 'lucide-react';
 import type { StoreAdjustInput, StoreAdjustment, StoreItem, StoreStockRow } from '@mb/shared';
-import { STORE_OPENING_REASON, STORE_RETURN_REASON, StoreAdjustInputSchema } from '@mb/shared';
+import { STORE_OPENING_REASON, STORE_RETURN_REASON, StoreAdjustInputSchema, needsReorder } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { ROUTES } from '@/utils/routes';
 import {
   Card, CardHead, DateRange, ErrorBlock, Field, FilterSelect, Pill, StorePage,
-  errorMessage, fd, inputCls, num, plural, presetRange, qty, rs, stockTone, useStoreSession, type RangePreset,
+  errorMessage, fd, inputCls, num, plural, presetRange, qty, rs, stockTone, titleCase, useStoreSession, type RangePreset,
 } from './parts';
 
 /**
@@ -31,9 +31,13 @@ import {
 const col = createColumnHelper<StoreStockRow>();
 const adjCol = createColumnHelper<StoreAdjustment>();
 
-const isLow = (r: Pick<StoreStockRow, 'status' | 'availableQty' | 'minStock'>) => r.status === 'active' && r.availableQty <= r.minStock;
-const signed = (v: number) => (v ? `${v > 0 ? '+' : '−'}${num(Math.abs(v))}` : '—');
-const figure = (v: number) => <span className="tabular-nums">{num(v)}</span>;
+// One shared definition (low OR out, both at/under the reorder level) so this
+// count can never disagree with the Dashboard again.
+const isLow = (r: Pick<StoreStockRow, 'status' | 'availableQty' | 'minStock'>) =>
+  needsReorder({ status: r.status, availableQty: r.availableQty, minStock: r.minStock });
+// Zero reads as a muted 0 everywhere, never a dash (§10 / problem 2).
+const signed = (v: number) => (v ? `${v > 0 ? '+' : '−'}${num(Math.abs(v))}` : '0');
+const figure = (v: number) => <span className={cn('tabular-nums', !v && 'text-muted-foreground')}>{num(v)}</span>;
 
 export function StoreStockPage() {
   const session = useStoreSession();
@@ -69,7 +73,7 @@ export function StoreStockPage() {
     col.accessor('name', {
       header: 'Item Name',
       meta: { mobile: 'title' },
-      cell: (c) => <span className={cn('font-semibold', c.row.original.status !== 'active' && 'opacity-60')}>{c.getValue()}</span>,
+      cell: (c) => <span className={cn('font-semibold', c.row.original.status !== 'active' && 'opacity-60')}>{titleCase(c.getValue())}</span>,
     }),
     col.accessor('category', { header: 'Category', meta: { mobile: 'hidden' } }),
     col.accessor('opening', { header: 'Opening', meta: { align: 'center', mobile: 'figure' }, cell: (c) => figure(c.getValue()) }),
@@ -79,8 +83,8 @@ export function StoreStockPage() {
       cell: (c) => <span className="tabular-nums text-emerald-700 dark:text-emerald-400">{num(c.getValue())}</span>,
     }),
     col.accessor('issued', { header: 'Issued', meta: { align: 'center', mobile: 'figure' }, cell: (c) => figure(c.getValue()) }),
-    col.accessor('returned', { header: 'Returned', meta: { align: 'center', mobile: 'figure' }, cell: (c) => <span className="tabular-nums">{c.getValue() ? num(c.getValue()) : '—'}</span> }),
-    col.accessor('adjusted', { header: 'Adjusted', meta: { align: 'center', mobile: 'figure' }, cell: (c) => <span className="tabular-nums">{signed(c.getValue())}</span> }),
+    col.accessor('returned', { header: 'Returned', meta: { align: 'center', mobile: 'figure' }, cell: (c) => figure(c.getValue()) }),
+    col.accessor('adjusted', { header: 'Adjusted', meta: { align: 'center', mobile: 'figure' }, cell: (c) => <span className={cn('tabular-nums', !c.getValue() && 'text-muted-foreground')}>{signed(c.getValue())}</span> }),
     col.accessor('closing', {
       header: 'Available',
       meta: { align: 'center', mobile: 'figure' },
@@ -89,7 +93,7 @@ export function StoreStockPage() {
     col.accessor('committed', {
       header: 'Committed',
       meta: { align: 'center', mobile: 'figure' },
-      cell: (c) => <span className="tabular-nums text-blue-800 dark:text-blue-300">{c.getValue() ? num(c.getValue()) : '—'}</span>,
+      cell: (c) => <span className={cn('tabular-nums', c.getValue() ? 'text-blue-800 dark:text-blue-300' : 'text-muted-foreground')}>{num(c.getValue())}</span>,
     }),
     col.accessor((x) => x.availableQty - x.committed, {
       id: 'free',
@@ -204,7 +208,7 @@ export function StoreStockPage() {
         <DateRange today={today} from={r.from} to={r.to} preset={r.preset} onChange={setRange} />
         <label className="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-[13px]">
           <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} className="h-4 w-4 accent-primary" />
-          Low stock only ({lowCount})
+          Low or out ({lowCount})
         </label>
       </div>
 
@@ -219,6 +223,8 @@ export function StoreStockPage() {
             sortable
             dense
             toolbar={false}
+            stickyFirstColumn
+            columnChooser
             pageSize={50}
             empty={
               <EmptyState

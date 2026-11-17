@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { newSubmissionKey, useAddStorePrice, useDeactivateStorePrice, useStoreItems, useStoreLookups, useStorePrices } from '@/lib/store';
+import { newSubmissionKey, useAddStorePrice, useDeactivateStorePrice, useStoreItems, useStoreLookups, useStorePriceRequests, useStorePrices } from '@/lib/store';
 import {
   ConfirmDialog, ErrorBlock, Field, Pill, Segmented, StorePage, errorMessage, fd, inputCls, num, rate, rs, useStoreSession, type Tone,
 } from './parts';
@@ -68,6 +68,8 @@ export function StorePricesPage() {
   // Fetched only while "Full history" is on.
   const historyQ = useStorePrices(show === 'all' ? token : '', { history: true });
   const itemsQ = useStoreItems(token);
+  // Items a keeper has explicitly asked to be priced (Finance/Admin only).
+  const reqQ = useStorePriceRequests(token, 'open', canEdit);
   const deactivateM = useDeactivateStorePrice(token);
 
   const listQ = show === 'all' ? historyQ : currentQ;
@@ -182,6 +184,29 @@ export function StorePricesPage() {
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13.5px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>No active price, so these can&apos;t be received: {missing.join(', ')}</span>
+        </div>
+      )}
+
+      {canEdit && (reqQ.data?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="mb-2 flex items-center gap-1.5 text-[13.5px] font-semibold text-amber-900 dark:text-amber-200">
+            <Tags className="h-4 w-4" />
+            Price requests from the Store ({reqQ.data!.length})
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {reqQ.data!.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-900 dark:text-amber-200">
+                <span className="min-w-0">
+                  <b>{r.itemName}</b> <span className="font-mono text-xs">{r.itemNo}</span>
+                  {r.note ? <span className="text-amber-800/80 dark:text-amber-200/70"> — {r.note}</span> : null}
+                  {r.requestedByName ? <span className="text-xs text-amber-800/70 dark:text-amber-200/60"> · asked by {r.requestedByName}</span> : null}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => setEditing({ itemId: r.itemId, pkg: '', pkgQty: '', price: '', effective: today })}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />Set price
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

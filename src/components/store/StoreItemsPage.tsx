@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Eye, Package, Pencil, Plus, Power, Trash2 } from 'lucide-react';
+import { Download, Eye, Package, Pencil, Plus, Power, Tag, Trash2, Upload } from 'lucide-react';
 import type { StoreItem, StoreItemInput, StoreLookup } from '@mb/shared';
 import { StoreItemInputSchema } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
@@ -13,10 +13,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { useDeleteStoreItem, useSaveStoreItem, useSetStoreItemStatus, useStoreItemHistory, useStoreItems, useStoreLookups } from '@/lib/store';
+import { downloadStoreItems, useDeleteStoreItem, useRequestStorePrice, useSaveStoreItem, useSetStoreItemStatus, useStoreItemHistory, useStoreItems, useStoreLookups } from '@/lib/store';
+import { StoreItemImportDialog } from './StoreItemImportDialog';
 import { ROUTES } from '@/utils/routes';
 import {
-  ConfirmDialog, ErrorBlock, Fact, Field, FilterSelect, Pill, StorePage, errorMessage, fdt, inputCls, num, qty, useStoreSession,
+  ConfirmDialog, ErrorBlock, Fact, Field, FilterSelect, Pill, StorePage, errorMessage, fdt, inputCls, num, qty, titleCase, useStoreSession,
 } from './parts';
 
 /**
@@ -58,10 +59,14 @@ export function StoreItemsPage() {
   const [viewing, setViewing] = useState<string | null>(null);
   const [toggling, setToggling] = useState<StoreItem | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const setStatusM = useSetStoreItemStatus(token);
   const deleteM = useDeleteStoreItem(token);
+  const requestPriceM = useRequestStorePrice(token);
   const canEdit = can('items.edit');
+  const canReceive = can('receive');
 
   const all = useMemo(() => itemsQ.data ?? [], [itemsQ.data]);
   const rows = useMemo(() => {
@@ -79,7 +84,7 @@ export function StoreItemsPage() {
       meta: { mobile: 'title' },
       cell: (c) => (
         <div className="min-w-[140px]">
-          <div className="font-semibold">{c.getValue()}</div>
+          <div className="font-semibold">{titleCase(c.getValue())}</div>
           {c.row.original.remarks ? <div className="text-xs text-muted-foreground">{c.row.original.remarks}</div> : null}
         </div>
       ),
@@ -106,6 +111,20 @@ export function StoreItemsPage() {
         return (
           <div className="flex flex-wrap gap-1.5">
             <Button size="sm" variant="outline" onClick={() => setViewing(i.id)}><Eye className="mr-1 h-3.5 w-3.5" />View</Button>
+            {canReceive && i.status === 'active' && i.unitPrice == null && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-amber-700 dark:text-amber-400"
+                disabled={requestPriceM.isPending}
+                onClick={() => requestPriceM.mutate({ itemId: i.id }, {
+                  onSuccess: () => toast.success(`Price requested for ${i.name} — Finance will set it.`),
+                  onError: (e) => toast.error(errorMessage(e)),
+                })}
+              >
+                <Tag className="mr-1 h-3.5 w-3.5" />Request price
+              </Button>
+            )}
             {canEdit && (
               <>
                 <Button size="sm" variant="outline" onClick={() => setEditing({ id: i.id })}><Pencil className="mr-1 h-3.5 w-3.5" />Edit</Button>
@@ -122,14 +141,44 @@ export function StoreItemsPage() {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [canEdit, session.me.data]);
+  ], [canEdit, canReceive, session.me.data]);
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      await downloadStoreItems(token);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <StorePage
       session={session}
       subtitle="Master list of dry items. Prices are set in Price Control and quantities in Store Stock."
       needs="view"
-      actions={canEdit ? <Button onClick={() => setEditing({})}><Plus className="mr-1.5 h-4 w-4" />New Item</Button> : null}
+      actions={
+        <>
+          <Button variant="outline" onClick={() => void handleDownload()} disabled={downloading}>
+            <Download className="mr-1.5 h-4 w-4" />
+            {downloading ? 'Preparing…' : 'Download Excel'}
+          </Button>
+          {canEdit && (
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              <Upload className="mr-1.5 h-4 w-4" />
+              Upload Excel
+            </Button>
+          )}
+          {canEdit && (
+            <Button onClick={() => setEditing({})}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              New Item
+            </Button>
+          )}
+        </>
+      }
     >
       <div className="flex flex-wrap items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, code or ID…" aria-label="Search" className={inputCls() + ' max-w-xs'} />
@@ -158,6 +207,8 @@ export function StoreItemsPage() {
           loading={itemsQ.isLoading}
           sortable
           toolbar={false}
+          stickyFirstColumn
+          columnChooser
           pageSize={25}
           empty={
             <EmptyState
@@ -181,6 +232,7 @@ export function StoreItemsPage() {
         />
       )}
       {viewing && <ItemViewDialog token={token} id={viewing} onClose={() => setViewing(null)} />}
+      {importing && <StoreItemImportDialog token={token} onClose={() => setImporting(false)} />}
 
       <ConfirmDialog
         open={!!toggling}

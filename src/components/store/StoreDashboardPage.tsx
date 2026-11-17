@@ -15,7 +15,7 @@ import { ROUTES } from '@/utils/routes';
 import { canOpenStorePage } from '@/utils/storeAccess';
 import {
   Card, DateRange, DemandStatusPill, ErrorBlock, FilterSelect, Kpi, Segmented, StorePage,
-  fd, num, plural, presetRange, qty, rs, useStoreSession, type RangePreset,
+  fd, num, plural, presetRange, qty, rs, titleCase, useStoreSession, type RangePreset,
 } from './parts';
 
 /**
@@ -190,7 +190,7 @@ export function StoreDashboardPage() {
                 className="flex items-center justify-between gap-2.5 rounded-xl bg-red-50 px-3 py-2.5 text-foreground transition-colors hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/15"
               >
                 <span className="min-w-0">
-                  <b className="block truncate text-sm">{x.name}</b>
+                  <b className="block truncate text-sm">{titleCase(x.name)}</b>
                   <span className="text-xs text-muted-foreground">{x.itemNo} · reorder at {qty(x.minStock, x.baseUnit)}</span>
                 </span>
                 <span className="whitespace-nowrap text-sm font-extrabold tabular-nums text-red-700 dark:text-red-400">
@@ -322,7 +322,13 @@ function KpiGrid({ d, rejected, rangeText, open }: {
   return (
     <div className="grid grid-cols-2 gap-3 min-[1100px]:grid-cols-4">
       <Kpi label="Total Store Items" value={String(d.itemsActive)} sub={`${d.itemsInactive} inactive`} href={open(ROUTES.STORE_ITEMS)} />
-      <Kpi hero label="Total Available Stock" value={rs(d.stockValue)} sub={`${plural(d.itemsInStock, 'item')} in stock, at cost`} href={open(ROUTES.STORE_STOCK)} />
+      <Kpi
+        hero
+        label="Total Available Stock"
+        value={rs(d.stockValue)}
+        sub={`${plural(d.itemsInStock, 'item')} at cost · ${rs(remaining)} free after approved demand`}
+        href={open(ROUTES.STORE_STOCK)}
+      />
       <Kpi
         label="Today's Received Stock"
         value={rs(d.receivedToday.amount)}
@@ -352,9 +358,15 @@ function KpiGrid({ d, rejected, rangeText, open }: {
         href={open(ROUTES.STORE_APPROVAL)}
       />
       <Kpi
-        label="Low Stock Items"
+        label="Low Stock (not out)"
         value={String(d.low.length)}
-        sub={names(d.low, 'All above reorder level')}
+        // "Low" here is low-but-not-zero; out-of-stock has its own card. Never
+        // claim everything is fine while items are out.
+        sub={d.low.length
+          ? names(d.low, '')
+          : d.outOfStock.length
+            ? `${d.outOfStock.length} out of stock →`
+            : 'All above reorder level'}
         tone={d.low.length ? 'bad' : undefined}
         href={open(ROUTES.STORE_STOCK)}
       />
@@ -363,12 +375,6 @@ function KpiGrid({ d, rejected, rangeText, open }: {
         value={String(d.outOfStock.length)}
         sub={names(d.outOfStock, 'Every active item has stock')}
         tone={d.outOfStock.length ? 'bad' : undefined}
-        href={open(ROUTES.STORE_STOCK)}
-      />
-      <Kpi
-        label="Today's Remaining Stock"
-        value={rs(remaining)}
-        sub={`after ${rs(d.committedValue)} set aside for approved demand`}
         href={open(ROUTES.STORE_STOCK)}
       />
     </div>

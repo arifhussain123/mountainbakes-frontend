@@ -12,14 +12,18 @@ import {
   type Table as TanstackTable,
   type Cell,
   type Row,
+  type VisibilityState,
 } from '@tanstack/react-table';
 import { useState } from 'react';
 import {
   Table, TableBody, TableCell, TableFooter, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Download } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Search, Download, SlidersHorizontal } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { PageSize } from '@mb/shared';
@@ -138,6 +142,18 @@ interface DataTableProps<TData> {
    * phone cards are a label/value grid and are not affected.
    */
   dense?: boolean;
+  /**
+   * Freeze the first column while the rest scroll sideways. For wide tables
+   * (Items, Stock, Reports) where the row's identity must stay in view. Opt-in
+   * so narrow tables are unchanged; the phone cards are not affected.
+   */
+  stickyFirstColumn?: boolean;
+  /**
+   * Show a "Columns" menu that toggles each hideable column's visibility.
+   * Opt-in. When on, visibility is managed inside the table (seeded from
+   * `columnVisibility`); when off, `columnVisibility` stays controlled as before.
+   */
+  columnChooser?: boolean;
 }
 
 export function DataTable<TData>({
@@ -158,9 +174,19 @@ export function DataTable<TData>({
   toolbar = true,
   pager = true,
   dense = false,
+  stickyFirstColumn = false,
+  columnChooser = false,
 }: DataTableProps<TData>) {
   const [localFilter, setLocalFilter] = useState('');
   const [localSorting, setLocalSorting] = useState<SortingState>([]);
+  // When the column chooser is on, the table owns visibility (seeded from the
+  // prop); otherwise `columnVisibility` stays a controlled, static prop.
+  const [chooserVisibility, setChooserVisibility] = useState<VisibilityState>(columnVisibility ?? {});
+  const effectiveVisibility = columnChooser ? chooserVisibility : columnVisibility;
+
+  // Classes that freeze the first column over the table's own horizontal scroll.
+  const stickyHead = stickyFirstColumn ? 'sticky left-0 z-20 bg-card' : undefined;
+  const stickyCell = stickyFirstColumn ? 'sticky left-0 z-10 bg-card' : undefined;
 
   const globalFilter = manual ? manual.search : localFilter;
   const setGlobalFilter = manual ? manual.onSearchChange : setLocalFilter;
@@ -182,9 +208,10 @@ export function DataTable<TData>({
     state: {
       globalFilter: manual ? '' : globalFilter,
       sorting,
-      ...(columnVisibility ? { columnVisibility } : {}),
+      ...(effectiveVisibility ? { columnVisibility: effectiveVisibility } : {}),
     },
     onGlobalFilterChange: manual ? undefined : setLocalFilter,
+    onColumnVisibilityChange: columnChooser ? setChooserVisibility : undefined,
     onSortingChange: setSorting,
     manualSorting,
     enableSorting: sortable,
@@ -220,6 +247,33 @@ export function DataTable<TData>({
    */
   const hasFooter = table.getAllLeafColumns().some((c) => c.getIsVisible() && c.columnDef.footer != null);
 
+  // The "Columns" menu — shown in the toolbar, or in its own right-aligned bar
+  // when a page renders its own filter row (`toolbar={false}`).
+  const columnMenu = columnChooser ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-11 md:h-9')}>
+        <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
+        Columns
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+        {table
+          .getAllLeafColumns()
+          .filter((c) => c.getCanHide() && typeof c.columnDef.header === 'string' && c.columnDef.header !== '')
+          .map((c) => (
+            <DropdownMenuCheckboxItem
+              key={c.id}
+              checked={c.getIsVisible()}
+              // Keep the menu open so several columns can be toggled at once.
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={(v) => c.toggleVisibility(Boolean(v))}
+            >
+              {c.columnDef.header as string}
+            </DropdownMenuCheckboxItem>
+          ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
   return (
     <div className="space-y-4">
       {/* Toolbar — stacks on a phone so the search field gets the full width. */}
@@ -237,9 +291,10 @@ export function DataTable<TData>({
           />
         </div>
         </div>
-        {(actions || onExport) && (
+        {(actions || onExport || columnChooser) && (
           <div className="flex w-full items-center gap-2 sm:w-auto">
             {actions}
+            {columnMenu}
             {onExport && (
               <Button variant="outline" size="sm" onClick={onExport} className="h-11 flex-1 md:h-9 sm:flex-none">
                 <Download className="h-3.5 w-3.5 mr-1.5" />
@@ -250,6 +305,10 @@ export function DataTable<TData>({
         )}
       </div>
       )}
+
+      {/* When the page renders its own filter row, the Columns menu still needs a
+          home. Desktop only — the phone cards have no columns to choose. */}
+      {!toolbar && columnMenu && <div className="hidden justify-end md:flex">{columnMenu}</div>}
 
       {/* Desktop table. Markup unchanged — only the visibility wrapper is new.
           `print-table-wrap` forces this branch onto paper regardless of how the
@@ -267,13 +326,14 @@ export function DataTable<TData>({
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} data-table-head>
-                {hg.headers.map((h) => (
+                {hg.headers.map((h, i) => (
                   <SortableHeaderCell
                     key={h.id}
                     canSort={sortable && h.column.getCanSort()}
                     sorted={h.column.getIsSorted()}
                     onToggle={h.column.getToggleSortingHandler()}
                     align={h.column.columnDef.meta?.align}
+                    className={i === 0 ? stickyHead : undefined}
                   >
                     {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
                   </SortableHeaderCell>
@@ -303,8 +363,8 @@ export function DataTable<TData>({
             ) : (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} className="hover:bg-muted/30 transition-colors">
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className={alignClass(cell.column.columnDef.meta?.align)}>
+                  {row.getVisibleCells().map((cell, i) => (
+                    <TableCell key={cell.id} className={cn(alignClass(cell.column.columnDef.meta?.align), i === 0 && stickyCell)}>
                       <CellContent cell={cell} />
                     </TableCell>
                   ))}
@@ -322,10 +382,10 @@ export function DataTable<TData>({
             <TableFooter>
               {table.getFooterGroups().map((fg) => (
                 <TableRow key={fg.id} className="hover:bg-transparent">
-                  {fg.headers.map((h) => (
+                  {fg.headers.map((h, i) => (
                     <TableCell
                       key={h.id}
-                      className={cn('font-semibold', alignClass(h.column.columnDef.meta?.align))}
+                      className={cn('font-semibold', alignClass(h.column.columnDef.meta?.align), i === 0 && stickyCell)}
                     >
                       {h.isPlaceholder ? null : flexRender(h.column.columnDef.footer, h.getContext())}
                     </TableCell>
