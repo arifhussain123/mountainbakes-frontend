@@ -2,9 +2,10 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { Popover } from '@base-ui/react/popover';
 import { createColumnHelper } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { BookOpen, Download, Package, SlidersHorizontal } from 'lucide-react';
+import { BookOpen, Download, Package, Pencil, SlidersHorizontal } from 'lucide-react';
 import type { StoreAdjustInput, StoreAdjustment, StoreItem, StoreStockRow } from '@mb/shared';
 import { STORE_OPENING_REASON, STORE_RETURN_REASON, StoreAdjustInputSchema, needsReorder } from '@mb/shared';
 import { DataTable } from '@/components/shared/DataTable';
@@ -57,6 +58,16 @@ export function StoreStockPage() {
   // Held until the business date is known, so the first call is already the range shown.
   const adjQ = useStoreAdjustments(r.from ? token : '', { from: r.from, to: r.to, limit: 20 });
   const categories = (lookupsQ.data ?? []).filter((l) => l.kind === 'category' && l.isActive).map((l) => l.value);
+  // Reasons offered by the inline count-correction popover. Same source the Adjust
+  // dialog uses; the server (store_adjust_stock) rejects any reason not in this list.
+  const adjustReasons = useMemo(
+    () => (lookupsQ.data ?? []).filter((l) => l.kind === 'adjust_reason' && l.isActive).map((l) => l.value),
+    [lookupsQ.data],
+  );
+  // Inline editing writes an adjustment dated today against the item's LIVE available
+  // qty, so it is only offered when the shown range ends today — otherwise the number
+  // in the Available column is a past close and editing it would be a silent surprise.
+  const canInlineAdjust = canAdjust && !!r.to && r.to >= today;
 
   const all = useMemo(() => stockQ.data?.rows ?? [], [stockQ.data]);
   const lowCount = all.filter(isLow).length;
@@ -88,7 +99,9 @@ export function StoreStockPage() {
     col.accessor('closing', {
       header: 'Available',
       meta: { align: 'center', mobile: 'figure' },
-      cell: (c) => <span className={cn('font-extrabold tabular-nums', isLow(c.row.original) && 'text-red-700 dark:text-red-400')}>{num(c.getValue())}</span>,
+      cell: (c) => (
+        <InlineStockEdit row={c.row.original} token={token} reasons={adjustReasons} editable={canInlineAdjust} />
+      ),
     }),
     col.accessor('committed', {
       header: 'Committed',
@@ -130,7 +143,7 @@ export function StoreStockPage() {
         </div>
       ),
     }),
-  ], [canAdjust]);
+  ], [canAdjust, canInlineAdjust, token, adjustReasons]);
 
   const adjColumns = useMemo(() => [
     adjCol.accessor('businessDate', { header: 'Date', meta: { mobile: 'subtitle' }, cell: (c) => <span className="whitespace-nowrap">{fd(c.getValue())}</span> }),
@@ -280,6 +293,166 @@ export function StoreStockPage() {
         />
       )}
     </StorePage>
+  );
+}
+
+// ── Inline stock count correction ────────────────────────────────────────────
+
+/**
+ * The Available figure, editable in place. An admin with the `adjust` permission
+ * clicks the number, types the physically-counted total, and Save records a
+ * normal stock adjustment (dated today) for the difference — same transaction,
+ * audit row and FIFO cost as the Stock Adjustment dialog, just without opening it.
+ *
+ * No hooks here so the plain-number branch is safe when `editable` flips; the
+ * editable branch delegates to InlineStockEditor, which always runs its hooks.
+ */
+function InlineStockEdit({ row, token, reasons, editable }: {
+  row: StoreStockRow;
+  token: string;
+  reasons: string[];
+  editable: boolean;
+}) {
+  const low = isLow(row);
+  if (!editable) {
+    return <span className={cn('font-extrabold tabular-nums', low && 'text-red-700 dark:text-red-400')}>{num(row.closing)}</span>;
+  }
+  return <InlineStockEditor row={row} token={token} reasons={reasons} low={low} />;
+}
+
+/**
+ * Bound to the item's LIVE availableQty, never the column's period close: the
+ * parent only sets `editable` when the shown range ends today, so the two agree.
+ * The delta (new count − current) becomes an `in`/`out` adjustment; below-zero is
+ * refused here and again by store_adjust_stock, and `Other` needs a note just like
+ * the dialog. Idempotency key is minted once and reused on a retry of the same body.
+ */
+function InlineStockEditor({ row, token, reasons, low }: {
+  row: StoreStockRow;
+  token: string;
+  reasons: string[];
+  low: boolean;
+}) {
+  const adjustM = useAdjustStock(token);
+  const last = useRef<{ body: string; key: string } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState('');
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+
+  const unit = row.baseUnit;
+  const current = row.availableQty;
+  const committed = row.committed;
+  const defaultReason = reasons.includes('Count correction') ? 'Count correction' : (reasons[0] ?? '');
+
+  const target = val.trim() === '' ? NaN : Number(val);
+  const valid = Number.isFinite(target) && target >= 0;
+  const delta = valid ? target - current : 0;
+  const direction: 'in' | 'out' = delta >= 0 ? 'in' : 'out';
+  const qtyN = Math.abs(delta);
+  const needNote = reason === 'Other';
+  const after = valid ? target : current;
+  const warn = valid && direction === 'out' && after >= 0 && after < committed;
+
+  const errs: Record<string, string> = {};
+  if (val.trim() === '') errs.val = 'Enter the counted total.';
+  else if (!Number.isFinite(target)) errs.val = 'Enter a number.';
+  else if (target < 0) errs.val = "Count can't be below zero.";
+  else if (qtyN === 0) errs.val = 'Same as the current count.';
+  if (!reason) errs.reason = 'Pick a reason.';
+  if (needNote && !note.trim()) errs.note = 'Describe the reason.';
+  const e = (k: string) => (tried ? errs[k] ?? null : null);
+
+  const onOpenChange = (o: boolean) => {
+    if (!o && adjustM.isPending) return;
+    if (o) { setVal(String(current)); setReason(defaultReason); setNote(''); setTried(false); last.current = null; }
+    setOpen(o);
+  };
+
+  const save = () => {
+    if (Object.keys(errs).length) { setTried(true); return; }
+    const input: StoreAdjustInput = { itemId: row.id, direction, qty: qtyN, reason, note: note.trim() || null };
+    const parsed = StoreAdjustInputSchema.safeParse(input);
+    if (!parsed.success) { setTried(true); return; }
+    const body = JSON.stringify(parsed.data);
+    if (!last.current || last.current.body !== body) last.current = { body, key: newSubmissionKey() };
+    adjustM.mutate({ input: parsed.data, key: last.current.key }, {
+      onSuccess: (adj) => {
+        last.current = null;
+        toast.success(`${adj.adjNo} saved. ${adj.itemName ?? row.name} now ${qty(target, unit)}.`);
+        setOpen(false);
+      },
+      onError: (err) => toast.error(errorMessage(err)),
+    });
+  };
+
+  return (
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
+      <Popover.Trigger
+        title="Correct the counted stock"
+        className={cn(
+          'group inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-extrabold tabular-nums transition-colors',
+          'cursor-pointer hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+          low && 'text-red-700 dark:text-red-400',
+        )}
+      >
+        {num(row.closing)}
+        <Pencil className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" aria-hidden />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="bottom" align="center" sideOffset={6} className="z-50 outline-none">
+          <Popover.Popup className="z-50 w-64 rounded-xl bg-popover p-3 text-left text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none">
+            <div className="mb-2">
+              <div className="truncate text-sm font-semibold">{titleCase(row.name)}</div>
+              <div className="text-[12px] text-muted-foreground">
+                Current {qty(current, unit)}{committed ? ` · ${qty(committed, unit)} committed` : ''}
+              </div>
+            </div>
+            <Field
+              label={`New count (${unit})`}
+              required
+              error={e('val')}
+              hint={valid && qtyN ? `Adjustment ${signed(delta)} ${unit}` : 'Physically-counted total'}
+            >
+              <input
+                autoFocus
+                inputMode="decimal"
+                className={inputCls(!!e('val'))}
+                value={val}
+                onChange={(x) => setVal(x.target.value.replace(/[^\d.]/g, ''))}
+                onKeyDown={(x) => { if (x.key === 'Enter') { x.preventDefault(); save(); } }}
+                placeholder="0"
+              />
+            </Field>
+            <div className="mt-2">
+              <Field label="Reason" required error={e('reason')}>
+                <select className={inputCls(!!e('reason'))} value={reason} onChange={(x) => setReason(x.target.value)}>
+                  {reasons.length === 0 && <option value="">Loading…</option>}
+                  {reasons.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+            </div>
+            {needNote && (
+              <div className="mt-2">
+                <Field label="Note" required error={e('note')}>
+                  <input className={inputCls(!!e('note'))} value={note} onChange={(x) => setNote(x.target.value)} placeholder="What happened" maxLength={300} />
+                </Field>
+              </div>
+            )}
+            {warn && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[12px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                Leaves {qty(after, unit)}, under the {qty(committed, unit)} committed to Production.
+              </div>
+            )}
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => onOpenChange(false)} disabled={adjustM.isPending}>Cancel</Button>
+              <Button size="sm" onClick={save} disabled={adjustM.isPending || reasons.length === 0}>{adjustM.isPending ? 'Saving…' : 'Save'}</Button>
+            </div>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
